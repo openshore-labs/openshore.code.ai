@@ -1,14 +1,21 @@
 // Bring Your Own Model (BYOM): connect a model YOU control, by pointing OS
-// Code at any OpenAI-compatible endpoint (a self-hosted vLLM or Ollama server,
-// a fine-tune behind your own gateway, another provider's API). It rides the
-// exact same OpenAI-compatible path the built-in cloud providers use, so a
-// BYOM model lands on your Bench and places into the stack like any other.
+// Code at any address in either format (bring your own keys, Part 2,
+// 2026-10-09): an OpenAI-compatible endpoint (a self-hosted vLLM or Ollama
+// server, a fine-tune behind your own gateway, another provider's API) rides
+// the same path the built-in cloud providers use, and an Anthropic-compatible
+// one rides a conservative Messages request (stackDriver's runByomAnthropic).
+// Either way a BYOM model lands on your Bench and places into the stack like
+// any other.
 //
 // The endpoint URL and model id are plain metadata, persisted in settings. The
 // API key (optional: a local server may need none) lives in the device secret
 // store, keyed by the connection id, never in settings.
 import { hostIsLocal, isOllamaCloudTag } from 'os-code/protocol';
 import type { StackModelRef } from './stack.js';
+
+/** The request format an address speaks. Absent reads as 'openai', so every
+ *  connection made before 2026-10-09 keeps its path. */
+export type ByomWire = 'openai' | 'anthropic';
 
 /** A user-connected model endpoint. Metadata only; the key is in the secret
  *  store under byomSecretKey(id). */
@@ -17,14 +24,38 @@ export interface ByomConnection {
   id: string;
   /** Friendly display name the user typed. */
   label: string;
-  /** OpenAI-compatible base URL, e.g. https://host/v1 (no trailing
-   *  /chat/completions). */
+  /** The base URL: OpenAI-compatible as https://host/v1 (no trailing
+   *  /chat/completions), Anthropic-compatible as https://host (no /v1). */
   baseUrl: string;
   /** The model id to send in the request body. */
   model: string;
-  /** The window this endpoint serves, when the person knows it (Vault M5,
-   *  CTO J4): the pack is sized from it, else 8192. App-only, device local. */
+  /** The window this endpoint serves, when the app knows it (Vault M5,
+   *  CTO J4): the pack is sized from it, else 8192. App-only, device local.
+   *  A window an address's model list reports is kept only when the address
+   *  leaves this network (`keepsListedWindow`). */
   contextTokens?: number;
+  /** The request format; absent is 'openai'. */
+  wire?: ByomWire;
+  /** Shared by the connections made from one address in one go (several
+   *  models ticked at once), so they can be told apart from another
+   *  address's and removed together. */
+  addressId?: string;
+  /** The person said this address passes requests on to a cloud provider (a
+   *  gateway such as LiteLLM in front of Bedrock or Azure). Stricter only:
+   *  it makes the connection count as leaving this network wherever reach is
+   *  judged, and never makes one count as staying. */
+  forwardsToCloud?: boolean;
+}
+
+/** The name of the switch that sets `forwardsToCloud`, in the connect form
+ *  and a connected model's options, and wherever copy tells the person to
+ *  turn it on. A name that stands on its own in a sentence. */
+export const BYOM_FORWARDS_NAME = 'Passes requests to a cloud provider';
+
+/** An address's format, a connection or a ref made before formats existed
+ *  read as OpenAI-compatible. */
+export function byomWireOf(x: { wire?: ByomWire } | undefined): ByomWire {
+  return x?.wire === 'anthropic' ? 'anthropic' : 'openai';
 }
 
 /** The window a BYOM seat is assumed to serve when its connection does not
@@ -36,9 +67,20 @@ export function byomSecretKey(id: string): string {
   return `oscode.secret.byom.${id}`;
 }
 
-/** The stack ref for a connected BYOM model. */
+/** The stack ref for a connected BYOM model. A placed ref is a frozen copy
+ *  in the saved stacks, so the format and the forwarding mark ride on it,
+ *  set only when the connection has them (a legacy ref stays as it was). */
 export function byomRef(conn: ByomConnection): StackModelRef {
-  return { kind: 'byom', id: conn.id, label: conn.label, baseUrl: conn.baseUrl, model: conn.model };
+  return {
+    kind: 'byom',
+    id: conn.id,
+    label: conn.label,
+    baseUrl: conn.baseUrl,
+    model: conn.model,
+    ...(conn.wire === 'anthropic' ? { wire: 'anthropic' as const } : {}),
+    ...(conn.addressId ? { addressId: conn.addressId } : {}),
+    ...(conn.forwardsToCloud === true ? { forwardsToCloud: true } : {}),
+  };
 }
 
 /** Where a BYOM endpoint runs, for the teal/amber location language. A server
@@ -55,12 +97,19 @@ export function byomRef(conn: ByomConnection): StackModelRef {
  *  is sent never disagree. A `*.ts.net` name is local only on this device's
  *  own tailnet (`ownTailnetSuffix`, from the paired hub's address); another
  *  tailnet's Funnel host is someone else's server. An address that does not
- *  parse reads as cloud: never claim local on a guess. */
+ *  parse reads as cloud: never claim local on a guess.
+ *
+ *  `forwardsToCloud` is the person's own word that the address passes each
+ *  request on to a cloud provider (a gateway on their network): it reads
+ *  cloud wherever the gateway runs, and it can only ever make a connection
+ *  cloud, never local (2026-10-09). */
 export function byomReach(
   baseUrl: string,
   ownTailnetSuffix: string | null = null,
   model?: string,
+  forwardsToCloud?: boolean,
 ): 'local' | 'cloud' {
+  if (forwardsToCloud === true) return 'cloud';
   if (model !== undefined && isOllamaCloudTag(model)) return 'cloud';
   const host = byomHost(baseUrl);
   if (!host) return 'cloud';
@@ -70,12 +119,27 @@ export function byomReach(
 /** True when a pasted address would send the chat and the key in plain text
  *  to a server that is not on this machine, the home network, or this
  *  device's own tailnet. Refused at connect (CTO review 2026-10-01): plain
- *  http is for your own hosts only. */
+ *  http is for your own hosts only. Judged by the address alone: the hop to
+ *  a gateway on your own network stays on it, whatever the gateway sends on
+ *  over its own https. */
 export function byomPlainHttpToCloud(
   baseUrl: string,
   ownTailnetSuffix: string | null = null,
 ): boolean {
   return /^http:\/\//i.test(baseUrl.trim()) && byomReach(baseUrl, ownTailnetSuffix) === 'cloud';
+}
+
+/** Whether a window an address's model list reports may size its seat: only
+ *  for an address that leaves this network, or one marked as passing requests
+ *  on, where the provider serves the window it lists. A server on your own
+ *  network lists its model's native window, not the one it serves (Ollama's
+ *  default is far smaller), so its seat keeps the 8192 guess (CTO J4). */
+export function keepsListedWindow(
+  baseUrl: string,
+  ownTailnetSuffix: string | null,
+  forwardsToCloud: boolean | undefined,
+): boolean {
+  return byomReach(baseUrl, ownTailnetSuffix, undefined, forwardsToCloud) === 'cloud';
 }
 
 /** The hostname a BYOM base URL points at (a bare `host:port` reads as
@@ -97,4 +161,21 @@ export function normalizeBaseUrl(raw: string): string {
   let url = raw.trim().replace(/\/+$/, '');
   url = url.replace(/\/chat\/completions$/, '');
   return url;
+}
+
+/** Normalize a pasted Anthropic-compatible address to its root: the SDK adds
+ *  /v1/messages and the list read adds /v1/models, so a pasted /v1/messages
+ *  or /v1 is taken off. */
+export function normalizeAnthropicBase(raw: string): string {
+  return raw
+    .trim()
+    .replace(/\/+$/, '')
+    .replace(/\/v1\/messages$/, '')
+    .replace(/\/v1$/, '')
+    .replace(/\/+$/, '');
+}
+
+/** A pasted address, normalized for its format. */
+export function normalizeByomBase(raw: string, wire: ByomWire): string {
+  return wire === 'anthropic' ? normalizeAnthropicBase(raw) : normalizeBaseUrl(raw);
 }

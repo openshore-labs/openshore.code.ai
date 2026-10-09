@@ -495,10 +495,10 @@ describe('bring your own model', () => {
   beforeEach(resetStore);
 
   it('connects an endpoint, keeping the key out of settings', async () => {
-    const conn = await useApp.getState().connectByom({
+    const [conn] = await useApp.getState().connectByom({
       label: 'House model',
       baseUrl: 'https://host/v1',
-      model: 'llama-3.1-70b',
+      models: [{ id: 'llama-3.1-70b' }],
       apiKey: 'sk-secret',
     });
     const models = useApp.getState().settings.byomModels ?? [];
@@ -506,27 +506,79 @@ describe('bring your own model', () => {
     expect(models[0]!.label).toBe('House model');
     expect(models[0]!.model).toBe('llama-3.1-70b');
     // The key lives in the secret store, never in the persisted settings blob.
-    expect(secrets.get(`oscode.secret.byom.${conn.id}`)).toBe('sk-secret');
+    expect(secrets.get(`oscode.secret.byom.${conn!.id}`)).toBe('sk-secret');
     expect(JSON.stringify(models)).not.toContain('sk-secret');
   });
 
   it('allows a keyless connection (no secret written)', async () => {
-    const conn = await useApp.getState().connectByom({
+    const [conn] = await useApp.getState().connectByom({
       label: 'Local vLLM',
       baseUrl: 'http://127.0.0.1:8000/v1',
-      model: 'my-model',
+      models: [{ id: 'my-model' }],
     });
-    expect(secrets.has(`oscode.secret.byom.${conn.id}`)).toBe(false);
+    expect(secrets.has(`oscode.secret.byom.${conn!.id}`)).toBe(false);
     expect(useApp.getState().settings.byomModels).toHaveLength(1);
   });
 
-  it('disconnecting removes the key, the connection, and any stack placement', async () => {
-    const conn = await useApp.getState().connectByom({
-      label: 'Anchor model',
-      baseUrl: 'https://host/v1',
-      model: 'm',
-      apiKey: 'k',
+  // Bring your own keys, Part 2 (2026-10-09): several models ticked at one
+  // address make one connection each, sharing an addressId, and the key is
+  // written under each one's own secret name, so every reader keeps working.
+  it('connects several models from one address, one connection and one key copy each', async () => {
+    const conns = await useApp.getState().connectByom({
+      label: 'Gateway',
+      baseUrl: 'https://gateway.example.com/v1',
+      models: [
+        { id: 'bedrock-claude', label: 'Bedrock Claude', contextTokens: 200_000 },
+        { id: 'azure-gpt', contextTokens: 128_000 },
+        { id: 'bedrock-claude' },
+      ],
+      apiKey: ' sk-gw ',
     });
+    expect(conns.map((c) => c.model)).toEqual(['bedrock-claude', 'azure-gpt']);
+    expect(conns.map((c) => c.label)).toEqual(['Gateway · Bedrock Claude', 'Gateway · azure-gpt']);
+    expect(new Set(conns.map((c) => c.id)).size).toBe(2);
+    expect(conns[0]!.addressId).toBeTruthy();
+    expect(conns[1]!.addressId).toBe(conns[0]!.addressId);
+    for (const c of conns) expect(secrets.get(`oscode.secret.byom.${c.id}`)).toBe('sk-gw');
+    // A public address serves the window it lists.
+    expect(conns.map((c) => c.contextTokens)).toEqual([200_000, 128_000]);
+    expect(useApp.getState().settings.byomModels).toHaveLength(2);
+    expect(JSON.stringify(useApp.getState().settings.byomModels)).not.toContain('sk-gw');
+  });
+
+  it('keeps a listed window only where it is the window served', async () => {
+    const pick = [{ id: 'qwen3:32b', contextTokens: 131_072 }];
+    const [home] = await useApp.getState().connectByom({
+      label: 'Home',
+      baseUrl: 'http://192.168.1.20:11434/v1',
+      models: pick,
+    });
+    // A server on your own network lists the native window, not the served one.
+    expect(home!.contextTokens).toBeUndefined();
+    const [gateway] = await useApp.getState().connectByom({
+      label: 'Gateway',
+      baseUrl: 'http://192.168.1.30:4000/v1',
+      wire: 'anthropic',
+      forwardsToCloud: true,
+      models: pick,
+    });
+    // Marked as passing requests on: the provider behind it serves the window.
+    expect(gateway).toMatchObject({
+      contextTokens: 131_072,
+      wire: 'anthropic',
+      forwardsToCloud: true,
+    });
+  });
+
+  it('disconnecting removes the key, the connection, and any stack placement', async () => {
+    const conn = (
+      await useApp.getState().connectByom({
+        label: 'Anchor model',
+        baseUrl: 'https://host/v1',
+        models: [{ id: 'm' }],
+        apiKey: 'k',
+      })
+    )[0]!;
     // Make it the Reasoning anchor, then disconnect it.
     await useApp.getState().setReasoning({
       kind: 'byom',
@@ -582,12 +634,14 @@ describe('per-status stacks', () => {
   });
 
   it('disconnecting a BYOM endpoint pulls it from every status', async () => {
-    const conn = await useApp.getState().connectByom({
-      label: 'Shared model',
-      baseUrl: 'https://host/v1',
-      model: 'm',
-      apiKey: '',
-    });
+    const conn = (
+      await useApp.getState().connectByom({
+        label: 'Shared model',
+        baseUrl: 'https://host/v1',
+        models: [{ id: 'm' }],
+        apiKey: '',
+      })
+    )[0]!;
     const byom: StackModelRef = {
       kind: 'byom',
       id: conn.id,

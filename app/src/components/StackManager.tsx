@@ -25,7 +25,19 @@ import {
 import { isHarborMini } from '../lib/harborMini.js';
 import { isDesktop } from '../lib/platform.js';
 import { isPinned } from '../lib/pins.js';
-import { byomPlainHttpToCloud, byomRef, normalizeBaseUrl } from '../lib/byom.js';
+import {
+  BYOM_FORWARDS_NAME,
+  byomPlainHttpToCloud,
+  byomReach,
+  byomRef,
+  normalizeByomBase,
+  type ByomConnection,
+  type ByomWire,
+} from '../lib/byom.js';
+import { VAULT_PRIVATE_OFF_MARKED } from '../lib/vaultCopy.js';
+import { readByomModels } from '../lib/byomList.js';
+import { byomSiblings } from '../state/byomOps.js';
+import type { LiveModel } from '../lib/providers.js';
 import { hubTailnetSuffix } from '../lib/vaultSeat.js';
 import { daemonStack } from '../drivers/remoteDriver.js';
 import { dockedNoun, dockedNounLower } from '../lib/docking.js';
@@ -56,6 +68,8 @@ import { Sheet } from './Sheet.js';
 import { SheetHead, SheetTitle } from './SheetHead.js';
 import { MoreGlyph } from './SheetGlyphs.js';
 import { SettingsGroup, SettingsRow } from './SettingsRow.js';
+import { ModelChecklist } from './ModelChecklist.js';
+import { Switch } from './Switch.js';
 import { StatusSheet } from './ProfileStatus.js';
 import { computerOfflineNote, computerOfflineOf } from '../state/offlineOps.js';
 import type { DaemonStackInfo } from 'os-code/protocol';
@@ -86,6 +100,43 @@ function kindMeta(
     : { cls: 'local', label: 'On device' };
 }
 
+/** A blank Connect a model form. */
+const BYOM_FORM = {
+  label: '',
+  baseUrl: '',
+  wire: 'openai' as ByomWire,
+  apiKey: '',
+  forwards: false,
+  model: '',
+};
+
+/** The two formats an address may speak, in the order the control shows. */
+const BYOM_WIRES: Array<{ id: ByomWire; label: string }> = [
+  { id: 'openai', label: 'OpenAI-compatible' },
+  { id: 'anthropic', label: 'Anthropic-compatible' },
+];
+
+/** What disconnecting takes off this device. Each model from one address
+ *  keeps its own copy of the key, so one disconnected while others from
+ *  there stay removes only its own copy, and the line says so. */
+function byomForgetLine(f: { ids: string[]; host: string; all: boolean; others: number }): string {
+  if (f.all) {
+    return 'They leave your bench and every stack, and any API key they had is removed from this device.';
+  }
+  if (!f.others) {
+    return 'It leaves your bench and every stack, and any API key it had is removed from this device.';
+  }
+  const others = f.others === 1 ? 'The other model' : `The other ${f.others} models`;
+  return `It leaves your bench and every stack, and its copy of any API key is removed from this device. ${others} from ${f.host} keep theirs; Disconnect all ${f.others + 1} at ${f.host} removes every copy.`;
+}
+
+/** The line under the forwarding switch, for an address that is not already
+ *  cloud by where it is: what turning it on does. */
+const BYOM_FORWARDS_LINE = `Turn on for a gateway such as LiteLLM, and it counts as cloud. ${VAULT_PRIVATE_OFF_MARKED}`;
+/** The same line for an address outside your own network. */
+const BYOM_ALREADY_CLOUD_LINE =
+  'This address is outside your own network, so it already counts as cloud.';
+
 /** The teal/amber chip for a model's location. */
 function KindChip({ refModel }: { refModel: StackModelRef }) {
   // This device's own tailnet is the paired hub's (CTO J2), so another
@@ -111,7 +162,9 @@ export function StackManager({
     benchSpecialist,
     connectByom,
     disconnectByom,
+    setByomForwards,
     showToast,
+    startGuideChat,
   } = useApp();
 
   const admin = stackAdmin(settings.account);
@@ -215,38 +268,146 @@ export function StackManager({
   // options sheet is open.
   const [byomOpen, setByomOpen] = useState(false);
   const [byomInfoOpen, setByomInfoOpen] = useState(false);
-  const [byomForm, setByomForm] = useState({ label: '', baseUrl: '', model: '', apiKey: '' });
+  const [byomForm, setByomForm] = useState(BYOM_FORM);
+  // The address's own model list (2026-10-09): undefined until it is read,
+  // 'loading' while it is, the models to tick, or 'typed' when there is no
+  // list to pick from and the person types the model's name instead.
+  const [byomList, setByomList] = useState<LiveModel[] | 'loading' | 'typed' | undefined>();
+  const [byomPicked, setByomPicked] = useState<ReadonlySet<string>>(new Set());
+  // Bumped on every read and every change to what a read depends on, so a
+  // late answer for an address the person has since changed is dropped.
+  const byomAsk = useRef(0);
   const [byomMenuId, setByomMenuId] = useState<string | undefined>();
   const byomMenuConn = (settings.byomModels ?? []).find((c) => c.id === byomMenuId);
-  // The connection being disconnected, while its confirm is open.
-  const [byomForget, setByomForget] = useState<{ id: string; label: string } | undefined>();
+  // The connections being disconnected, while their confirm is open: one,
+  // or every model connected from one address in one go (`all`). `others` is
+  // how many from that address stay, each with its own copy of the key.
+  const [byomForget, setByomForget] = useState<
+    { ids: string[]; label: string; host: string; all: boolean; others: number } | undefined
+  >();
   const menuMember = stack.active.find((x) => refKey(x.ref) === menuKey);
+  const byomAddressValid = /^https?:\/\/.+/i.test(byomForm.baseUrl.trim());
+  const byomTicked = Array.isArray(byomList) ? byomList.filter((m) => byomPicked.has(m.id)) : [];
   const byomFormValid =
     byomForm.label.trim() !== '' &&
-    byomForm.model.trim() !== '' &&
-    /^https?:\/\/.+/i.test(byomForm.baseUrl.trim());
+    byomAddressValid &&
+    (byomList === 'typed' ? byomForm.model.trim() !== '' : byomTicked.length > 0);
+  // The address's own reach, for the forwarding switch's line: one outside
+  // your network already counts as cloud.
+  const byomAddressLeaves =
+    byomAddressValid &&
+    byomReach(byomForm.baseUrl, hubTailnetSuffix(settings.daemon?.baseUrl)) === 'cloud';
 
-  const saveByom = async () => {
-    if (!byomFormValid) {
-      showToast('A name, an https address, and a model id are needed.');
+  /** Change the form; a change to what the list depends on (the address,
+   *  the format, the key) sets the list aside, since it named another one. */
+  const editByom = (patch: Partial<typeof BYOM_FORM>) => {
+    setByomForm((f) => ({ ...f, ...patch }));
+    if ('baseUrl' in patch || 'wire' in patch || 'apiKey' in patch) {
+      byomAsk.current++;
+      setByomList((l) => (l === 'typed' ? l : undefined));
+      setByomPicked(new Set());
+    }
+  };
+  const closeByom = () => {
+    byomAsk.current++;
+    setByomOpen(false);
+  };
+  const openByom = () => {
+    byomAsk.current++;
+    setByomForm(BYOM_FORM);
+    setByomList(undefined);
+    setByomPicked(new Set());
+    setByomOpen(true);
+  };
+
+  /** Plain http goes only to your own hosts (CTO review 2026-10-01), for the
+   *  list read and the chat alike: either carries the key. */
+  const refusesPlainHttp = (): boolean => {
+    const hub = hubTailnetSuffix(useApp.getState().settings.daemon?.baseUrl);
+    if (!byomPlainHttpToCloud(byomForm.baseUrl, hub)) return false;
+    showToast(
+      'Use an https address for a server outside your own network, so your key is not sent in plain text.',
+    );
+    return true;
+  };
+
+  /** Read the address's own model list, so the person ticks models rather
+   *  than typing ids. A refused key is said as one; no list (no answer in
+   *  time, another failure, an empty one) falls back to a typed model name. */
+  const loadByomModels = async () => {
+    if (!byomAddressValid) {
+      showToast('An address starting with https:// is needed.');
       return;
     }
-    const hub = hubTailnetSuffix(useApp.getState().settings.daemon?.baseUrl);
-    if (byomPlainHttpToCloud(byomForm.baseUrl, hub)) {
+    if (refusesPlainHttp()) return;
+    const ask = ++byomAsk.current;
+    setByomList('loading');
+    const key = byomForm.apiKey.trim() || undefined;
+    const models = await readByomModels(byomForm.baseUrl, byomForm.wire, key);
+    if (ask !== byomAsk.current) return;
+    if (models === 'refused') {
+      // A wrong or missing key: the list stays unread and the key field is
+      // the thing to fix, never a typed name on a key just turned down.
+      setByomList(undefined);
       showToast(
-        'Use an https address for a server outside your own network, so your key is not sent in plain text.',
+        key
+          ? 'That address refused the key. Check it and tap Load models again.'
+          : 'That address asks for an API key. Add it and tap Load models again.',
       );
       return;
     }
-    const conn = await connectByom({
-      label: byomForm.label,
-      baseUrl: normalizeBaseUrl(byomForm.baseUrl),
-      model: byomForm.model,
+    setByomList(models ?? 'typed');
+    setByomPicked(new Set(models?.length === 1 ? [models[0]!.id] : []));
+    if (!models) showToast('No list of models came back from that address. Type the model name.');
+  };
+
+  const saveByom = async () => {
+    if (!byomFormValid) {
+      showToast('A name, an address, and at least one model are needed.');
+      return;
+    }
+    if (refusesPlainHttp()) return;
+    const name = byomForm.label.trim();
+    const conns = await connectByom({
+      label: name,
+      baseUrl: normalizeByomBase(byomForm.baseUrl, byomForm.wire),
+      wire: byomForm.wire,
+      forwardsToCloud: byomForm.forwards,
+      models:
+        byomList === 'typed'
+          ? [{ id: byomForm.model }]
+          : byomTicked.map((m) => ({ id: m.id, label: m.label, contextTokens: m.contextTokens })),
       apiKey: byomForm.apiKey,
     });
-    setByomOpen(false);
-    setByomForm({ label: '', baseUrl: '', model: '', apiKey: '' });
-    showToast(`${conn.label} is on your bench. Place it to put it to work.`);
+    closeByom();
+    showToast(
+      conns.length === 1
+        ? `${conns[0]!.label} is on your bench. Place it to put it to work.`
+        : `${conns.length} models from ${name} are on your bench. Place them to put them to work.`,
+    );
+  };
+
+  /** The forwarding switch's line in a connected model's options: as in the
+   *  connect form, and, for several models from one address, that it is set
+   *  for all of them. */
+  const byomMenuForwardsLine = (conn: ByomConnection): string => {
+    const leaves = byomReach(conn.baseUrl, hubTailnetSuffix(settings.daemon?.baseUrl)) === 'cloud';
+    const n = byomSiblings(settings.byomModels ?? [], conn).length;
+    const line = leaves ? BYOM_ALREADY_CLOUD_LINE : BYOM_FORWARDS_LINE;
+    return n > 1 ? `${line} It is set for all ${n} models from ${byomHost(conn.baseUrl)}.` : line;
+  };
+
+  /** Disconnect one connection, or every one from its address. */
+  const forgetByom = (conn: ByomConnection, all: boolean) => {
+    const siblings = byomSiblings(settings.byomModels ?? [], conn);
+    const ids = all ? siblings.map((c) => c.id) : [conn.id];
+    setByomForget({
+      ids,
+      label: conn.label,
+      host: byomHost(conn.baseUrl),
+      all: all && ids.length > 1,
+      others: siblings.length - ids.length,
+    });
   };
 
   const openPlacement = (ref: StackModelRef, existing?: Placement) =>
@@ -661,8 +822,8 @@ export function StackManager({
             ) : null}
             <SettingsRow
               label="Connect a model"
-              sub="Your own server, or any OpenAI-compatible endpoint."
-              onClick={() => setByomOpen(true)}
+              sub="Any address, in the OpenAI or the Anthropic format: your own server, a gateway, or another provider's API."
+              onClick={openByom}
             />
             <SettingsRow label="How connecting works" onClick={() => setByomInfoOpen(true)} />
           </SettingsGroup>
@@ -753,24 +914,32 @@ export function StackManager({
       <Sheet open={byomInfoOpen} onClose={() => setByomInfoOpen(false)}>
         <SheetTitle>How connecting works</SheetTitle>
         <p className="sheet-sub">
-          Use a model you run: on this computer, your own server, or another service with your key.
+          Use a model you run or hold a key for: on this computer, your own server, a gateway, or
+          another service with your key.
         </p>
         <ul className="paywall-benefits">
           <li>
-            Any OpenAI-compatible endpoint works: a model on your own server, a fine-tune behind
-            your gateway, or another provider's API.
+            Any address works, in either format: OpenAI-compatible, which most servers and providers
+            speak, or Anthropic-compatible. OpenShore asks the address for its list of models, and
+            you tick the ones you want.
           </li>
           <li>
-            It lands on your bench like any other model. Place it into a category and the Reasoning
-            model starts routing the right tasks to it.
+            Each lands on your bench like any other model. Place it into a category and the
+            Reasoning model starts routing the right tasks to it.
+          </li>
+          <li>
+            A model at an address on your own network counts as local, so private notes may go to
+            it. If that address passes requests on to a cloud provider, like a gateway in front of
+            Bedrock or Azure, turn on {BYOM_FORWARDS_NAME} and it counts as cloud.{' '}
+            {VAULT_PRIVATE_OFF_MARKED}
           </li>
           <li>
             Your address and API key stay yours. The API key is stored only on this device and sent
-            only to that address, scoped to that one connection, and never synced.
+            only to that address, kept with each model you connect from it, and never synced.
           </li>
           <li>
             Nothing you send it passes through us. The call goes straight from your device to the
-            endpoint you named.
+            address you named.
           </li>
         </ul>
         <div className="sheet-actions">
@@ -778,10 +947,19 @@ export function StackManager({
             className="btn primary"
             onClick={() => {
               setByomInfoOpen(false);
-              setByomOpen(true);
+              openByom();
             }}
           >
             Connect a model
+          </button>
+          <button
+            className="btn quiet"
+            onClick={() => {
+              setByomInfoOpen(false);
+              void startGuideChat('connect-own-gateway');
+            }}
+          >
+            Use Bedrock, Azure, or Vertex
           </button>
           <button className="btn quiet" onClick={() => setByomInfoOpen(false)}>
             Got it
@@ -789,15 +967,16 @@ export function StackManager({
         </div>
       </Sheet>
 
-      {/* Bring-your-own-model connect sheet. */}
-      <Sheet open={Boolean(byomOpen)} onClose={() => setByomOpen(false)}>
+      {/* Bring-your-own-model connect sheet: an address in either format, its
+          own list of models to tick (a typed name when it sends none), and
+          the mark for an address that passes requests on to a cloud. */}
+      <Sheet open={Boolean(byomOpen)} onClose={closeByom}>
         {byomOpen ? (
           <>
             <SheetTitle>Connect your own model</SheetTitle>
             <p className="sheet-sub">
-              Point OpenShore at any OpenAI-compatible endpoint you control: a self-hosted server, a
-              fine-tune behind your own gateway, or another provider. It lands on your bench, ready
-              to place.
+              Any address you run or hold a key for, in either format: a server on your own network,
+              a gateway, or another provider's API. Its models land on your bench, ready to place.
             </p>
 
             <div className="field">
@@ -807,7 +986,7 @@ export function StackManager({
                 autoFocus
                 placeholder="e.g. Our house model"
                 value={byomForm.label}
-                onChange={(e) => setByomForm({ ...byomForm, label: e.target.value })}
+                onChange={(e) => editByom({ label: e.target.value })}
               />
             </div>
             <div className="field">
@@ -818,24 +997,43 @@ export function StackManager({
                 inputMode="url"
                 autoCapitalize="none"
                 autoCorrect="off"
-                placeholder="https://your-host/v1"
+                placeholder={
+                  byomForm.wire === 'anthropic' ? 'https://your-host' : 'https://your-host/v1'
+                }
                 value={byomForm.baseUrl}
-                onChange={(e) => setByomForm({ ...byomForm, baseUrl: e.target.value })}
+                onChange={(e) => editByom({ baseUrl: e.target.value })}
               />
               <div className="hint" style={{ marginTop: 4 }}>
-                The server's address. It usually ends in /v1.
+                {byomForm.wire === 'anthropic'
+                  ? "The server's address, without /v1/messages."
+                  : "The server's address. It usually ends in /v1."}
               </div>
             </div>
             <div className="field">
-              <label htmlFor="byom-model-id">Model name</label>
-              <input
-                id="byom-model-id"
-                autoCapitalize="none"
-                autoCorrect="off"
-                placeholder="e.g. llama-3.1-70b-instruct"
-                value={byomForm.model}
-                onChange={(e) => setByomForm({ ...byomForm, model: e.target.value })}
-              />
+              <label id="byom-format-label">Format</label>
+              <div
+                className="segmented byom-format"
+                role="radiogroup"
+                aria-labelledby="byom-format-label"
+              >
+                {BYOM_WIRES.map((w) => (
+                  <button
+                    key={w.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={byomForm.wire === w.id}
+                    className={`seg press-fb${byomForm.wire === w.id ? ' active' : ''}`}
+                    onClick={() => editByom({ wire: w.id })}
+                  >
+                    {w.label}
+                  </button>
+                ))}
+              </div>
+              <div className="hint" style={{ marginTop: 4 }}>
+                {byomForm.wire === 'anthropic'
+                  ? 'For a server that takes Claude-style requests at /v1/messages.'
+                  : 'Most servers and providers speak this one.'}
+              </div>
             </div>
             <div className="field">
               <label htmlFor="byom-api-key">API key (optional)</label>
@@ -844,22 +1042,97 @@ export function StackManager({
                 type="password"
                 placeholder="Leave blank for a keyless local server"
                 value={byomForm.apiKey}
-                onChange={(e) => setByomForm({ ...byomForm, apiKey: e.target.value })}
+                onChange={(e) => editByom({ apiKey: e.target.value })}
               />
               <div className="hint" style={{ marginTop: 4 }}>
-                Kept on this device, scoped to this connection, never synced.
+                Kept on this device for the models you connect here, sent only to this address,
+                never synced.
+              </div>
+            </div>
+            <div className="field">
+              <div className="card-row">
+                <div className="grow">
+                  <div>{BYOM_FORWARDS_NAME}</div>
+                  <div className="sub">
+                    {byomAddressLeaves ? BYOM_ALREADY_CLOUD_LINE : BYOM_FORWARDS_LINE}
+                  </div>
+                </div>
+                <Switch
+                  checked={byomForm.forwards}
+                  label={BYOM_FORWARDS_NAME}
+                  onChange={(next) => editByom({ forwards: next })}
+                />
               </div>
             </div>
 
+            {byomList === 'typed' ? (
+              <div className="field">
+                <label htmlFor="byom-model-id">Model name</label>
+                <input
+                  id="byom-model-id"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  placeholder="e.g. llama-3.1-70b-instruct"
+                  value={byomForm.model}
+                  onChange={(e) => editByom({ model: e.target.value })}
+                />
+                <div className="hint" style={{ marginTop: 4 }}>
+                  The name the address knows the model by.{' '}
+                  <button
+                    type="button"
+                    className="linklike press-fb"
+                    onClick={() => void loadByomModels()}
+                  >
+                    Load its models instead
+                  </button>
+                </div>
+              </div>
+            ) : Array.isArray(byomList) ? (
+              <>
+                <ModelChecklist
+                  models={byomList}
+                  picked={byomPicked}
+                  searchId="byom-models-search"
+                  onToggle={(id, on) =>
+                    setByomPicked((prev) => {
+                      const next = new Set(prev);
+                      if (on) next.add(id);
+                      else next.delete(id);
+                      return next;
+                    })
+                  }
+                />
+                <button
+                  type="button"
+                  className="linklike press-fb"
+                  onClick={() => setByomList('typed')}
+                >
+                  Type a model name instead
+                </button>
+              </>
+            ) : null}
+
             <div className="sheet-actions">
-              <button
-                className="btn primary"
-                disabled={!byomFormValid}
-                onClick={() => void saveByom()}
-              >
-                Connect
-              </button>
-              <button className="btn quiet" onClick={() => setByomOpen(false)}>
+              {byomList === undefined || byomList === 'loading' ? (
+                <button
+                  className="btn primary"
+                  disabled={!byomAddressValid || byomList === 'loading'}
+                  onClick={() => void loadByomModels()}
+                >
+                  {byomList === 'loading' ? 'Loading models...' : 'Load models'}
+                </button>
+              ) : (
+                <button
+                  className="btn primary"
+                  disabled={!byomFormValid}
+                  onClick={() => void saveByom()}
+                >
+                  {byomList === 'typed' || byomTicked.length <= 1
+                    ? 'Connect'
+                    : `Connect ${byomTicked.length} models`}
+                </button>
+              )}
+              <button className="btn quiet" onClick={closeByom}>
                 Cancel
               </button>
             </div>
@@ -867,11 +1140,28 @@ export function StackManager({
         ) : null}
       </Sheet>
 
-      {/* Options for a benched BYOM model. */}
+      {/* Options for a benched BYOM model: the forwarding mark, which can be
+          set or cleared after connecting (for every model from its address,
+          placed refs included), then Place and Disconnect. */}
       <Sheet open={Boolean(byomMenuId)} onClose={() => setByomMenuId(undefined)}>
         {byomMenuId ? (
           <>
             <SheetTitle>{byomMenuConn?.label ?? 'Your model'}</SheetTitle>
+            {byomMenuConn ? (
+              <div className="field">
+                <div className="card-row">
+                  <div className="grow">
+                    <div>{BYOM_FORWARDS_NAME}</div>
+                    <div className="sub">{byomMenuForwardsLine(byomMenuConn)}</div>
+                  </div>
+                  <Switch
+                    checked={byomMenuConn.forwardsToCloud === true}
+                    label={BYOM_FORWARDS_NAME}
+                    onChange={(next) => void setByomForwards(byomMenuConn.id, next)}
+                  />
+                </div>
+              </div>
+            ) : null}
             <div className="sheet-actions">
               <button
                 className="btn ghost"
@@ -888,13 +1178,25 @@ export function StackManager({
                 onClick={() => {
                   const conn = byomMenuConn;
                   setByomMenuId(undefined);
-                  if (conn) setByomForget({ id: conn.id, label: conn.label });
+                  if (conn) forgetByom(conn, false);
                 }}
               >
                 Disconnect
               </button>
+              {byomMenuConn && byomSiblings(settings.byomModels ?? [], byomMenuConn).length > 1 ? (
+                <button
+                  className="btn quiet"
+                  onClick={() => {
+                    const conn = byomMenuConn;
+                    setByomMenuId(undefined);
+                    forgetByom(conn, true);
+                  }}
+                >
+                  {`Disconnect all ${byomSiblings(settings.byomModels ?? [], byomMenuConn).length} at ${byomHost(byomMenuConn.baseUrl)}`}
+                </button>
+              ) : null}
               <button className="btn quiet" onClick={() => setByomMenuId(undefined)}>
-                Cancel
+                Done
               </button>
             </div>
           </>
@@ -902,10 +1204,12 @@ export function StackManager({
       </Sheet>
 
       <Sheet open={Boolean(byomForget)} onClose={() => setByomForget(undefined)} variant="confirm">
-        <h3>Disconnect {byomForget?.label}?</h3>
-        <p>
-          It leaves your bench and every stack, and any API key it had is removed from this device.
-        </p>
+        <h3>
+          {byomForget?.all
+            ? `Disconnect all ${byomForget.ids.length} at ${byomForget.host}?`
+            : `Disconnect ${byomForget?.label ?? ''}?`}
+        </h3>
+        <p>{byomForget ? byomForgetLine(byomForget) : null}</p>
         <div className="confirm-row">
           <button
             type="button"
@@ -921,8 +1225,12 @@ export function StackManager({
               const target = byomForget;
               setByomForget(undefined);
               if (!target) return;
-              await disconnectByom(target.id);
-              showToast(`${target.label} disconnected.`);
+              await disconnectByom(target.ids);
+              showToast(
+                target.all
+                  ? `${target.ids.length} models at ${target.host} disconnected.`
+                  : `${target.label} disconnected.`,
+              );
             }}
           >
             Disconnect

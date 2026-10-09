@@ -94,7 +94,10 @@ describe('byomReach', () => {
     expect(src).toMatch(/hubTailnetSuffix\(/);
     expect(src).not.toMatch(/kind === 'byom'\) return \{ cls: 'local'/);
     const stack = readFileSync(new URL('../src/lib/stack.ts', import.meta.url), 'utf8');
-    expect(stack).toMatch(/byomReach\(ref\.baseUrl, ownTailnetSuffix, ref\.model\)/);
+    // With the forwarding mark too (2026-10-09): stricter only.
+    expect(stack).toMatch(
+      /byomReach\(ref\.baseUrl, ownTailnetSuffix, ref\.model, ref\.forwardsToCloud\)/,
+    );
   });
 
   it("an Ollama cloud tag is cloud, even on this computer's own Ollama", () => {

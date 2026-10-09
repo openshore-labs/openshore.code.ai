@@ -209,7 +209,11 @@ describe('the two guides', () => {
     }
     expect(text).toContain('Connect a model under Bench');
     expect(text).toContain('Address: `http://100.x.y.z:11434/v1`');
-    expect(text).toContain('Model name: llava:7b');
+    // The connect sheet loads the address's own list (2026-10-09), so the
+    // step names its button and the model to tick, not a typed name.
+    expect(text).toContain('Leave the API key blank and tap Load models');
+    expect(text).toContain('Make sure llava:7b (or moondream) is ticked, and tap Connect.');
+    expect(text).not.toContain('Model name:');
     expect(text).toContain('tap Local under Image reading');
     expect(text).toContain(`A model on ${thisDeviceNoun()} cannot read images yet`);
     expect(local.done).toMatch(/without asking, and stays on your own network/);

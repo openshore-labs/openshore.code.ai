@@ -245,10 +245,13 @@ export const EGRESS: EgressEntry[] = [
   {
     id: 'own-model',
     recipient: 'Your cloud providers',
-    what: `Your chat, and the notes and files it draws on, to a model server you connect yourself (one you run, or one you name with its address and key). Private notes go only to one on your own network. ${VAULT_CARRY_CAVEAT}`,
+    // Bring your own keys, Part 2 (2026-10-09): any address, in either
+    // format, its own model list read at connect, and the mark that makes a
+    // gateway on your network count as cloud (byomReach, packSeatFor).
+    what: `Your chat, and the notes and files it draws on, to a model server you connect yourself (one you run, or one you name with its address and key), in the OpenAI or the Anthropic format. Connecting asks that address for its list of models, with your key if you gave one. A model at an address on your own network counts as local, so private notes may go to it, unless you mark that address as passing requests on to a cloud provider. Marked, or anywhere else, OpenShore never sends it private notes. ${VAULT_CARRY_CAVEAT}`,
     // A model you connect can be placed in a Stack slot too, and then it
     // answers on every turn routed to it, as a placed cloud model does (D).
-    when: 'Only when you connect one and pick it or place it in your Stack, and only on the turns it answers.',
+    when: 'Only when you connect one and pick it or place it in your Stack, and only on the turns it answers. Also when you tap Load models while connecting one.',
     start: 'off',
     hosts: [],
   },
@@ -355,6 +358,8 @@ export const LINK_ONLY_HOSTS: Record<string, string> = {
   'www.perplexity.ai': 'link',
   'typesafe.ai': 'link',
   'docs.codemagic.io': 'documentation link',
+  'docs.litellm.ai':
+    "documentation link in the gateway guide; LiteLLM runs on the person's own machine, never ours",
   'developer.mozilla.org': 'documentation link',
   'en.wikipedia.org': "the humanizer's source, a dated snapshot, never fetched",
   'cv.iptc.org': 'an image metadata vocabulary name, not a request',

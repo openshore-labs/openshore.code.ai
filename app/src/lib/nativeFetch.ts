@@ -19,6 +19,11 @@ export interface NativeRequest {
   body?: string;
   /** How to read the response. Defaults to json. */
   responseType?: 'json' | 'text';
+  /** Give up after this many milliseconds, so an address that never answers
+   *  cannot hold its caller (a model list read at connect). The iPhone hands
+   *  it to CapacitorHttp as its connect and read timeouts; the web aborts the
+   *  fetch. The desktop's guarded fetch keeps its own 30-second cap. */
+  timeoutMs?: number;
 }
 
 export interface NativeResponse {
@@ -55,6 +60,7 @@ export async function nativeFetch(url: string, req: NativeRequest = {}): Promise
       headers: req.headers,
       data: method === 'POST' ? data : undefined,
       responseType: req.responseType ?? 'json',
+      ...(req.timeoutMs ? { connectTimeout: req.timeoutMs, readTimeout: req.timeoutMs } : {}),
     });
     const ok = res.status >= 200 && res.status < 300;
     return {
@@ -79,15 +85,29 @@ export async function nativeFetch(url: string, req: NativeRequest = {}): Promise
     // Fall through to plain fetch if the bridge is somehow absent.
   }
 
-  const res = await fetch(url, {
-    method,
-    headers: req.headers,
-    body: method === 'POST' ? req.body : undefined,
-  });
+  // The clock runs until the body is read, so a server that answers its
+  // headers and then stalls is cut off too.
+  const timer = req.timeoutMs ? new AbortController() : undefined;
+  const clock = timer ? setTimeout(() => timer.abort(), req.timeoutMs) : undefined;
+  const stop = () => {
+    if (clock) clearTimeout(clock);
+  };
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method,
+      headers: req.headers,
+      body: method === 'POST' ? req.body : undefined,
+      ...(timer ? { signal: timer.signal } : {}),
+    });
+  } catch (err) {
+    stop();
+    throw err;
+  }
   return {
     ok: res.ok,
     status: res.status,
-    json: () => res.json(),
-    text: () => res.text(),
+    json: () => res.json().finally(stop),
+    text: () => res.text().finally(stop),
   };
 }

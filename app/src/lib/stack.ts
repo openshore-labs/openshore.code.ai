@@ -9,7 +9,7 @@
 // fits, and executes the task itself whenever no specialist is placed for it.
 import { HARBOR_MINI_MODEL_ID, HARBOR_MINI_MODEL_NAME } from './harborMini.js';
 import { PROVIDERS, providerModelVision } from './providers.js';
-import { byomReach } from './byom.js';
+import { byomReach, type ByomWire } from './byom.js';
 import type { Effort } from './effort.js';
 import type { ProfileId } from './profiles.js';
 
@@ -48,11 +48,23 @@ export const STACK_LEAD =
   'One model runs the show and hands each task to the specialist that fits. Anything without a specialist, it does itself.';
 
 // A model that can sit in the stack: an on-device model, a built-in cloud
-// provider's model, or a user-connected "bring your own model" endpoint.
+// provider's model, or a user-connected "bring your own model" endpoint. A
+// BYOM ref carries its connection's format and forwarding mark (byomRef),
+// since a placed ref is a frozen copy; a ref saved before they existed has
+// neither and reads as OpenAI-compatible and not forwarding.
 export type StackModelRef =
   | { kind: 'device'; modelId: string; modelName: string }
   | { kind: 'cloud'; provider: string; model: string; label: string }
-  | { kind: 'byom'; id: string; label: string; baseUrl: string; model: string };
+  | {
+      kind: 'byom';
+      id: string;
+      label: string;
+      baseUrl: string;
+      model: string;
+      wire?: ByomWire;
+      addressId?: string;
+      forwardsToCloud?: boolean;
+    };
 
 export interface Placement {
   category: StackCategory;
@@ -159,7 +171,8 @@ export function pickVisionRef(
  *  by address, never by its kind: a model on this device is; a cloud
  *  provider's is not; a model you connect is when its server is on this
  *  machine, the home network, or this device's own tailnet (`byomReach`, the
- *  judge the Stack's chip reads), and it is not an Ollama cloud tag. A
+ *  judge the Stack's chip reads), it is not an Ollama cloud tag, and the
+ *  person did not mark it as passing requests on to a cloud provider. A
  *  `*.ts.net` server reads cloud unless `ownTailnetSuffix` says it is ours. */
 export function refStaysLocal(ref: StackModelRef, ownTailnetSuffix: string | null = null): boolean {
   switch (ref.kind) {
@@ -168,7 +181,7 @@ export function refStaysLocal(ref: StackModelRef, ownTailnetSuffix: string | nul
     case 'cloud':
       return false;
     case 'byom':
-      return byomReach(ref.baseUrl, ownTailnetSuffix, ref.model) === 'local';
+      return byomReach(ref.baseUrl, ownTailnetSuffix, ref.model, ref.forwardsToCloud) === 'local';
   }
 }
 

@@ -186,6 +186,13 @@ export const GUIDE_EVAL_CASES: readonly GuideEvalCase[] = [
     cards: ['byom'],
   },
   {
+    id: 'own-gateway',
+    message: 'Can I use my models on Amazon Bedrock?',
+    route: 'app',
+    cards: ['own-gateway'],
+    mustInclude: [['litellm'], ['passes requests', 'cloud provider']],
+  },
+  {
     id: 'launch',
     message: 'How do I ship my app to the App Store?',
     route: 'app',

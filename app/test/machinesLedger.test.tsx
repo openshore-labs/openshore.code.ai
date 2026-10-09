@@ -263,8 +263,27 @@ describe('Cloud Connections in the ledger', () => {
     await dom.type('Groq, Mistral, DeepSeek...', 'nothing like it');
     expect(sheetRows()).toEqual([]);
     expect(dom.text()).toContain(
-      'No provider here by that name. Any OpenAI-compatible one connects by its address in the Stack.',
+      'No provider here by that name. Any other one connects by its address in the Stack.',
     );
+
+    // Bedrock, Azure and Vertex do not connect by an address and a key, so a
+    // search for one says how they come, and opens that guide (2026-10-09).
+    const startGuideChat = vi.fn(async () => undefined);
+    useApp.setState({ startGuideChat });
+    for (const q of ['bedrock', 'Azure', 'vert', 'aws']) {
+      await dom.type('Groq, Mistral, DeepSeek...', q);
+      expect(sheetRows()).toEqual([]);
+      expect(dom.text()).toContain(
+        'Bedrock, Azure and Vertex come through a gateway you run, connected in the Stack.',
+      );
+    }
+    const door = dom.container.querySelector('.sheet:not(.closing) .hint button');
+    expect(door?.textContent).toBe('Walk me through it');
+    const { act } = await import('react');
+    await act(async () => {
+      door!.dispatchEvent(new window.Event('click', { bubbles: true }));
+    });
+    expect(startGuideChat).toHaveBeenCalledWith('connect-own-gateway');
   });
 
   it('a tap in More providers closes the list and opens the same key sheet', async () => {
@@ -323,8 +342,9 @@ describe('Cloud Connections in the ledger', () => {
     const { ConnectionsScreen } = await import('../src/screens/ConnectionsScreen.js');
     await dom.render(<ConnectionsScreen />);
     const other = rows().find((r) => r.label === 'Any other provider')!;
+    // Part 2 (2026-10-09): any address, in either format.
     expect(other.sub).toBe(
-      'Connect any OpenAI-compatible provider by its address in the Stack, under Connect a model.',
+      'Any address connects in the Stack, under Connect a model, in the OpenAI or Anthropic format.',
     );
     await tapRow('Any other provider');
     expect(useApp.getState().view).toBe('stack');

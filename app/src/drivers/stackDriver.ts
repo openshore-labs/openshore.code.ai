@@ -11,15 +11,15 @@
 // model to source and a cloud model to connect (lib/imageReading.ts). The
 // Codemagic tool loop keeps its own single-turn path.
 //
-// Backends: on-device (llama.cpp), Anthropic, or an OpenAI-compatible cloud
-// endpoint. A play step that must edit files or run commands (needsTools) runs
-// on the paired computer's engine when docked, over one shared RemoteDriver
-// session, with its real tool approvals surfaced in the chat; when not docked
-// (or no local workspace is bound) the step is described instead. Still v1: the
-// fallback classifier is a keyword heuristic, not a model; on-device models are
-// text-only (no vision, not driven for autonomous sub-steps); the image-gen
-// category routes as text and does not yet render images; "home" models require
-// pairing.
+// Backends: on-device (llama.cpp), Anthropic, an OpenAI-compatible cloud
+// endpoint, or an address you connect in either format. A play step that must
+// edit files or run commands (needsTools) runs on the paired computer's engine
+// when docked, over one shared RemoteDriver session, with its real tool
+// approvals surfaced in the chat; when not docked (or no local workspace is
+// bound) the step is described instead. Still v1: the fallback classifier is a
+// keyword heuristic, not a model; on-device models are text-only (no vision,
+// not driven for autonomous sub-steps); the image-gen category routes as text
+// and does not yet render images; "home" models require pairing.
 import Anthropic from '@anthropic-ai/sdk';
 import type { PluginListenerHandle } from '@capacitor/core';
 import type {
@@ -128,7 +128,8 @@ import {
   vaultProposalRecords,
 } from '../lib/vaultCopy.js';
 import type { SeedTurn } from '../state/types.js';
-import { byomSecretKey } from '../lib/byom.js';
+import { byomSecretKey, byomWireOf } from '../lib/byom.js';
+import { addressAnthropic } from './addressClient.js';
 import { isCurrentBenchId } from '../lib/currents.js';
 import { buildHarborSystemPrompt, isHarbor } from '../lib/harbor.js';
 import { buildHarborMiniSystemPrompt, guidedSetupLine, isHarborMini } from '../lib/harborMini.js';
@@ -450,6 +451,47 @@ function joinSystem(parts: SystemParts, cache: boolean): string {
  *  shows, never its id ("Connect Groq", not "Connect groq"; 2026-10-09). */
 function connectFirst(providerId: string): string {
   return `Connect ${providerInfo(providerId)?.name ?? providerId} under Cloud Connections first.`;
+}
+
+/** The answer room an Anthropic-format address is given (2026-10-09): the
+ *  format needs one, and a server built to it may cap a model's output lower
+ *  than Claude's, so it is a modest, set number. */
+export const BYOM_ANTHROPIC_MAX_TOKENS = 4096;
+
+/** The chat as an Anthropic-format address takes it (2026-10-09): opening on
+ *  a person's turn, no empty turn, and two turns in a row from one side
+ *  merged into one (a search's results follow the question they answer as a
+ *  second user turn), since a server built to the format may refuse either. */
+export function anthropicTurns(
+  history: Array<{ role: 'user' | 'assistant'; content: string }>,
+): Anthropic.MessageParam[] {
+  const out: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+  for (const m of history) {
+    if (!m.content.trim()) continue;
+    const last = out.at(-1);
+    if (last && last.role === m.role) last.content = `${last.content}\n\n${m.content}`;
+    else out.push({ role: m.role, content: m.content });
+  }
+  return opensOnUser(out);
+}
+
+/** This turn's images on the person's last turn, as image blocks (an
+ *  Anthropic-format address, 2026-10-09). An image sent with no words leaves
+ *  no turn of its own (`anthropicTurns` drops an empty one), so the images
+ *  then open a turn of their own rather than ride on the reply before them,
+ *  and no empty text block goes with them, which the format refuses. */
+export function withTurnImages(
+  messages: Anthropic.MessageParam[],
+  images: Attachment[],
+): Anthropic.MessageParam[] {
+  if (!images.length) return messages;
+  const last = messages.at(-1);
+  const onUser = last?.role === 'user';
+  const built = buildVisionContent(onUser ? String(last.content) : '', images).content;
+  const content =
+    typeof built === 'string' ? built : built.filter((b) => b.type !== 'text' || b.text.trim());
+  if (onUser) return [...messages.slice(0, -1), { role: 'user', content }];
+  return content.length ? [...messages, { role: 'user', content }] : messages;
 }
 
 /** A proposal's first lines, for the approval card. */
@@ -2342,6 +2384,22 @@ export class StackDriver implements ChatDriver {
       for await (const ev of client.stream([{ role: 'user', content }], [], signal)) take(ev);
       return out;
     }
+    if (ref.kind === 'byom' && byomWireOf(ref) === 'anthropic') {
+      const client = anthropicClient(
+        await this.addressClient(ref),
+        {
+          model: ref.model,
+          max_tokens: BYOM_ANTHROPIC_MAX_TOKENS,
+          system: joinSystem(parts, this.promptCache()),
+        },
+        { label: ref.label },
+      );
+      const content = opts?.images?.length
+        ? buildVisionContent(prompt, opts.images).content
+        : prompt;
+      for await (const ev of client.stream([{ role: 'user', content }], [], signal)) take(ev);
+      return out;
+    }
     // OpenAI-compatible: a built-in cloud provider or a BYOM endpoint.
     const seat = await this.openAiSeat(ref);
     const userContent = opts?.images?.length ? openAiVisionContent(prompt, opts.images) : prompt;
@@ -2707,14 +2765,99 @@ export class StackDriver implements ChatDriver {
     // its tools, and one with none is a single round of the same loop. A key
     // is optional: a local or trusted-network server may take none.
     const tools = images.length ? { codemagic: false, vault: [] } : this.toolsFor(ref);
-    const seat = await this.openAiSeat(ref);
-    await this.runOpenAi(ref, seat, system, images, {
+    const o = {
       tools,
       searchable,
       // The answer pass after a search rebuilds the prompt, so it reads that
       // the search is spent.
       again: () => this.runByom(ref, placement, images),
-    });
+    };
+    if (byomWireOf(ref) === 'anthropic') {
+      await this.runByomAnthropic(ref, system, images, o);
+      return;
+    }
+    const seat = await this.openAiSeat(ref);
+    await this.runOpenAi(ref, seat, system, images, o);
+  }
+
+  /** A client for an address you connected in the Anthropic format: your key
+   *  (or none, for a keyless server on your own network) and nothing of
+   *  Claude's (addressClient.ts), on the transport Claude's own requests
+   *  stream through. */
+  private async addressClient(ref: Extract<StackModelRef, { kind: 'byom' }>): Promise<Anthropic> {
+    const key = (await secretGet(byomSecretKey(ref.id)))?.trim() || null;
+    return addressAnthropic({ baseUrl: ref.baseUrl, key, transport: streamingFetch });
+  }
+
+  /** Your own model at an address in the Anthropic format (2026-10-09): a
+   *  conservative Messages request, plain system text, a set max_tokens,
+   *  merged turns, no thinking parameter, no cache markers, and the same
+   *  tools, search and fallback to no tools the OpenAI-compatible path has.
+   *  With Chain of Thought on, a model that does not reason through its own
+   *  API is prompted to think in tags, as any other model is. */
+  private async runByomAnthropic(
+    ref: Extract<StackModelRef, { kind: 'byom' }>,
+    system: string,
+    images: Attachment[],
+    o: {
+      tools: { codemagic: boolean; vault: AppVaultToolName[] };
+      searchable: boolean;
+      again?: () => Promise<void>;
+    },
+  ): Promise<void> {
+    const withVideo =
+      images.length && hasVideoFrames(images) ? `${system}\n${VIDEO_FRAMES_SYSTEM_NOTE}` : system;
+    const messages = withTurnImages(anthropicTurns(this.historyFor(ref)), images);
+    const offered: Anthropic.Tool[] = [
+      ...(o.tools.codemagic ? [codemagicToolSpec as unknown as Anthropic.Tool] : []),
+      ...o.tools.vault.map(
+        (n) =>
+          vaultAnthropicTool(
+            n,
+            this.agentFolder(this.opts.vaultTools),
+          ) as unknown as Anthropic.Tool,
+      ),
+    ];
+    if (o.searchable) this.search.startPass();
+    this.watchLocalStart(ref);
+    const client = anthropicClient(
+      await this.addressClient(ref),
+      {
+        model: ref.model,
+        max_tokens: BYOM_ANTHROPIC_MAX_TOKENS,
+        system: this.withThinking(withVideo, ref.model),
+      },
+      { label: ref.label },
+    );
+    await this.runToolLoop(
+      ref,
+      ref.label,
+      {
+        client,
+        messages,
+        offered,
+        replay: (done) => ({
+          role: 'assistant' as const,
+          content: done.replay as Anthropic.ContentBlockParam[],
+        }),
+        results: (rs) => [
+          {
+            role: 'user' as const,
+            content: rs.map((r): Anthropic.ToolResultBlockParam => ({
+              type: 'tool_result',
+              tool_use_id: r.id,
+              content: r.observation,
+            })),
+          },
+        ],
+        withoutTools: () =>
+          this.runByomAnthropic(ref, system, images, {
+            ...o,
+            tools: { codemagic: false, vault: [] },
+          }),
+      },
+      o,
+    );
   }
 
   /** A Claude client on the person's own key (and workspace, when set). */
@@ -2877,9 +3020,9 @@ export class StackDriver implements ChatDriver {
 
   // Every OpenAI-compatible seat, the built-in cloud providers AND your own
   // model server (BYOM), with or without tools, on the one provider client
-  // (streamed on every shell). Each tool call runs on-device and the
-  // observation is fed back until the model answers with no tool call. Bounded
-  // so a loop cannot run away. A server that refuses tools on the first round
+  // (streamed on every shell), through the one tool loop (runToolLoop). Each
+  // tool call runs on-device and the observation is fed back until the model
+  // answers with no tool call. A server that refuses tools on the first round
   // of a vault-only turn (a local model with no tool template) gets the plain
   // path instead, and this seat stays on it for the rest of the chat. A
   // searchable seat (a local model's own turn) may ask for one web search.
@@ -2912,13 +3055,59 @@ export class StackDriver implements ChatDriver {
     ];
     if (o.searchable) this.search.startPass();
     this.watchLocalStart(ref);
-    const client = openAiCompatibleClient(seat);
+    await this.runToolLoop(
+      ref,
+      seat.label,
+      {
+        client: openAiCompatibleClient(seat),
+        messages,
+        offered,
+        replay: (done) => done.replay as OaiMessage,
+        results: (rs) =>
+          rs.map((r) => ({ role: 'tool', tool_call_id: r.id, content: r.observation })),
+        withoutTools: () =>
+          this.runOpenAi(ref, seat, system, images, {
+            ...o,
+            tools: { codemagic: false, vault: [] },
+          }),
+      },
+      o,
+    );
+  }
+
+  /** One seat's rounds, in whichever format it speaks: stream a round, run
+   *  each tool call it asks for on-device and feed the observation back, until
+   *  it answers with no tool call. Bounded so a loop cannot run away. A server
+   *  that refuses tools on the first round of a vault-only turn gets the same
+   *  turn with none (`withoutTools`), and this seat stays on that for the rest
+   *  of the chat. A searchable seat may ask for one web search. */
+  private async runToolLoop<M, T>(
+    ref: Exclude<StackModelRef, { kind: 'device' }>,
+    label: string,
+    turn: {
+      client: ProviderClient<M, T>;
+      messages: M[];
+      offered: T[];
+      /** The assistant turn to send back before its tool results. */
+      replay: (done: Extract<ProviderEvent, { type: 'done' }>) => M;
+      /** The tool results, as this format sends them. */
+      results: (rs: Array<{ id: string; observation: string }>) => M[];
+      /** The same turn with no tools, after the server refused them. */
+      withoutTools: () => Promise<void>;
+    },
+    o: {
+      tools: { codemagic: boolean; vault: AppVaultToolName[] };
+      searchable: boolean;
+      again?: () => Promise<void>;
+    },
+  ): Promise<void> {
+    const { messages, offered } = turn;
     const MAX_ROUNDS = 16;
     for (let round = 0; round < MAX_ROUNDS; round++) {
       if (this.aborted) throw abortError();
       let done: Extract<ProviderEvent, { type: 'done' }>;
       try {
-        done = await this.streamRound(client, messages, offered, round, o.searchable);
+        done = await this.streamRound(turn.client, messages, offered, round, o.searchable);
       } catch (err) {
         const refused =
           round === 0 &&
@@ -2930,10 +3119,7 @@ export class StackDriver implements ChatDriver {
           (err.status === 400 || err.status === 404 || err.status === 422);
         if (!refused) throw err;
         this.noToolSeats.add(seatKey(ref));
-        await this.runOpenAi(ref, seat, system, images, {
-          ...o,
-          tools: { codemagic: false, vault: [] },
-        });
+        await turn.withoutTools();
         return;
       }
       if (!done.toolCalls.length) {
@@ -2946,7 +3132,7 @@ export class StackDriver implements ChatDriver {
           if (decision.kind !== 'answer') {
             // A second search line (or one with no search to run) is never
             // shown and never run: the reply had no answer in it.
-            this.finish('error', emptyReplyMessage(seat.label));
+            this.finish('error', emptyReplyMessage(label));
             return;
           }
           this.showAnswer(decision.flush);
@@ -2955,11 +3141,16 @@ export class StackDriver implements ChatDriver {
         this.finish('complete');
         return;
       }
-      messages.push(done.replay as OaiMessage);
+      messages.push(turn.replay(done));
+      const observed: Array<{ id: string; observation: string }> = [];
       for (const tc of done.toolCalls) {
-        const observation = await this.runToolCall(ref, o.tools, tc.name, { raw: tc.raw });
-        messages.push({ role: 'tool', tool_call_id: tc.id, content: observation });
+        const observation = await this.runToolCall(ref, o.tools, tc.name, {
+          parsed: tc.parsed,
+          raw: tc.raw,
+        });
+        observed.push({ id: tc.id, observation });
       }
+      messages.push(...turn.results(observed));
     }
     if (o.searchable) {
       const decision = this.search.decide(false);

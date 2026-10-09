@@ -120,6 +120,12 @@ export const VAULT_CARRY_CAVEAT = `${VAULT_CARRY_WORDS} a cloud model.`;
  *  OpenShore is the subject, because what it does is what the code holds:
  *  every way it reads a note keeps a private one off a cloud model. */
 export const VAULT_PRIVATE_OFF_CLOUD = `OpenShore never sends private notes to a cloud model. ${VAULT_CARRY_WORDS} one.`;
+/** The same promise, said of a model you connect at an address marked as
+ *  passing requests on to a cloud provider (bring your own keys, 2026-10-09):
+ *  "it" is that model or its gateway, named in the sentence before. Worded
+ *  once for How connecting works, the switch's line, the gateway guide and
+ *  both guide cards, with the person's own reach as its own sentence. */
+export const VAULT_PRIVATE_OFF_MARKED = `OpenShore never sends it private notes. ${VAULT_CARRY_CAVEAT}`;
 /** The word beside the lock on a private note's row, in the pinned list and
  *  the pin picker: the one noun the promise uses (CX and CMO, 2026-10-08,
  *  G). */

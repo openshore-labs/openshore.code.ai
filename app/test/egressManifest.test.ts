@@ -200,14 +200,16 @@ describe('what leaves this device', () => {
     );
     expect(cloud.what).toContain(VAULT_PRIVATE_OFF_CLOUD);
     // Whole sentences, never a trailing clause.
+    // Bring your own keys, Part 2 (2026-10-09): either format, the list read
+    // at connect, and the mark that makes a gateway on your network cloud.
     expect(EGRESS.find((e) => e.id === 'own-model')!.what).toBe(
-      'Your chat, and the notes and files it draws on, to a model server you connect yourself (one you run, or one you name with its address and key). Private notes go only to one on your own network. A command you run or allow, or a change you allow, can still carry their words to a cloud model.',
+      'Your chat, and the notes and files it draws on, to a model server you connect yourself (one you run, or one you name with its address and key), in the OpenAI or the Anthropic format. Connecting asks that address for its list of models, with your key if you gave one. A model at an address on your own network counts as local, so private notes may go to it, unless you mark that address as passing requests on to a cloud provider. Marked, or anywhere else, OpenShore never sends it private notes. A command you run or allow, or a change you allow, can still carry their words to a cloud model.',
     );
     expect(EGRESS.find((e) => e.id === 'own-model')!.what.endsWith(VAULT_CARRY_CAVEAT)).toBe(true);
     // A model you connect can sit in a Stack slot too, so its entry says when
     // the way the cloud-models one does (D, sign-off), never "only that turn".
     expect(EGRESS.find((e) => e.id === 'own-model')!.when).toBe(
-      'Only when you connect one and pick it or place it in your Stack, and only on the turns it answers.',
+      'Only when you connect one and pick it or place it in your Stack, and only on the turns it answers. Also when you tap Load models while connecting one.',
     );
     for (const e of EGRESS)
       expect(`${e.what} ${e.when}`, e.id).not.toMatch(/, unless you run or allow/);

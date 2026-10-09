@@ -4,8 +4,9 @@
 // coding agent: a goal, the plan, one step at a time, ask anything in between.
 // The steps are written here, not model-generated, so they are right even on a
 // small model; the model's job is to answer questions and adapt. No em dashes.
-import { ROUTINE_NOTES_PLACE } from './vaultCopy.js';
+import { ROUTINE_NOTES_PLACE, VAULT_PRIVATE_OFF_MARKED } from './vaultCopy.js';
 import { thisDeviceNoun } from './deviceNoun.js';
+import { BYOM_FORWARDS_NAME } from './byom.js';
 import {
   LOCAL_IMAGE_READER,
   SMALL_IMAGE_READER,
@@ -19,6 +20,7 @@ export type SetupGuideId =
   | 'get-harbor'
   | 'get-harbor-master'
   | 'connect-cloud-key'
+  | 'connect-own-gateway'
   | 'pair-computer'
   | 'install-ollama'
   | 'image-reader-local'
@@ -81,6 +83,49 @@ const ALL_SETUP_GUIDES: Partial<Record<SetupGuideId, SetupGuide>> = {
       'Open Stack and place the provider model where you want it: as your Reasoning model, or as a specialist for one kind of task.',
     ],
     done: 'The provider shows connected, and it appears in the model menu. Your API key is stored only on this device and sent only to that provider.',
+  },
+  // Bring your own keys, Part 4 (founder, 2026-10-09): Bedrock, Azure and
+  // Vertex sign in their own way, so they come through a gateway the person
+  // runs, never one of ours. LiteLLM's proxy listens on 0.0.0.0, port 4000,
+  // by default, which on a rented server is the open internet, so the start
+  // command binds it to the machine's Tailscale address (docking's own rule:
+  // the tailnet only, never a public bind), and the master key is a long
+  // random one. A placeholder left in --host fails to start rather than
+  // falling back to every network. Checked against LiteLLM 1.104.2's own
+  // source (its CLI's --host and --port defaults, the proxy extra,
+  // general_settings.master_key, the sk- prefix, x-api-key, /v1/models and
+  // /v1/messages).
+  'connect-own-gateway': {
+    id: 'connect-own-gateway',
+    title: 'Use Bedrock, Azure, or Vertex',
+    goal: 'Use models on Amazon Bedrock, Azure, or Google Vertex AI with my own keys, through a gateway I run myself.',
+    steps: [
+      "These three sign in their own way, so OpenShore reaches them through LiteLLM, a free gateway you run on your computer or your server with your own provider keys. OpenShore runs nothing here and never sees those keys. LiteLLM's quick start, at https://docs.litellm.ai/docs/proxy/quick_start, has the full steps.",
+      {
+        text: 'On your computer or your server, install the LiteLLM proxy:',
+        paste: "pip install 'litellm[proxy]'",
+      },
+      {
+        text: 'Make a long random master key, so no one can guess it. This prints one that starts with sk-, as LiteLLM asks. Keep it for the next step and for OpenShore, and use it for this gateway only:',
+        paste: 'echo "sk-$(openssl rand -hex 24)"',
+      },
+      {
+        text: 'Write a config.yaml with your models and that key. This one lists one Bedrock model; add an entry for each model you want, named for its provider (bedrock/, azure/, or vertex_ai/ before the model), and put your key in place of sk-your-master-key. Your provider credentials go where the quick start says, on that machine:',
+        paste:
+          'model_list:\n  - model_name: claude-haiku\n    litellm_params:\n      model: bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0\ngeneral_settings:\n  master_key: sk-your-master-key',
+      },
+      {
+        text: `Find the machine's Tailscale address, on the private network docking uses (it starts with 100.; on a Mac the Tailscale app shows it). Put ${thisDeviceNoun()} on the same Tailscale network too:`,
+        paste: 'tailscale ip -4',
+      },
+      {
+        text: 'Start the gateway on that address only, with it in place of 100.x.y.z. Left out, --host is every network the machine joins, and on a rented server that is the open internet. Leave it running (on a server, inside tmux, so it outlives your SSH session):',
+        paste: 'litellm --config config.yaml --host 100.x.y.z',
+      },
+      `In OpenShore on ${thisDeviceNoun()}, open Stack and tap Connect a model under Bench. Name it, and give the address with the machine's address in place of 100.x.y.z: \`http://100.x.y.z:4000/v1\`. Pick either format (LiteLLM answers both), and turn on ${BYOM_FORWARDS_NAME}. For the API key, paste your master key. It is the gateway's admin key; if you run LiteLLM with its database, a virtual key limited to these models is the better one to paste.`,
+      'Tap Load models, make sure the models from your config are ticked, and tap Connect. They land on your bench, ready to place.',
+    ],
+    done: `The models sit on your bench with an amber Cloud chip: with ${BYOM_FORWARDS_NAME} on, the gateway counts as cloud. ${VAULT_PRIVATE_OFF_MARKED}`,
   },
   'pair-computer': {
     id: 'pair-computer',
@@ -149,7 +194,7 @@ const ALL_SETUP_GUIDES: Partial<Record<SetupGuideId, SetupGuide>> = {
         paste: '[Service]\nEnvironment="OLLAMA_HOST=0.0.0.0"',
       },
       `Make sure ${thisDeviceNoun()} and your computer are on the same Tailscale network, the one docking uses, and find your computer's Tailscale address in the Tailscale app (it starts with 100.). Ollama now answers on every network this computer joins, with no password, so never forward port 11434 to the internet.`,
-      `In OpenShore on ${thisDeviceNoun()}, open Stack and tap Connect a model under Bench. Name: ${LOCAL_IMAGE_READER.name}. Address: \`http://100.x.y.z:11434/v1\`, with your computer's Tailscale address in place of 100.x.y.z. Model name: ${LOCAL_IMAGE_READER.ref} (or ${SMALL_IMAGE_READER.ref}). Leave the API key blank and tap Connect.`,
+      `In OpenShore on ${thisDeviceNoun()}, open Stack and tap Connect a model under Bench. Name: ${LOCAL_IMAGE_READER.name}. Address: \`http://100.x.y.z:11434/v1\`, with your computer's Tailscale address in place of 100.x.y.z. Leave the API key blank and tap Load models. Make sure ${LOCAL_IMAGE_READER.ref} (or ${SMALL_IMAGE_READER.ref}) is ticked, and tap Connect.`,
       'Still in Stack, tap Local under Image reading, choose it, and tap Save.',
       {
         text: `Later, whenever you want Ollama off your networks again, remove the setting (${thisDeviceNoun()} then cannot reach it). On Windows, quit Ollama from the taskbar, search Settings for environment variables, delete OLLAMA_HOST from your account, and open Ollama again. On a Mac, paste this in Terminal, then quit Ollama from the menu bar and open it again:`,

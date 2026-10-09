@@ -65,6 +65,9 @@ vi.mock('@anthropic-ai/sdk', () => {
     static BadRequestError = class extends APIError {};
     static RateLimitError = class extends APIError {};
     static APIConnectionError = class extends APIError {};
+    // An address in the Anthropic format rides the same SDK with its own
+    // base (2026-10-09), so its words say which seat began.
+    constructor(private readonly opts: { baseURL?: string } = {}) {}
     messages = {
       stream: () => {
         h.claudeCalls++;
@@ -74,7 +77,7 @@ vi.mock('@anthropic-ai/sdk', () => {
             handlers[event] = cb;
           },
           finalMessage: () => {
-            handlers.text?.('Claude began');
+            handlers.text?.(this.opts.baseURL ? 'The gateway began' : 'Claude began');
             return h.claude === 'fail'
               ? Promise.reject(new Error('Claude went away.'))
               : new Promise(() => undefined);
@@ -126,6 +129,15 @@ const claude = {
   label: 'Claude',
 } as const;
 const pocket = { kind: 'device', modelId: 'pocket', modelName: 'Pocket' } as const;
+const gateway = {
+  kind: 'byom',
+  id: 'gw',
+  label: 'Gateway',
+  baseUrl: 'http://192.168.1.30:4000',
+  model: 'bedrock-claude',
+  wire: 'anthropic',
+  forwardsToCloud: true,
+} as const;
 const anchor = (reasoning: AppStack['reasoning'], active: AppStack['active'] = []): AppStack => ({
   reasoning,
   active,
@@ -274,6 +286,32 @@ describe('Stop on a Stack seat', () => {
     driver.dispose();
   });
 
+  // Bring your own keys, Part 2 (2026-10-09): a new wire is not done until
+  // Stop answers at once on it, the partial kept, the next turn free.
+  it('your own model in the Anthropic format', async () => {
+    const { driver, events } = stackChat(anchor(gateway));
+    driver.send('hi');
+    await vi.waitFor(() => expect(h.claudeCalls).toBe(1));
+    await vi.advanceTimersByTimeAsync(5);
+    await stopsAtOnce(driver, events);
+    expect(finalText(events)).toBe('The gateway began');
+    // The next message goes straight out, with the partial in its history.
+    driver.send('go on');
+    await vi.waitFor(() => expect(h.claudeCalls).toBe(2));
+    expect(events.filter((e) => e.type === 'task-start')).toHaveLength(2);
+    driver.dispose();
+  });
+
+  it('your own model in the Anthropic format, framing a plan', async () => {
+    const { driver, events } = stackChat(
+      anchor(gateway, [{ ref: box, placement: { category: 'coding' } }]),
+    );
+    driver.send('build me a thing');
+    await vi.waitFor(() => expect(h.claudeCalls).toBe(1));
+    await stopsAtOnce(driver, events);
+    driver.dispose();
+  });
+
   it('a pocket model mid-reply, without waiting on the runner', async () => {
     const { driver, events } = stackChat(anchor(pocket));
     driver.send('hi');
@@ -372,6 +410,20 @@ describe('a turn that fails after it began keeps what it wrote', () => {
     driver.send('go on');
     await vi.advanceTimersByTimeAsync(50);
     expect(sentMessages(1)).toContainEqual({ role: 'assistant', content: 'Hello wor' });
+    driver.dispose();
+  });
+
+  it('your own model in the Anthropic format failing mid-answer', async () => {
+    h.claude = 'fail';
+    const { driver, events } = stackChat(anchor(gateway));
+    driver.send('hi');
+    await vi.waitFor(() => expect(dones(events)).toHaveLength(1));
+    // Said as the address's failure, never as Claude's.
+    expect(dones(events)[0]).toMatchObject({
+      reason: 'error',
+      message: 'Could not reach Gateway.',
+    });
+    expect(finalText(events)).toBe('The gateway began');
     driver.dispose();
   });
 

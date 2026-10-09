@@ -640,6 +640,12 @@ import {
 import { appActionPlan, writingVoiceSeed, type ComposerSeed } from './appActionOps.js';
 import { sweepProviderRefs } from './providerOps.js';
 import {
+  byomConnectionsFor,
+  markByomForwarding,
+  sweepByomRefs,
+  type ByomConnectInput,
+} from './byomOps.js';
+import {
   CodingLockedError,
   accountNoticeDue,
   codingLocked,
@@ -2740,15 +2746,18 @@ interface AppState {
   setProfileOverride(profile?: ProfileId): Promise<void>;
 
   // Stack management (the app-side Reasoning model + specialists + bench).
-  /** Connect a bring-your-own-model endpoint. Returns the new connection. */
-  connectByom(input: {
-    label: string;
-    baseUrl: string;
-    model: string;
-    apiKey?: string;
-  }): Promise<ByomConnection>;
-  /** Disconnect a BYOM endpoint: delete its key and pull it from the stack. */
-  disconnectByom(id: string): Promise<void>;
+  /** Connect models at an address you name (bring your own keys, Part 2):
+   *  one connection per picked model, sharing an addressId, with the key, if
+   *  any, under each one's own secret name. Returns the new connections. */
+  connectByom(
+    input: Omit<ByomConnectInput, 'ownTailnetSuffix'> & { apiKey?: string },
+  ): Promise<ByomConnection[]>;
+  /** Disconnect BYOM endpoints, one or every model from one address: delete
+   *  each one's key and pull them from every stack, in one save. */
+  disconnectByom(ids: string | readonly string[]): Promise<void>;
+  /** Set or clear "Passes requests to a cloud provider" on every model from
+   *  this connection's address, placed refs included (byomOps). */
+  setByomForwards(id: string, on: boolean): Promise<void>;
   /** Set the Reasoning model anchor (from the bench or a cloud model) for a
    *  status. Defaults to the current status when `profile` is omitted. */
   setReasoning(ref: StackModelRef, profile?: ProfileId): Promise<void>;
@@ -4296,6 +4305,7 @@ export const useApp = create<AppState>((set, get, api) => {
       cloudContextTokens: (provider, model) =>
         providerInfo(provider)?.models.find((m) => m.id === model)?.contextTokens,
       byomContextTokens: (id) => s.byomModels?.find((b) => b.id === id)?.contextTokens,
+      byomForwardsToCloud: (id) => s.byomModels?.find((b) => b.id === id)?.forwardsToCloud,
     };
   }
 
@@ -15502,47 +15512,48 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     async connectByom(input) {
-      const id = `byom_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
-      const conn: ByomConnection = {
-        id,
-        label: input.label.trim(),
-        baseUrl: input.baseUrl,
-        model: input.model.trim(),
-      };
+      const conns = byomConnectionsFor({
+        ...input,
+        ownTailnetSuffix: hubTailnetSuffix(get().settings.daemon?.baseUrl),
+      });
       // The key is optional: a self-hosted server may accept unauthenticated
       // requests. Store one only when given, so byomSecretKey stays absent for
-      // keyless endpoints.
-      if (input.apiKey && input.apiKey.trim()) {
-        await secretSet(byomSecretKey(id), input.apiKey.trim());
-      }
-      const byomModels = [...(get().settings.byomModels ?? []), conn];
+      // keyless endpoints; each connection keeps its own copy, so every
+      // reader and Disconnect work per connection as before.
+      const key = input.apiKey?.trim();
+      if (key) for (const c of conns) await secretSet(byomSecretKey(c.id), key);
+      const byomModels = [...(get().settings.byomModels ?? []), ...conns];
       await get().saveSettings({ byomModels });
-      logEvent('byom_connected');
-      return conn;
+      if (conns.length) logEvent('byom_connected');
+      return conns;
     },
 
-    async disconnectByom(id) {
-      await secretDelete(byomSecretKey(id));
+    async disconnectByom(ids) {
+      const gone = typeof ids === 'string' ? [ids] : [...ids];
+      for (const id of gone) await secretDelete(byomSecretKey(id));
       const settings = get().settings;
-      const byomModels = (settings.byomModels ?? []).filter((c) => c.id !== id);
-      const key = `byom:${id}`;
-      // Pull it out of EVERY status's stack: a disconnected endpoint must not
-      // linger in any profile. Drop it from the active specialists and the
-      // saved-placement map, and if it was a Reasoning anchor fall back to the
-      // built-in guide so no status is left with a dangling anchor.
-      const stacks: ProfileStacks = { ...settings.stacks };
-      for (const p of PROFILE_ORDER) {
-        const st = stacks[p];
-        if (!st) continue;
-        const active = st.active.filter((m) => stackRefKey(m.ref) !== key);
-        const saved = { ...st.saved };
-        delete saved[key];
-        const reasoning =
-          st.reasoning && stackRefKey(st.reasoning) === key ? harborRef() : st.reasoning;
-        stacks[p] = { ...st, active, saved, reasoning };
-      }
+      const byomModels = (settings.byomModels ?? []).filter((c) => !gone.includes(c.id));
+      // Pull them out of EVERY status's stack: a disconnected endpoint must
+      // not linger in any profile (byomOps' sweepByomRefs).
+      const stacks = sweepByomRefs(settings.stacks, gone);
       await get().saveSettings({ byomModels, stacks });
       logEvent('byom_disconnected');
+    },
+
+    async setByomForwards(id, on) {
+      const settings = get().settings;
+      const all = settings.byomModels ?? [];
+      const conn = all.find((c) => c.id === id);
+      if (!conn) return;
+      await get().saveSettings(
+        markByomForwarding(
+          all,
+          settings.stacks,
+          conn,
+          on,
+          hubTailnetSuffix(settings.daemon?.baseUrl),
+        ),
+      );
     },
 
     async setReasoning(ref, profile) {

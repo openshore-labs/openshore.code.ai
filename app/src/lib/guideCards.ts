@@ -14,7 +14,8 @@ import { thisDeviceNoun } from './deviceNoun.js';
 import { PAY_GATES_ENABLED } from './payGate.js';
 import { AGENTIC_CURRENTS, AGENTIC_CURRENTS_TITLE } from './currents.js';
 import { HARNESS_CURRENTS, HARNESS_CURRENTS_TITLE } from './harnessCurrents.js';
-import { ROUTINE_NOTES_PLACE, vaultGuideText } from './vaultCopy.js';
+import { ROUTINE_NOTES_PLACE, VAULT_PRIVATE_OFF_MARKED, vaultGuideText } from './vaultCopy.js';
+import { BYOM_FORWARDS_NAME } from './byom.js';
 import {
   SHIPS_ADMIN,
   SHIPS_CURRENTS,
@@ -413,7 +414,9 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     id: 'byom',
     title: 'Connect your own model',
     where: 'Menu, Stack, the Connect a model + pill',
-    text: 'Uses a model you run: on this computer, your own server, or another service with your key (any OpenAI-compatible endpoint). It asks for a name, the address (it usually ends in /v1), the model name, and an optional API key. It lands on your Bench, and calls go straight from your device to it.',
+    // The door is the Stack's form away from the desktop only: the desktop's
+    // Stack has no address form, so the card says where it is.
+    text: `Away from the desktop (on a phone, an iPad or the web), Connect a model in Stack uses a model you run or hold a key for: on your computer, your own server, a gateway, or another service with your key, at any address, in the OpenAI or the Anthropic format. It asks for a name, the address, the format, and an optional API key, then loads the models the address lists so you tick the ones you want (or type one, when it lists none). Each lands on your Bench, and calls go straight from your device to it. A model on your own network counts as local; for a gateway, turn on ${BYOM_FORWARDS_NAME} and it counts as cloud. ${VAULT_PRIVATE_OFF_MARKED}`,
     keywords: [
       'byom',
       'bring your own model',
@@ -421,8 +424,32 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
       'self hosted',
       'custom endpoint',
       'openai compatible',
+      'anthropic compatible',
+      'any address',
       'fine tune',
       'lm studio',
+    ],
+  },
+  {
+    // Bring your own keys, Part 4 (2026-10-09): the three that sign in their
+    // own way come through a gateway the person runs (setupGuides.ts).
+    id: 'own-gateway',
+    title: 'Bedrock, Azure, and Vertex',
+    where: 'Menu, Stack, How connecting works, Use Bedrock, Azure, or Vertex',
+    text: `Amazon Bedrock, Azure, and Google Vertex AI sign in their own way, so they come through LiteLLM, a free gateway you run yourself on your computer or your server with your own provider keys. OpenShore runs no gateway and never sees those keys. Start LiteLLM with a config that lists your models and a long random master key of your own, on the machine's Tailscale address only (its --host), never on every network: on a rented server that would be the open internet. Then, on a phone, an iPad or the web, in Stack tap Connect a model, give its address (port 4000), paste the master key, and turn on ${BYOM_FORWARDS_NAME}, so it counts as cloud. ${VAULT_PRIVATE_OFF_MARKED} On those devices, Stack, How connecting works opens the full steps.`,
+    keywords: [
+      'bedrock',
+      'aws',
+      'amazon bedrock',
+      'azure',
+      'azure openai',
+      'vertex',
+      'vertex ai',
+      'google cloud',
+      'litellm',
+      'gateway',
+      'own gateway',
+      'proxy',
     ],
   },
   {
@@ -494,7 +521,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     id: 'cloud-connections',
     title: 'Cloud Connections',
     where: 'Menu, Cloud Connections',
-    text: `Add cloud models on your own API key: Claude (which also needs its Workspace id), OpenAI, Gemini, Kimi (Moonshot), Perplexity, Venice, and OpenRouter (one key for models from many providers; choose which of its models sit on your Bench). More providers holds Groq, Together AI, DeepSeek, Mistral, xAI, Cerebras, Hugging Face, Nebius Token Factory, Novita AI, MiniMax, and NVIDIA, whose models load from the provider once your key is in. Away from the desktop (on a phone, an iPad or the web), any other OpenAI-compatible provider connects by its address in the Stack, under Connect a model. Each connected provider puts its models on your Bench. Your server is set up here too: a Linux server you rent docks like your computer. API keys are stored only on your device and sent only to their provider. A cloud model runs, and spends, only when you pick it or place it. How:\n${guideStepsCompact('connect-cloud-key')}`,
+    text: `Add cloud models on your own API key: Claude (which also needs its Workspace id), OpenAI, Gemini, Kimi (Moonshot), Perplexity, Venice, and OpenRouter (one key for models from many providers; choose which of its models sit on your Bench). More providers holds Groq, Together AI, DeepSeek, Mistral, xAI, Cerebras, Hugging Face, Nebius Token Factory, Novita AI, MiniMax, and NVIDIA, whose models load from the provider once your key is in. Away from the desktop (on a phone, an iPad or the web), any other provider connects by its address in the Stack, under Connect a model, in the OpenAI or the Anthropic format. Each connected provider puts its models on your Bench. Your server is set up here too: a Linux server you rent docks like your computer. API keys are stored only on your device and sent only to their provider. A cloud model runs, and spends, only when you pick it or place it. How:\n${guideStepsCompact('connect-cloud-key')}`,
     keywords: [
       'cloud',
       'api key',

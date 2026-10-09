@@ -49,6 +49,7 @@ import {
   VAULT_MODELS_LINE,
   VAULT_MODELS_TITLE,
   VAULT_PRIVATE_OFF_CLOUD,
+  VAULT_PRIVATE_OFF_MARKED,
   VAULT_CARRY_CAVEAT,
   VAULT_COMMAND_CAVEAT,
   VAULT_EXCLUDE_SUB,
@@ -722,6 +723,11 @@ describe('the private-notes promise', () => {
     );
     expect(VAULT_PRIVATE_OFF_CLOUD).toBe(
       'OpenShore never sends private notes to a cloud model. A command you run or allow, or a change you allow, can still carry their words to one.',
+    );
+    // Said of a model at an address marked as passing requests on (bring
+    // your own keys, 2026-10-09), the caveat after it as its own sentence.
+    expect(VAULT_PRIVATE_OFF_MARKED).toBe(
+      'OpenShore never sends it private notes. A command you run or allow, or a change you allow, can still carry their words to a cloud model.',
     );
     expect(VAULT_MODELS_LINE).toBe(
       'Pin a note to a project and every chat there starts with it. OpenShore never sends private notes to a cloud model. A command you run or allow, or a change you allow, can still carry their words to one.',

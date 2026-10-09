@@ -13631,6 +13631,18 @@ button.settings-row:active {
   font-size: var(--text-5);
   color: var(--ink);
 }
+/* Connect a model's format switch (2026-10-09): two names that read as
+   equals across the sheet, each free to wrap on a narrow phone rather than
+   push the sheet sideways. */
+.byom-format.segmented {
+  display: flex;
+  width: 100%;
+}
+.byom-format .seg {
+  flex: 1;
+  white-space: normal;
+  text-align: center;
+}
 
 /* ---------------------------------------------------------------------------
    The Vault room's new-user ramp (founder, 2026-09-15). An in-flow onboarding

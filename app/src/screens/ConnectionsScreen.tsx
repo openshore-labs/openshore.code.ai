@@ -27,6 +27,7 @@ import { ExternalGlyph } from '../components/SheetGlyphs.js';
 import { SettingsGroup, SettingsRow } from '../components/SettingsRow.js';
 import { isDesktop, openInAppBrowser, secretGet } from '../lib/platform.js';
 import { sheetExitMs } from '../lib/motion.js';
+import { ModelChecklist } from '../components/ModelChecklist.js';
 import { ServerSetup } from '../components/ServerSetup.js';
 import { DockForm, hostOf } from '../components/DockForm.js';
 import {
@@ -310,7 +311,7 @@ export function ConnectionsScreen() {
           {isDesktop() ? null : (
             <SettingsRow
               label="Any other provider"
-              sub="Connect any OpenAI-compatible provider by its address in the Stack, under Connect a model."
+              sub="Any address connects in the Stack, under Connect a model, in the OpenAI or Anthropic format."
               onClick={() => setView('stack')}
             />
           )}
@@ -446,9 +447,29 @@ export function ConnectionsScreen() {
               </div>
             ) : (
               <p className="hint" role="status">
-                {isDesktop()
-                  ? 'No provider here by that name.'
-                  : 'No provider here by that name. Any OpenAI-compatible one connects by its address in the Stack.'}
+                {isDesktop() ? (
+                  'No provider here by that name.'
+                ) : asksForGateway(q) ? (
+                  // Bedrock, Azure and Vertex do not connect by an address and
+                  // a key: they come through a gateway the person runs, and
+                  // this is where a person looks for them (2026-10-09).
+                  <>
+                    Bedrock, Azure and Vertex come through a gateway you run, connected in the
+                    Stack.{' '}
+                    <button
+                      type="button"
+                      className="linklike press-fb"
+                      onClick={() => {
+                        setBrowsing(false);
+                        void startGuideChat('connect-own-gateway');
+                      }}
+                    >
+                      Walk me through it
+                    </button>
+                  </>
+                ) : (
+                  'No provider here by that name. Any other one connects by its address in the Stack.'
+                )}
               </p>
             )}
           </>
@@ -520,6 +541,16 @@ export function ConnectionsScreen() {
 }
 
 /** The More providers row's line: the first few names it holds, plainly. */
+/** The names a person may search for Bedrock, Azure or Vertex by, which
+ *  come through the gateway guide rather than a key (2026-10-09). */
+const GATEWAY_NAMES = ['amazon bedrock', 'bedrock', 'aws', 'azure', 'google vertex', 'vertex'];
+
+/** Whether a More providers search is for one of the three that come
+ *  through a gateway: three letters or more of one of their names. */
+function asksForGateway(q: string): boolean {
+  return q.length >= 3 && GATEWAY_NAMES.some((n) => n.startsWith(q) || q.includes(n));
+}
+
 function moreLine(more: Array<{ name: string }>): string {
   const names = more.map((p) => p.name);
   if (names.length === 1) return `${names[0]}, on your own key.`;
@@ -531,7 +562,8 @@ function moreLine(more: Array<{ name: string }>): string {
 
 /** Choosing which of a live provider's models sit on the Bench. The whole
  *  list comes from the provider on the person's key when this opens; the
- *  current picks start ticked, and a search narrows a long list. */
+ *  current picks start ticked, and a search narrows a long list (the shared
+ *  ModelChecklist, which the Stack's Connect a model picks from too). */
 function LiveModelPicker({
   providerId,
   name,
@@ -546,7 +578,6 @@ function LiveModelPicker({
   const showToast = useApp((s) => s.showToast);
   const [all, setAll] = useState<LiveModel[] | 'error' | undefined>();
   const [picked, setPicked] = useState<Set<string>>(() => new Set(current.map((m) => m.id)));
-  const [query, setQuery] = useState('');
 
   useEffect(() => {
     let live = true;
@@ -565,12 +596,6 @@ function LiveModelPicker({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [providerId]);
 
-  const q = query.trim().toLowerCase();
-  const shown =
-    all && all !== 'error'
-      ? all.filter((m) => !q || m.id.toLowerCase().includes(q) || m.label.toLowerCase().includes(q))
-      : [];
-
   return (
     <>
       <SheetHead title={`${name} models`} onClose={onDone} />
@@ -582,43 +607,19 @@ function LiveModelPicker({
         </p>
       ) : (
         <>
-          <div className="field">
-            <label htmlFor="live-models-search">Search {all.length} models</label>
-            <input
-              id="live-models-search"
-              value={query}
-              placeholder="qwen, claude, coder..."
-              autoCapitalize="none"
-              autoCorrect="off"
-              onChange={(e) => setQuery(e.target.value)}
-            />
-          </div>
-          <div className="live-model-list">
-            {shown.slice(0, 200).map((m) => (
-              <label key={m.id} className="live-model-row">
-                <input
-                  type="checkbox"
-                  checked={picked.has(m.id)}
-                  onChange={(e) =>
-                    setPicked((prev) => {
-                      const next = new Set(prev);
-                      if (e.target.checked) next.add(m.id);
-                      else next.delete(m.id);
-                      return next;
-                    })
-                  }
-                />
-                <span className="grow">
-                  <span className="live-model-name">{m.label}</span>
-                  <span className="sub">
-                    {m.id}
-                    {/* Only a list that says so: a plain list claims neither. */}
-                    {m.tools || m.toolsUnknown ? '' : ' · chat only, no tools'}
-                  </span>
-                </span>
-              </label>
-            ))}
-          </div>
+          <ModelChecklist
+            models={all}
+            picked={picked}
+            searchId="live-models-search"
+            onToggle={(id, on) =>
+              setPicked((prev) => {
+                const next = new Set(prev);
+                if (on) next.add(id);
+                else next.delete(id);
+                return next;
+              })
+            }
+          />
           <div className="sheet-actions">
             <button
               type="button"

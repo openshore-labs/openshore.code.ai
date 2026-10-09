@@ -103,7 +103,8 @@ export interface LocalImageModel {
   id: string;
   name: string;
   sizeGB: number;
-  /** The Ollama tag, the Model name a connection asks for. */
+  /** The Ollama tag, the model ticked from the address's list (or typed,
+   *  when it lists none) in Connect a model. */
   ref: string;
   /** The one command that pulls it. */
   pull: string;

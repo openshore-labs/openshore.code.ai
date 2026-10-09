@@ -1,5 +1,6 @@
 // One provider client for every network seat (build 2026-09-29, B1): Claude on
-// the Anthropic SDK, and every OpenAI-compatible endpoint (a connected cloud
+// the Anthropic SDK, an address you connect in the Anthropic format on the same
+// SDK (2026-10-09), and every OpenAI-compatible endpoint (a connected cloud
 // provider, or your own model server, BYOM). Each streams one request as the
 // same events, text, thinking, usage and the round's tool calls, and each
 // stops the moment the person presses Stop.
@@ -196,9 +197,31 @@ async function* abortable<T>(source: AsyncIterable<T>, signal?: AbortSignal): As
  *  history cache marker. */
 export type AnthropicRequest = Omit<Anthropic.MessageStreamParams, 'messages' | 'tools' | 'stream'>;
 
+/** An address the person connected in the Anthropic format (2026-10-09), as
+ *  its client needs it: the name a refusal is said in, so a failure there
+ *  reads as that address's, never as Claude's. */
+export interface AnthropicAddress {
+  label: string;
+}
+
+/** What went wrong at an address, as the Stack reads every seat's failure: a
+ *  status the server answered (so a 400, 404 or 422 on a round with tools
+ *  reads as "takes no tools"), or no answer at all. A stop stays a stop. */
+function addressFailure(err: unknown, label: string): Error {
+  if (isAbortError(err) || (err instanceof Error && err.name === 'APIUserAbortError')) {
+    return abortError();
+  }
+  const status = (err as { status?: unknown } | null)?.status;
+  if (typeof status === 'number') {
+    return new ProviderUnavailable(`${label} answered ${status}.`, status);
+  }
+  return new ProviderUnavailable(`Could not reach ${label}.`);
+}
+
 export function anthropicClient(
   client: Anthropic,
   request: AnthropicRequest,
+  address?: AnthropicAddress,
 ): ProviderClient<Anthropic.MessageParam, Anthropic.Tool> {
   return {
     async *stream(messages, tools, signal) {
@@ -213,16 +236,34 @@ export function anthropicClient(
         { signal },
       );
       let text = '';
+      // An address is prompted to think in tags, like any model that does not
+      // reason through its own API, so its text is split here; Claude's own
+      // thinking arrives on its own event and needs no splitting.
+      const splitter = address ? new ThinkTagSplitter() : undefined;
+      const say = (ps: ThoughtPiece[]) => {
+        for (const p of ps) {
+          if (!p.text) continue;
+          if (p.kind === 'text') {
+            text += p.text;
+            queue.push({ type: 'text', text: p.text });
+          } else queue.push({ type: 'thinking', text: p.text });
+        }
+      };
       stream.on('thinking', (delta: string) => {
         if (delta) queue.push({ type: 'thinking', text: delta });
       });
       stream.on('text', (delta: string) => {
         if (!delta) return;
+        if (splitter) {
+          say(splitter.push(delta));
+          return;
+        }
         text += delta;
         queue.push({ type: 'text', text: delta });
       });
       stream.finalMessage().then(
         (final) => {
+          if (splitter) say(splitter.end());
           const usage = final.usage;
           if (usage) {
             queue.push({
@@ -238,16 +279,28 @@ export function anthropicClient(
               name: b.name,
               parsed: (b.input ?? {}) as Record<string, unknown>,
             }));
+          // An address replays the thinking blocks it sent as they came (a
+          // server that always thinks, though it was asked for none, may want
+          // them back with its tool calls, as Claude does), then its answer
+          // with the thought it wrote in tags left out, then its tool calls.
+          const blocks = final.content ?? [];
+          const replay = address
+            ? [
+                ...blocks.filter((b) => b.type === 'thinking' || b.type === 'redacted_thinking'),
+                ...(text ? [{ type: 'text' as const, text }] : []),
+                ...blocks.filter((b) => b.type === 'tool_use'),
+              ]
+            : final.content;
           queue.push({
             type: 'done',
             text,
             toolCalls,
-            replay: final.content,
+            replay,
             ...(final.stop_reason ? { stopReason: final.stop_reason } : {}),
           });
           queue.end();
         },
-        (err: unknown) => queue.fail(err),
+        (err: unknown) => queue.fail(address ? addressFailure(err, address.label) : err),
       );
       yield* abortable(queue, signal);
     },

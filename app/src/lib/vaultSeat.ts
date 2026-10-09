@@ -35,6 +35,10 @@ export interface PackSeatContext {
   /** A BYOM connection's own `contextTokens`; undefined falls back to
    *  `BYOM_DEFAULT_CONTEXT_TOKENS` (8192). */
   byomContextTokens?: (id: string) => number | undefined;
+  /** Whether a BYOM connection is marked as passing requests on to a cloud
+   *  provider, read from the connection itself beside the ref's own copy of
+   *  the mark. Stricter only: either one makes the seat leave. */
+  byomForwardsToCloud?: (id: string) => boolean | undefined;
 }
 
 /** The tailnet suffix of the paired hub's base URL ("mac.tail1234.ts.net"
@@ -54,10 +58,11 @@ export function hubTailnetSuffix(baseUrl: string | undefined): string | null {
  * device seats are local, served `DEVICE_CONTEXT_TOKENS`; cloud seats leave,
  * class `large`, Claude served `contextWindowFor(model)`, OpenAI-compatible
  * providers their listed window else 128000; BYOM leaves unless
- * `hostIsLocal(host, { ownTailnetSuffix })` and its model is no Ollama cloud
- * tag (`isOllamaCloudTag`), class by name and size with kind
- * local, served its `contextTokens` else 8192. An Agentic Current bench ref
- * (`isCurrentBenchId`) gets null.
+ * `hostIsLocal(host, { ownTailnetSuffix })`, its model is no Ollama cloud
+ * tag (`isOllamaCloudTag`), and neither the ref nor its connection is marked
+ * as passing requests on to a cloud provider (`forwardsToCloud`), class by
+ * name and size with kind local, served its `contextTokens` else 8192. An
+ * Agentic Current bench ref (`isCurrentBenchId`) gets null.
  */
 export function packSeatFor(ref: StackModelRef, ctx: PackSeatContext): PackSeat | null {
   switch (ref.kind) {
@@ -83,12 +88,16 @@ export function packSeatFor(ref: StackModelRef, ctx: PackSeatContext): PackSeat 
       // current in v1 (plan "Out of v1").
       if (isCurrentBenchId(ref.id)) return null;
       // By address, and never an Ollama cloud tag: its Ollama passes every
-      // request on to ollama.com, so it leaves wherever that Ollama runs.
+      // request on to ollama.com, so it leaves wherever that Ollama runs. A
+      // gateway the person marked as passing requests on leaves the same way
+      // (2026-10-09), so a private note never reaches it.
       const host = byomHost(ref.baseUrl);
+      const forwards = ref.forwardsToCloud === true || ctx.byomForwardsToCloud?.(ref.id) === true;
       const local =
         host !== undefined &&
         hostIsLocal(host, { ownTailnetSuffix: ctx.ownTailnetSuffix }) &&
-        !isOllamaCloudTag(ref.model);
+        !isOllamaCloudTag(ref.model) &&
+        !forwards;
       return {
         modelClass: deriveModelClass({ model: ref.model, kind: 'local' }),
         servedTokens: positive(ctx.byomContextTokens?.(ref.id)) ?? BYOM_DEFAULT_CONTEXT_TOKENS,
