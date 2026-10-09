@@ -637,6 +637,7 @@ import {
   startWebCheckout,
 } from './payOps.js';
 import { appActionPlan, writingVoiceSeed, type ComposerSeed } from './appActionOps.js';
+import { sweepProviderRefs } from './providerOps.js';
 import {
   CodingLockedError,
   accountNoticeDue,
@@ -15489,6 +15490,9 @@ export const useApp = create<AppState>((set, get, api) => {
       }
       // A live provider's picks leave with its key.
       if (providerInfo(id)?.liveModels) await get().setProviderModels(id, []);
+      // And its models leave every status's stack (2026-10-09).
+      const stacks = get().settings.stacks;
+      if (stacks) await get().saveSettings({ stacks: sweepProviderRefs(stacks, id) });
       logEvent('provider_disconnected', { provider: id });
     },
 

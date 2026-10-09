@@ -54,6 +54,44 @@ export function appPermissionAllowed(
   return APP_PERMISSIONS.has(permission);
 }
 
+// ------------------------------------------------------ outbound HTTP headers
+
+/** The headers the renderer's guarded fetch (osc:httpFetch) may send. The
+ *  desktop's Claude key check rides it (validateProviderKey through
+ *  nativeFetch), so Claude's key, its API version and an identity-linked
+ *  key's workspace pass too (2026-10-09: they were dropped, and the check went
+ *  out with no key, so a good key read as rejected). */
+export const HTTP_FETCH_HEADERS: ReadonlySet<string> = new Set([
+  'content-type',
+  'x-auth-token',
+  'authorization',
+  'x-api-key',
+  'anthropic-version',
+  'anthropic-workspace-id',
+]);
+
+/** The headers that name a credential or the account it acts in: dropped on
+ *  a cross-origin redirect, so a key never follows a hop to a host it was
+ *  not issued for. */
+export const HTTP_FETCH_CREDENTIALS: ReadonlySet<string> = new Set([
+  'authorization',
+  'x-auth-token',
+  'x-api-key',
+  'anthropic-workspace-id',
+]);
+
+/** The request headers the guarded fetch sends: the allowed names in any
+ *  case, their values as given; anything else is left behind. */
+export function httpFetchHeaders(
+  headers: Readonly<Record<string, string>> | undefined,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [name, value] of Object.entries(headers ?? {})) {
+    if (HTTP_FETCH_HEADERS.has(name.toLowerCase())) out[name] = value;
+  }
+  return out;
+}
+
 // ---------------------------------------------------- OAuth loopback answer
 
 /** The path the desktop's Google sign-in redirects to (gdriveAuth.ts). */

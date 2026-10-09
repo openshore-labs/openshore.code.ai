@@ -399,6 +399,9 @@ async function* readSse(chunks: AsyncIterable<string>): AsyncGenerator<ProviderE
   const acc = new Map<number, ToolCallAccum>();
   let text = '';
   let usage: ProviderEvent | undefined;
+  // A DeepSeek-style reasoner's reasoning_content, kept whole for the tool
+  // round's replay (replayReasoning).
+  let reasoning = '';
   // Sonar sends its sources with the stream (often on every chunk); the last
   // set it sent is the one said, once, at the end.
   let sources: Citation[] = [];
@@ -420,8 +423,11 @@ async function* readSse(chunks: AsyncIterable<string>): AsyncGenerator<ProviderE
     const choice = chunk?.choices?.[0];
     const thought = reasoningOf(choice?.delta);
     if (thought) yield { type: 'thinking', text: thought };
-    const delta = choice?.delta?.content;
-    if (typeof delta === 'string' && delta) yield* pieces(splitter.push(delta), keep);
+    const rc = choice?.delta?.reasoning_content;
+    if (typeof rc === 'string') reasoning += rc;
+    const part = contentParts(choice?.delta?.content);
+    if (part.thinking) yield { type: 'thinking', text: part.thinking };
+    if (part.text) yield* pieces(splitter.push(part.text), keep);
     mergeToolCallDeltas(acc, choice?.delta?.tool_calls);
     usage = usageOf(chunk?.usage) ?? usage;
     const cited = sonarCitations(chunk);
@@ -442,6 +448,7 @@ async function* readSse(chunks: AsyncIterable<string>): AsyncGenerator<ProviderE
     ? {
         role: 'assistant',
         content: text || null,
+        ...replayReasoning(reasoning),
         tool_calls: calls.map((tc) => ({
           id: tc.id,
           type: 'function',
@@ -463,6 +470,7 @@ async function* readWhole(json: unknown): AsyncGenerator<ProviderEvent> {
     choices?: Array<{
       message?: {
         content?: unknown;
+        reasoning_content?: unknown;
         tool_calls?: Array<{ id: string; function: { name: string; arguments: string } }>;
       };
     }>;
@@ -475,24 +483,69 @@ async function* readWhole(json: unknown): AsyncGenerator<ProviderEvent> {
   };
   const thought = reasoningOf(msg);
   if (thought) yield { type: 'thinking', text: thought };
-  if (typeof msg?.content === 'string' && msg.content) {
+  const part = contentParts(msg?.content);
+  if (part.thinking) yield { type: 'thinking', text: part.thinking };
+  if (part.text) {
     const splitter = new ThinkTagSplitter();
-    yield* pieces([...splitter.push(msg.content), ...splitter.end()], keep);
+    yield* pieces([...splitter.push(part.text), ...splitter.end()], keep);
   }
   const sources = sonarCitations(data);
   if (sources.length) yield { type: 'sources', citations: sources };
   const usage = usageOf(data?.usage);
   if (usage) yield usage;
   const raw = Array.isArray(msg?.tool_calls) ? msg.tool_calls : [];
-  const content = typeof msg?.content === 'string' ? msg.content : '';
+  const content = part.text;
   yield {
     type: 'done',
     text,
     toolCalls: raw.map((tc) => ({ id: tc.id, name: tc.function.name, raw: tc.function.arguments })),
     replay: raw.length
-      ? { role: 'assistant', content, tool_calls: raw }
+      ? {
+          role: 'assistant',
+          content,
+          ...replayReasoning(
+            typeof msg?.reasoning_content === 'string' ? msg.reasoning_content : '',
+          ),
+          tool_calls: raw,
+        }
       : { role: 'assistant', content },
   };
+}
+
+/** A reply's content, as a string or as the chunks Mistral's reasoning
+ *  models send (2026-10-09): a thinking chunk, then a text chunk. Text chunks
+ *  are the answer; a thinking chunk is thinking, never the answer, and is not
+ *  replayed. Anything else in the array is left out. */
+function contentParts(content: unknown): { text: string; thinking: string } {
+  if (typeof content === 'string') return { text: content, thinking: '' };
+  let text = '';
+  let thinking = '';
+  if (!Array.isArray(content)) return { text, thinking };
+  for (const raw of content) {
+    const c = (raw ?? {}) as { type?: unknown; text?: unknown; thinking?: unknown };
+    if (c.type === 'text' && typeof c.text === 'string') text += c.text;
+    else if (c.type === 'thinking') thinking += chunkText(c.thinking);
+  }
+  return { text, thinking };
+}
+
+/** A thinking chunk's words: a string, or its own list of text chunks. */
+function chunkText(v: unknown): string {
+  if (typeof v === 'string') return v;
+  if (!Array.isArray(v)) return '';
+  return v
+    .map((x) => (typeof x === 'string' ? x : typeof x?.text === 'string' ? x.text : ''))
+    .join('');
+}
+
+/** The reasoning a tool round's replay carries back: DeepSeek's thinking
+ *  mode answers 400 when a tool call's assistant message comes back without
+ *  its reasoning_content (2026-10-09). Only that field, only when the reply
+ *  sent it, and only on the replay inside the turn: it never joins the
+ *  answer or the history a later turn sends. A server that sends `reasoning`
+ *  instead is sent nothing new. */
+function replayReasoning(reasoning: string): { reasoning_content?: string } {
+  return reasoning ? { reasoning_content: reasoning } : {};
 }
 
 // ---- transport ----------------------------------------------------------------

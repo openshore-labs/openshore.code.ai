@@ -76,8 +76,8 @@ const ALL_SETUP_GUIDES: Partial<Record<SetupGuideId, SetupGuide>> = {
     goal: 'Use Claude, OpenAI, or Gemini on my own key.',
     steps: [
       'Pick the provider you already pay for. If you have none, Claude is the strongest for coding; the console link on the Cloud Connections screen opens it inside the app.',
-      'Sign in on the provider page and create a new API key. Copy it. It usually starts with sk- (Claude keys start with sk-ant-).',
-      'Back in OpenShore, open Cloud Connections, tap Connect next to that provider, paste the key, and tap Save. The app checks the key with the provider before it says connected.',
+      'Sign in on the provider page and create a new API key. Copy it. How a key starts depends on the provider; where it says, the key field shows it (Claude keys start with sk-ant-).',
+      'Back in OpenShore, open Cloud Connections and tap that provider (Groq, Mistral, DeepSeek and the rest are under More providers), paste the key, and tap Save. The app checks the key with the provider where it can, and says so when it could not.',
       'Open Stack and place the provider model where you want it: as your Reasoning model, or as a specialist for one kind of task.',
     ],
     done: 'The provider shows connected, and it appears in the model menu. Your API key is stored only on this device and sent only to that provider.',

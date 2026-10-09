@@ -215,8 +215,11 @@ export const EGRESS: EgressEntry[] = [
   {
     id: 'cloud-models',
     recipient: 'Your cloud providers',
-    what: `Your chat, and the notes and files it draws on, to Anthropic, OpenAI, Google, Moonshot, Perplexity, Venice, or OpenRouter (which forwards it to the model's own provider), on your own key. ${VAULT_PRIVATE_OFF_CLOUD} An amber pill or dot marks a chat whose latest turn went to one. Connecting Venice or OpenRouter, or choosing its models, also asks it for the list of models it offers.`,
-    when: 'Only when you pick a cloud model or place one in your Stack, and only on the turns it answers. On your computer, the coding agent asks first in each task. For Venice or OpenRouter, also when you connect its key or open Choose models.',
+    // Every provider in Cloud Connections (lib/providers.ts), the named ones
+    // on your key included (2026-10-09); egressManifest.test holds the two
+    // lists together.
+    what: `Your chat, and the notes and files it draws on, to Anthropic, OpenAI, Google, Moonshot, Perplexity, Venice, OpenRouter (which forwards it to the model's own provider), Groq, Together AI, DeepSeek, Mistral, xAI, Cerebras, Hugging Face (which forwards it to one of the providers it lists for the model), Nebius Token Factory, Novita AI, MiniMax, or NVIDIA, on your own key. ${VAULT_PRIVATE_OFF_CLOUD} An amber pill or dot marks a chat whose latest turn went to one. Saving a key sends it to its provider, which answers whether it works. To every provider but Anthropic, the same request then goes once more with a made-up key in place of yours, so one that answers anyone is not taken for a yes. For a provider whose models load from it, connecting and Choose models also ask it for the list of models it offers.`,
+    when: 'Only when you pick a cloud model or place one in your Stack, and only on the turns it answers. On your computer, the coding agent asks first in each task. Also when you save a provider key, and for one whose models load from it, when you open Choose models.',
     start: 'off',
     hosts: [
       'api.anthropic.com',
@@ -226,6 +229,17 @@ export const EGRESS: EgressEntry[] = [
       'api.perplexity.ai',
       'api.venice.ai',
       'openrouter.ai',
+      'api.groq.com',
+      'api.together.ai',
+      'api.deepseek.com',
+      'api.mistral.ai',
+      'api.x.ai',
+      'api.cerebras.ai',
+      'router.huggingface.co',
+      'api.tokenfactory.nebius.com',
+      'api.novita.ai',
+      'api.minimax.io',
+      'integrate.api.nvidia.com',
     ],
   },
   {
@@ -327,6 +341,15 @@ export const LINK_ONLY_HOSTS: Record<string, string> = {
   'aistudio.google.com': 'where to get a key',
   'platform.kimi.ai': 'where to get a key',
   'venice.ai': 'where to get a key',
+  'console.groq.com': 'where to get a key',
+  'platform.deepseek.com': 'where to get a key',
+  'admin.mistral.ai': 'where to get a key',
+  'console.x.ai': 'where to get a key',
+  'cloud.cerebras.ai': 'where to get a key',
+  'tokenfactory.nebius.com': 'where to get a key',
+  'novita.ai': 'where to get a key',
+  'platform.minimax.io': 'where to get a key',
+  'build.nvidia.com': 'where to get a key',
   'id.atlassian.com': 'where to make a Bitbucket app password',
   'hermes-agent.nousresearch.com': 'documentation link',
   'www.perplexity.ai': 'link',

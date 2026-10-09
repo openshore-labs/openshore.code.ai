@@ -4,12 +4,13 @@
 // asks before it disconnects. The Stack's Image reading rows name the model
 // an image goes to until the person chooses one (D13, B). Mounted in a real
 // DOM (test/support/dom.ts) so the taps are the ones a person makes.
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { mountDom, type TestDom } from './support/dom.js';
 
+const shell = vi.hoisted(() => ({ desktop: false }));
 vi.mock('../src/lib/platform.js', () => ({
   platform: () => 'ios',
-  isDesktop: () => false,
+  isDesktop: () => shell.desktop,
   isPhone: () => true,
   dataUnlockState: async () => 'ok',
   openExternal: () => {},
@@ -45,6 +46,7 @@ const { claudeModelLabel, visionFallbackClaudeModel } = await import('../src/lib
 const hub = { baseUrl: 'http://100.64.0.2:4816', token: 'osc_member' };
 
 beforeEach(() => {
+  shell.desktop = false;
   useApp.setState({
     view: 'connections',
     viewTrail: [],
@@ -98,17 +100,60 @@ function expectOneWayOut(): void {
   expect(dom.buttons()).not.toContain('Cancel');
 }
 
+/** The familiar seven, and the named providers that wait under More
+ *  providers until their key is in (2026-10-09). */
+const FAMILIAR = PROVIDERS.filter((p) => !p.more);
+const NAMED = PROVIDERS.filter((p) => p.more);
+
+/** The rows in the open sheet, by their label. */
+const sheetRows = () =>
+  [...dom.container.querySelectorAll<HTMLElement>('.sheet:not(.closing) .settings-row')].map(
+    (el) => el.querySelector('.settings-row-label')?.textContent ?? '',
+  );
+
+/** Tap a row in the open sheet, then wait out its exit. */
+async function tapSheetRow(label: string): Promise<void> {
+  const el = [
+    ...dom.container.querySelectorAll<HTMLElement>('.sheet:not(.closing) .settings-row'),
+  ].find((r) => r.querySelector('.settings-row-label')?.textContent === label);
+  if (!el) throw new Error(`No "${label}" row in the sheet: ${sheetRows()}`);
+  const { act } = await import('react');
+  const { sheetExitMs } = await import('../src/lib/motion.js');
+  await act(async () => {
+    el.dispatchEvent(new window.Event('click', { bubbles: true }));
+  });
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, sheetExitMs() + 40));
+  });
+}
+
 describe('Cloud Connections in the ledger', () => {
   it('lists one row per provider with its model count, and no Connect buttons', async () => {
     const { ConnectionsScreen } = await import('../src/screens/ConnectionsScreen.js');
     await dom.render(<ConnectionsScreen />);
     const listed = rows();
-    // Your server leads (connect-anywhere, 2026-10-07), then one row per provider.
+    // Your server leads (connect-anywhere, 2026-10-07), then the familiar
+    // seven, then one row for the named providers on your key, and on a
+    // phone one for any other provider, by its address (2026-10-09).
     expect(listed.map((r) => r.label)).toEqual([
       'Set up a server',
-      ...PROVIDERS.map((p) => p.name),
+      ...FAMILIAR.map((p) => p.name),
+      'More providers',
+      'Any other provider',
     ]);
-    for (const p of PROVIDERS) {
+    expect(FAMILIAR.map((p) => p.id)).toEqual([
+      'anthropic',
+      'openai',
+      'google',
+      'moonshot',
+      'perplexity',
+      'venice',
+      'openrouter',
+    ]);
+    expect(listed.find((r) => r.label === 'More providers')!.sub).toBe(
+      `Groq, Together AI, DeepSeek, and ${NAMED.length - 3} more, each on your own key.`,
+    );
+    for (const p of FAMILIAR) {
       const n = providerBenchModels(p).length;
       expect(listed.find((r) => r.label === p.name)!.sub).toBe(
         p.liveModels
@@ -163,6 +208,137 @@ describe('Cloud Connections in the ledger', () => {
     );
     expect(confirm).toEqual(['Keep', 'Disconnect']);
     expect(sheetTitle()).toBe('');
+    // Disconnecting takes its models off every stack (providerOps), so the
+    // question says so, and offers the one way to keep them (2026-10-09).
+    expect(dom.text()).toContain(
+      'Its API key is removed from this device, and its models leave your bench and every stack. To keep them, replace its key instead.',
+    );
+  });
+
+  it("replacing a connected provider's key opens its key sheet and disconnects nothing", async () => {
+    const real = useApp.getState().disconnectProvider;
+    const disconnectProvider = vi.fn(async () => {});
+    useApp.setState({ connectedProviders: { groq: true }, disconnectProvider });
+    onTestFinished(() => useApp.setState({ disconnectProvider: real }));
+    const { ConnectionsScreen } = await import('../src/screens/ConnectionsScreen.js');
+    await dom.render(<ConnectionsScreen />);
+    await tapRow('Groq');
+    expect(dom.text()).toContain('Disconnect Groq?');
+    const replace = [...dom.container.querySelectorAll<HTMLButtonElement>('button')].find(
+      (b) => b.textContent === 'replace its key',
+    )!;
+    expect(replace.classList.contains('press-fb')).toBe(true);
+    const { act } = await import('react');
+    const { sheetExitMs } = await import('../src/lib/motion.js');
+    await act(async () => {
+      replace.dispatchEvent(new window.Event('click', { bubbles: true }));
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, sheetExitMs() + 40));
+    });
+    expect(sheetTitle()).toBe('Connect Groq');
+    expect(dom.text()).not.toContain('Disconnect Groq?');
+    expect(disconnectProvider).not.toHaveBeenCalled();
+  });
+
+  it('opens More providers: every named provider not yet connected, and a search', async () => {
+    const { ConnectionsScreen } = await import('../src/screens/ConnectionsScreen.js');
+    await dom.render(<ConnectionsScreen />);
+    await tapRow('More providers');
+    expect(sheetTitle()).toBe('More providers');
+    expect(sheetRows()).toEqual(NAMED.map((p) => p.name));
+    expect(dom.text()).toContain(`Search ${NAMED.length} providers`);
+    expectOneWayOut();
+    // The search narrows by name, any case, or by the provider's id.
+    await dom.type('Groq, Mistral, DeepSeek...', 'MIS');
+    expect(sheetRows()).toEqual(['Mistral']);
+    await dom.type('Groq, Mistral, DeepSeek...', 'hugging face');
+    expect(sheetRows()).toEqual(['Hugging Face']);
+    // And by the other names people know it by.
+    await dom.type('Groq, Mistral, DeepSeek...', 'grok');
+    expect(sheetRows()).toEqual(['xAI']);
+    await dom.type('Groq, Mistral, DeepSeek...', 'hf');
+    expect(sheetRows()).toEqual(['Hugging Face']);
+
+    await dom.type('Groq, Mistral, DeepSeek...', 'nothing like it');
+    expect(sheetRows()).toEqual([]);
+    expect(dom.text()).toContain(
+      'No provider here by that name. Any OpenAI-compatible one connects by its address in the Stack.',
+    );
+  });
+
+  it('a tap in More providers closes the list and opens the same key sheet', async () => {
+    const { ConnectionsScreen } = await import('../src/screens/ConnectionsScreen.js');
+    await dom.render(<ConnectionsScreen />);
+    await tapRow('More providers');
+    await tapSheetRow('xAI');
+    expect(sheetTitle()).toBe('Connect xAI');
+    // One sheet at a time: the list has gone.
+    expect(dom.container.querySelectorAll('.sheet')).toHaveLength(1);
+    const group = dom.container.querySelector('.sheet [data-reveal-with]')!;
+    const field = group.querySelector('#connections-api-key') as HTMLInputElement;
+    expect(field.getAttribute('placeholder')).toBe('an xAI API key');
+    expect(keyHint(field)).toBe('go');
+    const save = group.querySelector('[data-reveal-primary]') as HTMLButtonElement;
+    expect(save.textContent).toBe('Save');
+    expect(save.disabled).toBe(true);
+    expect(dom.buttons()).toContain('Get a key ');
+    expectOneWayOut();
+    // Only a provider with a word to add says more than where to get a key.
+    expect(dom.container.querySelector('.sheet .field .hint')).toBeNull();
+  });
+
+  it("Hugging Face's key sheet asks for a token with the one permission it needs", async () => {
+    const { ConnectionsScreen } = await import('../src/screens/ConnectionsScreen.js');
+    await dom.render(<ConnectionsScreen />);
+    await tapRow('More providers');
+    await tapSheetRow('Hugging Face');
+    expect(sheetTitle()).toBe('Connect Hugging Face');
+    expect(dom.container.querySelector('.sheet .field .hint')?.textContent).toBe(
+      'Make a fine-grained token with only the "Make calls to Inference Providers" permission. OpenShore needs nothing more.',
+    );
+  });
+
+  it('a connected named provider joins the familiar seven, and leaves the list', async () => {
+    useApp.setState({ connectedProviders: { groq: true } });
+    const { ConnectionsScreen } = await import('../src/screens/ConnectionsScreen.js');
+    await dom.render(<ConnectionsScreen />);
+    const labels = rows().map((r) => r.label);
+    expect(labels.slice(0, FAMILIAR.length + 3)).toEqual([
+      'Set up a server',
+      ...FAMILIAR.map((p) => p.name),
+      'Groq',
+      'Choose Groq models',
+    ]);
+    expect(rows().find((r) => r.label === 'Groq')!.value).toBe('Connected');
+    expect(rows().find((r) => r.label === 'More providers')!.sub).toBe(
+      `Together AI, DeepSeek, Mistral, and ${NAMED.length - 4} more, each on your own key.`,
+    );
+    await tapRow('More providers');
+    expect(sheetRows()).not.toContain('Groq');
+    expect(sheetRows()).toHaveLength(NAMED.length - 1);
+  });
+
+  it('on a phone, any other provider opens the Stack, where it connects by address', async () => {
+    const { ConnectionsScreen } = await import('../src/screens/ConnectionsScreen.js');
+    await dom.render(<ConnectionsScreen />);
+    const other = rows().find((r) => r.label === 'Any other provider')!;
+    expect(other.sub).toBe(
+      'Connect any OpenAI-compatible provider by its address in the Stack, under Connect a model.',
+    );
+    await tapRow('Any other provider');
+    expect(useApp.getState().view).toBe('stack');
+  });
+
+  it('on the desktop, no row points to an address form its Stack does not have', async () => {
+    shell.desktop = true;
+    const { ConnectionsScreen } = await import('../src/screens/ConnectionsScreen.js');
+    await dom.render(<ConnectionsScreen />);
+    expect(rows().map((r) => r.label)).not.toContain('Any other provider');
+    await tapRow('More providers');
+    await dom.type('Groq, Mistral, DeepSeek...', 'nothing like it');
+    expect(dom.text()).toContain('No provider here by that name.');
+    expect(dom.text()).not.toContain('in the Stack');
   });
 });
 

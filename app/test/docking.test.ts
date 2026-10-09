@@ -130,19 +130,35 @@ describe('the health check says what it docked to', () => {
 });
 
 describe('providers whose models load live', () => {
-  it('Venice and OpenRouter are OpenAI-compatible, with nothing typed', () => {
-    for (const id of ['venice', 'openrouter']) {
+  // Venice and OpenRouter (2026-10-07), then the named providers on your key
+  // (2026-10-09, bring your own keys): every one OpenAI-compatible, with
+  // nothing typed.
+  const LIVE = [
+    'venice',
+    'openrouter',
+    'groq',
+    'together',
+    'deepseek',
+    'mistral',
+    'xai',
+    'cerebras',
+    'huggingface',
+    'nebius',
+    'novita',
+    'minimax',
+    'nvidia',
+  ];
+
+  it('every live provider is OpenAI-compatible, with nothing typed', () => {
+    for (const id of LIVE) {
       const p = providerInfo(id);
       expect(p?.liveModels, id).toBe(true);
       expect(p?.openaiBaseUrl, id).toMatch(/^https:\/\//);
       expect(p?.apiKeyUrl, id).toMatch(/^https:\/\//);
     }
     const source = read('src', 'lib', 'providers.ts');
-    expect(source.match(/models: \[\],\n {4}liveModels: true,/g)).toHaveLength(2);
-    expect(PROVIDERS.filter((p) => p.liveModels).map((p) => p.id)).toEqual([
-      'venice',
-      'openrouter',
-    ]);
+    expect(source.match(/models: \[\],\n {4}liveModels: true,/g)).toHaveLength(LIVE.length);
+    expect(PROVIDERS.filter((p) => p.liveModels).map((p) => p.id)).toEqual(LIVE);
   });
 
   it("reads Venice's list: text only, not offline, its own words on privacy", () => {

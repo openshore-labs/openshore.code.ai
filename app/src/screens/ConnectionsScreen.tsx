@@ -6,7 +6,9 @@
 // Keychain, scoped to the provider, and are spent only with your approval.
 // The room is the Settings ledger (D14, founder 2026-10-07): one row per
 // provider, a tap opens its key sheet, and a connected row asks before it
-// disconnects.
+// disconnects. The familiar seven stay at the top; the named providers on
+// your key (2026-10-09) join them once connected, and until then wait under
+// one More providers row, a searchable sheet.
 import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../state/store.js';
 import {
@@ -23,7 +25,8 @@ import { Sheet } from '../components/Sheet.js';
 import { SheetHead } from '../components/SheetHead.js';
 import { ExternalGlyph } from '../components/SheetGlyphs.js';
 import { SettingsGroup, SettingsRow } from '../components/SettingsRow.js';
-import { openInAppBrowser, secretGet } from '../lib/platform.js';
+import { isDesktop, openInAppBrowser, secretGet } from '../lib/platform.js';
+import { sheetExitMs } from '../lib/motion.js';
 import { ServerSetup } from '../components/ServerSetup.js';
 import { DockForm, hostOf } from '../components/DockForm.js';
 import {
@@ -79,6 +82,21 @@ export function ConnectionsScreen() {
   const [choosing, setChoosing] = useState<{ id: string; name: string } | undefined>();
   // Setting up a server, while its sheet is open.
   const [settingUpServer, setSettingUpServer] = useState(false);
+  // The More providers sheet, and what its search holds.
+  const [browsing, setBrowsing] = useState(false);
+  const [query, setQuery] = useState('');
+  // The familiar seven, then each named provider once its key is in; the
+  // rest wait under More providers.
+  const listed = PROVIDERS.filter((p) => !p.more || connectedProviders[p.id]);
+  const more = PROVIDERS.filter((p) => p.more && !connectedProviders[p.id]);
+  const q = query.trim().toLowerCase();
+  const found = more.filter(
+    (p) =>
+      !q ||
+      p.name.toLowerCase().includes(q) ||
+      p.id.includes(q.replace(/\s+/g, '')) ||
+      Boolean(p.searchTerms?.some((t) => t.includes(q))),
+  );
   // The docked servers (the saved hubs, read the way the store's hubList
   // reads them, kept here so this room reads settings alone).
   const servers = (settings.daemons ?? (settings.daemon ? [settings.daemon] : [])).filter(
@@ -103,6 +121,22 @@ export function ConnectionsScreen() {
     setEditing(undefined);
     setValue('');
     setWorkspaceOnly(false);
+  };
+  const openMore = () => {
+    setQuery('');
+    setBrowsing(true);
+  };
+  // Sheets never stack: the list leaves before the key sheet rises.
+  const pickMore = (id: string) => {
+    setBrowsing(false);
+    setTimeout(() => openSheet(id), sheetExitMs());
+  };
+  // A new key for a connected provider, from its Disconnect question: the
+  // key sheet saves over the old key and nothing else changes, so rotating a
+  // key keeps its models where the person placed them (2026-10-09).
+  const replaceKey = (id: string) => {
+    setRemoving(undefined);
+    setTimeout(() => openSheet(id), sheetExitMs());
   };
 
   useEffect(() => {
@@ -173,7 +207,9 @@ export function ConnectionsScreen() {
     showToast(
       check === 'valid'
         ? `${name} connected. Its models are on your bench.`
-        : `${name} API key saved. We could not verify it right now.`,
+        : check === 'unchecked'
+          ? `${name} API key saved. ${name} lists its models for any key, so your first chat checks it.`
+          : `${name} API key saved. We could not verify it right now.`,
     );
   };
 
@@ -226,7 +262,7 @@ export function ConnectionsScreen() {
         </SettingsGroup>
 
         <SettingsGroup title="Cloud providers" index={1}>
-          {PROVIDERS.map((p) => {
+          {listed.map((p) => {
             const on = Boolean(connectedProviders[p.id]);
             const n = providerBenchModels(p).length;
             const ws = settings.anthropicWorkspaceId;
@@ -264,6 +300,20 @@ export function ConnectionsScreen() {
               ) : null,
             ];
           })}
+          {more.length ? (
+            <SettingsRow label="More providers" sub={moreLine(more)} onClick={openMore} />
+          ) : null}
+          {/* Away from the desktop (a phone, an iPad, the web), anything
+              else connects by its address in the Stack (Connect a model);
+              the desktop's Stack has no such form, so it says nothing it
+              cannot do. */}
+          {isDesktop() ? null : (
+            <SettingsRow
+              label="Any other provider"
+              sub="Connect any OpenAI-compatible provider by its address in the Stack, under Connect a model."
+              onClick={() => setView('stack')}
+            />
+          )}
         </SettingsGroup>
 
         <p className="hint connections-foot">
@@ -312,6 +362,11 @@ export function ConnectionsScreen() {
                     onChange={(e) => setValue(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && void save(provider.id, provider.name)}
                   />
+                  {provider.keyNote ? (
+                    <p className="hint" style={{ marginTop: 4 }}>
+                      {provider.keyNote}
+                    </p>
+                  ) : null}
                 </div>
               )}
               {provider.id === 'anthropic' && (askWorkspace || workspace.trim()) ? (
@@ -355,6 +410,51 @@ export function ConnectionsScreen() {
         ) : null}
       </Sheet>
 
+      {/* The named providers not yet connected, searchable. A tap closes
+          this list and opens that provider's key sheet, the same one the
+          familiar seven use. */}
+      <Sheet open={browsing} onClose={() => setBrowsing(false)}>
+        {browsing ? (
+          <>
+            <SheetHead title="More providers" onClose={() => setBrowsing(false)} />
+            <p className="sheet-sub">
+              Each runs on your own API key. Its models load from it once your key is in.
+            </p>
+            <div className="field">
+              <label htmlFor="more-providers-search">Search {more.length} providers</label>
+              <input
+                id="more-providers-search"
+                value={query}
+                placeholder="Groq, Mistral, DeepSeek..."
+                autoCapitalize="none"
+                autoCorrect="off"
+                onChange={(e) => setQuery(e.target.value)}
+              />
+            </div>
+            {found.length ? (
+              <div className="settings">
+                <SettingsGroup index={0}>
+                  {found.map((p) => (
+                    <SettingsRow
+                      key={p.id}
+                      label={p.name}
+                      sub={`Its models load from ${p.name} once your key is in.`}
+                      onClick={() => pickMore(p.id)}
+                    />
+                  ))}
+                </SettingsGroup>
+              </div>
+            ) : (
+              <p className="hint" role="status">
+                {isDesktop()
+                  ? 'No provider here by that name.'
+                  : 'No provider here by that name. Any OpenAI-compatible one connects by its address in the Stack.'}
+              </p>
+            )}
+          </>
+        ) : null}
+      </Sheet>
+
       <Sheet open={settingUpServer} onClose={() => setSettingUpServer(false)}>
         {settingUpServer ? (
           <>
@@ -378,7 +478,20 @@ export function ConnectionsScreen() {
 
       <Sheet open={Boolean(removing)} onClose={() => setRemoving(undefined)} variant="confirm">
         <h3>Disconnect {removing?.name}?</h3>
-        <p>Its API key is removed from this device. You can connect it again any time.</p>
+        {/* Disconnecting sweeps its models off every stack (providerOps), so
+            the question says so, and offers the one way to keep them. */}
+        <p>
+          Its API key is removed from this device, and its models leave your bench and every stack.
+          To keep them,{' '}
+          <button
+            type="button"
+            className="linklike press-fb"
+            onClick={() => removing && replaceKey(removing.id)}
+          >
+            replace its key
+          </button>{' '}
+          instead.
+        </p>
         <div className="confirm-row">
           <button
             type="button"
@@ -404,6 +517,16 @@ export function ConnectionsScreen() {
       </Sheet>
     </div>
   );
+}
+
+/** The More providers row's line: the first few names it holds, plainly. */
+function moreLine(more: Array<{ name: string }>): string {
+  const names = more.map((p) => p.name);
+  if (names.length === 1) return `${names[0]}, on your own key.`;
+  if (names.length <= 3) {
+    return `${names.slice(0, -1).join(', ')}${names.length > 2 ? ',' : ''} and ${names.at(-1)}, each on your own key.`;
+  }
+  return `${names.slice(0, 3).join(', ')}, and ${names.length - 3} more, each on your own key.`;
 }
 
 /** Choosing which of a live provider's models sit on the Bench. The whole
@@ -489,7 +612,8 @@ function LiveModelPicker({
                   <span className="live-model-name">{m.label}</span>
                   <span className="sub">
                     {m.id}
-                    {m.tools ? '' : ' · chat only, no tools'}
+                    {/* Only a list that says so: a plain list claims neither. */}
+                    {m.tools || m.toolsUnknown ? '' : ' · chat only, no tools'}
                   </span>
                 </span>
               </label>

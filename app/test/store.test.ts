@@ -602,6 +602,55 @@ describe('per-status stacks', () => {
     expect(stackForProfile(stacks(), 'docked').active).toHaveLength(0);
     expect(stackForProfile(stacks(), 'offshore').active).toHaveLength(0);
   });
+
+  // Bring your own keys (2026-10-09): removing a provider takes its models
+  // off every stack, as removing a connected model already does, and leaves
+  // every other provider's alone.
+  it('disconnecting a provider pulls its models from every status, and only its own', async () => {
+    // Connected as a launch finds it (connecting would ask Groq for its list).
+    secrets.set('oscode.secret.groq', 'gsk_test');
+    useApp.setState({ connectedProviders: { groq: true } });
+    const groq = (model: string): StackModelRef => ({
+      kind: 'cloud',
+      provider: 'groq',
+      model,
+      label: model,
+    });
+    // A provider whose id another's starts with is never swept with it.
+    const other: StackModelRef = {
+      kind: 'cloud',
+      provider: 'groqish',
+      model: 'm',
+      label: 'Other',
+    };
+    await useApp.getState().setReasoning(groq('openai/gpt-oss-120b'), 'docked');
+    await useApp.getState().placeSpecialist(groq('llama-3.3-70b'), { category: 'fast' }, 'docked');
+    await useApp
+      .getState()
+      .placeSpecialist(groq('qwen/qwen3-32b'), { category: 'coding' }, 'offline');
+    await useApp.getState().benchSpecialist('cloud:groq:qwen/qwen3-32b', 'offline');
+    await useApp.getState().placeSpecialist(cloudRef, { category: 'writing' }, 'offshore');
+    await useApp.getState().placeSpecialist(other, { category: 'coding' }, 'offshore');
+    const stacks = () => useApp.getState().settings.stacks;
+    expect(stackForProfile(stacks(), 'offline').saved['cloud:groq:qwen/qwen3-32b']).toBeTruthy();
+
+    await useApp.getState().disconnectProvider('groq');
+    expect(secrets.has('oscode.secret.groq')).toBe(false);
+    expect(useApp.getState().connectedProviders.groq).toBe(false);
+    const docked = stackForProfile(stacks(), 'docked');
+    // The anchor is never left dangling: it falls back to the built-in guide.
+    expect(docked.reasoning?.kind).toBe('device');
+    expect(docked.active).toHaveLength(0);
+    // A benched placement is forgotten too.
+    expect(Object.keys(stackForProfile(stacks(), 'offline').saved)).not.toContain(
+      'cloud:groq:qwen/qwen3-32b',
+    );
+    // Claude and the other provider stay where they were.
+    expect(stackForProfile(stacks(), 'offshore').active.map((m) => m.ref)).toEqual([
+      cloudRef,
+      other,
+    ]);
+  });
 });
 
 // Vault: the personal vault auto-registers as a gitOS resource on first

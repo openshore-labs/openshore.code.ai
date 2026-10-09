@@ -446,6 +446,12 @@ function joinSystem(parts: SystemParts, cache: boolean): string {
   return cache ? [parts.stable, ...parts.tail].filter(Boolean).join('\n\n') : parts.legacy;
 }
 
+/** A cloud seat with no key: the provider by the name Cloud Connections
+ *  shows, never its id ("Connect Groq", not "Connect groq"; 2026-10-09). */
+function connectFirst(providerId: string): string {
+  return `Connect ${providerInfo(providerId)?.name ?? providerId} under Cloud Connections first.`;
+}
+
 /** A proposal's first lines, for the approval card. */
 function proposalPreview(text: string, max = 600): string {
   const t = text.trim();
@@ -2363,9 +2369,7 @@ export class StackDriver implements ChatDriver {
     const base = providerInfo(ref.provider)?.openaiBaseUrl;
     if (!base) throw new RouteUnavailable(`No endpoint configured for ${refName(ref)}.`);
     const key = await secretGet(providerSecretKey(ref.provider));
-    if (!key) {
-      throw new RouteUnavailable(`Connect ${ref.provider} under Cloud Connections first.`);
-    }
+    if (!key) throw new RouteUnavailable(connectFirst(ref.provider));
     return { label: refName(ref), baseUrl: base, key, model: ref.model };
   }
 
@@ -2674,9 +2678,7 @@ export class StackDriver implements ChatDriver {
     const tools = images.length ? { codemagic: false, vault: [] } : this.toolsFor(ref);
     if (ref.provider === 'anthropic') {
       const key = await secretGet(providerSecretKey(ref.provider));
-      if (!key) {
-        throw new RouteUnavailable(`Connect ${ref.provider} under Cloud Connections first.`);
-      }
+      if (!key) throw new RouteUnavailable(connectFirst(ref.provider));
       await this.runAnthropic(key, ref, parts, images, tools);
       return;
     }

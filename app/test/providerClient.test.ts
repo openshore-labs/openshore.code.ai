@@ -101,6 +101,83 @@ describe('an OpenAI-compatible reply', () => {
     expect(body.tools).toHaveLength(1);
   });
 
+  // DeepSeek's thinking mode answers 400 when a tool round comes back
+  // without its reasoning_content (2026-10-09): the replay carries it, the
+  // answer never does, and only a reply that sent the field gets it back.
+  it("replays a tool round's reasoning_content, and nothing else gains a field", async () => {
+    const toolCall = delta({
+      tool_calls: [{ index: 0, id: 'c1', function: { name: 'vaultRead', arguments: '{}' } }],
+    });
+    h.stream.mockResolvedValueOnce(
+      sseResponse([
+        delta({ reasoning_content: 'First ' }),
+        delta({ reasoning_content: 'I read the note.' }),
+        toolCall,
+        'data: [DONE]\n\n',
+      ]),
+    );
+    const events = await collect(openAiCompatibleClient(seat).stream([], [{ type: 'function' }]));
+    const done = events.at(-1) as Extract<ProviderEvent, { type: 'done' }>;
+    expect(done.replay).toMatchObject({
+      role: 'assistant',
+      content: null,
+      reasoning_content: 'First I read the note.',
+      tool_calls: [{ id: 'c1' }],
+    });
+    expect(done.text).toBe('');
+    expect(events.filter((e) => e.type === 'text')).toEqual([]);
+
+    // A server that sends `reasoning` (vLLM, OpenRouter, Ollama) is sent
+    // nothing new, and a reply with no tool call replays no reasoning.
+    h.stream.mockResolvedValueOnce(
+      sseResponse([delta({ reasoning: 'hm' }), toolCall, 'data: [DONE]\n\n']),
+    );
+    const other = (await collect(openAiCompatibleClient(seat).stream([], []))).at(-1) as Extract<
+      ProviderEvent,
+      { type: 'done' }
+    >;
+    expect(other.replay).not.toHaveProperty('reasoning_content');
+    h.stream.mockResolvedValueOnce(
+      sseResponse([
+        delta({ reasoning_content: 'thinking' }),
+        delta({ content: 'Answer.' }),
+        'data: [DONE]\n\n',
+      ]),
+    );
+    const plain = (await collect(openAiCompatibleClient(seat).stream([], []))).at(-1) as Extract<
+      ProviderEvent,
+      { type: 'done' }
+    >;
+    expect(plain.replay).toEqual({ role: 'assistant', content: 'Answer.' });
+    expect(plain.text).toBe('Answer.');
+  });
+
+  // Mistral's reasoning models (Magistral) send content as chunks, a
+  // thinking chunk then a text chunk (2026-10-09): the text is the answer,
+  // the thinking is thinking, and neither is lost.
+  it('reads chunked content: text chunks are the answer, thinking chunks are thinking', async () => {
+    h.stream.mockResolvedValueOnce(
+      sseResponse([
+        delta({
+          content: [{ type: 'thinking', thinking: [{ type: 'text', text: 'Check the file. ' }] }],
+        }),
+        delta({ content: [{ type: 'thinking', thinking: [{ type: 'text', text: 'Done.' }] }] }),
+        delta({ content: [{ type: 'text', text: 'It is ' }] }),
+        delta({ content: 'ready.' }),
+        delta({ content: [{ type: 'image_url', image_url: 'x' }] }),
+        'data: [DONE]\n\n',
+      ]),
+    );
+    const events = await collect(openAiCompatibleClient(seat).stream([], []));
+    expect(events.filter((e) => e.type === 'thinking').map((e) => e.text)).toEqual([
+      'Check the file. ',
+      'Done.',
+    ]);
+    const done = events.at(-1) as Extract<ProviderEvent, { type: 'done' }>;
+    expect(done.text).toBe('It is ready.');
+    expect(done.replay).toEqual({ role: 'assistant', content: 'It is ready.' });
+  });
+
   it('throws the server status as a seat that could not answer', async () => {
     h.stream.mockResolvedValue({ ok: false, status: 400, body: null } as unknown as Response);
     const err = await collect(openAiCompatibleClient(seat).stream([], [])).catch((e) => e);
@@ -150,6 +227,64 @@ describe('the iPhone transport', () => {
     expect(body.stream).toBe(false);
     expect(events.filter((e) => e.type === 'text').map((e) => e.text)).toEqual(['Whole answer.']);
     expect(events.filter((e) => e.type === 'thinking').map((e) => e.text)).toEqual(['r', 't']);
+  });
+
+  it("a whole reply's chunked content: the answer from its text, thinking apart, never replayed", async () => {
+    h.stream.mockRejectedValue(new TypeError('Load failed'));
+    h.native.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        choices: [
+          {
+            message: {
+              content: [
+                { type: 'thinking', thinking: [{ type: 'text', text: 'Read it first.' }] },
+                { type: 'text', text: 'Here it is.' },
+              ],
+              tool_calls: [{ id: 'c1', function: { name: 'vaultRead', arguments: '{}' } }],
+            },
+          },
+        ],
+      }),
+    });
+    const events = await collect(openAiCompatibleClient(seat).stream([], [{ type: 'function' }]));
+    expect(events.filter((e) => e.type === 'text').map((e) => e.text)).toEqual(['Here it is.']);
+    expect(events.filter((e) => e.type === 'thinking').map((e) => e.text)).toEqual([
+      'Read it first.',
+    ]);
+    const done = events.at(-1) as Extract<ProviderEvent, { type: 'done' }>;
+    expect(done.text).toBe('Here it is.');
+    expect(done.replay).toMatchObject({ role: 'assistant', content: 'Here it is.' });
+    expect(JSON.stringify(done.replay)).not.toContain('Read it first.');
+  });
+
+  it("a whole reply's tool round carries its reasoning_content back too", async () => {
+    h.stream.mockRejectedValue(new TypeError('Load failed'));
+    h.native.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        choices: [
+          {
+            message: {
+              content: '',
+              reasoning_content: 'Check the note first.',
+              tool_calls: [{ id: 'c1', function: { name: 'vaultRead', arguments: '{}' } }],
+            },
+          },
+        ],
+      }),
+    });
+    const events = await collect(openAiCompatibleClient(seat).stream([], [{ type: 'function' }]));
+    const done = events.at(-1) as Extract<ProviderEvent, { type: 'done' }>;
+    expect(done.replay).toMatchObject({
+      role: 'assistant',
+      content: '',
+      reasoning_content: 'Check the note first.',
+      tool_calls: [{ id: 'c1' }],
+    });
+    expect(done.text).toBe('');
   });
 
   it('never retries after a stop', async () => {

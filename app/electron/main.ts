@@ -108,10 +108,12 @@ import electronUpdaterPkg from 'electron-updater';
 const { autoUpdater } = electronUpdaterPkg;
 import { EngineHost } from './engineHost.js';
 import {
+  HTTP_FETCH_CREDENTIALS,
   LAUNCH_AT_LOGIN_CONFIRM,
   type ConfirmWords,
   appPermissionAllowed,
   cloneConfirm,
+  httpFetchHeaders,
   readOAuthCallback,
   sessionRootRefusal,
   trustConfirm,
@@ -238,8 +240,8 @@ function deviceHash(v: unknown, name: string): string {
 // the main process to fetch on its behalf. Because the renderer is untrusted,
 // this handler is locked down: https only, GET/POST only, a header allowlist,
 // an SSRF block that refuses private/loopback targets (re-checked on every
-// redirect hop), a response-size cap, and a timeout.
-const ALLOWED_HEADERS = new Set(['content-type', 'x-auth-token', 'authorization']);
+// redirect hop), a response-size cap, and a timeout. The header allowlist and
+// the credentials a cross-origin hop drops are in mainGuards.ts.
 const MAX_HTTP_BYTES = 25 * 1024 * 1024;
 
 function isPrivateAddress(ip: string): boolean {
@@ -391,10 +393,7 @@ async function handleHttpFetch(
   req: HttpFetchReq,
 ): Promise<{ ok: boolean; status: number; body: string }> {
   let method = req.method === 'POST' ? 'POST' : 'GET';
-  const headers: Record<string, string> = {};
-  for (const [k, v] of Object.entries(req.headers ?? {})) {
-    if (ALLOWED_HEADERS.has(k.toLowerCase())) headers[k] = v;
-  }
+  const headers = httpFetchHeaders(req.headers);
   let body: string | undefined = method === 'POST' ? req.body : undefined;
   let target = new URL(req.url);
   const requestOrigin = target.origin;
@@ -404,10 +403,11 @@ async function handleHttpFetch(
     if (res.status >= 300 && res.status < 400 && res.location) {
       const next = new URL(res.location, target);
       // P2-9: on a cross-origin hop, drop credentials so the app's Codemagic
-      // token (or any auth header) never leaks to a redirect target it was not
-      // issued for. Once stripped it stays stripped for the rest of the chain.
+      // token (or any auth header, or Claude's key) never leaks to a redirect
+      // target it was not issued for. Once stripped it stays stripped for the
+      // rest of the chain.
       if (next.origin !== requestOrigin) {
-        stripHeaders(headers, (l) => l === 'authorization' || l === 'x-auth-token');
+        stripHeaders(headers, (l) => HTTP_FETCH_CREDENTIALS.has(l));
       }
       // P2-9: per fetch semantics, 301/302/303 turn a POST into a bodyless GET.
       if (method === 'POST' && (res.status === 301 || res.status === 302 || res.status === 303)) {

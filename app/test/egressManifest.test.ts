@@ -22,6 +22,7 @@ import { GUIDE_CARDS } from '../src/lib/guideCards.js';
 import { HARBOR_MINI_PERSONA } from '../src/lib/harborMini.js';
 import { APP_KNOWLEDGE } from '../src/lib/guideKnowledge.js';
 import { VAULT_CARRY_CAVEAT, VAULT_PRIVATE_OFF_CLOUD } from '../src/lib/vaultCopy.js';
+import { PROVIDERS } from '../src/lib/providers.js';
 
 const ROOTS = [
   join(process.cwd(), 'src'),
@@ -73,6 +74,39 @@ describe('what leaves this device', () => {
     for (const host of listed) expect(host in LINK_ONLY_HOSTS, host).toBe(false);
   });
 
+  // Bring your own keys (2026-10-09): every provider in Cloud Connections is
+  // on the cloud-models entry, by its host and in its words, and its key
+  // page is either a host the list already names or a link said to be one.
+  it('names every provider Cloud Connections offers, its host, and its key page', () => {
+    const cloud = EGRESS.find((e) => e.id === 'cloud-models')!;
+    for (const p of PROVIDERS) {
+      if (p.openaiBaseUrl) expect(cloud.hosts, p.id).toContain(new URL(p.openaiBaseUrl).host);
+      const page = new URL(p.apiKeyUrl).host;
+      expect(listed.has(page) || page in LINK_ONLY_HOSTS, p.id).toBe(true);
+      if (p.more && !listed.has(page))
+        expect(LINK_ONLY_HOSTS[page], p.id).toBe('where to get a key');
+    }
+    expect(cloud.hosts).toContain('api.anthropic.com');
+    for (const p of PROVIDERS.filter((x) => x.liveModels)) {
+      expect(cloud.what, p.id).toContain(p.name);
+    }
+    // Both forwarders say they forward; no provider is called private or fast.
+    expect(cloud.what).toContain("OpenRouter (which forwards it to the model's own provider)");
+    expect(cloud.what).toContain(
+      'Hugging Face (which forwards it to one of the providers it lists for the model)',
+    );
+    expect(cloud.what.replace(VAULT_PRIVATE_OFF_CLOUD, '')).not.toMatch(
+      /\b(private|fast|faster|secure)\b/i,
+    );
+    // Every key check, said once for all of them: the key goes to its
+    // provider, the control ask with a made-up key goes to every one but
+    // Anthropic (validateProviderKey), and a provider whose models load live
+    // is asked for its list too.
+    expect(cloud.what).toContain(
+      'Saving a key sends it to its provider, which answers whether it works. To every provider but Anthropic, the same request then goes once more with a made-up key in place of yours, so one that answers anyone is not taken for a yes. For a provider whose models load from it, connecting and Choose models also ask it for the list of models it offers.',
+    );
+  });
+
   it('says for every entry who gets what, and when, starting with OpenShore', () => {
     for (const e of EGRESS) {
       expect(RECIPIENT_ORDER as readonly string[]).toContain(e.recipient);
@@ -120,8 +154,11 @@ describe('what leaves this device', () => {
   it("names no plan's image step that goes to a cloud model without asking", () => {
     expect('PLAN_IMAGE_STEP_LINE' in manifest).toBe(false);
     const cloud = EGRESS.find((e) => e.id === 'cloud-models')!;
+    // Bring your own keys (2026-10-09): saving any provider's key checks it
+    // with that provider, and every provider whose models load live is asked
+    // for its list, so the when says so for all of them, not two by name.
     expect(cloud.when).toBe(
-      'Only when you pick a cloud model or place one in your Stack, and only on the turns it answers. On your computer, the coding agent asks first in each task. For Venice or OpenRouter, also when you connect its key or open Choose models.',
+      'Only when you pick a cloud model or place one in your Stack, and only on the turns it answers. On your computer, the coding agent asks first in each task. Also when you save a provider key, and for one whose models load from it, when you open Choose models.',
     );
     // Every way the exception was worded on a surface (the list's own line,
     // the Connections lead, Privacy plainly, the guides and Harbor Lite's
