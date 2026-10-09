@@ -119,6 +119,23 @@ OpenRouter list no typed model ids: their models load live
 a server is "always on" or private; renting is said plainly once. Plan and
 follow-ups: `docs/connect-anywhere-proposal.md`, `os-code/PROGRESS.md`.
 
+**Bring your own keys, any provider (founder, 2026-10-09)** is strictly the
+person's keys: OpenShore runs no gateway, resells no model, rents no server
+("Rent one for me" stays parked). Cloud Connections names eighteen providers,
+the eleven newest behind More providers, every list live from the provider
+on the person's key, and a key counts as checked only when a made-up one is
+turned down. Any other provider connects in the Stack's Connect a model by
+its address, in the OpenAI or the Anthropic format, ticking models from that
+address's own list. "Passes requests to a cloud provider" (a gateway such as
+LiteLLM) is stricter only: it makes a connection count as leaving, so private
+notes never go to it, and never makes one local. A docked server can keep a
+provider's key for its coding sessions (Cloud Connections, Keys on your
+server; or `osc key add` over SSH), never checks it with the provider, takes
+only https addresses off its own network, and copy never calls its store
+encrypted (`os-code/src/auth/keyHome.ts`); routines and the free chat stay
+on a local model. Plan: `docs/byok-any-provider-plan.md`; review:
+`docs/security-privacy-review-2026-10-09-byok.md`.
+
 ## Premium UX out of the box (standing rule, founder 2026-09-02)
 
 OpenShore is a machine that builds usable software, so everything a coding
