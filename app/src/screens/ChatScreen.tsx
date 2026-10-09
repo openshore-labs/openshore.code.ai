@@ -51,7 +51,14 @@ import { VoiceMode } from '../components/VoiceMode.js';
 import type { VoiceBreak } from '../lib/voice/voiceBreaks.js';
 import { Sheet } from '../components/Sheet.js';
 import { HARBOR_MINI_MODEL_ID, HARBOR_MINI_EMPTY_HINT } from '../lib/harborMini.js';
-import { buildRotation, type Greeting } from '../lib/greeting.js';
+import {
+  buildDeck,
+  dealCards,
+  greetingStyleOf,
+  loadDeck,
+  revealHoldMs,
+  type SplashCard,
+} from '../lib/greetingDecks.js';
 import { SAMPLE_ROW_LABEL, SAMPLE_ROW_SUB } from '../lib/sampleProject.js';
 import { hapticTick } from '../lib/haptics.js';
 import { pointsAtWorkspace } from '../lib/chatRescue.js';
@@ -514,15 +521,18 @@ export function ChatScreen({ compact }: { compact: boolean }) {
   };
 
   // The splash greeting. A fresh time-and-day-aware landing line lands first;
-  // tapping the line rotates on through the world languages, in an order freshly
-  // shuffled each time we arrive at the empty state.
+  // tapping the line walks on through the deck picked in Settings (the world
+  // languages by default, or jokes, trivia, sports, crossword clues, words, or
+  // fortunes), in an order freshly shuffled each time we arrive at the empty
+  // state.
   const isEmpty = !(conv && thread && (thread.items.length > 0 || conv.pendingFirstMessage));
-  const [rotation, setRotation] = useState(() => buildRotation());
+  const greetingStyle = greetingStyleOf(settings.greetingStyle);
+  const [rotation, setRotation] = useState(() => buildDeck(greetingStyle));
   const [rotIdx, setRotIdx] = useState(0);
   // Crossfade layers: the last is the current word rising in; any earlier ones
   // are lifting out and drop themselves on animationend. Each carries a unique
   // id from this monotonic counter so a wrap back to the landing still remounts.
-  const [layers, setLayers] = useState<{ id: number; g: Greeting }[]>(() => [
+  const [layers, setLayers] = useState<{ id: number; g: SplashCard }[]>(() => [
     { id: 0, g: rotation[0] },
   ]);
   const seq = useRef(0);
@@ -538,11 +548,11 @@ export function ChatScreen({ compact }: { compact: boolean }) {
   const [hint, setHint] = useState(true);
   const wasEmpty = useRef(true);
 
-  // A second Easter egg on the same line: holding it down reveals the
-  // language's English name in a small bubble, so the tap-through rotation
-  // stays guessable without a label sitting there year-round. longPressFired
-  // tracks whether the hold actually fired, so the pointerup's click doesn't
-  // also rotate to the next language.
+  // A second Easter egg on the same line: holding it down reveals the card's
+  // answer in a small bubble (the language's English name, a joke's punchline,
+  // a question's answer), so the tap-through stays guessable without a label
+  // sitting there year-round. longPressFired tracks whether the hold actually
+  // fired, so the pointerup's click doesn't also rotate to the next card.
   const [langBubbleVisible, setLangBubbleVisible] = useState(false);
   const longPressFired = useRef(false);
   const longPressTimer = useRef<number | null>(null);
@@ -561,7 +571,10 @@ export function ChatScreen({ compact }: { compact: boolean }) {
       hapticTick();
       setLangBubbleVisible(true);
       if (bubbleHideTimer.current !== null) window.clearTimeout(bubbleHideTimer.current);
-      bubbleHideTimer.current = window.setTimeout(() => setLangBubbleVisible(false), 1400);
+      bubbleHideTimer.current = window.setTimeout(
+        () => setLangBubbleVisible(false),
+        revealHoldMs(rotation[rotIdx].reveal),
+      );
     }, 450);
   };
   const endLangPress = () => {
@@ -570,14 +583,20 @@ export function ChatScreen({ compact }: { compact: boolean }) {
       longPressTimer.current = null;
     }
   };
+  // The deck the current rotation was dealt from, so a change in Settings
+  // deals the new one on the next visit to the empty state.
+  const dealtStyle = useRef(greetingStyle);
   useEffect(() => {
     // Reshuffle and re-pick a fresh landing line only when we return to the
-    // empty state from a conversation, so the first paint keeps its initial
-    // rotation (no flash) and every fresh chat gets a new greeting and order.
-    if (isEmpty && !wasEmpty.current) {
-      const rot = buildRotation();
+    // empty state from a conversation, or when the deck changed in Settings, so
+    // the first paint keeps its initial rotation (no flash) and every fresh
+    // chat gets a new greeting and order.
+    if (isEmpty && (!wasEmpty.current || dealtStyle.current !== greetingStyle)) {
+      const rot = buildDeck(greetingStyle);
+      dealtStyle.current = greetingStyle;
       setRotation(rot);
       setRotIdx(0);
+      setLangBubbleVisible(false);
       seq.current += 1;
       setLayers([{ id: seq.current, g: rot[0] }]);
       // Arrived on Slack Water: hold a beat while the page surfaces, then
@@ -601,7 +620,28 @@ export function ChatScreen({ compact }: { compact: boolean }) {
       }
     }
     wasEmpty.current = isEmpty;
-  }, [isEmpty]);
+  }, [isEmpty, greetingStyle]);
+  // A picked deck is its own lazy chunk: until it arrives the rotation is the
+  // landing line alone, and the deck is dealt in behind it the moment it lands,
+  // so the line on screen never changes under the person. A failed load keeps
+  // the plain greeting; the next visit to the empty state tries again.
+  const awaitingDeck = greetingStyle !== 'languages' && rotation.length === 1;
+  useEffect(() => {
+    if (!awaitingDeck) return;
+    let live = true;
+    loadDeck(greetingStyle).then(
+      (data) => {
+        if (!live) return;
+        setRotation((rot) =>
+          rot.length === 1 ? [rot[0], ...dealCards(greetingStyle, data)] : rot,
+        );
+      },
+      () => {},
+    );
+    return () => {
+      live = false;
+    };
+  }, [awaitingDeck, greetingStyle]);
   const greeting = rotation[rotIdx];
 
   // What the paired hub lets this device do (P0-1). The remote driver reads
@@ -1027,7 +1067,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
                     className="greeting-line press-fb"
                     dir="auto"
                     lang={greeting.code}
-                    aria-label={greeting.english}
+                    aria-label={greeting.label}
                     onClick={() => {
                       if (longPressFired.current) {
                         longPressFired.current = false;
@@ -1052,9 +1092,10 @@ export function ChatScreen({ compact }: { compact: boolean }) {
                           <span
                             key={layer.id}
                             className={
-                              current
+                              (current
                                 ? `greeting-swap${layer.id === landingSwellId ? ' greeting-swap-swell' : ''}`
-                                : 'greeting-swap greeting-swap-out'
+                                : 'greeting-swap greeting-swap-out') +
+                              (layer.g.riddle ? ' greeting-swap-riddle' : '')
                             }
                             onAnimationEnd={
                               current
@@ -1066,19 +1107,19 @@ export function ChatScreen({ compact }: { compact: boolean }) {
                             }
                           >
                             {layer.id === landingSwellId ? (
-                              <SwellText text={layer.g.native} pace={LANDING_PACE} />
+                              <SwellText text={layer.g.line} pace={LANDING_PACE} />
                             ) : (
-                              layer.g.native
+                              layer.g.line
                             )}
                           </span>
                         );
                       })}
                     </span>
                     <span
-                      className={`greeting-lang-bubble${langBubbleVisible ? ' greeting-lang-bubble-visible' : ''}`}
+                      className={`greeting-lang-bubble${langBubbleVisible ? ' greeting-lang-bubble-visible' : ''}${greeting.reveal.length > 18 ? ' greeting-lang-bubble-long' : ''}`}
                       aria-hidden={!langBubbleVisible}
                     >
-                      {greeting.lang}
+                      {greeting.reveal}
                     </span>
                   </button>
                 </h1>

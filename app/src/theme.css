@@ -5604,6 +5604,17 @@ button.vault-tag {
     opacity var(--dur-3) var(--ease-spring),
     transform var(--dur-3) var(--ease-spring);
 }
+/* A punchline or an answer is a phrase, not a word: it wraps inside a
+   narrower card, centered, rather than running one long pill off a phone. */
+.greeting-lang-bubble-long {
+  white-space: normal;
+  width: max-content;
+  max-width: min(280px, calc(100vw - 48px));
+  border-radius: var(--radius);
+  padding: 8px 14px;
+  text-align: center;
+  line-height: 1.35;
+}
 /* The outgoing and incoming languages share one grid cell so the old word can
    crossfade out over the new one without either reflowing the centered line. */
 .greeting-swap-stack {
@@ -5693,6 +5704,14 @@ button.vault-tag {
   letter-spacing: -0.014em;
   text-wrap: balance;
   color: var(--ink);
+}
+
+/* A joke, a question, or a clue is a whole sentence, not a greeting: a step
+   smaller, so it holds to two lines at a phone width and never spills down
+   onto the composer. Per layer, so the landing line fading out keeps its own
+   size while the card rises in. */
+.greeting-swap-riddle {
+  font-size: clamp(var(--text-7), 3.5vw, var(--text-8));
 }
 
 .greeting p {

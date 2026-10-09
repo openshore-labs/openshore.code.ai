@@ -4406,3 +4406,45 @@ execution contract. Newest at the bottom.
 - 2026-10-07 (connect anywhere, install): `install-server.sh` is fetched from the public `openshore-releases` and trusts only a package signed with the pinned desktop release key (the same message as `releaseVerify.ts`, checked with `openssl pkeyutl -rawin`), never installs Tailscale itself (it prints Tailscale's own line and stops), and runs the daemon under systemd as a non-login `openshore` user on the tailnet bind. Node is bundled in the package, so a server needs none; x64 only for now. The script itself rides TLS from GitHub, the same trust as Tailscale's own installer.
 - 2026-10-07 (connect anywhere, providers): Venice and OpenRouter list no typed model ids; their models load from `GET {base}/models` on the person's key (`liveModels`), because a router's list changes weekly and a typed id is a dead button. The first set is every Venice text model (capped at 24) and, for OpenRouter, the newest tool-taking model from each of ten well-known makers, chosen by maker prefix, never by a typed id; the person changes it under Choose models. Privacy words are Venice's own and attributed ("Venice says"), and OpenRouter's say it forwards to the model's own provider. The model-list request is on the egress list's `cloud-models` entry.
 - 2026-10-08 (CTO review of connect anywhere before main, founder-directed): three reviewers (the daemon, pairing and the installer; what leaves the device and the claims; conflicts with what 2026-10-07 and 2026-10-08 shipped), each verified against the code. Fixed before merge: the admin pairing routes answer only on a server (`pairingConsole`), so the desktop's yes stays in its own dialog and a docked phone cannot let another device in there; a server whose loopback port is held by someone else refuses to start, since `osc pair --server` sends the shared token there; the server package is root-owned in the archive and on disk (`--owner=0`, `--no-same-owner`, `chown -R root:root`), so the runner's uid never owns the engine; the unit gains `SHELL=/bin/bash` for the docked terminal and `ProtectSystem=full`, `ProtectHome`, `PrivateDevices`, `RestrictSUIDSGID`, `ProtectKernelTunables`, `ProtectControlGroups`; the installer asks for OpenSSL 3 by name; device labels in the terminal lose control and format characters; the release installs with `SKIP_NATIVE_REBUILD=1` and smoke-loads node-pty on the bundled Node, and the server steps cannot hold a desktop release back until the first server release has gone out. Vault and Crew name a docked server Your server, and Vault's where-it-lives line carries the renting line; Venice's taglines say no privacy words until a real `/models` answer is pinned; the egress entry says when the model list is asked for; the paywall no longer sells docking; the guides name the new labels (Code, Dock, Docked devices); Scan stays in the first screen, the two docking paths one choice above it and the other ways in below. Kept: every door to the room says Connect your computer, the room is named Computer (founder's later instruction over the 2026-10-07 nav note). Follow-ups in PROGRESS.
+- **Greeting styles (2026-09-27):** the splash greeting's tap and hold come
+  in four decks picked in Settings, Greeting (Languages stays the default).
+  The founder's "Trivial Pursuit" ships as "Trivia Night", since that is
+  Hasbro's game name and the questions are not from it; "Popsicle Jokes"
+  keeps the founder's name, as the common phrase for the genre. The landing
+  line stays the time-and-day greeting in every deck, so the splash still
+  opens on a welcome and the egg is found by the tap, as before.
+- **Greeting decks at volume (2026-09-27):** each deck ships as its own lazy
+  JSON chunk rather than inline, so thousands of cards cost the first load
+  nothing. Only reviewed content ships: a card a fact-check agent doubted is
+  dropped, never argued back in, and trivia and sports carry no result from
+  2023 on (the edge of what the writers reliably knew). Fortune numbers are
+  drawn at deal time, not stored. Spare, unreviewed Word of the Day top-ups
+  were not shipped, since the reviewed deck already met the count.
+- **Greeting decks DEI audit (founder, 2026-09-27):** the trivia and sports
+  decks are selected for balance, not just accuracy: answers about women
+  roughly match answers about men, the US is capped near a tenth of trivia
+  and a quarter of sports, and team names drawn from Native peoples are left
+  out while the deck can do without them. Athletes are named by the names
+  they chose, never birth names they left. Jokes use "they" or vary
+  characters rather than defaulting a job to one gender. When an auditor kept
+  a card that carries history (blackface, the Lost Cause, a hate movement's
+  slogan), it was dropped by hand.
+- **Greeting decks web audit (2026-09-27):** in this sandbox WebFetch is
+  blocked for every reference site, so a card counts as web-confirmed when a
+  WebSearch result summary states the fact and names a trustworthy source
+  (cited in the audit notes). Every new or changed card had a second,
+  independent reader with its own searches. Cards that could not be
+  confirmed were cut rather than shipped as read-only: all 206 capital-city
+  cards and the "In what year" run left with the NBA and World Series
+  champion-by-year runs, and several long template runs (rivers through
+  European cities, chemical symbols, SI units) gave up part of their length.
+  Scores are written "New Zealand won, 34 to 31." so no hyphen reads as a
+  dash, and competition names are pinned (FIFA, men's, Summer Olympics)
+  wherever another event shares the year.
+- 2026-10-09 (porting the greeting decks to main): main was re-rooted on
+  2026-09-30, so the branch's 15 commits came over as one change rather than a
+  merge. The decks follow main's 2026-10-07 ruling: straight apostrophes and
+  quotes, like every other line, until the app-wide typographic sweep (the
+  deck test now holds that, not the reverse). The pick is a device setting
+  (`settingsReach.ts`), kept off the account's eight preferences, and the
+  Settings check is the drawn `CheckGlyph`.
