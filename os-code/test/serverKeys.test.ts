@@ -111,9 +111,13 @@ afterEach(() => {
   _setFakeKeychain(undefined);
   restoreHome(realHome);
   delete process.env.OSC_HOME;
-  rmSync(home, { recursive: true, force: true });
-  rmSync(logs, { recursive: true, force: true });
-  rmSync(workspace, { recursive: true, force: true });
+  // On Windows a session's last child process can hold its workspace for a
+  // moment after the daemon closes (EBUSY on CI, 2026-10-09), so the
+  // removals retry the way Node's own rm does for that case.
+  const gone = { recursive: true, force: true, maxRetries: 20, retryDelay: 100 };
+  rmSync(home, gone);
+  rmSync(logs, gone);
+  rmSync(workspace, gone);
 });
 
 describe('the key routes on a server', () => {
