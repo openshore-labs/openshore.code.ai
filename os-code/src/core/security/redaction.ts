@@ -10,8 +10,24 @@ interface RedactionRule {
 // Order matters: specific token shapes first, generic assignments last.
 const RULES: RedactionRule[] = [
   { kind: 'anthropic-key', pattern: /sk-ant-[A-Za-z0-9_-]{10,}/g },
+  // The key shapes of the providers `osc key add` names (keys on your server,
+  // 2026-10-09), ahead of the generic sk- rule, which stops at a second dash
+  // and would leave the rest of such a key in the text.
+  { kind: 'openrouter-key', pattern: /sk-or-v1-[A-Za-z0-9_-]{20,}/g },
+  { kind: 'openai-key', pattern: /sk-(?:proj|svcacct|admin)-[A-Za-z0-9_-]{20,}/g },
+  { kind: 'groq-key', pattern: /\bgsk_[A-Za-z0-9]{20,}/g },
+  { kind: 'xai-key', pattern: /\bxai-[A-Za-z0-9]{20,}/g },
+  { kind: 'cerebras-key', pattern: /\bcsk-[A-Za-z0-9]{20,}/g },
+  { kind: 'nvidia-key', pattern: /\bnvapi-[A-Za-z0-9_-]{20,}/g },
+  { kind: 'huggingface-token', pattern: /\bhf_[A-Za-z0-9]{20,}/g },
+  { kind: 'together-key', pattern: /\btgp_v1_[A-Za-z0-9_-]{20,}/g },
+  { kind: 'perplexity-key', pattern: /\bpplx-[A-Za-z0-9]{20,}/g },
   { kind: 'openai-key', pattern: /sk-[A-Za-z0-9]{20,}/g },
   { kind: 'stripe-key', pattern: /\b[rs]k_(?:live|test)_[A-Za-z0-9]{16,}/g },
+  // Novita's keys, after Stripe's so a Stripe key keeps its own label. The
+  // first twenty characters carry no underscore, so a snake_case name in
+  // code (the kernel's sk_ fields) is left alone.
+  { kind: 'novita-key', pattern: /\bsk_[A-Za-z0-9]{20,}[A-Za-z0-9_-]*/g },
   { kind: 'openshore-token', pattern: /\b(?:osc|pc)_[A-Za-z0-9_-]{24,}/g },
   { kind: 'github-token', pattern: /gh[pousr]_[A-Za-z0-9]{20,}/g },
   { kind: 'github-pat', pattern: /github_pat_[A-Za-z0-9_]{20,}/g },

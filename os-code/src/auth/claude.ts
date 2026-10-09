@@ -9,6 +9,22 @@ import { deleteCredential, getCredential, setCredential, type StoreBackend } fro
 const KEY_NAME = 'anthropic-api-key';
 const WORKSPACE_NAME = 'anthropic-workspace-id';
 
+/** Where the Claude key and its workspace live in the credential store. */
+export const CLAUDE_KEY_NAME = KEY_NAME;
+export const CLAUDE_WORKSPACE_NAME = WORKSPACE_NAME;
+
+/** Anthropic's own API address, the only one the Claude workspace id goes to. */
+export const CLAUDE_API_BASE = 'https://api.anthropic.com';
+
+export function isClaudeAddress(baseUrl: string): boolean {
+  try {
+    const url = new URL(baseUrl);
+    return url.origin === CLAUDE_API_BASE && url.pathname === '/';
+  } catch {
+    return false;
+  }
+}
+
 /** Resolution order: credential store, then the standard env var. */
 export function getAnthropicKey(): string | undefined {
   return getCredential(KEY_NAME) ?? process.env.ANTHROPIC_API_KEY ?? undefined;
@@ -20,9 +36,14 @@ export function getAnthropicWorkspace(): string | undefined {
   return getCredential(WORKSPACE_NAME) ?? process.env.ANTHROPIC_WORKSPACE_ID ?? undefined;
 }
 
-/** Headers for a request on the connected key, with the workspace when set. */
-export function anthropicAuthHeaders(key: string, workspaceId?: string): Record<string, string> {
-  const ws = (workspaceId ?? getAnthropicWorkspace())?.trim();
+/** Headers for a request on the connected key, with the workspace when set.
+ *  Unset reads the Claude workspace; null sends none, for a key or a host
+ *  that is not the Claude key at Anthropic's own address. */
+export function anthropicAuthHeaders(
+  key: string,
+  workspaceId?: string | null,
+): Record<string, string> {
+  const ws = (workspaceId === null ? undefined : (workspaceId ?? getAnthropicWorkspace()))?.trim();
   return {
     'x-api-key': key,
     'anthropic-version': '2023-06-01',

@@ -13,7 +13,7 @@ import { budgetFor, detectHardware } from '../router/resourceBudget.js';
 import { checkLinks } from '../connect/health.js';
 import { searchProviderFor } from '../core/tools/search/index.js';
 import { readLicenseState, describeEntitlement } from '../license/verify.js';
-import { fileKeyHolder, storeBackend } from '../auth/store.js';
+import { keyHome } from '../auth/keyHome.js';
 import { listSessions } from '../daemon/session.js';
 import { failLine, header, okLine, out, skipLine, warnLine } from './util.js';
 
@@ -94,8 +94,11 @@ export async function doctorCommand(): Promise<void> {
     const cloud = providers.all().find(([, p]) => p.kind === 'cloud');
     if (cloud) {
       const health = await cloud[1].health();
-      if (health.ok) okLine(`${health.detail} Keys stay in the ${keyHome()}.`);
-      else warnLine(health.detail, 'osc login');
+      if (health.ok) {
+        const home = keyHome();
+        okLine(`${health.detail} Keys stay in ${home.where}.`);
+        if (home.caveat) out(t.muted(home.caveat));
+      } else warnLine(health.detail, 'osc login');
     } else {
       warnLine(
         'An Anthropic key is stored but no anthropic provider is in your config. Add one to use it.',
@@ -174,15 +177,4 @@ export async function doctorCommand(): Promise<void> {
   } else {
     out(t.ok('Everything that matters is healthy. Open a repo and run osc.'));
   }
-}
-
-/** Where this machine keeps the keys, in plain words. */
-function keyHome(): string {
-  if (storeBackend() === 'keychain') return 'OS keychain';
-  const holder = fileKeyHolder();
-  if (holder === 'macos-keychain') return 'encrypted local store, its key in the macOS Keychain';
-  if (holder === 'windows-dpapi')
-    return 'encrypted local store, its key held by Windows for your account';
-  if (holder === 'unreadable') return 'encrypted local store (its key is locked right now)';
-  return 'encrypted local store';
 }

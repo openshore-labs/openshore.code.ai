@@ -3,6 +3,8 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { t } from '../brand/theme.js';
 import { globalConfigPath, loadConfig, saveGlobalConfig } from '../config/load.js';
+import { WINDOW_MAX, WINDOW_MIN, placeOrchestrator } from '../auth/providerKeys.js';
+import { isLocalUrl } from '../core/security/egress.js';
 import {
   CAPABILITIES,
   ROLE_CATEGORY,
@@ -55,18 +57,69 @@ export async function stackShowCommand(): Promise<void> {
   );
 }
 
-export async function stackUseCommand(model: string, provider?: string): Promise<void> {
+export async function stackUseCommand(
+  model: string,
+  provider?: string,
+  options: { context?: string } = {},
+): Promise<void> {
   const { config } = loadConfig();
   const providerId = provider ?? config.stack.orchestrator?.provider ?? 'ollama';
-  if (!config.providers[providerId]) {
+  const endpoint = Object.hasOwn(config.providers, providerId)
+    ? config.providers[providerId]
+    : undefined;
+  if (!endpoint) {
     warnLine(
       `No provider "${providerId}" in your config. Configured: ${Object.keys(config.providers).join(', ')}.`,
     );
     process.exitCode = 1;
     return;
   }
+  // The window a provider off this network lists for the model (keys on your
+  // server, 2026-10-09): placed the way the app places it, so a keyed
+  // frontier model is not budgeted at the 8192 guess.
+  if (options.context !== undefined) {
+    const tokens = /^\d+$/.test(options.context.trim()) ? Number(options.context) : NaN;
+    if (!(tokens >= WINDOW_MIN && tokens <= WINDOW_MAX)) {
+      warnLine(
+        `--context is the model's window in whole tokens, from ${WINDOW_MIN} to ${WINDOW_MAX}, like 131072.`,
+      );
+      process.exitCode = 1;
+      return;
+    }
+    try {
+      const placed = placeOrchestrator({ provider: providerId, model, contextTokens: tokens });
+      okLine(`The orchestrator is now ${model} on ${providerId}.`);
+      if (placed.contextTokens === undefined) {
+        out(
+          t.muted(
+            endpoint.kind === 'anthropic'
+              ? "OpenShore knows Claude's window, so --context is not kept for it."
+              : 'A model on this network is budgeted against the window its server serves, so --context is not kept for it.',
+          ),
+        );
+      }
+    } catch (err) {
+      warnLine((err as Error).message);
+      process.exitCode = 1;
+    }
+    return;
+  }
   saveGlobalConfig({ stack: { orchestrator: { provider: providerId, model } } });
   okLine(`The orchestrator is now ${model} on ${providerId}.`);
+  // A provider off this network with no window kept for the model: the
+  // window is guessed from its name, which for an id with no size in it is
+  // small, and so is its seat.
+  if (
+    endpoint.kind === 'openai-compatible' &&
+    !isLocalUrl(endpoint.baseUrl) &&
+    !(endpoint.contextWindows && Object.hasOwn(endpoint.contextWindows, model))
+  ) {
+    out(
+      t.muted(
+        "OpenShore guesses this model's window from its name until you give the one its provider lists. Run this again with --context <tokens>.",
+      ),
+    );
+  }
 }
 
 export async function stackEnableCommand(

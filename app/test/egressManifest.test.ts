@@ -158,7 +158,7 @@ describe('what leaves this device', () => {
     // with that provider, and every provider whose models load live is asked
     // for its list, so the when says so for all of them, not two by name.
     expect(cloud.when).toBe(
-      'Only when you pick a cloud model or place one in your Stack, and only on the turns it answers. On your computer, the coding agent asks first in each task. Also when you save a provider key, and for one whose models load from it, when you open Choose models.',
+      'Only when you pick a cloud model or place one in your Stack, and only on the turns it answers. On your computer, the coding agent asks first in each task. Also when you save a provider key, and for one whose models load from it, when you open Choose models. A key you add with osc key add, on your computer or a server you dock, is used there only by coding sessions on the model you place, and they ask first in each task.',
     );
     // Every way the exception was worded on a surface (the list's own line,
     // the Connections lead, Privacy plainly, the guides and Harbor Lite's

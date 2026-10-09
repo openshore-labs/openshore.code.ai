@@ -9,6 +9,7 @@ import {
   subscriptionSignInStub,
 } from '../auth/claude.js';
 import { saveGlobalConfig, loadConfig } from '../config/load.js';
+import { keyHome } from '../auth/keyHome.js';
 import { askSecret, confirm, okLine, out, warnLine } from './util.js';
 
 export interface LoginOptions {
@@ -56,9 +57,9 @@ export async function loginCommand(options: LoginOptions): Promise<void> {
     process.exitCode = 1;
     return;
   }
-  okLine(
-    `${result.detail} (stored in the ${result.backend === 'keychain' ? 'OS keychain' : 'encrypted local store'})`,
-  );
+  const home = keyHome(result.backend);
+  okLine(`${result.detail} (stored in ${home.where})`);
+  if (home.caveat) out(t.muted(home.caveat));
 
   // Make sure an anthropic provider exists so escalation can find it.
   const { config } = loadConfig();

@@ -283,31 +283,59 @@ export function ensureVaultRoot(dir: string): string {
  *  a crash mid-write can never leave a torn config on disk. */
 export function saveGlobalConfig(partial: unknown): string {
   const path = globalConfigPath();
-  mkdirSync(oscHome(), { recursive: true });
-  let current: unknown = {};
-  if (existsSync(path)) {
-    const { value, error } = readJson(path);
-    if (error) {
-      // Overwriting a corrupt config with a partial would discard everything
-      // it held. Preserve it for recovery and refuse the write; the caller can
-      // fix or delete it and retry.
-      const backup = `${path}.corrupt`;
-      try {
-        copyFileSync(path, backup);
-      } catch {
-        // Best-effort: refusing the write matters more than the copy landing.
-      }
-      throw new Error(
-        `Refusing to save: ${error}. The existing config could not be parsed; a copy was preserved at ${backup}. Fix or delete ${path}, then retry.`,
-      );
-    }
-    current = value ?? {};
-  }
-  const next = deepMerge(current, partial);
+  const next = deepMerge(readGlobalForWrite(path), partial);
   // Validate before writing so a bad save can never brick the CLI.
   ConfigSchema.parse(next);
   writeFileAtomic(path, `${JSON.stringify(next, null, 2)}\n`);
   return path;
+}
+
+/** The global file as it stands, for a write: {} when there is none yet. An
+ *  unparsable file is preserved and refused, never read as {}. */
+function readGlobalForWrite(path: string): Record<string, unknown> {
+  mkdirSync(oscHome(), { recursive: true });
+  if (!existsSync(path)) return {};
+  const { value, error } = readJson(path);
+  if (error) {
+    // Overwriting a corrupt config with a partial would discard everything
+    // it held. Preserve it for recovery and refuse the write; the caller can
+    // fix or delete it and retry.
+    const backup = `${path}.corrupt`;
+    try {
+      copyFileSync(path, backup);
+    } catch {
+      // Best-effort: refusing the write matters more than the copy landing.
+    }
+    throw new Error(
+      `Refusing to save: ${error}. The existing config could not be parsed; a copy was preserved at ${backup}. Fix or delete ${path}, then retry.`,
+    );
+  }
+  if (value === undefined) return {};
+  if (!isPlainObject(value)) {
+    throw new Error(`Refusing to save: ${path} does not hold a JSON object. Fix or delete it.`);
+  }
+  return value;
+}
+
+/** Edit the global file in place, for a change a deep merge cannot make (a
+ *  removal). The edit gets the file's own JSON, every key it holds kept; the
+ *  result is validated before the atomic write, and an edit that throws
+ *  writes nothing (keys on your server, 2026-10-09). */
+export function editGlobalConfig(edit: (raw: Record<string, unknown>) => void): string {
+  const path = globalConfigPath();
+  const raw = readGlobalForWrite(path);
+  edit(raw);
+  ConfigSchema.parse(raw);
+  writeFileAtomic(path, `${JSON.stringify(raw, null, 2)}\n`);
+  return path;
+}
+
+/** The global file alone, parsed, with no project file over it: what this
+ *  machine's own config says. An unreadable or invalid file throws. */
+export function loadGlobalConfig(): OscConfig {
+  const { value, error } = readJson(globalConfigPath());
+  if (error) throw new Error(`Could not read ${error}`);
+  return ConfigSchema.parse(value ?? {});
 }
 
 /** Write via a temp file on the same directory, then rename over the target.

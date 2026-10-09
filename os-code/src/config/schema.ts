@@ -2,10 +2,16 @@
 // defaults: an EMPTY config file is a valid, working, single-model setup.
 // Complexity is opt-in, which is the accessibility promise in schema form.
 import { z } from 'zod';
+import { PROVIDER_KEY_REF_PATTERN } from './providerKeyRef.js';
 
 // ---------------------------------------------------------------------------
 // Providers
 // ---------------------------------------------------------------------------
+
+/** A credential name in the provider-key namespace, and nothing else. */
+const ProviderKeyRefSchema = z
+  .string()
+  .regex(PROVIDER_KEY_REF_PATTERN, 'must be a provider-key:<id> name (osc key add writes it)');
 
 export const OpenAICompatibleEndpointSchema = z.object({
   kind: z.literal('openai-compatible'),
@@ -25,6 +31,28 @@ export const OpenAICompatibleEndpointSchema = z.object({
    * 'auto' only on the eval record (I14).
    */
   numCtx: z.enum(['auto', 'off']).optional(),
+  /**
+   * Where this endpoint's key lives in the credential store, when it is not
+   * in a variable (keys on your server, 2026-10-09): only a
+   * `provider-key:<id>` name, so a config can never point a provider at the
+   * Claude key, the GitHub token, the data key or a session's keys. Read
+   * after `apiKeyEnv` (endpointApiKey). Machine config, as the whole
+   * providers tree is.
+   */
+  apiKeyRef: ProviderKeyRefSchema.optional(),
+  /**
+   * The base already carries its version (https://openrouter.ai/api/v1), so
+   * the engine adds /models, /chat/completions and /embeddings with no /v1 of
+   * its own. Unset, the base excludes it (http://localhost:11434), as before.
+   */
+  versionedBase: z.boolean().optional(),
+  /**
+   * The window each model is served, in tokens, as the app knows it from the
+   * provider's own list (POST /stack/orchestrator). Read only for an endpoint
+   * off this network: a local server's window is the one it serves
+   * (servedWindow.ts), never a listed one.
+   */
+  contextWindows: z.record(z.string(), z.number().int().min(1024).max(10_000_000)).optional(),
 });
 
 export const AnthropicEndpointSchema = z.object({

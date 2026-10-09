@@ -109,6 +109,8 @@ import { vaultPackSize } from '../harness/vault/settings.js';
 import { HANDOFF_MAX_BYTES } from '../harness/handoff.js';
 import { buildChatPack, parseVaultOverrides, vaultRoute } from './vaultRoutes.js';
 import { freeChat, type FreeChatPackContext } from './freeChat.js';
+import { KEY_WRITE_BUCKET, isKeyRoute, keyRoute } from './keyRoutes.js';
+import { StackError } from '../router/stack.js';
 import type { VaultPrivacyWire } from './vaultWire.js';
 import { logger } from '../util/log.js';
 
@@ -161,6 +163,13 @@ const DEFAULT_IDLE_EVICT_EVERY_MS = 60_000;
 // Why a member's session may not open (or be revived) where the vault is.
 const MEMBER_VAULT_REFUSAL =
   "A member session cannot open in a vault folder or in a folder that holds one, since those hold people's own notes. Pick a project folder.";
+
+/** A session create on a server with no model chosen yet. The command is on
+ *  its own paragraph (tenet 9), run as the server's own account. The app has
+ *  no door to a server's model yet (its "Use on your server" is the app half
+ *  of keys on your server), so the line names only the SSH way. */
+export const SERVER_NO_MODEL =
+  "This server has no model chosen for its sessions yet. Choose one over SSH, as the server's account. For a provider whose key is kept here, give the window its model page lists:\n\nsudo -u openshore env HOME=/var/lib/openshore osc stack use <model> <provider> --context <tokens>\n\nFor a model this server runs itself, leave out --context.";
 
 /** The most project pins a session create carries (Project.vaultPins). */
 const SESSION_VAULT_PINS_MAX = 8;
@@ -262,6 +271,8 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
   const pairClaims = new PairClaimStore();
   const pairRequests = new PairRequestStore();
   const pairAttempts = new TokenBucket(PAIR_CLAIM_BUCKET);
+  // Key writes on a server, per device credential (keys on your server).
+  const keyWrites = new TokenBucket(KEY_WRITE_BUCKET);
   // The credentials with a /chat answer streaming right now (H1).
   const chatsInFlight = new Set<string>();
   // The interactive PTY host (Phase 2 bridge). Terminals live here, outliving
@@ -580,6 +591,9 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         // while online; an older daemon never sends it, which reads as online.
         offline: machineOffline().reason,
         ...(options.kind ? { kind: options.kind } : {}),
+        // This server keeps provider keys for its sessions (GET /keys).
+        // Additive: a desktop and an older server send nothing.
+        ...(options.pairingConsole ? { keysOnServer: true } : {}),
       });
       return;
     }
@@ -1126,6 +1140,29 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
       return;
     }
 
+    // ---- Keys on your server (founder, 2026-10-09). ----
+    // A docked device puts a provider's key here once, so this server's coding
+    // sessions can use it while the device sleeps, and places one of that
+    // provider's models as the server's own. Only on a server (the switch the
+    // pairing console routes use; a desktop takes its keys from its own app)
+    // and only for an admin device. The handler lives in keyRoutes.ts.
+    if (isKeyRoute(parts)) {
+      if (!options.pairingConsole) {
+        sendJson(res, 404, { error: 'Not found.' });
+        return;
+      }
+      if (!requireAdmin()) return;
+      const answer = await keyRoute({
+        method: req.method ?? 'GET',
+        parts,
+        readBody: (maxBytes?: number) => readJson(req, maxBytes),
+        takeWrite: () =>
+          keyWrites.take(auth.source === 'legacy' || !presented ? 'legacy' : hashToken(presented)),
+      });
+      sendJson(res, answer.status, answer.json);
+      return;
+    }
+
     if (parts[0] === 'routines') {
       const admin = hasRole(auth, 'admin');
       const visible = (routineId: string): boolean =>
@@ -1403,7 +1440,11 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         }
         sendJson(res, 201, { id: driver.id, cwd, warnings, mode: driver.mode });
       } catch (err) {
-        sendJson(res, 400, { error: (err as Error).message });
+        // A server has no osc init to run: it names the two ways to choose
+        // its model instead.
+        const noModel =
+          err instanceof StackError && err.reason === 'no-orchestrator' && options.pairingConsole;
+        sendJson(res, 400, { error: noModel ? SERVER_NO_MODEL : (err as Error).message });
       }
       return;
     }

@@ -400,6 +400,36 @@ export function deleteCredential(name: string): void {
   }
 }
 
+/**
+ * The names of the credentials kept here that start with `prefix`, never
+ * their values (keys on your server, 2026-10-09: forgetting a server deletes
+ * every provider key, a stray one included). `unreadable` when the file, or
+ * the test keychain, could not be read, so an empty list never reads as
+ * "none". A real keychain is searched by attribute; a search that fails
+ * leaves its names out, and the per-name reads say whether it is locked.
+ */
+export function storedCredentialNames(prefix: string): { names: string[]; unreadable: boolean } {
+  const names = new Set<string>();
+  let unreadable = false;
+  if (fakeKeychain) {
+    if (fakeKeychain.locked) unreadable = true;
+    else for (const name of fakeKeychain.entries.keys()) names.add(name);
+  } else if (hasSecretTool()) {
+    // Only the `attribute.key = <name>` lines are read; the rest (the values
+    // among them) is dropped with the buffer.
+    const res = spawnSync('secret-tool', ['search', '--all', 'service', 'os-code'], {
+      encoding: 'utf8',
+    });
+    if (res.status === 0) {
+      for (const m of (res.stdout ?? '').matchAll(/^attribute\.key = (\S+)$/gm)) names.add(m[1]!);
+    }
+  }
+  const file = readFileStoreDetailed();
+  if (file.unreadable) unreadable = true;
+  for (const name of Object.keys(file.store)) names.add(name);
+  return { names: [...names].filter((n) => n.startsWith(prefix)).sort(), unreadable };
+}
+
 export function credentialsFileExists(): boolean {
   return existsSync(filePath());
 }
