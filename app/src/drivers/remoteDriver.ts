@@ -5,6 +5,13 @@
 import type {
   ApprovalAnswer,
   CurrentsHandles,
+  DaemonKeysList,
+  DaemonPlaceOrchestratorAnswer,
+  DaemonPlaceOrchestratorBody,
+  DaemonProviderKey,
+  DaemonPutKeyAnswer,
+  DaemonPutKeyBody,
+  DaemonRemoveKeysAnswer,
   DaemonSessionInfo,
   DriverEvent,
   HarnessCurrentsHandle,
@@ -14,7 +21,7 @@ import type {
   VaultOverrides,
 } from 'os-code/protocol';
 import { HANDOFF_MAX_BYTES } from 'os-code/protocol';
-import { dockKindOf, type DockKind } from '../lib/docking.js';
+import { dockKindOf, dockedNoun, type DockKind } from '../lib/docking.js';
 import { isNotePath } from '../lib/gitos/providers.js';
 import { PROJECT_VAULT_PINS_MAX } from '../state/types.js';
 import type {
@@ -124,6 +131,9 @@ export async function daemonHealth(target: DaemonTarget): Promise<{
   role?: HubRole;
   offline?: OfflineReason;
   kind?: DockKind;
+  /** It keeps provider keys for its sessions (GET /keys): a server, never
+   *  the desktop app. Absent from an older daemon. */
+  keysOnServer?: true;
 }> {
   try {
     const res = await fetch(`${target.baseUrl}/health`, {
@@ -150,12 +160,15 @@ export async function daemonHealth(target: DaemonTarget): Promise<{
     const offline = computerOfflineOf(body);
     // What it is, a server or the desktop app (connect-anywhere, 2026-10-07).
     const kind = dockKindOf(body);
+    // Keys on your server (2026-10-09): only a server says it keeps them.
+    const keysOnServer = (body as { keysOnServer?: unknown } | null)?.keysOnServer === true;
     return {
       ok: true,
       detail: kind === 'server' ? 'Docked to your server.' : 'Connected to your computer.',
       ...(role ? { role } : {}),
       ...(offline ? { offline } : {}),
       ...(kind ? { kind } : {}),
+      ...(keysOnServer ? { keysOnServer: true as const } : {}),
     };
   } catch {
     // A rejected credential answers 401 with no CORS headers (DAE-15), which a
@@ -447,6 +460,125 @@ export async function daemonStack(target: DaemonTarget) {
   });
   if (!res.ok) throw new Error(`Your computer answered ${res.status}.`);
   return (await res.json()) as import('os-code/protocol').DaemonStackInfo;
+}
+
+// ---- keys on your server (2026-10-09) --------------------------------------
+// A docked server keeps a provider's key for its own coding sessions when an
+// admin device turns it on (os-code/src/daemon/keyRoutes.ts). Only a server
+// answers these, and only to an admin: a desktop and an older server answer
+// 404, a member device 403, and the app shows nothing for either. A key goes
+// out in one PUT body and is never read back: no answer carries a key, and no
+// error made here names one.
+
+/** A key route that did not answer yes. `status` is the server's answer, or
+ *  absent when nothing answered at all. The message is the server's own
+ *  (scrubbed of keys there) or a plain line made here. */
+export class ServerKeyError extends Error {
+  constructor(
+    message: string,
+    readonly status?: number,
+  ) {
+    super(message);
+    this.name = 'ServerKeyError';
+  }
+}
+
+/** This device cannot use the key routes there (a desktop, an older server,
+ *  or a member device), which is nothing to show rather than a failure. */
+export function keysNotOffered(err: unknown): boolean {
+  return err instanceof ServerKeyError && (err.status === 403 || err.status === 404);
+}
+
+const KEY_ROUTE_TIMEOUT_MS = 8000;
+
+async function keyRoute<T>(
+  target: DaemonTarget,
+  path: string,
+  init: { method: string; body?: unknown } = { method: 'GET' },
+): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(`${target.baseUrl}${path}`, {
+      method: init.method,
+      headers: {
+        ...headers(target),
+        ...(init.body !== undefined ? { 'content-type': 'application/json' } : {}),
+      },
+      ...(init.body !== undefined ? { body: JSON.stringify(init.body) } : {}),
+      signal: AbortSignal.timeout(KEY_ROUTE_TIMEOUT_MS),
+    });
+  } catch {
+    throw new ServerKeyError(`${dockedNoun(target)} did not answer.`);
+  }
+  const body = (await res.json().catch(() => ({}))) as { error?: unknown };
+  if (!res.ok) {
+    throw new ServerKeyError(
+      typeof body.error === 'string' && body.error
+        ? body.error
+        : `${dockedNoun(target)} answered ${res.status}.`,
+      res.status,
+    );
+  }
+  return body as T;
+}
+
+/** The providers holding a key on the server: ids, names and hosts, never a
+ *  key. A stray key whose provider entry is gone has host ''. */
+export async function daemonListKeys(target: DaemonTarget): Promise<DaemonProviderKey[]> {
+  const body = await keyRoute<Partial<DaemonKeysList>>(target, '/keys');
+  return Array.isArray(body.keys) ? body.keys : [];
+}
+
+/** Put a provider's key on the server, once. Claude goes with its workspace
+ *  id; every other provider with its OpenAI-compatible base. */
+export async function daemonPutKey(
+  target: DaemonTarget,
+  id: string,
+  put: DaemonPutKeyBody,
+): Promise<DaemonProviderKey> {
+  const body = await keyRoute<Partial<DaemonPutKeyAnswer>>(
+    target,
+    `/keys/${encodeURIComponent(id)}`,
+    { method: 'PUT', body: put },
+  );
+  return body.provider ?? { id, label: put.label ?? id, host: '' };
+}
+
+/** Remove one provider's key from the server, and every stack slot there
+ *  that named it. */
+export async function daemonDeleteKey(
+  target: DaemonTarget,
+  id: string,
+): Promise<DaemonRemoveKeysAnswer> {
+  const body = await keyRoute<Partial<DaemonRemoveKeysAnswer>>(
+    target,
+    `/keys/${encodeURIComponent(id)}`,
+    { method: 'DELETE' },
+  );
+  return { ok: true, removed: body.removed ?? [], slotsCleared: body.slotsCleared ?? [] };
+}
+
+/** Remove every provider key the server keeps, for forgetting it. */
+export async function daemonDeleteAllKeys(target: DaemonTarget): Promise<DaemonRemoveKeysAnswer> {
+  const body = await keyRoute<Partial<DaemonRemoveKeysAnswer>>(target, '/keys', {
+    method: 'DELETE',
+  });
+  return { ok: true, removed: body.removed ?? [], slotsCleared: body.slotsCleared ?? [] };
+}
+
+/** Place a provider's model as the server's own, with the window this device
+ *  knows for it (kept there only for a provider off its network). */
+export async function daemonPlaceOrchestrator(
+  target: DaemonTarget,
+  place: DaemonPlaceOrchestratorBody,
+): Promise<DaemonPlaceOrchestratorAnswer['orchestrator']> {
+  const body = await keyRoute<Partial<DaemonPlaceOrchestratorAnswer>>(
+    target,
+    '/stack/orchestrator',
+    { method: 'POST', body: place },
+  );
+  if (!body.orchestrator) throw new ServerKeyError(`${dockedNoun(target)} did not say.`);
+  return body.orchestrator;
 }
 
 // ---- outbox apply (buffered commit-intents land as real commits) ----------

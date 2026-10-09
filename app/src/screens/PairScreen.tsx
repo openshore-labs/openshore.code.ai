@@ -24,7 +24,10 @@ import { ReplaceSharedKey } from '../components/ReplaceSharedKey.js';
 import { hubStatusLine, onLinux } from '../lib/hubStatus.js';
 import { DockForm, hostOf } from '../components/DockForm.js';
 import { ServerSetup } from '../components/ServerSetup.js';
+import { ServerKeysLeftSheet, type KeysLeft } from '../components/ServerKeys.js';
+import type { HubKeysCleared } from '../state/serverKeysOps.js';
 import { DOCK_PATHS, dockedNoun, unreachableLine, type DockPath } from '../lib/docking.js';
+import { sheetExitMs } from '../lib/motion.js';
 
 export { phoneDeviceName } from '../components/DockForm.js';
 import { thisDeviceNoun } from '../lib/deviceNoun.js';
@@ -506,6 +509,8 @@ function PhonePair() {
   const { settings, removeHub, showToast, startGuideChat, setView } = useApp();
   const [tailscaleOpen, setTailscaleOpen] = useState(false);
   const [forgetting, setForgetting] = useState(false);
+  // A forgotten server whose keys could not be deleted there.
+  const [left, setLeft] = useState<KeysLeft | undefined>();
   const titleRef = useRef<HTMLHeadingElement>(null);
   const paired = settings.daemon;
   // Which way in the person is looking at. A device already docked to a
@@ -603,14 +608,19 @@ function PhonePair() {
 
         <ForgetComputerConfirm
           name={forgetting && paired ? computerLabel(paired) : undefined}
+          keys={Boolean(paired && keysGoFirst(paired, settings.hubRoles))}
           onKeep={() => setForgetting(false)}
           onForget={async () => {
             setForgetting(false);
             if (!paired) return;
-            await removeHub(paired.baseUrl);
-            showToast(`${dockedNoun(paired)} forgotten on this device.`);
+            const keys = await removeHub(paired.baseUrl);
+            showToast(forgottenLine(dockedNoun(paired), keys));
+            // Sheets never stack: a fast failure waits for the confirm to leave.
+            const where = computerLabel(paired);
+            if (keys.kind === 'failed') setTimeout(() => setLeft({ where }), sheetExitMs());
           }}
         />
+        <ServerKeysLeftSheet left={left} onClose={() => setLeft(undefined)} />
 
         <Sheet open={tailscaleOpen} onClose={() => setTailscaleOpen(false)}>
           <SheetHead title="Get Tailscale" onClose={() => setTailscaleOpen(false)} />
@@ -665,6 +675,24 @@ function OtherWaysIn({ onPick }: { onPick: (id: DockPath) => void }) {
   );
 }
 
+/** Forgetting a server deletes the provider keys it keeps first, unless
+ *  this device is only a member there (keys on your server, 2026-10-09;
+ *  serverKeysOps.dockedServers, the same rule). */
+function keysGoFirst(
+  hub: { baseUrl: string; kind?: string },
+  roles: Record<string, HubRole> | undefined,
+): boolean {
+  return hub.kind === 'server' && roles?.[hub.baseUrl] !== 'member';
+}
+
+/** The toast once a hub is forgotten, and what became of a server's keys. */
+function forgottenLine(noun: string, keys: HubKeysCleared): string {
+  if (keys.kind === 'cleared' && keys.removed.length) {
+    return `${noun} forgotten on this device, and the provider keys it kept were deleted there.`;
+  }
+  return `${noun} forgotten on this device.`;
+}
+
 /** What a saved computer is called: its own name, or its host. */
 function computerLabel(hub: { baseUrl: string; name?: string }): string {
   return hub.name?.trim() || hostOf(hub.baseUrl);
@@ -675,20 +703,32 @@ function computerLabel(hub: { baseUrl: string; name?: string }): string {
  *  the line says "if the computer is on". Open while a name is set. */
 function ForgetComputerConfirm({
   name,
+  keys = false,
   onKeep,
   onForget,
 }: {
   name?: string;
+  /** A server this device is the admin of: every provider key it keeps is
+   *  deleted there first. */
+  keys?: boolean;
   onKeep: () => void;
   onForget: () => void;
 }) {
   return (
     <Sheet open={name !== undefined} onClose={onKeep} variant="confirm">
       <h3>Forget {name}?</h3>
-      <p>
-        This device stops reaching it. If the computer is on, it drops this device from its list
-        too. To use it again, scan a new QR.
-      </p>
+      {keys ? (
+        <p>
+          This device stops reaching it. If the server answers, every provider key it keeps is
+          deleted there first, then it drops this device from its list. To use it again, scan a new
+          QR.
+        </p>
+      ) : (
+        <p>
+          This device stops reaching it. If the computer is on, it drops this device from its list
+          too. To use it again, scan a new QR.
+        </p>
+      )}
       <div className="confirm-row">
         <button type="button" className="btn ghost press-fb" onClick={onKeep}>
           Keep
@@ -766,8 +806,16 @@ function HubList() {
   const { settings, selectHub, removeHub, showToast } = useApp();
   // The computer being named, while its sheet is open.
   const [naming, setNaming] = useState<{ baseUrl: string; name?: string; host: string }>();
-  // The computer being forgotten, while its confirm is open.
-  const [forgetting, setForgetting] = useState<{ baseUrl: string; name: string }>();
+  // The computer being forgotten, while its confirm is open, and whether its
+  // provider keys go first (a server this device is the admin of).
+  const [forgetting, setForgetting] = useState<{
+    baseUrl: string;
+    name: string;
+    server: boolean;
+    keys: boolean;
+  }>();
+  // A forgotten server whose keys could not be deleted there.
+  const [left, setLeft] = useState<KeysLeft | undefined>();
   const hubs = hubList(settings);
   const activeUrl = settings.daemon?.baseUrl;
   // The confirm sits outside the list: forgetting the second of two computers
@@ -806,7 +854,14 @@ function HubList() {
                 </button>
                 <button
                   className="linklike press-fb"
-                  onClick={() => setForgetting({ baseUrl: h.baseUrl, name: computerLabel(h) })}
+                  onClick={() =>
+                    setForgetting({
+                      baseUrl: h.baseUrl,
+                      name: computerLabel(h),
+                      server: h.kind === 'server',
+                      keys: keysGoFirst(h, settings.hubRoles),
+                    })
+                  }
                 >
                   Forget
                 </button>
@@ -822,15 +877,21 @@ function HubList() {
       ) : null}
       <ForgetComputerConfirm
         name={forgetting?.name}
+        keys={forgetting?.keys}
         onKeep={() => setForgetting(undefined)}
         onForget={async () => {
           const target = forgetting;
           setForgetting(undefined);
           if (!target) return;
-          await removeHub(target.baseUrl);
-          showToast('Computer forgotten on this device.');
+          const keys = await removeHub(target.baseUrl);
+          showToast(forgottenLine(target.server ? 'Server' : 'Computer', keys));
+          // Sheets never stack: a fast failure waits for the confirm to leave.
+          if (keys.kind === 'failed') {
+            setTimeout(() => setLeft({ where: target.name }), sheetExitMs());
+          }
         }}
       />
+      <ServerKeysLeftSheet left={left} onClose={() => setLeft(undefined)} />
     </>
   );
 }

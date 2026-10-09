@@ -184,8 +184,10 @@ describe("the phone's model sheet, while its computer is offline", () => {
 
   it('online, or a model on the computer in charge, the row reads as before', async () => {
     await openSheet();
+    // A cloud model in charge runs at its provider, on your key, and the
+    // computer only sends it each turn (keys on your server, 2026-10-09).
     expect(computerRow().querySelector('.ms-row-sub')?.textContent).toBe(
-      'claude-sonnet-5, running on your computer',
+      'claude-sonnet-5, at Anthropic on your key, from your computer',
     );
     await dom.render(null);
     box.stack = computerStack({

@@ -17,6 +17,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ConversationSource } from '../state/types.js';
 import { useApp } from '../state/store.js';
 import { dockedNoun, dockedNounLower } from '../lib/docking.js';
+import { dockedModelLine, dockedNoModelLine } from '../lib/serverKeys.js';
 import { useSheetExit } from '../hooks/useSheetExit.js';
 import { isDesktop, isPhone } from '../lib/platform.js';
 import { HARBOR_BYLINE, HARBOR_MODEL_ID, HARBOR_MODEL_NAME } from '../lib/harbor.js';
@@ -244,6 +245,13 @@ export function ModelSheet({
   }, [daemon]);
   const boxModel =
     boxStack && boxStack !== 'error' ? (boxStack.orchestrator?.model ?? undefined) : undefined;
+  // Where that model runs: on the machine, or, for a cloud model, at its
+  // provider on your key, sent from the machine (keys on your server,
+  // 2026-10-09: a server's model is often a cloud one).
+  const boxLine =
+    daemon && boxStack && boxStack !== 'error' && boxStack.orchestrator
+      ? dockedModelLine(boxStack.orchestrator, dockedNounLower(daemon))
+      : undefined;
   // Desktop Offline: your computer works offline (its network is down, or
   // Offline is chosen there) with a cloud model running its show. That model
   // waits for the computer's connection, and the one its engine seats there
@@ -305,9 +313,13 @@ export function ModelSheet({
   // network by address, so the row names the model that will answer.
   const engineSeat = engineCloudOffline ? desktopStatus.offlineSeat?.model : undefined;
   const engineOfflineEmpty = engineCloudOffline && !engineSeat;
+  const engineOrchestrator =
+    desktopStatus && desktopStatus !== 'error' ? desktopStatus.stack.orchestrator : undefined;
   const engineSub = engineSeat
     ? offlineSeatSub(engineSeat, 'this computer')
-    : `${engineModel}, running on this computer`;
+    : engineOrchestrator
+      ? dockedModelLine(engineOrchestrator, 'this computer')
+      : `${engineModel}, running on this computer`;
 
   // The same signal the send path checks, so a stack built after the per-profile
   // stacks landed is pickable. The old read looked at the retired single-stack
@@ -493,11 +505,7 @@ export function ModelSheet({
                 ) : boxModel ? (
                   <Row
                     main={dockedNoun(daemon)}
-                    sub={
-                      boxSeat
-                        ? offlineSeatSub(boxSeat, dockedNounLower(daemon))
-                        : `${boxModel}, running on ${dockedNounLower(daemon)}`
-                    }
+                    sub={boxSeat ? offlineSeatSub(boxSeat, dockedNounLower(daemon)) : boxLine}
                     selected={isCurrent({ kind: 'desktop' })}
                     onClick={() => pick({ kind: 'desktop' })}
                   />
@@ -506,7 +514,7 @@ export function ModelSheet({
                     <span className="ms-row-text">
                       <span className="ms-row-main">{dockedNoun(daemon)}</span>
                       <span className="ms-row-sub">
-                        No model set up on {dockedNounLower(daemon)} yet.
+                        {dockedNoModelLine(daemon, settings.hubRoles?.[daemon.baseUrl])}
                       </span>
                     </span>
                   </div>

@@ -130,7 +130,7 @@ export const STEP_COPY: Record<SetupStepId, SetupStepCopy> = {
     title: 'Add an API key',
     what: 'Use Claude, OpenAI, or Gemini on your own account.',
     why: "For the hardest work, a frontier model on your own account goes further than anything on a phone, at your provider's price. Chat stays free either way.",
-    how: "Create an API key on your provider's site, then tap Add an API key, paste it, and save. OpenShore checks it with the provider before it says connected, and the API key is stored only on this device and sent only to that provider. I will bring you back here once it is saved.",
+    how: "Create an API key on your provider's site, then tap Add an API key, paste it, and save. OpenShore checks it with the provider before it says connected, and the API key is stored only on this device and sent only to that provider, unless you turn it on for a server you dock, which then keeps it too. I will bring you back here once it is saved.",
     action: 'Add an API key',
     ask: 'Tell me more about using my own API key.',
     done: 'Your API key is connected.',

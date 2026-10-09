@@ -218,8 +218,8 @@ export const EGRESS: EgressEntry[] = [
     // Every provider in Cloud Connections (lib/providers.ts), the named ones
     // on your key included (2026-10-09); egressManifest.test holds the two
     // lists together.
-    what: `Your chat, and the notes and files it draws on, to Anthropic, OpenAI, Google, Moonshot, Perplexity, Venice, OpenRouter (which forwards it to the model's own provider), Groq, Together AI, DeepSeek, Mistral, xAI, Cerebras, Hugging Face (which forwards it to one of the providers it lists for the model), Nebius Token Factory, Novita AI, MiniMax, or NVIDIA, on your own key. ${VAULT_PRIVATE_OFF_CLOUD} An amber pill or dot marks a chat whose latest turn went to one. Saving a key sends it to its provider, which answers whether it works. To every provider but Anthropic, the same request then goes once more with a made-up key in place of yours, so one that answers anyone is not taken for a yes. For a provider whose models load from it, connecting and Choose models also ask it for the list of models it offers. A key you add with osc key add, on your computer or a server you dock, goes from there to its own provider, or to an address you give.`,
-    when: 'Only when you pick a cloud model or place one in your Stack, and only on the turns it answers. On your computer, the coding agent asks first in each task. Also when you save a provider key, and for one whose models load from it, when you open Choose models. A key you add with osc key add, on your computer or a server you dock, is used there only by coding sessions on the model you place, and they ask first in each task.',
+    what: `Your chat, and the notes and files it draws on, to Anthropic, OpenAI, Google, Moonshot, Perplexity, Venice, OpenRouter (which forwards it to the model's own provider), Groq, Together AI, DeepSeek, Mistral, xAI, Cerebras, Hugging Face (which forwards it to one of the providers it lists for the model), Nebius Token Factory, Novita AI, MiniMax, or NVIDIA, on your own key. ${VAULT_PRIVATE_OFF_CLOUD} An amber pill or dot marks a chat whose latest turn went to one. Saving a key sends it to its provider, which answers whether it works. To every provider but Anthropic, the same request then goes once more with a made-up key in place of yours, so one that answers anyone is not taken for a yes. For a provider whose models load from it, connecting and Choose models also ask it for the list of models it offers. A key you add with osc key add on your computer or a server you dock, or turn on here for a server you dock, goes from there to its own provider, or to an address you give.`,
+    when: 'Only when you pick a cloud model or place one in your Stack, and only on the turns it answers. On your computer, the coding agent asks first in each task. Also when you save a provider key, and for one whose models load from it, when you open Choose models. A key kept on your computer or a server you dock, added there with osc key add or turned on here, is used there only by coding sessions on the model you place, and they ask first in each task.',
     start: 'off',
     hosts: [
       'api.anthropic.com',
@@ -270,6 +270,16 @@ export const EGRESS: EgressEntry[] = [
     recipient: 'Services you connect',
     what: 'Your chats, sessions, and approvals, to your own computer running OpenShore, over your private Tailscale network. Nothing goes through us.',
     when: 'Only after you pair this device with your computer.',
+    start: 'off',
+    hosts: [],
+  },
+  {
+    // Keys on your server (founder, 2026-10-09): the person's own key, sent
+    // once to the person's own server over the docked link, never to us.
+    id: 'server-keys',
+    recipient: 'Services you connect',
+    what: "A provider's API key and its provider's address (for Claude, its workspace ID instead), to a server you dock, over your private Tailscale network, so its coding sessions can use it while this device sleeps. The server keeps it until it is deleted there: turning it off, disconnecting the provider here, or forgetting the server deletes it if the server answers at that moment, and if it does not, osc key remove deletes it over SSH. A server with no keychain keeps it in a file its OpenShore account and root can read, and the company you rent from can reach that disk. Nothing goes through us.",
+    when: 'Only when you turn a provider on for that server in Cloud Connections, or say yes to sending it a key you replaced here. Opening Cloud Connections, or its sheets for that server, asks each server you dock which providers it keeps a key for and which model it runs, names only, never a key.',
     start: 'off',
     hosts: [],
   },
@@ -373,7 +383,7 @@ export const LINK_ONLY_HOSTS: Record<string, string> = {
 export const STAYS_ON_DEVICE: string[] = [
   'Everything you send a local model, and everything it answers, unless a cloud model in the same chat reads it later, on its own turn or as a step in a plan (a web search sends only its words, listed above).',
   'Your chats, projects, settings, and session journals, sealed at rest.',
-  'Your API keys: in the Keychain on iPhone and iPad; on a computer, encrypted under a key in its keychain. Each is sent only to its own provider.',
+  'Your API keys: in the Keychain on iPhone and iPad; on a computer, encrypted under a key in its keychain. Each is sent only to its own provider, and to a server you dock only when you turn it on for that server, which then keeps it too.',
   'Your Vault notes and your code, as plain files you own.',
   'Undo snapshots of your files, in a folder on this computer.',
   'Which folders you trust and the commands you allow.',

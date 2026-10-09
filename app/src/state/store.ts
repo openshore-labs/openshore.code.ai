@@ -646,6 +646,13 @@ import {
   type ByomConnectInput,
 } from './byomOps.js';
 import {
+  dockedServers,
+  leaveHub,
+  removeKeyFromServers,
+  type HubKeysCleared,
+  type KeyRemoval,
+} from './serverKeysOps.js';
+import {
   CodingLockedError,
   accountNoticeDue,
   codingLocked,
@@ -2709,8 +2716,10 @@ interface AppState {
   setHubRole(baseUrl: string, role: HubRole | undefined): Promise<void>;
   /** Switch the active hub to a saved one by base URL. */
   selectHub(baseUrl: string): Promise<void>;
-  /** Forget a saved hub; if it was active, fall back to another or none. */
-  removeHub(baseUrl: string): Promise<void>;
+  /** Forget a saved hub; if it was active, fall back to another or none. A
+   *  server's provider keys are deleted there first, with this device's
+   *  credential, before it is revoked; the answer says whether that worked. */
+  removeHub(baseUrl: string): Promise<HubKeysCleared>;
   /** Give a saved hub a friendly name (blank clears it). */
   renameHub(baseUrl: string, name: string): Promise<void>;
   /** On a desktop, run sessions on the active remote hub instead of this
@@ -2733,8 +2742,9 @@ interface AppState {
   /** Set or change the workspace a connected Claude key acts in, without
    *  pasting the key again. Checked with Claude first; kept unless refused. */
   setAnthropicWorkspace(workspaceId: string): Promise<KeyCheck>;
-  /** Disconnect a cloud provider and forget its key. */
-  disconnectProvider(id: string): Promise<void>;
+  /** Disconnect a cloud provider and forget its key, here and on every
+   *  docked server that keeps it (best effort; the answer says where). */
+  disconnectProvider(id: string): Promise<KeyRemoval>;
 
   /** Re-check home reachability + internet, updating the connectivity signals. */
   refreshConnectivity(): Promise<void>;
@@ -15313,13 +15323,16 @@ export const useApp = create<AppState>((set, get, api) => {
         name: target.name ?? prior?.name,
         kind: target.kind ?? prior?.kind,
       };
-      // Pairing the same computer again: the old credential is revoked there
-      // (best effort), so one phone is one row on the computer.
-      if (prior?.token && prior.token !== target.token) void daemonForgetSelf(prior);
       const others = list.filter((d) => d.baseUrl !== target.baseUrl);
       // The credential goes to the secret store (APP-11); the settings blob
       // carries the hub without it (see persistSettings).
       await secretSet(hubSecretKey(target.baseUrl), target.token);
+      // Pairing the same computer again: once the new credential is saved,
+      // the old one is revoked there (best effort), so one phone is one row
+      // on the computer. Only revoked: a server's provider keys and its model
+      // stay, since the new credential manages them as the old one did (keys
+      // on your server, 2026-10-09).
+      if (prior?.token && prior.token !== target.token) void daemonForgetSelf(prior);
       // The hub's role for this credential: what pairing reported, else asked
       // now. An older hub answers nothing and keeps deciding per request.
       const role = opts?.role ?? (await readHubRole(merged));
@@ -15351,9 +15364,12 @@ export const useApp = create<AppState>((set, get, api) => {
       const s = get().settings;
       // Forgetting a computer revokes this device there too (best effort; a
       // computer that is off keeps the row until it is revoked on it), so its
-      // Paired devices list never fills with rows nothing uses.
+      // Paired devices list never fills with rows nothing uses. A server's
+      // provider keys are deleted first, while the credential still works
+      // (keys on your server, 2026-10-09; serverKeysOps). The credential is
+      // held here for that, so this device forgets the hub at once.
       const leaving = hubList(s).find((d) => d.baseUrl === baseUrl);
-      if (leaving?.token) void daemonForgetSelf(leaving);
+      const role = s.hubRoles?.[baseUrl];
       const daemons = hubList(s).filter((d) => d.baseUrl !== baseUrl);
       const daemon = s.daemon?.baseUrl === baseUrl ? daemons[0] : s.daemon;
       const hubRoles = { ...(s.hubRoles ?? {}) };
@@ -15363,6 +15379,7 @@ export const useApp = create<AppState>((set, get, api) => {
       await secretDelete(hubSecretKey(baseUrl));
       // The vault returns from the computer it pointed at (CTO J9).
       if (s.daemon?.baseUrl === baseUrl) void settleVaultForHub();
+      return leaving?.token ? await leaveHub(leaving, role) : { kind: 'none' };
     },
 
     async renameHub(baseUrl, name) {
@@ -15508,7 +15525,14 @@ export const useApp = create<AppState>((set, get, api) => {
       // And its models leave every status's stack (2026-10-09).
       const stacks = get().settings.stacks;
       if (stacks) await get().saveSettings({ stacks: sweepProviderRefs(stacks, id) });
+      // And its key leaves every docked server that keeps one (keys on your
+      // server, 2026-10-09; serverKeysOps), best effort.
+      const servers = dockedServers(hubList(get().settings), get().settings.hubRoles);
+      const onServers: KeyRemoval = servers.length
+        ? await removeKeyFromServers(servers, id)
+        : { removedFrom: [], modelClearedOn: [], notRemoved: [] };
       logEvent('provider_disconnected', { provider: id });
+      return onServers;
     },
 
     async connectByom(input) {

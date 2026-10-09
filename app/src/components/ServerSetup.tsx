@@ -12,7 +12,9 @@ import {
   SERVER_STEPS,
 } from '../lib/docking.js';
 
-function CommandRow({ command, label }: { command: string; label: string }) {
+/** One command to run on a server, with a Copy button (the key notes in
+ *  components/ServerKeys.tsx use it too). */
+export function CommandRow({ command, label }: { command: string; label: string }) {
   const [copied, setCopied] = useState<'idle' | 'done' | 'failed'>('idle');
   return (
     <div className="dock-command">

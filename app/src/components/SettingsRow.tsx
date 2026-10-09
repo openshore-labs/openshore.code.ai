@@ -5,7 +5,9 @@
 // danger row asks first, so it carries no chevron: it opens a question, not a
 // place, and so does a row marked `asks` (a connected provider's row, whose
 // tap asks before it disconnects). Type carries the hierarchy; there are no
-// icons on purpose. Groups arrive staggered on the house tokens.
+// icons on purpose. Groups arrive staggered on the house tokens, and a row
+// that arrives after its group did (read from somewhere first) steps in on
+// the shared stagger.
 import type { CSSProperties, ReactNode } from 'react';
 
 export function SettingsGroup({
@@ -57,6 +59,7 @@ export function SettingsRow({
   danger,
   asks,
   disabled,
+  arrive,
 }: {
   label: string;
   sub?: ReactNode;
@@ -73,6 +76,10 @@ export function SettingsRow({
   /** The tap opens a question (a confirm), not a place, so no chevron. */
   asks?: boolean;
   disabled?: boolean;
+  /** The row arrives after its group did (it waited on an answer from
+   *  somewhere), so it steps in on the shared stagger at this index rather
+   *  than appear in place. */
+  arrive?: number;
 }) {
   const body = (
     <>
@@ -90,11 +97,13 @@ export function SettingsRow({
     </>
   );
   const cls = `settings-row${danger ? ' danger' : ''}`;
+  const step = arrive === undefined ? undefined : ({ '--i': arrive } as CSSProperties);
   if (onClick) {
     return (
       <button
         type="button"
-        className={`${cls} press-fb press-fb--row`}
+        className={`${cls} press-fb press-fb--row${step ? ' stagger-in' : ''}`}
+        style={step}
         onClick={onClick}
         disabled={disabled}
       >
@@ -102,5 +111,9 @@ export function SettingsRow({
       </button>
     );
   }
-  return <div className={cls}>{body}</div>;
+  return (
+    <div className={`${cls}${step ? ' stagger-in' : ''}`} style={step}>
+      {body}
+    </div>
+  );
 }

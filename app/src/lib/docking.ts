@@ -41,9 +41,36 @@ export function unreachableLine(target: Pick<DaemonTarget, 'kind'> | undefined):
 export const SERVER_INSTALL_COMMAND =
   'curl -fsSL https://github.com/openshore-labs/openshore-releases/releases/latest/download/install-server.sh | sh';
 
+/** The server's own account, as install-server.sh makes it. A command run
+ *  there as anyone else finds none of the server's keys or pairings. The
+ *  engine's `osc key --help` says the same (SERVER_ACCOUNT_PREFIX there). */
+export const SERVER_ACCOUNT_PREFIX = 'sudo -u openshore env HOME=/var/lib/openshore';
+
 /** The command that prints a fresh code on a server already set up. */
-export const SERVER_PAIR_COMMAND =
-  'sudo -u openshore env HOME=/var/lib/openshore osc pair --server';
+export const SERVER_PAIR_COMMAND = `${SERVER_ACCOUNT_PREFIX} osc pair --server`;
+
+/** Over SSH, the providers whose keys a server keeps (keys on your server,
+ *  2026-10-09): names only, never a key. */
+export const SERVER_KEY_LIST_COMMAND = `${SERVER_ACCOUNT_PREFIX} osc key list`;
+
+/** Over SSH, delete one provider's key from a server: the way out when this
+ *  device could not reach it to do so. */
+export function serverKeyRemoveCommand(providerId: string): string {
+  return `${SERVER_ACCOUNT_PREFIX} osc key remove ${providerId}`;
+}
+
+/** Over SSH, place a server's model (`osc stack use <model> [provider]`).
+ *  A provider whose key the server keeps takes the window its model page
+ *  lists (`--context`); a model the server runs itself leaves it out, since
+ *  it is budgeted against the window it serves. */
+export function serverStackUseCommand(
+  provider: string,
+  model = '<model>',
+  window: 'context' | 'served' = 'context',
+): string {
+  const use = `${SERVER_ACCOUNT_PREFIX} osc stack use ${model} ${provider}`;
+  return window === 'context' ? `${use} --context <tokens>` : use;
+}
 
 /** Setting up a server, in the order a person does it. No provider is named
  *  or ranked: any Linux server works. */

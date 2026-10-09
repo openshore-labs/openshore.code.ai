@@ -82,7 +82,7 @@ const ALL_SETUP_GUIDES: Partial<Record<SetupGuideId, SetupGuide>> = {
       'Back in OpenShore, open Cloud Connections and tap that provider (Groq, Mistral, DeepSeek and the rest are under More providers), paste the key, and tap Save. The app checks the key with the provider where it can, and says so when it could not.',
       'Open Stack and place the provider model where you want it: as your Reasoning model, or as a specialist for one kind of task.',
     ],
-    done: 'The provider shows connected, and it appears in the model menu. Your API key is stored only on this device and sent only to that provider.',
+    done: 'The provider shows connected, and it appears in the model menu. Your API key is stored only on this device and sent only to that provider, unless you turn it on for a server you dock, which then keeps it too.',
   },
   // Bring your own keys, Part 4 (founder, 2026-10-09): Bedrock, Azure and
   // Vertex sign in their own way, so they come through a gateway the person
