@@ -455,8 +455,9 @@ export const GREETINGS: readonly Greeting[] = [
 ];
 
 // A Fisher-Yates shuffle that leaves the input untouched. `rng` is injectable
-// for tests; defaults to Math.random.
-function shuffle(items: Greeting[], rng: () => number): Greeting[] {
+// for tests; defaults to Math.random. Shared with the other splash decks
+// (lib/greetingDecks.ts).
+export function shuffle<T>(items: readonly T[], rng: () => number = Math.random): T[] {
   const out = items.slice();
   for (let i = out.length - 1; i > 0; i--) {
     const j = Math.floor(rng() * (i + 1));

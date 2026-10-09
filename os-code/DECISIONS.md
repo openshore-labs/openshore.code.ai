@@ -4420,3 +4420,45 @@ execution contract. Newest at the bottom.
 - 2026-10-09 (keys on your server, engine, review fixes; supersedes the Anthropic part of today's namespace line): `apiKeyRef` is dropped from the Anthropic endpoint, since nothing writes one and its copy, label and pricing are Claude's; an Anthropic endpoint someone points at another address keeps the Claude key and no workspace, and its cloud card names the host instead of "cloud Claude". OpenAI's own API (api.openai.com) is sent `max_completion_tokens` for the cap and no temperature on a reasoning model (gpt-5, the o series), which refuse `max_tokens` and any temperature but the default.
 - 2026-10-09 (keys on your server, security and privacy run): one medium finding, open. On a server with no libsecret the credentials file's key is derived from the machine (hostname and /etc/machine-id, which is world-readable), so any process running as `openshore` (the admin shell, a command a person approves) or anyone holding a copy of the disk can read every provider key there. Copy never calls that holder encrypted: `osc key add`, `osc login` and `osc doctor` word it through `auth/keyHome.ts` ("a file only this account and root can read", and why). Follow-up: wrap the file key on a server (systemd-creds, or a passphrase), and consider denying member sessions on a server a shell read of the engine's home. No key reaches a log, a URL or an answer; nothing is stored beyond the key and the provider's address; the routes are admin-only on the tailnet; the redactor now knows the key shapes of the named providers that have one (OpenRouter, OpenAI project keys, Groq, xAI, Cerebras, NVIDIA, Hugging Face, Together, Perplexity, Novita), held per provider beside the base table.
 - 2026-10-09 (keys on your server, engine, review fixes): the hidden key prompt skips only the bracketed-paste markers; any other escape sequence (an arrow, Home, End, Delete, a lone Escape) refuses the line and saves nothing, since a key edited with keys the prompt cannot show would be stored wrong without a word. Forgetting a server (`DELETE /keys`) deletes every `provider-key:` name in the store, a stray one with no provider entry included, and `GET /keys` lists such a stray (host '') so it can be removed; a locked store refuses the list (503) rather than read as none.
+- **Greeting styles (2026-09-27):** the splash greeting's tap and hold come
+  in four decks picked in Settings, Greeting (Languages stays the default).
+  The founder's "Trivial Pursuit" ships as "Trivia Night", since that is
+  Hasbro's game name and the questions are not from it; "Popsicle Jokes"
+  keeps the founder's name, as the common phrase for the genre. The landing
+  line stays the time-and-day greeting in every deck, so the splash still
+  opens on a welcome and the egg is found by the tap, as before.
+- **Greeting decks at volume (2026-09-27):** each deck ships as its own lazy
+  JSON chunk rather than inline, so thousands of cards cost the first load
+  nothing. Only reviewed content ships: a card a fact-check agent doubted is
+  dropped, never argued back in, and trivia and sports carry no result from
+  2023 on (the edge of what the writers reliably knew). Fortune numbers are
+  drawn at deal time, not stored. Spare, unreviewed Word of the Day top-ups
+  were not shipped, since the reviewed deck already met the count.
+- **Greeting decks DEI audit (founder, 2026-09-27):** the trivia and sports
+  decks are selected for balance, not just accuracy: answers about women
+  roughly match answers about men, the US is capped near a tenth of trivia
+  and a quarter of sports, and team names drawn from Native peoples are left
+  out while the deck can do without them. Athletes are named by the names
+  they chose, never birth names they left. Jokes use "they" or vary
+  characters rather than defaulting a job to one gender. When an auditor kept
+  a card that carries history (blackface, the Lost Cause, a hate movement's
+  slogan), it was dropped by hand.
+- **Greeting decks web audit (2026-09-27):** in this sandbox WebFetch is
+  blocked for every reference site, so a card counts as web-confirmed when a
+  WebSearch result summary states the fact and names a trustworthy source
+  (cited in the audit notes). Every new or changed card had a second,
+  independent reader with its own searches. Cards that could not be
+  confirmed were cut rather than shipped as read-only: all 206 capital-city
+  cards and the "In what year" run left with the NBA and World Series
+  champion-by-year runs, and several long template runs (rivers through
+  European cities, chemical symbols, SI units) gave up part of their length.
+  Scores are written "New Zealand won, 34 to 31." so no hyphen reads as a
+  dash, and competition names are pinned (FIFA, men's, Summer Olympics)
+  wherever another event shares the year.
+- 2026-10-09 (porting the greeting decks to main): main was re-rooted on
+  2026-09-30, so the branch's 15 commits came over as one change rather than a
+  merge. The decks follow main's 2026-10-07 ruling: straight apostrophes and
+  quotes, like every other line, until the app-wide typographic sweep (the
+  deck test now holds that, not the reverse). The pick is a device setting
+  (`settingsReach.ts`), kept off the account's eight preferences, and the
+  Settings check is the drawn `CheckGlyph`.

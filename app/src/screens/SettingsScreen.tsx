@@ -70,6 +70,7 @@ import {
 } from '../lib/vaultCopy.js';
 import { VaultSettingsHost } from '../components/vault/VaultSettingsHost.js';
 import { SheetHead } from '../components/SheetHead.js';
+import { CheckGlyph } from '../components/SheetGlyphs.js';
 import { VoicePicker } from '../components/VoicePicker.js';
 import { listVoices } from '../lib/voice/tts.js';
 import { curateVoices, resolveVoice } from '../lib/voice/voiceCatalog.js';
@@ -77,6 +78,7 @@ import { webSearchOn, type SearchBackend } from '../lib/webSearch.js';
 import { APP_ICONS, appIconNote } from '../lib/appIcon.js';
 import { FOLLOWS_GROUP_ID, useSettingsJump } from '../lib/profile.js';
 import { PACK_BY_CLASS, TRUST_STATEMENT_LINES, type StackHealthSealFact } from 'os-code/protocol';
+import { GREETING_STYLES, greetingStyleOf } from '../lib/greetingDecks.js';
 
 const SEARCH_BACKEND_LABEL: Record<SearchBackend, string> = {
   duckduckgo: 'DuckDuckGo',
@@ -325,6 +327,7 @@ export function SettingsScreen() {
   const insightsOn = Boolean(settings.insightsOptIn);
   const humanizeOn = settings.humanizeWriting !== false;
   const chainOfThoughtOn = settings.chainOfThought === true;
+  const greetingStyle = greetingStyleOf(settings.greetingStyle);
   // Notices are an iPhone surface; read the standing permission once so a "no"
   // in iOS Settings is said plainly instead of toggles that do nothing.
   const [noticeStatus, setNoticeStatus] = useState<NoticePermission | undefined>();
@@ -1218,6 +1221,38 @@ export function SettingsScreen() {
               />
             }
           />
+        </SettingsGroup>
+
+        {/* The chat splash's Easter egg: what a tap and a hold on the greeting
+            line do. One pick, shown as a check, like the mode sheet. */}
+        <SettingsGroup title="Greeting" index={group++}>
+          {GREETING_STYLES.map((style) => {
+            const active = style.id === greetingStyle;
+            return (
+              <SettingsRow
+                key={style.id}
+                label={style.name}
+                sub={style.sub}
+                trailing={
+                  <span className="mode-row-check">
+                    {active ? (
+                      <>
+                        <span aria-hidden="true">
+                          <CheckGlyph size={18} />
+                        </span>
+                        <span className="visually-hidden">Selected</span>
+                      </>
+                    ) : null}
+                  </span>
+                }
+                onClick={() => {
+                  if (active) return;
+                  void saveSettings({ greetingStyle: style.id });
+                  showToast(`Greeting set to ${style.name}. Tap it on a new chat.`);
+                }}
+              />
+            );
+          })}
         </SettingsGroup>
 
         {/* Notices: a banner for what finished while you were away. iPhone only. */}

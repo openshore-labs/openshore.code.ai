@@ -179,6 +179,7 @@ import { CloudOpenAiDriver } from '../drivers/cloudOpenAiDriver.js';
 import { DEFAULT_EFFORT, setActiveEffort, type Effort } from '../lib/effort.js';
 import { chainOfThoughtOn, setChainOfThought } from '../lib/chainOfThought.js';
 import { setPromptCache } from '../lib/claudeCache.js';
+import type { GreetingStyle } from '../lib/greetingDecks.js';
 import {
   DEFAULT_PERMISSION_MODE,
   normalizePermissionMode,
@@ -865,6 +866,10 @@ export interface AppSettings {
    *  API, every other model is prompted to think in tags. Off asks no model to
    *  think out loud and keeps any reasoning a model sends out of the chat. */
   chainOfThought?: boolean;
+  /** The chat splash's Easter egg (lib/greetingDecks.ts): what a tap and a hold
+   *  on the greeting line do. Languages (the default; undefined means it),
+   *  Popsicle Jokes, Trivia Night, or Sunday Crossword. Device local. */
+  greetingStyle?: GreetingStyle;
   /** Notices (lib/notices.ts): a banner when a model download finishes while
    *  you are away. On by default; undefined means on. Follows a signed-in
    *  person (lib/settingsReach.ts). */
