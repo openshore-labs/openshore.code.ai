@@ -75,9 +75,6 @@ export const AnthropicEndpointSchema = z.object({
    * The default flips only on the eval record (J19).
    */
   promptCache: z.enum(['auto', 'off']).optional(),
-  /** This endpoint's own key (`provider-key:<id>`), for an Anthropic-compatible
-   *  host that is not Claude's. Unset, it uses the Claude key (osc login). */
-  apiKeyRef: ProviderKeyRefSchema.optional(),
 });
 
 export const ImageGenEndpointSchema = z.object({

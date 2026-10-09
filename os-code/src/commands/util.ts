@@ -79,6 +79,16 @@ export class SecretCancelled extends Error {
   }
 }
 
+/** An editing key at a secret prompt. The prompt shows nothing, so an arrow
+ *  pressed to fix a typo would store a different key without a word; the
+ *  line is refused instead, and nothing is saved. */
+export const SECRET_EDIT_KEYS =
+  'Arrow keys, Escape and the other editing keys do not work at this prompt, so nothing was saved. Run it again, paste the key, and press Enter.';
+
+/** The bracketed-paste markers (ESC [200~ and ESC [201~), the one escape
+ *  sequence a secret prompt skips: the paste between them is the key. */
+const PASTE_MARKERS: ReadonlySet<string> = new Set(['200~', '201~']);
+
 /**
  * One secret line, read without echo, from a terminal or a pipe (keys on your
  * server, 2026-10-09). On a terminal the characters are not shown, a paste
@@ -86,7 +96,8 @@ export class SecretCancelled extends Error {
  * (`printf '%s' "$KEY" | osc key add groq`) it is the first line, or all of
  * it when there is no newline: askSecret waits for an Enter a pipe never
  * sends. A secret never comes from the command line, where ps and the shell
- * history would keep it.
+ * history would keep it. An escape sequence other than the paste markers (an
+ * arrow, Home, End, Delete, a lone Escape) refuses the line (SECRET_EDIT_KEYS).
  */
 export function readSecret(
   question: string,
@@ -100,6 +111,9 @@ export function readSecret(
     const wasRaw = stdin.isRaw ?? false;
     let value = '';
     let settled = false;
+    // An escape sequence under way: '' just after ESC, then '[' and the
+    // sequence's parameter bytes; undefined outside one.
+    let pending: string | undefined;
     const finish = (err?: Error): void => {
       if (settled) return;
       settled = true;
@@ -117,20 +131,43 @@ export function readSecret(
     const onData = (chunk: Buffer | string): void => {
       const text = typeof chunk === 'string' ? chunk : decoder.write(chunk);
       for (const ch of text) {
+        if (pending !== undefined) {
+          if (pending === '') {
+            // Only a CSI sequence (ESC [) can be a paste marker.
+            if (ch !== '[') return finish(new Error(SECRET_EDIT_KEYS));
+            pending = '[';
+            continue;
+          }
+          // Parameter and intermediate bytes, then one final byte.
+          if (ch >= ' ' && ch <= '?' && pending.length < 16) {
+            pending += ch;
+            continue;
+          }
+          if (ch >= '@' && ch <= '~' && PASTE_MARKERS.has(`${pending.slice(1)}${ch}`)) {
+            pending = undefined;
+            continue;
+          }
+          return finish(new Error(SECRET_EDIT_KEYS));
+        }
+        if (ch === '\u001b') {
+          pending = '';
+          continue;
+        }
         if (ch === '\r' || ch === '\n' || ch === '\u0004') return finish();
         if (tty && ch === '\u0003') return finish(new SecretCancelled());
         if (tty && (ch === '\u007f' || ch === '\b')) {
           value = value.slice(0, -1);
           continue;
         }
-        // Other control characters (an arrow key, a paste bracket) are
-        // never part of a key.
+        // Other control characters (a tab, a stray Ctrl key) are never part
+        // of a key.
         if (ch < ' ' || ch === '\u007f') continue;
         value += ch;
         if (value.length > maxChars) return finish(new Error('That is too long to be a key.'));
       }
     };
-    const onEnd = (): void => finish();
+    const onEnd = (): void =>
+      finish(pending !== undefined ? new Error(SECRET_EDIT_KEYS) : undefined);
     const onError = (err: Error): void => finish(err);
     if (tty) {
       stdout.write(t.text(`${question} `));

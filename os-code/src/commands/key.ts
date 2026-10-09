@@ -7,12 +7,15 @@
 // Nothing checks it with the provider; the first session that uses it does.
 import { t } from '../brand/theme.js';
 import {
+  ID_HINT,
   KNOWN_PROVIDERS,
+  knownProvider,
   listProviderKeys,
   putProviderKey,
   removeProviderKey,
   scrubSecrets,
 } from '../auth/providerKeys.js';
+import { keyHome } from '../auth/keyHome.js';
 import { isProviderId } from '../config/providerKeyRef.js';
 import {
   SecretCancelled,
@@ -40,8 +43,6 @@ export const KEY_HELP = [
   'Keys serve coding sessions here. Crew routines and the free chat stay on a local model.',
 ].join('\n');
 
-const ID_HINT = 'A provider id is lower-case letters, numbers and dashes, like openrouter.';
-
 export interface KeyAddOptions {
   baseUrl?: string;
   label?: string;
@@ -58,7 +59,7 @@ export async function keyAddCommand(
     process.exitCode = 1;
     return;
   }
-  const known = KNOWN_PROVIDERS[id];
+  const known = knownProvider(id);
   if (!known && !options.baseUrl) {
     warnLine(
       `OpenShore does not know where ${id} answers. Add --base-url with its OpenAI-compatible address, the base its API docs give (it often ends in /v1).`,
@@ -90,7 +91,9 @@ export async function keyAddCommand(
     return;
   }
   if (!key) {
+    // A script whose variable was unset pipes nothing: that is a failure.
     warnLine('Nothing entered, nothing changed.');
+    process.exitCode = 1;
     return;
   }
   try {
@@ -100,11 +103,23 @@ export async function keyAddCommand(
       label: options.label,
       workspaceId: options.workspace,
     });
-    const where = row.backend === 'keychain' ? 'the OS keychain' : 'the encrypted local store';
-    okLine(`The ${row.label} key is stored on this machine, in ${where}.`);
+    const home = keyHome(row.backend);
+    okLine(`The ${row.label} key is stored on this machine, in ${home.where}.`);
+    if (home.caveat) out(t.muted(home.caveat));
     out();
-    out(t.muted('Place one of its models for the sessions here, as this same account:'));
-    out(`  osc stack use <model> ${row.id}`);
+    if (row.id === 'anthropic') {
+      out(t.muted('Place one of its models for the sessions here, as this same account:'));
+      out(`  osc stack use <model> ${row.id}`);
+    } else {
+      // With no window given, a model whose id names no size is budgeted at
+      // a small guess and run as a small seat.
+      out(
+        t.muted(
+          "Place one of its models for the sessions here, as this same account, with the context window the provider's model page lists, in tokens (like 131072):",
+        ),
+      );
+      out(`  osc stack use <model> ${row.id} --context <tokens>`);
+    }
   } catch (err) {
     warnLine(scrubSecrets((err as Error).message, key));
     process.exitCode = 1;
@@ -135,7 +150,7 @@ export function keyRemoveCommand(id: string): void {
     return;
   }
   try {
-    const label = listProviderKeys().find((r) => r.id === id)?.label ?? KNOWN_PROVIDERS[id]?.label;
+    const label = listProviderKeys().find((r) => r.id === id)?.label ?? knownProvider(id)?.label;
     const gone = removeProviderKey(id);
     if (!gone.removed.length) {
       warnLine(`No ${label ?? id} key is kept on this machine.`);
@@ -145,7 +160,7 @@ export function keyRemoveCommand(id: string): void {
     if (gone.slotsCleared.length) {
       out(
         t.muted(
-          `Its models are off your stack (${gone.slotsCleared.join(', ')}). Choose another in OpenShore, or with:`,
+          `Its models are off your stack (${gone.slotsCleared.join(', ')}). Choose another with:`,
         ),
       );
       out('  osc stack use <model> <provider>');

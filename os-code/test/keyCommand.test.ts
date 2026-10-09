@@ -7,9 +7,19 @@ import { PassThrough } from 'node:stream';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { SecretCancelled, readSecret, type SecretIo } from '../src/commands/util.js';
+import {
+  SECRET_EDIT_KEYS,
+  SecretCancelled,
+  readSecret,
+  type SecretIo,
+} from '../src/commands/util.js';
 import { keyAddCommand, keyListCommand, keyRemoveCommand } from '../src/commands/key.js';
-import { _setFakeKeychain, getCredential } from '../src/auth/store.js';
+import {
+  _setFakeKeychain,
+  _setFileKeyProvider,
+  _setSecretTool,
+  getCredential,
+} from '../src/auth/store.js';
 import { setColorEnabled } from '../src/brand/theme.js';
 
 const KEY = 'gsk_cli_key_0123456789abcdef';
@@ -86,6 +96,34 @@ describe('reading a key', () => {
     expect(printed).not.toContain(KEY);
   });
 
+  it('a bracketed paste keeps the key, its markers dropped, even split across reads', async () => {
+    const io = terminal();
+    const read = readSecret('API key:', io);
+    io.stdin.write(`\u001b[200~${KEY.slice(0, 6)}`);
+    io.stdin.write(`${KEY.slice(6)}\u001b[2`);
+    io.stdin.write('01~\r');
+    expect(await read).toBe(KEY);
+  });
+
+  it('an arrow, Home, Delete or a lone Escape refuses the line, so an edited key is never stored', async () => {
+    for (const keys of [
+      `${KEY}\u001b[D!\r`, // left arrow, then a fix typed at the end
+      `${KEY}\u001bOD\r`, // left arrow in application mode
+      `${KEY}\u001b[H\r`, // Home
+      `${KEY}\u001b[3~\r`, // Delete
+      `\u001b${KEY}\r`, // Escape, then the paste
+      `${KEY}\u001b`, // Escape as the last thing a pipe sends
+    ]) {
+      const io = terminal();
+      const read = readSecret('API key:', io);
+      io.stdin.write(keys);
+      if (!keys.endsWith('\r')) io.stdin.end();
+      await expect(read, JSON.stringify(keys)).rejects.toThrow(SECRET_EDIT_KEYS);
+      expect(io.raw).toEqual([true, false]);
+    }
+    expect(printed).not.toContain(KEY);
+  });
+
   it('Ctrl-C at a terminal cancels', async () => {
     const io = terminal();
     const read = readSecret('API key:', io);
@@ -101,7 +139,7 @@ describe('osc key', () => {
     expect(process.exitCode).toBeUndefined();
     expect(getCredential('provider-key:groq')).toBe(KEY);
     expect(printed).toContain('The Groq key is stored on this machine');
-    expect(printed).toContain('osc stack use <model> groq');
+    expect(printed).toContain('osc stack use <model> groq --context <tokens>');
     expect(printed).not.toContain(KEY);
     const config = JSON.parse(readFileSync(join(home, 'config.json'), 'utf8'));
     expect(config.providers.groq.apiKeyRef).toBe('provider-key:groq');
@@ -125,8 +163,11 @@ describe('osc key', () => {
     await keyAddCommand('Not An Id', {}, pipe(`${KEY}\n`));
     expect(process.exitCode).toBe(1);
     process.exitCode = undefined;
+    // A script whose variable was unset pipes nothing, and fails.
     await keyAddCommand('groq', {}, pipe('\n'));
     expect(printed).toMatch(/Nothing entered/);
+    expect(process.exitCode).toBe(1);
+    process.exitCode = undefined;
     await keyAddCommand('anthropic', {}, pipe('mistralplainkeywithnoprefix0123\n'));
     expect(process.exitCode).toBe(1);
     expect(printed).toMatch(/sk-ant-/);
@@ -146,6 +187,22 @@ describe('osc key', () => {
     printed = '';
     keyRemoveCommand('groq');
     expect(printed).toContain('No Groq key is kept on this machine.');
+    // On a machine with no OS-held file key (a rented server), the store is
+    // named for what it is, never "encrypted".
+    printed = '';
+    _setFakeKeychain(undefined);
+    _setSecretTool(false);
+    _setFileKeyProvider(null);
+    try {
+      await keyAddCommand('groq', {}, pipe(`${KEY}\n`));
+    } finally {
+      _setSecretTool(undefined);
+      _setFileKeyProvider(undefined);
+      _setFakeKeychain({});
+    }
+    expect(printed).toContain('in a file only this account and root can read');
+    expect(printed).toMatch(/anyone who can read .*credentials, or a copy of this disk/);
+    expect(printed).not.toMatch(/encrypted/);
   });
 
   it('stack use --context places a keyed model with its window, over SSH', async () => {
@@ -157,7 +214,17 @@ describe('osc key', () => {
     expect(config.providers.groq.contextWindows).toEqual({ 'openai/gpt-oss-120b': 131072 });
     await stackUseCommand('m', 'groq', { context: '128k' });
     expect(process.exitCode).toBe(1);
-    expect(printed).toMatch(/whole number/);
+    // Worded for the flag the person typed, never the wire's field.
+    expect(printed).toMatch(/--context is the model's window in whole tokens/);
+    expect(printed).not.toMatch(/contextTokens/);
+    process.exitCode = undefined;
+    // Placed with no window, a provider off this network says how to give one.
+    printed = '';
+    await stackUseCommand('deepseek-v4-pro', 'groq');
+    expect(printed).toMatch(/Run this again with --context <tokens>/);
+    printed = '';
+    await stackUseCommand('openai/gpt-oss-120b', 'groq');
+    expect(printed).not.toMatch(/--context/);
   });
 
   it('takes no key on the command line', () => {

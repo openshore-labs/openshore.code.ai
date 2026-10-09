@@ -31,8 +31,8 @@ export class AnthropicProvider implements Provider {
     /** Injected so the provider layer stays free of credential-store imports. */
     private readonly getApiKey: () => string | undefined,
     /** Whether requests carry the Claude workspace id. The registry sends
-     *  'none' for an endpoint with a key of its own or at another address,
-     *  so the person's workspace never goes to a third-party host. */
+     *  'none' for an endpoint at another address, so the person's workspace
+     *  never goes to a third-party host. */
     private readonly options: { workspace?: 'claude' | 'none' } = {},
   ) {}
 

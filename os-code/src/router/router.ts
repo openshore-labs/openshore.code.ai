@@ -116,15 +116,11 @@ export class Router {
     return this.stack.specialists.embedding;
   }
 
-  /** The cloud escalation target, when an Anthropic provider is configured.
-   *  An Anthropic-compatible host with a key of its own (`apiKeyRef`) is
-   *  never it: escalation means Claude on the Claude key, and adding another
-   *  provider's key must not change where a struggling turn goes. */
+  /** The cloud escalation target, when an Anthropic provider is configured. */
   escalationTarget(): { provider: Provider; model: string } | undefined {
     for (const [, provider] of this.registry.all()) {
       if (provider.kind === 'cloud') {
         const endpoint = this.config.providers[provider.id];
-        if (endpoint?.kind === 'anthropic' && endpoint.apiKeyRef) continue;
         const model =
           endpoint && endpoint.kind === 'anthropic' ? endpoint.model : 'claude-sonnet-5';
         return { provider, model };

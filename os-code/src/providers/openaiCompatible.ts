@@ -32,6 +32,9 @@ import { extraGB, hasMoreRoom, kvBytesPerToken, ollamaDefaultNumCtx } from './se
 
 const log = logger('openai-compatible');
 
+/** OpenAI's reasoning models, which take only the default temperature. */
+const OPENAI_REASONING_MODEL = /^(?:gpt-5|o\d)/i;
+
 /** What a provider's API is treated as: OpenAI-compatible, native tools, no
  *  grammar decoding (validate and repair applies). */
 const GENERIC_BACKEND: BackendProfile = {
@@ -136,6 +139,16 @@ export class OpenAICompatibleProvider implements Provider, EmbeddingProvider {
     return this.endpoint.baseUrl.replace(/\/$/, '');
   }
 
+  /** Whether this endpoint is OpenAI's own API (keys on your server,
+   *  2026-10-09), which names two request fields its own way. */
+  private get atOpenAi(): boolean {
+    try {
+      return new URL(this.endpoint.baseUrl).hostname === 'api.openai.com';
+    } catch {
+      return false;
+    }
+  }
+
   private headers(): Record<string, string> {
     const headers: Record<string, string> = { 'content-type': 'application/json' };
     const key = endpointApiKey(this.endpoint);
@@ -149,19 +162,39 @@ export class OpenAICompatibleProvider implements Provider, EmbeddingProvider {
     return `${this.baseUrl}${this.endpoint.versionedBase ? '' : '/v1'}${path}`;
   }
 
-  /** A keyed endpoint off this network is a provider's API, not a model
-   *  server someone runs: it is never sent the four unauthenticated probes
-   *  that tell Ollama from LM Studio, llama.cpp and vLLM (keys on your
-   *  server, 2026-10-09). An unkeyed server at a public address is still
-   *  probed, since its flavor sets the window it serves. */
+  /** An endpoint `osc key` wrote (`apiKeyRef`), or a versioned base off this
+   *  network, is a provider's API, not a model server someone runs: it is
+   *  never sent the four unauthenticated probes that tell Ollama from LM
+   *  Studio, llama.cpp and vLLM (keys on your server, 2026-10-09). Any other
+   *  endpoint, a hand-written one with `apiKeyEnv` at a public address
+   *  included, is probed as before, since its flavor sets the window it
+   *  serves. */
   private get providerApi(): boolean {
-    const keyed = Boolean(this.endpoint.apiKeyRef || this.endpoint.apiKeyEnv);
-    return this.remote && (keyed || this.endpoint.versionedBase === true);
+    return (
+      this.remote && (Boolean(this.endpoint.apiKeyRef) || this.endpoint.versionedBase === true)
+    );
+  }
+
+  /** The server's own root, where its native paths live (/api/version,
+   *  /api/show, /props, /version): the base itself, or a versioned base
+   *  with its trailing /v1 taken off. Undefined for a versioned base with no
+   *  such segment, which is then treated as a generic API. */
+  private get nativeRoot(): string | undefined {
+    if (!this.endpoint.versionedBase) return this.baseUrl;
+    const root = this.baseUrl.replace(/\/v\d+$/, '');
+    return root === this.baseUrl ? undefined : root;
   }
 
   async backend(): Promise<BackendProfile> {
-    if (this.providerApi) return GENERIC_BACKEND;
-    return probeBackend(this.baseUrl);
+    const root = this.nativeRoot;
+    if (this.providerApi || root === undefined) return GENERIC_BACKEND;
+    return probeBackend(root);
+  }
+
+  /** A native (non-OpenAI) path on this server; only an Ollama the probe
+   *  found reaches one, so the root is known. */
+  private native(path: '/api/tags' | '/api/show' | '/api/chat' | '/api/embed'): string {
+    return `${this.nativeRoot ?? this.baseUrl}${path}`;
   }
 
   async health(): Promise<{ ok: boolean; detail: string }> {
@@ -189,7 +222,7 @@ export class OpenAICompatibleProvider implements Provider, EmbeddingProvider {
   async listModels(): Promise<string[]> {
     const backend = await this.backend();
     if (backend.flavor === 'ollama') {
-      const res = await fetch(`${this.baseUrl}/api/tags`, { signal: AbortSignal.timeout(3000) });
+      const res = await fetch(this.native('/api/tags'), { signal: AbortSignal.timeout(3000) });
       if (!res.ok) throw new ProviderError(this.id, `GET /api/tags returned ${res.status}`);
       const body = (await res.json()) as { models?: Array<{ name: string }> };
       return (body.models ?? []).map((m) => m.name);
@@ -211,7 +244,7 @@ export class OpenAICompatibleProvider implements Provider, EmbeddingProvider {
     try {
       const backend = await this.backend();
       if (backend.flavor === 'ollama') {
-        const res = await fetch(`${this.baseUrl}/api/show`, {
+        const res = await fetch(this.native('/api/show'), {
           method: 'POST',
           headers: this.headers(),
           body: JSON.stringify({ model }),
@@ -329,7 +362,8 @@ export class OpenAICompatibleProvider implements Provider, EmbeddingProvider {
    *  (`contextWindows`), else a guess by family. A local server's listed
    *  window is never read: the engine budgets against the one it serves. */
   private async nativeWindow(model: string): Promise<number> {
-    const listed = this.remote ? this.endpoint.contextWindows?.[model] : undefined;
+    const windows = this.remote ? this.endpoint.contextWindows : undefined;
+    const listed = windows && Object.hasOwn(windows, model) ? windows[model] : undefined;
     return (await this.showInfo(model)).contextTokens ?? listed ?? defaultContextTokens(model);
   }
 
@@ -413,7 +447,7 @@ export class OpenAICompatibleProvider implements Provider, EmbeddingProvider {
     if (Object.keys(options).length) body.options = options;
 
     const guard = idleGuard(signal);
-    const res = await this.fetchGuarded(`${this.baseUrl}/api/chat`, body, guard);
+    const res = await this.fetchGuarded(this.native('/api/chat'), body, guard);
     if (!res.ok) {
       guard.stop();
       const text = await res.text();
@@ -486,8 +520,18 @@ export class OpenAICompatibleProvider implements Provider, EmbeddingProvider {
         function: { name: t.name, description: t.description, parameters: t.parameters },
       }));
     }
-    if (request.temperature !== undefined) body.temperature = request.temperature;
-    if (request.maxTokens !== undefined) body.max_tokens = request.maxTokens;
+    // OpenAI's own API refuses `max_tokens` on its reasoning models and any
+    // temperature but the default on them (gpt-5, the o series), so there
+    // the cap goes as `max_completion_tokens`, which every OpenAI chat model
+    // takes, and a reasoning model is sent no temperature.
+    const openai = this.atOpenAi;
+    const fixedTemperature = openai && OPENAI_REASONING_MODEL.test(request.model);
+    if (request.temperature !== undefined && !fixedTemperature) {
+      body.temperature = request.temperature;
+    }
+    if (request.maxTokens !== undefined) {
+      body[openai ? 'max_completion_tokens' : 'max_tokens'] = request.maxTokens;
+    }
     if (request.stop?.length) body.stop = request.stop;
     if (request.jsonSchema) {
       // llama.cpp, vLLM, and LM Studio all take OpenAI-style json_schema.
@@ -674,7 +718,7 @@ export class OpenAICompatibleProvider implements Provider, EmbeddingProvider {
   async embed(model: string, texts: string[]): Promise<number[][]> {
     const backend = await this.backend();
     if (backend.flavor === 'ollama') {
-      const res = await fetch(`${this.baseUrl}/api/embed`, {
+      const res = await fetch(this.native('/api/embed'), {
         method: 'POST',
         headers: this.headers(),
         body: JSON.stringify({ model, input: texts }),

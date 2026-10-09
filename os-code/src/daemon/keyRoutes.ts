@@ -57,7 +57,8 @@ const fail = (status: number, error: string): KeyRouteAnswer => ({ status, json:
 
 function slowDown(retryAfterMs: number): KeyRouteAnswer {
   const seconds = Math.max(1, Math.ceil(retryAfterMs / 1000));
-  return fail(429, `Too many key changes at once. Try again in ${seconds} seconds.`);
+  const wait = seconds === 1 ? 'a second' : `${seconds} seconds`;
+  return fail(429, `Too many key changes at once. Try again in ${wait}.`);
 }
 
 /** Answer a key route. An admin and a server are checked by the caller. */

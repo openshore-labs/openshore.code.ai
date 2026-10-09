@@ -4,7 +4,7 @@
 // or a log line; removing one clears the stack slots that named it; and a
 // key on the server serves coding sessions only, never a routine or the free
 // chat, which stay on a local model.
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -184,6 +184,25 @@ describe('the key routes on a server', () => {
     expect(log).not.toContain(PLAIN_KEY);
   });
 
+  // A gateway on the server's own network (LiteLLM passing turns to a cloud)
+  // would read as local, so routines, the free chat and private notes would
+  // reach it (CTO 3, D5): the key door takes only an address off it.
+  it('refuses an address on the server own network', async () => {
+    daemon = await server();
+    const { call } = client(daemon);
+    for (const baseUrl of [
+      'https://127.0.0.1:4000/v1',
+      'https://192.168.1.20:4000/v1',
+      'http://localhost:4000/v1',
+    ]) {
+      const refused = await call('PUT', '/keys/gw', { key: PLAIN_KEY, baseUrl });
+      expect(refused.status, baseUrl).toBe(400);
+      expect(refused.text).not.toContain(PLAIN_KEY);
+    }
+    expect(getCredential('provider-key:gw')).toBeUndefined();
+    expect(existsSync(join(home, 'config.json'))).toBe(false);
+  });
+
   it('refuses a body over the cap and a body that is not JSON', async () => {
     daemon = await server();
     const { call } = client(daemon);
@@ -265,7 +284,83 @@ describe('the key routes on a server', () => {
     const session = await call('POST', '/sessions', { cwd: workspace });
     expect(session.status).toBe(400);
     expect(session.json.error).toBe(SERVER_NO_MODEL);
-    expect(SERVER_NO_MODEL).toContain(`${SERVER_ACCOUNT_PREFIX} osc stack use <model> <provider>`);
+    expect(SERVER_NO_MODEL).toContain(
+      `${SERVER_ACCOUNT_PREFIX} osc stack use <model> <provider> --context <tokens>`,
+    );
+    // The app has no door to a server's model yet, so the line names none.
+    expect(SERVER_NO_MODEL).not.toMatch(/in OpenShore/);
+  });
+
+  it('a session runs on the key kept here: it asks first, then sends that key to the provider itself', async () => {
+    daemon = await server();
+    const { base, call } = client(daemon);
+    const token = readFileSync(join(home, 'daemon.token'), 'utf8').trim();
+    await call('PUT', '/keys/groq', { key: 'gsk_session_key_0123456789' });
+    await call('POST', '/stack/orchestrator', {
+      provider: 'groq',
+      model: 'openai/gpt-oss-120b',
+      contextTokens: 131072,
+    });
+    const real = globalThis.fetch;
+    const sent: Array<{ url: string; auth: string | undefined }> = [];
+    vi.stubGlobal('fetch', async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (!url.startsWith('http://127.0.0.1:')) {
+        const headers = (init?.headers ?? {}) as Record<string, string>;
+        sent.push({ url, auth: headers.authorization });
+        const sse = [
+          'data: {"choices":[{"delta":{"content":"Hello from Groq."},"finish_reason":"stop"}]}',
+          'data: [DONE]',
+          '',
+        ].join('\n\n');
+        return new Response(sse, { status: 200, headers: { 'content-type': 'text/event-stream' } });
+      }
+      return real(input, init);
+    });
+    try {
+      const session = await call('POST', '/sessions', { cwd: workspace });
+      expect(session.status).toBe(201);
+      const id = session.json.id as string;
+      expect((await call('POST', `/sessions/${id}/input`, { text: 'hello' })).status).toBe(202);
+
+      const res = await real(`${base}/sessions/${id}/events?since=0`, {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let card: { id: string; kind: string; summary: string } | undefined;
+      let done = false;
+      let sentBeforeYes = -1;
+      const deadline = Date.now() + 8000;
+      while (Date.now() < deadline && !done) {
+        const { value, done: ended } = await reader.read();
+        if (ended) break;
+        buffer += decoder.decode(value, { stream: true });
+        let idx: number;
+        while ((idx = buffer.indexOf('\n\n')) !== -1) {
+          const frame = buffer.slice(0, idx);
+          buffer = buffer.slice(idx + 2);
+          const data = frame.split('\n').find((l) => l.startsWith('data:'));
+          if (!data) continue;
+          const event = JSON.parse(data.slice(5).trim());
+          if (event.type === 'approval-request' && event.request.kind === 'cloud-spend') {
+            card = event.request;
+            sentBeforeYes = sent.length;
+            await call('POST', `/sessions/${id}/approvals/${card!.id}`, { approve: true });
+          }
+          if (event.type === 'task-done') done = true;
+        }
+      }
+      await reader.cancel();
+      expect(card?.summary).toContain("a model server off this computer's network");
+      expect(sentBeforeYes).toBe(0);
+      expect(sent.map((s) => s.url)).toContain('https://api.groq.com/openai/v1/chat/completions');
+      expect(sent.every((s) => s.url.startsWith('https://api.groq.com/openai/v1/'))).toBe(true);
+      expect(sent.every((s) => s.auth === 'Bearer gsk_session_key_0123456789')).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('forgetting the server removes every key it keeps', async () => {

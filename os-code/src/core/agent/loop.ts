@@ -60,6 +60,7 @@ import {
   estimateToolSpecs,
 } from '../../context/compaction.js';
 import { UsageTracker } from '../../auth/usage.js';
+import { isClaudeAddress } from '../../auth/claude.js';
 import type {
   AgentEvent,
   ApprovalAnswer,
@@ -2929,9 +2930,12 @@ export class AgentSession {
     const model = target.ref.model;
     const leaves = seatLeaves(target.provider, model);
     const server = this.serverOf(target.provider);
+    const elsewhere = this.cloudElsewhere(target.provider);
     const detail =
       target.provider.kind === 'cloud'
-        ? undefined
+        ? elsewhere
+          ? `The step the agent wrote goes to ${elsewhere}. Nothing is sent without this approval.`
+          : undefined
         : isOllamaCloudTag(model)
           ? `${ollamaPasser(server)} passes the step the agent wrote on to ollama.com, under your Ollama account. Nothing is sent without this approval.`
           : `The step the agent wrote goes to ${server.host}. Nothing is sent without this approval.`;
@@ -2945,6 +2949,17 @@ export class AgentSession {
       ...(detail ? { detail } : {}),
       ...(fellBack ? { fellBack: true as const } : {}),
     };
+  }
+
+  /** The host of a cloud seat configured at another address than
+   *  Anthropic's own (an Anthropic endpoint someone pointed elsewhere), so
+   *  its card names where the turn goes rather than Claude. Undefined for
+   *  Claude itself, and for a seat with no endpoint in config. */
+  private cloudElsewhere(provider: Provider): string | undefined {
+    if (provider.kind !== 'cloud') return undefined;
+    const endpoint = this.deps.config.providers[provider.id];
+    if (endpoint?.kind !== 'anthropic' || isClaudeAddress(endpoint.baseUrl)) return undefined;
+    return this.serverOf(provider).host;
   }
 
   /** A provider's server as a card names it: its address's host, or its
@@ -3157,12 +3172,20 @@ export class AgentSession {
   }
 
   /** The card's words for the active seat when it is off this network: cloud
-   *  Claude is priced; a remote OpenAI-compatible server is named by host; an
+   *  Claude is priced; a remote OpenAI-compatible server, or an Anthropic
+   *  endpoint at another address than Anthropic's, is named by host; an
    *  Ollama cloud tag names ollama.com, where its server passes each turn on
    *  (the server may well be this computer's own Ollama). */
   private offNetworkReason(): [string, string?] {
     const provider = this.active.provider;
-    if (provider.kind === 'cloud') return ['This step runs on cloud Claude.'];
+    if (provider.kind === 'cloud') {
+      const host = this.cloudElsewhere(provider);
+      if (!host) return ['This step runs on cloud Claude.'];
+      return [
+        `This step runs on ${provider.label}, at ${host}.`,
+        `Your messages and the files the agent reads go to ${host}. Nothing is sent without this approval.`,
+      ];
+    }
     const server = this.serverOf(provider);
     // One noun pair on every such card, "your messages and the files the
     // agent reads", and a loopback server is "Ollama on this computer"

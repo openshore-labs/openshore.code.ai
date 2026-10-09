@@ -26,10 +26,12 @@ import { PROJECT_POLICY } from '../src/config/projectPolicy.js';
 import { trustProjectFolder } from '../src/config/load.js';
 import { endpointApiKey, keyFromRef } from '../src/providers/openaiCompatible.js';
 import { ProviderRegistry } from '../src/providers/registry.js';
+import { redactSecrets } from '../src/core/security/redaction.js';
+import { MockProvider, textTurn } from './helpers/mockProvider.js';
+import { makeTestSession } from './helpers/session.js';
 import { AnthropicProvider } from '../src/providers/anthropic.js';
 import { getAnthropicKey } from '../src/auth/claude.js';
 import { deriveModelClass } from '../src/harness/profile.js';
-import { Router } from '../src/router/router.js';
 import { resolveStack } from '../src/router/stack.js';
 
 let home: string;
@@ -135,7 +137,12 @@ describe('putting a key', () => {
       ['unknownco', { key: SECRET, baseUrl: 'https://api.example.org/v1?key=1' }, /query/],
       ['unknownco', { key: SECRET, baseUrl: 'not a url' }, /not an address/],
       ['openrouter', { key: SECRET, workspaceId: 'wrkspc_1' }, /only with a Claude key/],
-      ['openrouter', { key: SECRET, label: 'bad‮label' }, /control or direction/],
+      ['openrouter', { key: SECRET, label: 'bad\u202elabel' }, /control or direction/],
+      ['openrouter', { key: SECRET, label: 'bad\u200blabel' }, /control or direction/],
+      ['openrouter', { key: SECRET, label: 'bad\u0007label' }, /control or direction/],
+      ['unknownco', { key: SECRET, baseUrl: 'https://127.0.0.1:4000/v1' }, /own network/],
+      ['unknownco', { key: SECRET, baseUrl: 'http://192.168.1.20:4000/v1' }, /https/],
+      ['constructor', { key: SECRET }, /does not know where constructor answers/],
     ];
     for (const [id, input, why] of bad) {
       expect(() => putProviderKey(id, input as never), String(id)).toThrow(why);
@@ -143,10 +150,24 @@ describe('putting a key', () => {
     expect(globalFileExists()).toBe(false);
   });
 
-  it('takes plain http only for an address on this network', () => {
-    expect(cleanBaseUrl('http://127.0.0.1:1234/v1/')).toBe('http://127.0.0.1:1234/v1');
-    expect(cleanBaseUrl('http://192.168.1.20:8000/v1')).toBe('http://192.168.1.20:8000/v1');
-    expect(() => cleanBaseUrl('http://203.0.113.9/v1')).toThrow(ProviderKeyError);
+  // A server on this network reads as local, so a gateway there passing
+  // turns to a cloud would get routines, the free chat and private notes
+  // (CTO 3, D5): the key door takes only an https address off it.
+  it('takes only an https address off this network', () => {
+    expect(cleanBaseUrl('https://api.example.org/v1/')).toBe('https://api.example.org/v1');
+    for (const local of [
+      'https://127.0.0.1:4000/v1',
+      'https://localhost:4000/v1',
+      'https://192.168.1.20:4000/v1',
+      'https://10.0.0.5/v1',
+      'https://gateway.local/v1',
+      'https://[::1]:4000/v1',
+    ]) {
+      expect(() => cleanBaseUrl(local), local).toThrow(/own network/);
+    }
+    for (const plain of ['http://127.0.0.1:1234/v1', 'http://203.0.113.9/v1']) {
+      expect(() => cleanBaseUrl(plain), plain).toThrow(ProviderKeyError);
+    }
   });
 
   it('keeps the Claude key where osc login keeps it, with its workspace, at Anthropic only', () => {
@@ -239,6 +260,29 @@ describe('listing keys', () => {
     setCredential('provider-key:mine', 'stray');
     expect(listProviderKeys().map((r) => r.id)).toEqual(['groq']);
   });
+
+  it('lists a stored key whose provider entry is gone, so it can still be removed', () => {
+    putProviderKey('groq', { key: 'gsk_list_key_123456' });
+    setCredential('provider-key:together', 'tgp_v1_orphan_key_0123456789');
+    expect(listProviderKeys()).toEqual([
+      { id: 'groq', label: 'Groq', host: 'api.groq.com' },
+      { id: 'together', label: 'Together AI', host: '' },
+    ]);
+    expect(removeProviderKey('together').removed).toEqual(['together']);
+    expect(getCredential('provider-key:together')).toBeUndefined();
+  });
+
+  it('refuses to list while the keychain is locked, rather than answer none', () => {
+    putProviderKey('groq', { key: 'gsk_list_key_123456' });
+    _setFakeKeychain({ entries: new Map([['provider-key:groq', 'x']]), locked: true });
+    let status: number | undefined;
+    try {
+      listProviderKeys();
+    } catch (err) {
+      status = (err as ProviderKeyError).status;
+    }
+    expect(status).toBe(503);
+  });
 });
 
 describe('removing keys', () => {
@@ -307,6 +351,18 @@ describe('removing keys', () => {
     expect(listProviderKeys()).toEqual([]);
   });
 
+  it('forgetting a server also deletes a key whose provider entry is gone', () => {
+    putProviderKey('groq', { key: 'gsk_all_key_123456' });
+    setCredential('provider-key:nvidia', 'nvapi-orphan-0123456789abcdef');
+    const file = globalFile();
+    delete file.providers.groq;
+    writeGlobal(file);
+    const gone = removeAllProviderKeys();
+    expect(gone.removed.sort()).toEqual(['groq', 'nvidia']);
+    expect(getCredential('provider-key:groq')).toBeUndefined();
+    expect(getCredential('provider-key:nvidia')).toBeUndefined();
+  });
+
   it('changes nothing while the keychain is locked', () => {
     putProviderKey('groq', { key: 'gsk_locked_key_123456' });
     _setFakeKeychain({ entries: new Map([['provider-key:groq', 'x']]), locked: true });
@@ -341,8 +397,25 @@ describe('placing the orchestrator', () => {
     expect(globalFile().providers.ollama.contextWindows).toBeUndefined();
   });
 
+  it('keeps no window for an Ollama cloud tag: its server is on this network, and its window is never read from here', () => {
+    expect(
+      placeOrchestrator({ provider: 'ollama', model: 'kimi-k3:cloud', contextTokens: 262144 }),
+    ).toEqual({ provider: 'ollama', model: 'kimi-k3:cloud', kind: 'cloud' });
+    expect(globalFile().providers?.ollama?.contextWindows).toBeUndefined();
+  });
+
   it('refuses a provider that is not configured, an empty model, and a window out of range', () => {
     expect(() => placeOrchestrator({ provider: 'nope', model: 'm' })).toThrow(/no provider "nope"/);
+    // Names every object inherits are not providers.
+    for (const provider of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) {
+      let status: number | undefined;
+      try {
+        placeOrchestrator({ provider, model: 'm' });
+      } catch (err) {
+        status = (err as ProviderKeyError).status;
+      }
+      expect(status, provider).toBe(404);
+    }
     putProviderKey('groq', { key: 'gsk_place_key_123456' });
     expect(() => placeOrchestrator({ provider: 'groq', model: '' })).toThrow(/model/);
     expect(() => placeOrchestrator({ provider: 'groq', model: 'm', contextTokens: 12.5 })).toThrow(
@@ -383,13 +456,13 @@ describe('the provider-key namespace', () => {
       'provider-key:groq extra',
     ]) {
       expect(ConfigSchema.safeParse(endpoint(ref)).success, ref).toBe(false);
-      expect(
-        ConfigSchema.safeParse({
-          providers: { a: { kind: 'anthropic', apiKeyRef: ref } },
-        }).success,
-        ref,
-      ).toBe(false);
     }
+    // An Anthropic endpoint names no key of its own: nothing writes one, and
+    // its copy, label and pricing are Claude's.
+    const anthropic = ConfigSchema.parse({
+      providers: { a: { kind: 'anthropic', apiKeyRef: 'provider-key:minimax' } },
+    }).providers.a!;
+    expect('apiKeyRef' in anthropic).toBe(false);
   });
 
   it('the read checks the namespace again, so no other credential is ever read', () => {
@@ -545,64 +618,151 @@ describe('a stored key at runtime', () => {
     _setProbeResult('http://127.0.0.1:9', undefined);
   });
 
-  it('an Anthropic-compatible host with its own key never gets the Claude key or workspace', async () => {
+  it('the Claude workspace goes only to Anthropic, never to an Anthropic endpoint pointed elsewhere', async () => {
     setCredential('anthropic-api-key', 'sk-ant-api03-claude-key-000');
     setCredential('anthropic-workspace-id', 'wrkspc_PERSON');
-    setCredential('provider-key:minimax', 'mm-own-key-123456');
     writeGlobal({
       providers: {
         anthropic: { kind: 'anthropic' },
-        minimax: {
-          kind: 'anthropic',
-          baseUrl: 'https://api.minimax.io/anthropic',
-          apiKeyRef: 'provider-key:minimax',
-        },
         gateway: { kind: 'anthropic', baseUrl: 'https://gateway.example.org' },
       },
     });
     const calls = captureFetch();
     const registry = new ProviderRegistry(loadGlobalConfig(), getAnthropicKey);
-    for (const id of ['anthropic', 'minimax', 'gateway']) {
+    for (const id of ['anthropic', 'gateway']) {
       expect(registry.rawProvider(id)).toBeInstanceOf(AnthropicProvider);
       await registry.rawProvider(id)!.listModels();
     }
-    const [claude, minimax, gateway] = calls;
+    const [claude, gateway] = calls;
     expect(claude!.url).toMatch(/^https:\/\/api\.anthropic\.com\//);
     expect(claude!.headers['x-api-key']).toBe('sk-ant-api03-claude-key-000');
     expect(claude!.headers['anthropic-workspace-id']).toBe('wrkspc_PERSON');
-    expect(minimax!.headers['x-api-key']).toBe('mm-own-key-123456');
-    expect(minimax!.headers['anthropic-workspace-id']).toBeUndefined();
     // A hand-written gateway keeps the Claude key it always used, never the
     // person's workspace.
     expect(gateway!.headers['x-api-key']).toBe('sk-ant-api03-claude-key-000');
     expect(gateway!.headers['anthropic-workspace-id']).toBeUndefined();
   });
 
-  it('an Anthropic-compatible host with its own key is never the escalation target', () => {
-    setCredential('provider-key:minimax', 'mm-own-key-123456');
-    setCredential('anthropic-api-key', 'sk-ant-api03-claude-key-000');
-    const config = ConfigSchema.parse({
+  it('a hand-written server with a key variable at a public address is still probed, and a versioned base is probed at its root', async () => {
+    const { _setProbeResult } = await import('../src/providers/capabilities.js');
+    const urls: string[] = [];
+    vi.stubGlobal('fetch', async (url: string) => {
+      urls.push(url);
+      const body =
+        url.endsWith('/version') && !url.endsWith('/api/version') ? { version: '0.11.0' } : null;
+      return body
+        ? new Response(JSON.stringify(body), { status: 200 })
+        : new Response('nope', { status: 404 });
+    });
+    writeGlobal({
       providers: {
-        ollama: { kind: 'openai-compatible', baseUrl: 'http://localhost:11434' },
-        minimax: {
-          kind: 'anthropic',
-          baseUrl: 'https://api.minimax.io/anthropic',
-          apiKeyRef: 'provider-key:minimax',
-          model: 'MiniMax-M3',
+        vps: {
+          kind: 'openai-compatible',
+          baseUrl: 'https://llm.example.org',
+          apiKeyEnv: 'VLLM_KEY',
         },
       },
-      stack: { orchestrator: { provider: 'ollama', model: 'qwen2.5:7b' } },
     });
-    const registry = new ProviderRegistry(config, getAnthropicKey);
-    const router = new Router(config, registry, resolveStack(config, registry));
-    expect(router.escalationTarget()).toBeUndefined();
-    const withClaude = ConfigSchema.parse({
-      ...config,
-      providers: { ...config.providers, anthropic: { kind: 'anthropic' } },
+    const vps = new ProviderRegistry(loadGlobalConfig(), getAnthropicKey).rawProvider('vps')!;
+    expect((await vps.backend()).flavor).toBe('vllm');
+    expect(urls).toContain('https://llm.example.org/version');
+    _setProbeResult('https://llm.example.org', undefined);
+
+    // A versioned base on this network is probed at its root, so an Ollama
+    // found there is served the window it serves, never the family guess.
+    urls.length = 0;
+    vi.stubGlobal('fetch', async (url: string) => {
+      urls.push(url);
+      if (url === 'http://127.0.0.1:11434/api/version') {
+        return new Response(JSON.stringify({ version: '0.12.0' }), { status: 200 });
+      }
+      return new Response('nope', { status: 404 });
     });
-    const reg2 = new ProviderRegistry(withClaude, getAnthropicKey);
-    const router2 = new Router(withClaude, reg2, resolveStack(withClaude, reg2));
-    expect(router2.escalationTarget()?.provider.id).toBe('anthropic');
+    writeGlobal({
+      providers: {
+        lan: {
+          kind: 'openai-compatible',
+          baseUrl: 'http://127.0.0.1:11434/v1',
+          versionedBase: true,
+        },
+      },
+    });
+    const lan = new ProviderRegistry(loadGlobalConfig(), getAnthropicKey).rawProvider('lan')!;
+    expect((await lan.backend()).flavor).toBe('ollama');
+    expect(urls[0]).toBe('http://127.0.0.1:11434/api/version');
+    _setProbeResult('http://127.0.0.1:11434', undefined);
+
+    // A keyed provider API is sent none of them.
+    urls.length = 0;
+    putProviderKey('groq', { key: 'gsk_probe_key_0123456789' });
+    const groq = new ProviderRegistry(loadGlobalConfig(), getAnthropicKey).rawProvider('groq')!;
+    expect((await groq.backend()).flavor).toBe('generic');
+    expect(urls).toEqual([]);
+  });
+
+  it("OpenAI's own API gets max_completion_tokens, and a reasoning model no temperature", async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    vi.stubGlobal('fetch', async (_url: string, init: RequestInit = {}) => {
+      bodies.push(JSON.parse(String(init.body)));
+      const sse = [
+        'data: {"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}',
+        'data: [DONE]',
+        '',
+      ].join('\n\n');
+      return new Response(sse, { status: 200, headers: { 'content-type': 'text/event-stream' } });
+    });
+    putProviderKey('openai', { key: 'sk-proj-openai-key-0123456789abcdef' });
+    putProviderKey('groq', { key: 'gsk_params_key_0123456789' });
+    const registry = new ProviderRegistry(loadGlobalConfig(), getAnthropicKey);
+    const ask = async (id: string, model: string) => {
+      for await (const _ of registry.get(id).chat({
+        model,
+        messages: [{ role: 'user', content: 'hi' }],
+        temperature: 0.2,
+        maxTokens: 8192,
+      })) {
+        // drain
+      }
+      return bodies.at(-1)!;
+    };
+    const gpt5 = await ask('openai', 'gpt-5');
+    expect(gpt5.max_completion_tokens).toBe(8192);
+    expect('max_tokens' in gpt5).toBe(false);
+    expect('temperature' in gpt5).toBe(false);
+    const gpt41 = await ask('openai', 'gpt-4.1');
+    expect(gpt41.max_completion_tokens).toBe(8192);
+    expect(gpt41.temperature).toBe(0.2);
+    // Every other server keeps the names it always had.
+    const other = await ask('groq', 'openai/gpt-oss-120b');
+    expect(other.max_tokens).toBe(8192);
+    expect(other.temperature).toBe(0.2);
+  });
+});
+
+describe('the cloud card names where a cloud seat sends the turn', () => {
+  it('Claude at its own address is cloud Claude; an Anthropic endpoint pointed elsewhere is named by host', async () => {
+    const claude = makeTestSession(
+      new MockProvider('anthropic', [textTurn('Hi.')], { kind: 'cloud' }),
+      { configOverrides: { providers: { anthropic: { kind: 'anthropic' } } } },
+    );
+    await claude.agent.run('hello');
+    expect(claude.approvals.find((a) => a.kind === 'cloud-spend')!.summary).toBe(
+      'This step runs on cloud Claude.',
+    );
+    const elsewhere = makeTestSession(
+      new MockProvider('gateway', [textTurn('Hi.')], { kind: 'cloud' }),
+      {
+        configOverrides: {
+          providers: { gateway: { kind: 'anthropic', baseUrl: 'https://gateway.example.org' } },
+        },
+      },
+    );
+    await elsewhere.agent.run('hello');
+    const card = elsewhere.approvals.find((a) => a.kind === 'cloud-spend')!;
+    expect(card.summary).toBe('This step runs on gateway, at gateway.example.org.');
+    expect(card.detail).toBe(
+      'Your messages and the files the agent reads go to gateway.example.org. Nothing is sent without this approval.',
+    );
   });
 });
 
@@ -633,6 +793,49 @@ describe('the base table agrees with the app', () => {
       if (!base) continue;
       expect(KNOWN_PROVIDERS[id]?.baseUrl, id).toBe(base);
     }
+  });
+});
+
+// Each provider `osc key add` knows, with a key in the shape its docs (or the
+// testers the provider facts cite) give, so the redactor that guards the
+// journal, the logs and shell output knows it. null where the provider
+// publishes no shape: the key routes still scrub the exact key, and nothing
+// else can tell one from any long string. A newly named provider fails here
+// until it has a row.
+const KEY_SHAPES: Record<string, string | null> = {
+  anthropic: 'sk-ant-api03-AbCdEfGhIjKlMnOpQrStUv0123456789',
+  openai: 'sk-proj-AbCdEfGhIjKlMnOpQrStUv0123456789_-xyz',
+  google: 'AIzaSyAbCdEfGhIjKlMnOpQrStUv0123456789',
+  moonshot: 'sk-AbCdEfGhIjKlMnOpQrStUv0123456789abcdef',
+  perplexity: 'pplx-AbCdEfGhIjKlMnOpQrStUv0123456789abcdef',
+  venice: null,
+  openrouter: 'sk-or-v1-0123456789abcdef0123456789abcdef0123456789abcdef',
+  groq: 'gsk_AbCdEfGhIjKlMnOpQrStUv0123456789abcdef',
+  together: 'tgp_v1_AbCdEfGhIjKlMnOpQrStUv0123456789-_abc',
+  deepseek: 'sk-0123456789abcdef0123456789abcdef',
+  mistral: null,
+  xai: 'xai-AbCdEfGhIjKlMnOpQrStUv0123456789abcdef',
+  cerebras: 'csk-abcdef0123456789abcdef0123456789abcdef',
+  huggingface: 'hf_AbCdEfGhIjKlMnOpQrStUv0123456789',
+  nebius: null,
+  novita: 'sk_AbCdEfGhIjKlMnOpQrStUv0123456789-_abc',
+  minimax: null,
+  nvidia: 'nvapi-AbCdEfGhIjKlMnOpQrStUv0123456789-_abcdefg',
+};
+
+describe('every known provider key is redacted whole', () => {
+  it('names a shape, or says there is none, for every provider osc key add knows', () => {
+    expect(Object.keys(KEY_SHAPES).sort()).toEqual(Object.keys(KNOWN_PROVIDERS).sort());
+    for (const [id, sample] of Object.entries(KEY_SHAPES)) {
+      if (sample === null) continue;
+      expect(redactSecrets(`provider said: invalid key ${sample} (401)`), id).toMatch(
+        /^provider said: invalid key \[redacted:[a-z-]+\] \(401\)$/,
+      );
+    }
+    // A snake_case name in code is not a Novita key.
+    expect(redactSecrets('sk_receive_queue_lock_owner_field')).toBe(
+      'sk_receive_queue_lock_owner_field',
+    );
   });
 });
 

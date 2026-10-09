@@ -8,8 +8,17 @@
 // checks a key against its provider (no outbound call, so a server is never a
 // key-checking oracle); the first session that uses it shows whether it works.
 // A provider this module did not write (a hand-written endpoint, the default
-// Ollama, the desktop's Connect ChatGPT) is never overwritten or removed.
-import { deleteCredential, getCredential, readCredential, setCredential } from './store.js';
+// Ollama, the desktop's Connect ChatGPT) is never overwritten or removed. A
+// key here is for a provider's API off this network: a model server on it
+// (a gateway such as LiteLLM included) is set up in the stack, so that a key
+// door never makes a cloud seat read as local (CTO 3, D5).
+import {
+  deleteCredential,
+  getCredential,
+  readCredential,
+  setCredential,
+  storedCredentialNames,
+} from './store.js';
 import type { StoreBackend } from './store.js';
 import {
   CLAUDE_API_BASE,
@@ -20,8 +29,8 @@ import {
 } from './claude.js';
 import { editGlobalConfig, loadGlobalConfig } from '../config/load.js';
 import { ConfigSchema, type OscConfig, type ProviderEndpoint } from '../config/schema.js';
-import { isProviderId, providerKeyRef } from '../config/providerKeyRef.js';
-import { isLocalHost } from '../core/security/egress.js';
+import { isProviderId, isProviderKeyRef, providerKeyRef } from '../config/providerKeyRef.js';
+import { isLocalHost, isLocalUrl } from '../core/security/egress.js';
 import { redactSecrets } from '../core/security/redaction.js';
 import { ProviderRegistry } from '../providers/registry.js';
 import { seatLeaves } from '../providers/types.js';
@@ -56,6 +65,17 @@ export const KNOWN_PROVIDERS: Readonly<Record<string, { label: string; baseUrl: 
   nvidia: { label: 'NVIDIA', baseUrl: 'https://integrate.api.nvidia.com/v1' },
 };
 
+/** A provider OpenShore names, by its own id only (never a name the object
+ *  inherits, such as "constructor"). */
+export function knownProvider(id: string): { label: string; baseUrl: string } | undefined {
+  return Object.hasOwn(KNOWN_PROVIDERS, id) ? KNOWN_PROVIDERS[id] : undefined;
+}
+
+/** The endpoint configured under `id`, by its own key only. */
+function configured(config: OscConfig, id: string): ProviderEndpoint | undefined {
+  return Object.hasOwn(config.providers, id) ? config.providers[id] : undefined;
+}
+
 /** A refusal with the status a route answers it with. Its message never
  *  carries a key. */
 export class ProviderKeyError extends Error {
@@ -88,14 +108,15 @@ const LABEL_MAX_CHARS = 60;
 const MODEL_MAX_CHARS = 200;
 /** The most listed windows one endpoint keeps; the oldest go first. */
 const WINDOWS_KEPT = 32;
-const WINDOW_MIN = 1024;
-const WINDOW_MAX = 10_000_000;
-// Control and direction characters, which a label printed in a terminal or
-// a list must never carry.
-// eslint-disable-next-line no-control-regex
-const UNPRINTABLE = /[\u0000-\u001f\u007f-\u009f‎‏‪-‮⁦-⁩]/;
+/** The windows a placement may keep, in tokens. */
+export const WINDOW_MIN = 1024;
+export const WINDOW_MAX = 10_000_000;
+// Control and format characters (the direction marks and the zero-width ones
+// among them), which a label printed in a terminal or a list must never
+// carry. The same family as serverPair.ts's device labels.
+const UNPRINTABLE = /[\p{Cc}\p{Cf}]/u;
 
-const ID_HINT = 'A provider id is lower-case letters, numbers and dashes, like openrouter.';
+export const ID_HINT = 'A provider id is lower-case letters, numbers and dashes, like openrouter.';
 
 function cleanId(id: unknown): string {
   if (!isProviderId(id)) throw new ProviderKeyError(ID_HINT);
@@ -118,9 +139,11 @@ function cleanKey(key: unknown): string {
   return trimmed;
 }
 
-/** A provider's address: https, or http only on this computer's own network
- *  (judged by address), with no credentials, query or fragment in it, and no
- *  trailing slash. */
+/** A provider's address: https, off this computer's own network (judged by
+ *  address), with no credentials, query or fragment in it, and no trailing
+ *  slash. A server on this network is refused: it would read as local, so a
+ *  gateway on it passing turns to a cloud would get routines, the free chat
+ *  and private notes (the forwards-to-a-cloud mark is not built yet). */
 export function cleanBaseUrl(raw: unknown): string {
   if (typeof raw !== 'string' || !raw.trim() || raw.length > BASE_URL_MAX_CHARS) {
     throw new ProviderKeyError("Send the provider's address as its full https URL.");
@@ -131,10 +154,12 @@ export function cleanBaseUrl(raw: unknown): string {
   } catch {
     throw new ProviderKeyError("That is not an address. Send the provider's full https URL.");
   }
-  const local = url.protocol === 'http:' && isLocalHost(url.hostname);
-  if (url.protocol !== 'https:' && !local) {
+  if (url.protocol !== 'https:') {
+    throw new ProviderKeyError("A provider's address starts with https://.");
+  }
+  if (isLocalHost(url.hostname)) {
     throw new ProviderKeyError(
-      "A provider's address starts with https://, unless it is on your own network.",
+      "That address is on this machine's own network. A key kept here is for a provider's API off it; set up a model server on this network in the stack instead (osc stack).",
     );
   }
   if (url.username || url.password || url.search || url.hash) {
@@ -174,7 +199,7 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
  *  key. `osc login` writes the same one, so the Claude key on a machine is
  *  one key whichever door put it there. */
 function claudeShape(endpoint: ProviderEndpoint): boolean {
-  return endpoint.kind === 'anthropic' && !endpoint.apiKeyRef && isClaudeAddress(endpoint.baseUrl);
+  return endpoint.kind === 'anthropic' && isClaudeAddress(endpoint.baseUrl);
 }
 
 /** Whether this module wrote (and may change) the provider under `id`. */
@@ -201,7 +226,14 @@ function hostOf(baseUrl: string): string {
 }
 
 function labelOf(id: string, endpoint: ProviderEndpoint): string {
-  return endpoint.label ?? KNOWN_PROVIDERS[id]?.label ?? id;
+  return endpoint.label ?? knownProvider(id)?.label ?? id;
+}
+
+function lockedStore(): ProviderKeyError {
+  return new ProviderKeyError(
+    "This computer's keychain is locked, so OpenShore cannot change its keys. Unlock it and try again.",
+    503,
+  );
 }
 
 function setAside(id: string): ProviderKeyError {
@@ -249,13 +281,24 @@ function clearSlots(raw: Record<string, unknown>, ids: ReadonlySet<string>): str
  *  keychain must never read as "no key" (B1). */
 function assertStoreReadable(names: readonly string[]): void {
   for (const name of names) {
-    if (readCredential(name).keychainUnreadable) {
-      throw new ProviderKeyError(
-        "This computer's keychain is locked, so OpenShore cannot change its keys. Unlock it and try again.",
-        503,
-      );
-    }
+    if (readCredential(name).keychainUnreadable) throw lockedStore();
   }
+}
+
+/** Every `provider-key:<id>` name in the store, whatever config says. */
+function storedProviderKeyNames(): string[] {
+  const { names, unreadable } = storedCredentialNames('provider-key:');
+  if (unreadable) throw lockedStore();
+  return names.filter(isProviderKeyRef);
+}
+
+/** The ids of stored provider keys with no provider entry at all (one
+ *  removed by hand, or a write that failed half way), so they can still be
+ *  listed and removed. */
+function strayKeyIds(config: OscConfig): string[] {
+  return storedProviderKeyNames()
+    .map((name) => name.slice('provider-key:'.length))
+    .filter((id) => !configured(config, id));
 }
 
 /** Write the credentials, then run the config change; when the config
@@ -294,7 +337,7 @@ export function putProviderKey(
   if (cleanWorkspace(input.workspaceId) !== undefined) {
     throw new ProviderKeyError('A workspace id goes only with a Claude key.');
   }
-  const known = KNOWN_PROVIDERS[id];
+  const known = knownProvider(id);
   const given = input.baseUrl === undefined || input.baseUrl === '' ? undefined : input.baseUrl;
   const baseUrl = given !== undefined ? cleanBaseUrl(given) : known?.baseUrl;
   if (!baseUrl) {
@@ -304,7 +347,7 @@ export function putProviderKey(
   }
   const label = cleanLabel(input.label, known?.label ?? id);
   const ref = providerKeyRef(id);
-  const existing = loadGlobalConfig().providers[id];
+  const existing = configured(loadGlobalConfig(), id);
   if (existing && !managed(id, existing)) throw setAside(id);
   assertStoreReadable([ref]);
   // A window the app placed a model with holds while the address does.
@@ -347,7 +390,7 @@ function putClaudeKey(
   }
   const workspace = cleanWorkspace(input.workspaceId);
   const label = cleanLabel(input.label, 'Claude');
-  const existing = loadGlobalConfig().providers.anthropic;
+  const existing = configured(loadGlobalConfig(), 'anthropic');
   if (existing && !claudeShape(existing)) throw setAside('anthropic');
   assertStoreReadable([CLAUDE_KEY_NAME, CLAUDE_WORKSPACE_NAME]);
   const backend = withCredentials(
@@ -371,12 +414,26 @@ function putClaudeKey(
   };
 }
 
-/** The providers holding a key on this machine, in config order. */
+function managedIds(config: OscConfig): string[] {
+  return Object.entries(config.providers)
+    .filter(([id, endpoint]) => isProviderId(id) && managed(id, endpoint))
+    .map(([id]) => id);
+}
+
+/** The providers holding a key on this machine, in config order, then any
+ *  stored key whose provider entry is gone (its host ''). A locked store
+ *  refuses (503) rather than read as "none" (B1). */
 export function listProviderKeys(config: OscConfig = loadGlobalConfig()): ProviderKeyRow[] {
+  const ids = managedIds(config);
+  assertStoreReadable([CLAUDE_KEY_NAME, ...ids.flatMap(credentialNames)]);
   const rows: ProviderKeyRow[] = [];
-  for (const [id, endpoint] of Object.entries(config.providers)) {
-    if (!isProviderId(id) || !managed(id, endpoint) || !holdsKey(id)) continue;
+  for (const id of ids) {
+    if (!holdsKey(id)) continue;
+    const endpoint = config.providers[id]!;
     rows.push({ id, label: labelOf(id, endpoint), host: hostOf(endpoint.baseUrl) });
+  }
+  for (const id of strayKeyIds(config)) {
+    rows.push({ id, label: knownProvider(id)?.label ?? id, host: '' });
   }
   return rows;
 }
@@ -392,29 +449,33 @@ export interface RemovedKeys {
  *  that names it. */
 export function removeProviderKey(rawId: unknown): RemovedKeys {
   const id = cleanId(rawId);
-  const config = loadGlobalConfig();
-  const endpoint = config.providers[id];
+  const endpoint = configured(loadGlobalConfig(), id);
   if (endpoint && !managed(id, endpoint)) throw setAside(id);
   return removeMany(endpoint ? [id] : [], [id]);
 }
 
 /** Every key this module keeps here, for forgetting a server: each provider
- *  it wrote (and the Claude key, when one is held), with its stack slots. */
+ *  it wrote (and the Claude key, when one is held), with its stack slots,
+ *  and every other `provider-key:` name in the store, a stray one too. */
 export function removeAllProviderKeys(): RemovedKeys {
   const config = loadGlobalConfig();
-  const ids = Object.entries(config.providers)
-    .filter(([id, endpoint]) => isProviderId(id) && managed(id, endpoint))
-    .filter(([id]) => id !== 'anthropic' || holdsKey(id))
-    .map(([id]) => id);
-  return removeMany(ids, ids);
+  assertStoreReadable(credentialNames('anthropic'));
+  const ids = managedIds(config).filter((id) => id !== 'anthropic' || holdsKey(id));
+  const ours = new Set(ids.map(providerKeyRef));
+  const strays = storedProviderKeyNames().filter((name) => !ours.has(name));
+  return removeMany(ids, ids, strays);
 }
 
 /** Remove the endpoints under `endpoints` in one atomic config write, then
- *  delete the keys of every id in `keys`. */
-function removeMany(endpoints: readonly string[], keys: readonly string[]): RemovedKeys {
-  const names = keys.flatMap(credentialNames);
+ *  delete the keys of every id in `keys` and each name in `strays`. */
+function removeMany(
+  endpoints: readonly string[],
+  keys: readonly string[],
+  strays: readonly string[] = [],
+): RemovedKeys {
+  const names = [...keys.flatMap(credentialNames), ...strays];
   assertStoreReadable(names);
-  const held = keys.filter(holdsKey);
+  const held = [...keys.filter(holdsKey), ...strays.map((n) => n.slice('provider-key:'.length))];
   let slotsCleared: string[] = [];
   if (endpoints.length) {
     editGlobalConfig((raw) => {
@@ -449,7 +510,7 @@ export interface PlacedOrchestrator {
 export function placeOrchestrator(input: PlaceOrchestratorInput): PlacedOrchestrator {
   const config = loadGlobalConfig();
   const provider = input.provider;
-  if (typeof provider !== 'string' || !provider || !config.providers[provider]) {
+  if (typeof provider !== 'string' || !provider || !configured(config, provider)) {
     throw new ProviderKeyError(
       `There is no provider "${typeof provider === 'string' ? provider.slice(0, 60) : ''}" on this machine. Put its key here first.`,
       404,
@@ -457,7 +518,7 @@ export function placeOrchestrator(input: PlaceOrchestratorInput): PlacedOrchestr
   }
   const model = typeof input.model === 'string' ? input.model.trim() : '';
   if (!model || model.length > MODEL_MAX_CHARS || UNPRINTABLE.test(model)) {
-    throw new ProviderKeyError('Send the model as its id, like {"model": "deepseek-v4-pro"}.');
+    throw new ProviderKeyError('A model is named by its id, like deepseek-v4-pro.');
   }
   let window: number | undefined;
   if (input.contextTokens !== undefined && input.contextTokens !== null) {
@@ -472,7 +533,10 @@ export function placeOrchestrator(input: PlaceOrchestratorInput): PlacedOrchestr
   const registry = new ProviderRegistry(config, getAnthropicKey);
   const leaves = seatLeaves(registry.get(provider), model);
   const endpoint = config.providers[provider]!;
-  const keepWindow = window !== undefined && leaves && endpoint.kind === 'openai-compatible';
+  // Judged by address alone, the rule the window is read by: a cloud tag on
+  // this computer's Ollama leaves, but its window is never read from here.
+  const keepWindow =
+    window !== undefined && endpoint.kind === 'openai-compatible' && !isLocalUrl(endpoint.baseUrl);
   editGlobalConfig((raw) => {
     if (!isPlainObject(raw.stack)) raw.stack = {};
     (raw.stack as Record<string, unknown>).orchestrator = { provider, model };

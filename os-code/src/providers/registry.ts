@@ -1,7 +1,6 @@
 // Provider registry: instantiate every configured endpoint once, hand out by
-// id. The Claude key getter is injected; an endpoint that names a key of its
-// own (`apiKeyRef`, keys on your server, 2026-10-09) is given that key here,
-// so every place that builds a registry picks it up with no change.
+// id. The Claude key getter is injected; an OpenAI-compatible endpoint reads
+// its own key (`apiKeyEnv`, or `apiKeyRef`, keys on your server, 2026-10-09).
 //
 // THE ETHICS LAYER LIVES HERE.
 //
@@ -19,7 +18,7 @@
 // raw provider ever escapes.
 import type { OscConfig } from '../config/schema.js';
 import type { EmbeddingProvider, ImageProvider, Provider } from './types.js';
-import { OpenAICompatibleProvider, keyFromRef } from './openaiCompatible.js';
+import { OpenAICompatibleProvider } from './openaiCompatible.js';
 import { hostRamGB } from './hostMemory.js';
 import { AnthropicProvider } from './anthropic.js';
 import { isClaudeAddress } from '../auth/claude.js';
@@ -49,12 +48,9 @@ export class ProviderRegistry {
         // computer is served from the same ceiling (CTO I1).
         this.add(id, new OpenAICompatibleProvider(id, endpoint, {}, { ramGB: hostRamGB }));
       } else if (endpoint.kind === 'anthropic') {
-        // Its own key when it names one, else the Claude key; the Claude
-        // workspace rides only with the Claude key at Anthropic's address.
-        const ref = endpoint.apiKeyRef;
-        const getKey = ref ? () => keyFromRef(ref) : getAnthropicKey;
-        const workspace = !ref && isClaudeAddress(endpoint.baseUrl) ? 'claude' : 'none';
-        this.add(id, new AnthropicProvider(id, endpoint, getKey, { workspace }));
+        // The Claude workspace id rides only to Anthropic's own address.
+        const workspace = isClaudeAddress(endpoint.baseUrl) ? 'claude' : 'none';
+        this.add(id, new AnthropicProvider(id, endpoint, getAnthropicKey, { workspace }));
       }
     }
     if (config.imageGen) {
