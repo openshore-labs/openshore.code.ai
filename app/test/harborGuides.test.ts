@@ -307,7 +307,7 @@ describe('the guides say when a cloud model runs, with no exception', () => {
       'Models you download or connect wait on the Bench until you place them. Teal is local and private, amber is cloud. Tap Add to stack, choose a category, and optionally a trigger, a persona, and effort.',
     );
     expect(card('cloud-connections')).toContain(
-      'API keys are stored only on your device and sent only to their provider. A cloud model runs, and spends, only when you pick it or place it. How:',
+      'API keys are stored only on your device and sent only to their provider, except a key you turn on for your server, which is kept there too. A cloud model runs, and spends, only when you pick it or place it. How:',
     );
     expect(card('privacy')).toMatch(
       /What leaves this device: a cloud model you chose, a web search you allowed, update checks, the model list, and your account while signed in\.$/,

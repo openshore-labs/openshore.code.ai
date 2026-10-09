@@ -735,8 +735,9 @@ export interface DaemonKeysList {
 }
 
 /** PUT /keys/:id. `baseUrl` is the provider's versioned OpenAI-compatible
- *  base (https, or http on the server's own network); a provider the engine
- *  names may leave it out. `workspaceId` goes only with the Claude key. */
+ *  base, https and off the server's own network (a model server on it is set
+ *  up in the stack instead); a provider the engine names may leave it out.
+ *  `workspaceId` goes only with the Claude key. */
 export interface DaemonPutKeyBody {
   key: string;
   baseUrl?: string;

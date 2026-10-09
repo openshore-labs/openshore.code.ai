@@ -158,7 +158,7 @@ describe('what leaves this device', () => {
     // with that provider, and every provider whose models load live is asked
     // for its list, so the when says so for all of them, not two by name.
     expect(cloud.when).toBe(
-      'Only when you pick a cloud model or place one in your Stack, and only on the turns it answers. On your computer, the coding agent asks first in each task. Also when you save a provider key, and for one whose models load from it, when you open Choose models. A key you add with osc key add, on your computer or a server you dock, is used there only by coding sessions on the model you place, and they ask first in each task.',
+      'Only when you pick a cloud model or place one in your Stack, and only on the turns it answers. On your computer, the coding agent asks first in each task. Also when you save a provider key, and for one whose models load from it, when you open Choose models. A key kept on your computer or a server you dock, added there with osc key add or turned on here, is used there only by coding sessions on the model you place, and they ask first in each task.',
     );
     // Every way the exception was worded on a surface (the list's own line,
     // the Connections lead, Privacy plainly, the guides and Harbor Lite's
@@ -316,8 +316,13 @@ describe('the guides claim no more than the list', () => {
 
   it('says a key is stored only here and sent only to its provider or address', () => {
     const src = (f: string) => readFileSync(join(process.cwd(), 'src', f), 'utf8');
+    // Keys on your server (2026-10-09): the one exception, said where the
+    // promise is made, and in What stays on this device.
     expect(src('screens/ConnectionsScreen.tsx').replace(/\s+/g, ' ')).toContain(
-      'Keys are stored only on this device and sent only to their provider.',
+      'Keys are stored only on this device and sent only to their provider, except a key you turn on for your server, which goes to it once and is kept there.',
+    );
+    expect(STAYS_ON_DEVICE).toContain(
+      'Your API keys: in the Keychain on iPhone and iPad; on a computer, encrypted under a key in its keychain. Each is sent only to its own provider, and to a server you dock only when you turn it on for that server, which then keeps it too.',
     );
     expect(src('components/StackManager.tsx').replace(/\s+/g, ' ')).toContain(
       'The API key is stored only on this device and sent only to that address',
@@ -332,7 +337,7 @@ describe('the guides claim no more than the list', () => {
         .replace(/&apos;/g, "'")
         .replace(/\s+/g, ' ');
     expect(src('screens/ConnectionsScreen.tsx')).toContain(
-      'Connect a provider with your own API key. Its models wait on your bench until you place them, and a cloud model runs only when you pick it or place it. Keys are stored only on this device and sent only to their provider.',
+      'Connect a provider with your own API key. Its models wait on your bench until you place them, and a cloud model runs only when you pick it or place it. Keys are stored only on this device and sent only to their provider, except a key you turn on for your server, which goes to it once and is kept there.',
     );
     expect(src('screens/SettingsScreen.tsx')).toContain(
       'Cloud models run on your own keys or accounts (an Ollama cloud model on your Ollama account), and only when you pick one or place it in your Stack. A few things do leave this device',

@@ -151,7 +151,14 @@ describe('a revoked phone is told so', () => {
   });
 
   it('a forgotten computer forgets this phone too', () => {
+    // A server's provider keys go first, while the credential still works
+    // (keys on your server, 2026-10-09); then the revoke, best effort as
+    // before. app/test/serverKeys.test.tsx holds the order.
     const store = read('src', 'state', 'store.ts');
-    expect(store).toMatch(/if \(leaving\?\.token\) void daemonForgetSelf\(leaving\);/);
+    expect(store).toMatch(/leaving\?\.token \? await leaveHub\(leaving, role\)/);
+    const ops = read('src', 'state', 'serverKeysOps.ts');
+    expect(ops).toMatch(
+      /const cleared = await clearServerKeys\(target, role\);\s*if \(target\.token\) void daemonForgetSelf\(target\);/,
+    );
   });
 });

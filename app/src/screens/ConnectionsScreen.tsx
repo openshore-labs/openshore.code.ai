@@ -8,7 +8,10 @@
 // provider, a tap opens its key sheet, and a connected row asks before it
 // disconnects. The familiar seven stay at the top; the named providers on
 // your key (2026-10-09) join them once connected, and until then wait under
-// one More providers row, a searchable sheet.
+// one More providers row, a searchable sheet. A docked server that keeps
+// keys, with this device as its admin, gains two rows under Your server:
+// which keys it keeps, and which model it runs (keys on your server,
+// 2026-10-09; components/ServerKeys.tsx).
 import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../state/store.js';
 import {
@@ -29,6 +32,16 @@ import { isDesktop, openInAppBrowser, secretGet } from '../lib/platform.js';
 import { sheetExitMs } from '../lib/motion.js';
 import { ServerSetup } from '../components/ServerSetup.js';
 import { DockForm, hostOf } from '../components/DockForm.js';
+import {
+  ServerKeysLeftSheet,
+  ServerKeysSheet,
+  ServerModelSheet,
+  keysRowSub,
+  modelRowSub,
+  useServerKeys,
+  type KeysLeft,
+} from '../components/ServerKeys.js';
+import { namesLine, serverWhere } from '../lib/serverKeys.js';
 import {
   connectionsOfflineLine,
   keyCheckWaits,
@@ -102,6 +115,29 @@ export function ConnectionsScreen() {
   const servers = (settings.daemons ?? (settings.daemon ? [settings.daemon] : [])).filter(
     (h) => h.kind === 'server',
   );
+  // What each server that keeps keys for this device keeps, read from it
+  // (the source of truth) when this room opens and after each change.
+  const { views: serverViews, refresh: refreshServer } = useServerKeys(servers);
+  // The server whose keys sheet, or model sheet, is open.
+  const [keysFor, setKeysFor] = useState<string | undefined>();
+  const [modelFor, setModelFor] = useState<string | undefined>();
+  // A key a server could not be reached to delete, while its note is open.
+  const [left, setLeft] = useState<KeysLeft | undefined>();
+  const keysServer = servers.find((h) => h.baseUrl === keysFor);
+  const modelServer = servers.find((h) => h.baseUrl === modelFor);
+  // Sheets never stack: the keys sheet leaves before the model sheet rises.
+  const chooseModel = (baseUrl: string) => {
+    setKeysFor(undefined);
+    setTimeout(() => setModelFor(baseUrl), sheetExitMs());
+  };
+  // The servers that keep the key of the provider being disconnected, as
+  // they last said, so its question can say so.
+  const holders = removing
+    ? servers.filter((h) => {
+        const keys = serverViews[h.baseUrl]?.keys;
+        return Array.isArray(keys) && keys.some((k) => k.id === removing.id);
+      })
+    : [];
 
   const openSheet = (id: string) => {
     setEditing(id);
@@ -222,7 +258,8 @@ export function ConnectionsScreen() {
           Set up your own server; it docks like your computer. Connect a provider with your own API
           key. Its models wait on your bench until you place them, and a cloud model runs only when
           you pick it or place it. Keys are stored only on this device and sent only to their
-          provider.{' '}
+          provider, except a key you turn on for your server, which goes to it once and is kept
+          there.{' '}
           <button
             type="button"
             className="linklike press-fb"
@@ -245,15 +282,35 @@ export function ConnectionsScreen() {
             the way a computer is (connect-anywhere, 2026-10-07). A docked one
             opens Computer, where it is managed. */}
         <SettingsGroup title="Your server" index={0}>
-          {servers.map((h) => (
-            <SettingsRow
-              key={h.baseUrl}
-              label={h.name?.trim() || hostOf(h.baseUrl)}
-              sub="Docked. It is in Computer and in the model menu."
-              value={<span className="pill ok">Docked</span>}
-              onClick={() => setView('pair')}
-            />
-          ))}
+          {servers.map((h) => {
+            const view = serverViews[h.baseUrl];
+            const where = serverWhere(h, servers.length);
+            return [
+              <SettingsRow
+                key={h.baseUrl}
+                label={h.name?.trim() || hostOf(h.baseUrl)}
+                sub="Docked. It is in Computer and in the model menu."
+                value={<span className="pill ok">Docked</span>}
+                onClick={() => setView('pair')}
+              />,
+              view ? (
+                <SettingsRow
+                  key={`${h.baseUrl}-keys`}
+                  label={`Keys on ${where}`}
+                  sub={keysRowSub(view)}
+                  onClick={() => setKeysFor(h.baseUrl)}
+                />
+              ) : null,
+              view ? (
+                <SettingsRow
+                  key={`${h.baseUrl}-model`}
+                  label={`Model on ${where}`}
+                  sub={modelRowSub(view, where)}
+                  onClick={() => setModelFor(h.baseUrl)}
+                />
+              ) : null,
+            ];
+          })}
           <SettingsRow
             label={servers.length ? 'Dock another server' : 'Set up a server'}
             sub="A Linux server runs OpenShore and its models while this device sleeps."
@@ -455,6 +512,25 @@ export function ConnectionsScreen() {
         ) : null}
       </Sheet>
 
+      {/* Keys on your server (2026-10-09): what a docked server keeps, and
+          its model, each read from it. */}
+      <ServerKeysSheet
+        server={keysServer}
+        where={keysServer ? serverWhere(keysServer, servers.length) : ''}
+        view={keysServer ? serverViews[keysServer.baseUrl] : undefined}
+        onChanged={() => (keysServer ? refreshServer(keysServer.baseUrl) : Promise.resolve())}
+        onChooseModel={() => keysServer && chooseModel(keysServer.baseUrl)}
+        onClose={() => setKeysFor(undefined)}
+      />
+      <ServerModelSheet
+        server={modelServer}
+        where={modelServer ? serverWhere(modelServer, servers.length) : ''}
+        view={modelServer ? serverViews[modelServer.baseUrl] : undefined}
+        onChanged={() => (modelServer ? refreshServer(modelServer.baseUrl) : Promise.resolve())}
+        onClose={() => setModelFor(undefined)}
+      />
+      <ServerKeysLeftSheet left={left} onClose={() => setLeft(undefined)} />
+
       <Sheet open={settingUpServer} onClose={() => setSettingUpServer(false)}>
         {settingUpServer ? (
           <>
@@ -482,6 +558,9 @@ export function ConnectionsScreen() {
             the question says so, and offers the one way to keep them. */}
         <p>
           Its API key is removed from this device, and its models leave your bench and every stack.
+          {holders.length
+            ? ` ${capitalFirst(namesLine(holders.map((h) => serverWhere(h, servers.length))))} ${holders.length === 1 ? 'keeps' : 'keep'} its key too, and it is deleted there as well.`
+            : ''}{' '}
           To keep them,{' '}
           <button
             type="button"
@@ -507,8 +586,32 @@ export function ConnectionsScreen() {
               const target = removing;
               setRemoving(undefined);
               if (!target) return;
-              await disconnectProvider(target.id);
-              showToast(`${target.name} disconnected.`);
+              const onServers = await disconnectProvider(target.id);
+              const named = (hs: typeof servers) =>
+                namesLine(hs.map((h) => serverWhere(h, servers.length)));
+              showToast(
+                onServers.removedFrom.length
+                  ? `${target.name} disconnected, and its key deleted from ${named(onServers.removedFrom)}.`
+                  : `${target.name} disconnected.`,
+              );
+              for (const h of onServers.removedFrom) void refreshServer(h.baseUrl);
+              // A server that did not answer may still keep it: say so, and
+              // how to delete it there. One this room last read as keeping
+              // no such key is not worth a word.
+              const mayKeep = onServers.notRemoved.filter((h) => {
+                const keys = serverViews[h.baseUrl]?.keys;
+                return !Array.isArray(keys) || keys.some((k) => k.id === target.id);
+              });
+              if (mayKeep.length) {
+                setTimeout(
+                  () =>
+                    setLeft({
+                      where: named(mayKeep),
+                      provider: { id: target.id, name: target.name },
+                    }),
+                  sheetExitMs(),
+                );
+              }
             }}
           >
             Disconnect
@@ -517,6 +620,11 @@ export function ConnectionsScreen() {
       </Sheet>
     </div>
   );
+}
+
+/** "your server" at the start of a sentence. */
+function capitalFirst(text: string): string {
+  return `${text.charAt(0).toUpperCase()}${text.slice(1)}`;
 }
 
 /** The More providers row's line: the first few names it holds, plainly. */

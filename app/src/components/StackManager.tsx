@@ -29,6 +29,7 @@ import { byomPlainHttpToCloud, byomRef, normalizeBaseUrl } from '../lib/byom.js'
 import { hubTailnetSuffix } from '../lib/vaultSeat.js';
 import { daemonStack } from '../drivers/remoteDriver.js';
 import { dockedNoun, dockedNounLower } from '../lib/docking.js';
+import { dockedNoModelLine, dockedRunsLine } from '../lib/serverKeys.js';
 import {
   activeContribution,
   currentBenchRefs,
@@ -1130,13 +1131,17 @@ export function StackManager({
  *  this device is docked. */
 function DockedStackCard() {
   const daemon = useApp((s) => s.settings.daemon);
+  const role = useApp((s) => (daemon ? s.settings.hubRoles?.[daemon.baseUrl] : undefined));
   const setView = useApp((s) => s.setView);
-  const [model, setModel] = useState<string | null | undefined>(undefined);
+  // The machine's model, null when it has none, undefined until it answers.
+  const [model, setModel] = useState<
+    NonNullable<DaemonStackInfo['orchestrator']> | null | undefined
+  >(undefined);
   useEffect(() => {
     if (!daemon) return;
     let live = true;
     daemonStack(daemon)
-      .then((s) => live && setModel(s.orchestrator?.model ?? null))
+      .then((s) => live && setModel(s.orchestrator ?? null))
       .catch(() => live && setModel(undefined));
     return () => {
       live = false;
@@ -1150,9 +1155,9 @@ function DockedStackCard() {
           <h3 style={{ margin: 0 }}>{dockedNoun(daemon)}</h3>
           <div className="sub">
             {model
-              ? `Runs ${model}. Pick it in the model menu in any chat; its stack is set on ${dockedNounLower(daemon)}.`
+              ? `${dockedRunsLine(model, dockedNounLower(daemon))} Pick it in the model menu in any chat; its stack is set on ${dockedNounLower(daemon)}.`
               : model === null
-                ? `No model set up on ${dockedNounLower(daemon)} yet.`
+                ? dockedNoModelLine(daemon, role)
                 : `Docked. Its models show here once it answers.`}
           </div>
         </div>
