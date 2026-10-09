@@ -211,7 +211,7 @@ describe('Cloud Connections in the ledger', () => {
     // Disconnecting takes its models off every stack (providerOps), so the
     // question says so, and offers the one way to keep them (2026-10-09).
     expect(dom.text()).toContain(
-      'Its API key is removed from this device, and its models leave your bench and every stack. To keep them, replace its key instead.',
+      'Its API key is removed from this device, and its models leave your bench and every stack. To keep its models, replace its key instead.',
     );
   });
 

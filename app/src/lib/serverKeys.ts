@@ -95,15 +95,34 @@ function companyOf(provider: string): string | undefined {
   return Object.hasOwn(COMPANY, provider) ? COMPANY[provider] : providerInfo(provider)?.name;
 }
 
+/** The host a provider's key goes to by default, as this device knows it. */
+function knownHost(provider: string): string | undefined {
+  if (provider === 'anthropic') return 'api.anthropic.com';
+  const base = providerInfo(provider)?.openaiBaseUrl;
+  try {
+    return base ? new URL(base).host : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Where a docked machine's model runs, for a row's sub. One that stays runs
  *  on the machine; a cloud one runs at its provider, on your key, and the
  *  machine only sends it each turn. `where` is "your server", "your
- *  computer" or "this computer". */
+ *  computer" or "this computer". `host` is where the server says that
+ *  provider's key goes (GET /keys, an admin's view only): one pointed
+ *  somewhere other than the provider's own address is named by its host,
+ *  never by a company that does not get the turn. */
 export function dockedModelLine(
   orchestrator: NonNullable<DaemonStackInfo['orchestrator']>,
   where: string,
+  host?: string,
 ): string {
   if (orchestrator.kind !== 'cloud') return `${orchestrator.model}, running on ${where}`;
+  const known = knownHost(orchestrator.provider);
+  if (host && known && host !== known) {
+    return `${orchestrator.model}, at ${host} on your key, from ${where}`;
+  }
   const company = companyOf(orchestrator.provider);
   return company
     ? `${orchestrator.model}, at ${company} on your key, from ${where}`
@@ -123,8 +142,9 @@ export function dockedRunsLine(
 }
 
 /** A docked machine with no model yet, and how one is chosen. A server's
- *  is chosen from an admin device in Cloud Connections (or over SSH, on a
- *  server older than that); a computer's in its own Stack. */
+ *  is chosen from an admin device in Cloud Connections (whose Model on your
+ *  server sheet also shows the SSH way, as the server's account); a
+ *  computer's in its own Stack. */
 export function dockedNoModelLine(
   target: Pick<DaemonTarget, 'kind'>,
   role: HubRole | undefined,
@@ -133,7 +153,7 @@ export function dockedNoModelLine(
     return 'No model set up on your computer yet. Set one up in the Stack, in OpenShore on that computer.';
   }
   if (role === 'member') return 'No model on your server yet. Its admin chooses one.';
-  return 'No model on your server yet. Choose one in Cloud Connections, under Your server, or over SSH with osc stack use.';
+  return 'No model on your server yet. Choose one in Cloud Connections, under Your server.';
 }
 
 /** The server named in a sentence: its own name, else "your server" when it
@@ -152,17 +172,31 @@ export function serverWhere(
   }
 }
 
+/** A server named at the start of a sentence: "your server" (or a list that
+ *  starts with it) takes its capital; a name or an address stays as written. */
+export function whereStartsSentence(where: string): string {
+  return where.startsWith('your ') ? `Y${where.slice(1)}` : where;
+}
+
 /** Names in a sentence: "Groq", "Groq and Claude", "Groq, Claude and Mistral". */
 export function namesLine(names: readonly string[]): string {
   if (names.length <= 1) return names[0] ?? '';
   return `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
 }
 
-/** What turning a key on means, said once in the keys sheet. */
+/** What turning a key on means, said once in the keys sheet. Each way out
+ *  is tried once, so the line says what happens when the server is away. */
 export const SERVER_KEYS_LEAD =
-  'A key you turn on goes once over your private Tailscale link and is kept on that server, so its coding sessions can use it while this device sleeps. Turning it off, disconnecting the provider here, or forgetting the server deletes it there.';
+  'A key you turn on goes once over your private Tailscale link and is kept on that server, so its coding sessions can use it while this device sleeps. Turning it off, disconnecting the provider here, or forgetting the server deletes it there if the server answers then; if it does not, OpenShore shows how to delete it over SSH.';
 
 /** How a server holds a key, in the engine's own words (auth/keyHome.ts):
  *  never called encrypted. Most rented servers have no keychain. */
 export const SERVER_KEYS_HOLD =
-  "A server with no keychain, as most rented ones are, keeps keys in a file only its OpenShore account and root can read, locked with the server's own name and id, so anyone who can read that file or a copy of its disk can read them. The company you rent from can reach that disk. Crew routines and the free chat there stay on a local model.";
+  "A server with no keychain, as most rented ones are, keeps keys in a file only its OpenShore account and root can read, locked with the server's own name and id, so anyone who can read that file or a copy of its disk can read them. The company you rent from can reach that disk.";
+
+/** What a cloud model as the server's model means for the rest of it: Crew
+ *  routines (routines/scheduler.ts, ROUTINE_NEEDS_LOCAL_MODEL) and the free
+ *  chat (daemon/freeChat.ts) refuse a model that leaves, so they stop while
+ *  one is placed, and never use it (CTO 3). */
+export const SERVER_MODEL_LOCAL_ONLY =
+  "Crew routines and Chat with your server run only on a local model, so they do not run while a cloud model is the server's model.";

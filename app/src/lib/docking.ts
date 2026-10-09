@@ -59,6 +59,19 @@ export function serverKeyRemoveCommand(providerId: string): string {
   return `${SERVER_ACCOUNT_PREFIX} osc key remove ${providerId}`;
 }
 
+/** Over SSH, place a server's model (`osc stack use <model> [provider]`).
+ *  A provider whose key the server keeps takes the window its model page
+ *  lists (`--context`); a model the server runs itself leaves it out, since
+ *  it is budgeted against the window it serves. */
+export function serverStackUseCommand(
+  provider: string,
+  model = '<model>',
+  window: 'context' | 'served' = 'context',
+): string {
+  const use = `${SERVER_ACCOUNT_PREFIX} osc stack use ${model} ${provider}`;
+  return window === 'context' ? `${use} --context <tokens>` : use;
+}
+
 /** Setting up a server, in the order a person does it. No provider is named
  *  or ranked: any Linux server works. */
 export const SERVER_STEPS: { title: string; detail: string }[] = [

@@ -1,8 +1,9 @@
 // Keys on your server, the app's side (founder, 2026-10-09;
 // docs/byok-any-provider-plan.md, part 3): the daemon calls, the pure choices
-// and copy, the lifecycle (a server's keys go before this device's credential
-// is revoked, and a disconnected provider's key leaves every server that keeps
-// it), and Cloud Connections' rows and sheets. A server is stood in by a fetch
+// and copy, the lifecycle (forgetting a server deletes its keys before this
+// device's credential is revoked, re-pairing only revokes, and a disconnected
+// provider's key leaves every server that keeps it), and Cloud Connections'
+// rows and sheets. A server is stood in by a fetch
 // that answers the way os-code/src/daemon/keyRoutes.ts does. Mounted in a real
 // DOM (test/support/dom.ts) so the taps are the ones a person makes.
 import { readFileSync } from 'node:fs';
@@ -46,11 +47,12 @@ vi.mock('../src/lib/insights.js', () => ({
 
 // The DOM comes first: React DOM decides whether it has one when it loads.
 const dom: TestDom = await mountDom();
-const { useApp } = await import('../src/state/store.js');
+const { useApp, hubSecretKey } = await import('../src/state/store.js');
 const driver = await import('../src/drivers/remoteDriver.js');
 const lib = await import('../src/lib/serverKeys.js');
 const ops = await import('../src/state/serverKeysOps.js');
-const { serverKeyRemoveCommand, SERVER_KEY_LIST_COMMAND } = await import('../src/lib/docking.js');
+const { serverKeyRemoveCommand, serverStackUseCommand, SERVER_KEY_LIST_COMMAND } =
+  await import('../src/lib/docking.js');
 const { PROVIDERS } = await import('../src/lib/providers.js');
 const { act } = await import('react');
 const { sheetExitMs } = await import('../src/lib/motion.js');
@@ -75,8 +77,9 @@ interface FakeServer {
   role: 'admin' | 'member';
   keysOnServer: boolean;
   down: boolean;
-  /** Answer every key route with this status instead (a 503, a 429). */
-  refuse?: { status: number; error: string };
+  /** Answer key routes with this status instead (a 503, a 429), every one
+   *  or only those of one method. */
+  refuse?: { status: number; error: string; method?: string };
 }
 
 let calls: Call[] = [];
@@ -130,7 +133,9 @@ function stubServer(): void {
     if (server.role !== 'admin') {
       return answer(403, { error: 'This needs an admin credential. Ask a company admin.' });
     }
-    if (server.refuse) return answer(server.refuse.status, { error: server.refuse.error });
+    if (server.refuse && (!server.refuse.method || server.refuse.method === method)) {
+      return answer(server.refuse.status, { error: server.refuse.error });
+    }
     if (path === '/keys' && method === 'GET') return answer(200, { keys: server.keys });
     if (path === '/keys' && method === 'DELETE') {
       const removed = server.keys.map((k) => k.id);
@@ -139,6 +144,9 @@ function stubServer(): void {
     }
     if (path === '/stack/orchestrator' && method === 'POST') {
       const body = call.body as { provider: string; model: string; contextTokens?: number };
+      if (!server.keys.some((k) => k.id === body.provider)) {
+        return answer(404, { error: `No key for ${body.provider} on this server.` });
+      }
       server.stack = {
         description: body.model,
         orchestrator: { provider: body.provider, model: body.model, kind: 'cloud' },
@@ -360,11 +368,20 @@ describe('the choices and the words', () => {
     expect(
       lib.dockedRunsLine({ provider: 'groq', model: 'llama', kind: 'cloud' }, 'your server'),
     ).toBe('Runs llama at Groq on your key, from your server.');
+    // A key the server sends somewhere else (osc key add --base-url) is
+    // named by where it goes, never by a company that does not get the turn.
+    const groq = { provider: 'groq', model: 'llama', kind: 'cloud' as const };
+    expect(lib.dockedModelLine(groq, 'your server', 'api.groq.com')).toBe(
+      'llama, at Groq on your key, from your server',
+    );
+    expect(lib.dockedModelLine(groq, 'your server', 'llm.example.net')).toBe(
+      'llama, at llm.example.net on your key, from your server',
+    );
   });
 
   it('says how a machine with no model gets one', () => {
     expect(lib.dockedNoModelLine({ kind: 'server' }, 'admin')).toBe(
-      'No model on your server yet. Choose one in Cloud Connections, under Your server, or over SSH with osc stack use.',
+      'No model on your server yet. Choose one in Cloud Connections, under Your server.',
     );
     expect(lib.dockedNoModelLine({ kind: 'server' }, 'member')).toBe(
       'No model on your server yet. Its admin chooses one.',
@@ -376,6 +393,9 @@ describe('the choices and the words', () => {
     expect(lib.serverWhere(SERVER, 2)).toBe('100.64.0.9');
     expect(lib.serverWhere({ ...SERVER, name: ' Hetzner ' }, 2)).toBe('Hetzner');
     expect(lib.namesLine(['Groq', 'Claude', 'Mistral'])).toBe('Groq, Claude and Mistral');
+    // Only "your server" takes a capital at a sentence's start.
+    expect(lib.whereStartsSentence('your server')).toBe('Your server');
+    expect(lib.whereStartsSentence('vps-1.tail1234.ts.net')).toBe('vps-1.tail1234.ts.net');
   });
 
   it('says how a server holds a key in the engine`s words, never encrypted', () => {
@@ -383,10 +403,17 @@ describe('the choices and the words', () => {
     expect(words).not.toMatch(/encrypt/i);
     expect(lib.SERVER_KEYS_HOLD).toContain('a file only its OpenShore account and root can read');
     expect(lib.SERVER_KEYS_HOLD).toContain('The company you rent from can reach that disk.');
-    expect(lib.SERVER_KEYS_HOLD).toContain(
-      'Crew routines and the free chat there stay on a local model.',
+    // Routines and the free chat refuse a cloud model there (CTO 3), so the
+    // words say they stop, never that they stay on a local one.
+    expect(words).not.toMatch(/routine|free chat/i);
+    expect(lib.SERVER_MODEL_LOCAL_ONLY).toBe(
+      "Crew routines and Chat with your server run only on a local model, so they do not run while a cloud model is the server's model.",
     );
     expect(lib.SERVER_KEYS_LEAD).toContain('while this device sleeps');
+    // Each way out is tried once, and the line says what happens otherwise.
+    expect(lib.SERVER_KEYS_LEAD).toContain(
+      'deletes it there if the server answers then; if it does not, OpenShore shows how to delete it over SSH.',
+    );
     expect(words).not.toMatch(/always on|private server/i);
     // The commands run as the server's own account, as osc key --help says.
     const engine = readFileSync(
@@ -396,6 +423,12 @@ describe('the choices and the words', () => {
     const prefix = engine.match(/SERVER_ACCOUNT_PREFIX = '([^']+)'/)![1]!;
     expect(serverKeyRemoveCommand('groq')).toBe(`${prefix} osc key remove groq`);
     expect(SERVER_KEY_LIST_COMMAND).toBe(`${prefix} osc key list`);
+    expect(serverStackUseCommand('mistral')).toBe(
+      `${prefix} osc stack use <model> mistral --context <tokens>`,
+    );
+    expect(serverStackUseCommand('ollama', 'qwen3:8b', 'served')).toBe(
+      `${prefix} osc stack use qwen3:8b ollama`,
+    );
   });
 });
 
@@ -431,18 +464,55 @@ describe('the lifecycle', () => {
     expect(await ops.clearServerKeys(SERVER)).toEqual({ kind: 'none' });
   });
 
-  it('re-pairing over a server deletes its keys with the old credential, then revokes it', async () => {
+  it('re-pairing over a server only revokes the old credential, once the new one is saved', async () => {
     server.keys = [{ id: 'groq', label: 'Groq', host: 'api.groq.com' }];
+    server.stack = {
+      description: 'llama',
+      orchestrator: { provider: 'groq', model: 'llama', kind: 'cloud' },
+      specialists: [],
+    };
+    // The old credential goes only once the new one is saved: the pairing
+    // code is spent, so nothing may sit between it and the save.
+    let savedFirst = false;
+    const fetchBefore = globalThis.fetch;
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+      if (String(input).endsWith('/pair/self')) {
+        savedFirst = secrets.get(hubSecretKey(SERVER.baseUrl)) === 'osc_new';
+      }
+      return fetchBefore(input, init);
+    }) as typeof fetch;
     await useApp
       .getState()
       .saveHub({ baseUrl: SERVER.baseUrl, token: 'osc_new' }, { role: 'admin' });
     await dom.settle();
-    const owned = calls.filter((c) => c.path === '/keys' || c.path === '/pair/self');
+    const owned = calls.filter((c) => c.path.startsWith('/keys') || c.path === '/pair/self');
     expect(owned.map((c) => `${c.method} ${c.path} ${c.auth}`)).toEqual([
-      'DELETE /keys Bearer osc_admin',
       'DELETE /pair/self Bearer osc_admin',
     ]);
+    // The new credential manages the same keys and the same model.
+    expect(server.keys.map((k) => k.id)).toEqual(['groq']);
+    expect(server.stack.orchestrator?.model).toBe('llama');
     expect(useApp.getState().settings.daemon).toMatchObject({ token: 'osc_new', kind: 'server' });
+    expect(savedFirst).toBe(true);
+  });
+
+  it('re-pairing a computer sends no key call', async () => {
+    useApp.setState({
+      settings: {
+        ...useApp.getState().settings,
+        daemon: COMPUTER,
+        daemons: [COMPUTER],
+        hubRoles: { [COMPUTER.baseUrl]: 'admin' },
+      },
+    });
+    await useApp
+      .getState()
+      .saveHub({ baseUrl: COMPUTER.baseUrl, token: 'osc_mac2' }, { role: 'admin' });
+    await dom.settle();
+    expect(calls.some((c) => c.path.startsWith('/keys'))).toBe(false);
+    expect(calls.map((c) => `${c.method} ${c.path} ${c.auth}`)).toEqual([
+      'DELETE /pair/self Bearer osc_mac',
+    ]);
   });
 
   it('disconnecting a provider deletes its key from each server that keeps it, and only there', async () => {
@@ -470,11 +540,13 @@ describe('the lifecycle', () => {
     server.keys = [{ id: 'openrouter', label: 'OpenRouter', host: 'openrouter.ai' }];
     expect(await ops.removeKeyFromServers([SERVER], 'groq')).toEqual({
       removedFrom: [],
+      modelClearedOn: [],
       notRemoved: [],
     });
     server.role = 'member';
     expect(await ops.removeKeyFromServers([SERVER], 'openrouter')).toEqual({
       removedFrom: [],
+      modelClearedOn: [],
       notRemoved: [],
     });
     expect(keyCalls()).toEqual(['GET /keys', 'GET /keys']);
@@ -524,6 +596,7 @@ async function waitOut(): Promise<void> {
 }
 
 const OPEN = '.sheet:not(.closing)';
+const CONFIRM = '.confirm-card:not(.closing)';
 const sheetTitle = () => dom.container.querySelector(`${OPEN} .mode-head h2`)?.textContent ?? '';
 const switchFor = (name: string) =>
   dom.container.querySelector<HTMLButtonElement>(
@@ -599,7 +672,8 @@ describe('Cloud Connections, under Your server', () => {
     expect(rows(OPEN).map((r) => r.label)).toEqual(['Claude', 'OpenAI', 'Groq', 'Its model']);
     expect(switchFor('Groq')!.getAttribute('aria-checked')).toBe('true');
     expect(switchFor('Claude')!.getAttribute('aria-checked')).toBe('false');
-    expect(rows(OPEN).find((r) => r.label === 'Groq')!.sub).toBe('Kept on your server too.');
+    // The server says which providers it keeps a key for, never whose.
+    expect(rows(OPEN).find((r) => r.label === 'Groq')!.sub).toBe('Your server keeps a Groq key.');
     expect(rows(OPEN).find((r) => r.label === 'OpenAI')!.sub).toBe('Only on this device.');
   });
 
@@ -638,9 +712,13 @@ describe('Cloud Connections, under Your server', () => {
     await openRoom();
     await tapRow('Keys on your server');
     const only = rows(OPEN).find((r) => r.label === 'Mistral')!;
-    expect(only.sub).toBe('Added there, not from this device. It goes to api.mistral.ai.');
+    expect(only.sub).toBe(
+      'Your server keeps it; this device has no key for it. It goes to api.mistral.ai.',
+    );
     calls = [];
-    await tap([...only.el.querySelectorAll('button')].find((b) => b.textContent === 'Delete')!);
+    const del = only.el.querySelector('button')!;
+    expect(del.getAttribute('aria-label')).toBe('Delete the Mistral key from your server');
+    await tap(del);
     expect(sheetTitle()).toBe('Delete the Mistral key?');
     expect(keyCalls()).toEqual([]);
     await dom.click('Delete');
@@ -667,8 +745,12 @@ describe('Cloud Connections, under Your server', () => {
     expect(rows(OPEN).map((r) => r.label)).toEqual(['Gemini 2.5 Pro', 'Gemini 2.5 Flash']);
     // A provider whose models this device does not know is named, with the way.
     expect(dom.container.querySelector(OPEN)!.textContent).toContain(
-      'For Mistral, this device knows no models. Choose one over SSH with osc stack use.',
+      "For Mistral, this device knows no models. Choose one over SSH, as the server's account, with the window its model page lists:",
     );
+    expect(dom.container.querySelector(`${OPEN} .dock-command-text`)?.textContent).toBe(
+      serverStackUseCommand('mistral'),
+    );
+    expect(dom.container.querySelector(OPEN)!.textContent).toContain(lib.SERVER_MODEL_LOCAL_ONLY);
     calls = [];
     await tapRow('Gemini 2.5 Pro', OPEN);
     await dom.settle();
@@ -701,13 +783,13 @@ describe('Cloud Connections, under Your server', () => {
     await openRoom();
     await tapRow('Groq');
     expect(dom.text()).toContain(
-      'Its API key is removed from this device, and its models leave your bench and every stack. Your server keeps its key too, and it is deleted there as well. To keep them, replace its key instead.',
+      'Its API key is removed from this device, and its models leave your bench and every stack. To keep its models, replace its key instead. Your server keeps a Groq key too, and it is deleted there as well.',
     );
     await dom.click('Disconnect');
     for (let i = 0; i < 3; i++) await dom.settle();
     expect(server.keys).toEqual([]);
     expect(useApp.getState().toast).toBe(
-      'Groq disconnected, and its key deleted from your server.',
+      'Groq disconnected, and its key was deleted from your server.',
     );
   });
 
@@ -721,10 +803,251 @@ describe('Cloud Connections, under Your server', () => {
     await dom.click('Disconnect');
     for (let i = 0; i < 3; i++) await dom.settle();
     await waitOut();
-    expect(sheetTitle()).toBe('Its key may still be on your server');
+    expect(sheetTitle()).toBe('The Groq key may still be on your server');
     expect(dom.container.querySelector(`${OPEN} .dock-command-text`)?.textContent).toBe(
       serverKeyRemoveCommand('groq'),
     );
+  });
+});
+
+describe('Cloud Connections, the review fixes', () => {
+  it('the two late rows step in on the shared stagger', async () => {
+    await openRoom();
+    for (const label of ['Keys on your server', 'Model on your server']) {
+      const row = rows().find((r) => r.label === label)!.el;
+      expect(row.classList.contains('stagger-in'), label).toBe(true);
+      expect(row.style.getPropertyValue('--i'), label).toBe(label.startsWith('Keys') ? '0' : '1');
+    }
+    expect(rows().find((r) => r.label === 'Dock another server')!.el.classList).not.toContain(
+      'stagger-in',
+    );
+  });
+
+  it('opening a sheet reads the server again, so a key added over SSH shows', async () => {
+    await openRoom();
+    server.keys = [{ id: 'mistral', label: 'Mistral', host: 'api.mistral.ai' }];
+    calls = [];
+    await tapRow('Keys on your server');
+    await dom.settle();
+    expect(keyCalls()).toContain('GET /keys');
+    expect(rows(OPEN).map((r) => r.label)).toContain('Mistral');
+  });
+
+  it("a refusal shows the server's own words, and the switch goes back", async () => {
+    useApp.setState({ connectedProviders: { groq: true } });
+    secrets.set('oscode.secret.groq', 'gsk_test');
+    await openRoom();
+    await tapRow('Keys on your server');
+    server.refuse = {
+      status: 409,
+      error: 'Groq is set up another way on this server. Remove it there first.',
+      method: 'PUT',
+    };
+    await tap(switchFor('Groq')!);
+    await dom.settle();
+    expect(useApp.getState().toast).toBe(
+      'Groq is set up another way on this server. Remove it there first.',
+    );
+    expect(switchFor('Groq')!.getAttribute('aria-checked')).toBe('false');
+    expect(server.keys).toEqual([]);
+  });
+
+  it('the tapped switch moves at the tap, before the server answers', async () => {
+    useApp.setState({ connectedProviders: { groq: true } });
+    secrets.set('oscode.secret.groq', 'gsk_test');
+    await openRoom();
+    await tapRow('Keys on your server');
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const fetchBefore = globalThis.fetch;
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+      if (init?.method === 'PUT') await gate;
+      return fetchBefore(input, init);
+    }) as typeof fetch;
+    await tap(switchFor('Groq')!);
+    expect(switchFor('Groq')!.getAttribute('aria-checked')).toBe('true');
+    expect(switchFor('Groq')!.disabled).toBe(true);
+    release();
+    await dom.settle();
+    await dom.settle();
+    expect(switchFor('Groq')!.getAttribute('aria-checked')).toBe('true');
+    expect(switchFor('Groq')!.disabled).toBe(false);
+  });
+
+  it('turning off the key the server`s model runs on asks first, naming the model', async () => {
+    useApp.setState({ connectedProviders: { groq: true } });
+    server.keys = [{ id: 'groq', label: 'Groq', host: 'api.groq.com' }];
+    server.stack = {
+      description: 'llama',
+      orchestrator: { provider: 'groq', model: 'llama-3.3-70b-versatile', kind: 'cloud' },
+      specialists: [],
+    };
+    await openRoom();
+    await tapRow('Keys on your server');
+    calls = [];
+    await tap(switchFor('Groq')!);
+    expect(keyCalls()).toEqual([]);
+    expect(sheetTitle()).toBe('Delete the Groq key from your server?');
+    expect(dom.container.querySelector(`${OPEN} .sheet-sub`)?.textContent).toBe(
+      'The model on your server, llama-3.3-70b-versatile, runs on it, so the server has none until you choose another. The key stays on this device.',
+    );
+    await dom.click('Delete');
+    await dom.settle();
+    expect(keyCalls()).toEqual(['DELETE /keys/groq', 'GET /keys']);
+    expect(useApp.getState().toast).toBe(
+      'Groq key deleted from your server. Its model ran on it, so choose another.',
+    );
+  });
+
+  it('placing a cloud model over a local one asks first, with the way back', async () => {
+    useApp.setState({ connectedProviders: { google: true } });
+    server.keys = [{ id: 'google', label: 'Gemini', host: 'generativelanguage.googleapis.com' }];
+    server.stack = {
+      description: 'qwen',
+      orchestrator: { provider: 'ollama', model: 'qwen3:8b', kind: 'local' },
+      specialists: [],
+    };
+    await openRoom();
+    await tapRow('Model on your server');
+    calls = [];
+    await tapRow('Gemini 2.5 Pro', OPEN);
+    expect(calls.some((c) => c.path === '/stack/orchestrator')).toBe(false);
+    expect(sheetTitle()).toBe('Make Gemini 2.5 Pro the model on your server?');
+    expect(dom.container.querySelector(`${OPEN} .sheet-sub`)?.textContent).toBe(
+      `qwen3:8b runs on your server now. ${lib.SERVER_MODEL_LOCAL_ONLY} To put qwen3:8b back, run this over SSH:`,
+    );
+    expect(dom.container.querySelector(`${OPEN} .dock-command-text`)?.textContent).toBe(
+      serverStackUseCommand('ollama', 'qwen3:8b', 'served'),
+    );
+    await dom.click('Use Gemini 2.5 Pro');
+    await dom.settle();
+    expect(calls.find((c) => c.path === '/stack/orchestrator')!.body).toMatchObject({
+      provider: 'google',
+      model: 'gemini-2.5-pro',
+    });
+  });
+
+  it("a model the server will not place shows the server's words", async () => {
+    useApp.setState({ connectedProviders: { google: true } });
+    server.keys = [{ id: 'google', label: 'Gemini', host: 'generativelanguage.googleapis.com' }];
+    await openRoom();
+    await tapRow('Model on your server');
+    // The key went from the server (another admin device) after this read.
+    server.keys = [];
+    await tapRow('Gemini 2.5 Pro', OPEN);
+    await dom.settle();
+    expect(useApp.getState().toast).toBe('No key for google on this server.');
+    expect(sheetTitle()).toBe('Model on your server');
+  });
+
+  it('disconnecting the provider the server`s model runs on says the model stopped', async () => {
+    useApp.setState({ connectedProviders: { groq: true } });
+    secrets.set('oscode.secret.groq', 'gsk_test');
+    server.keys = [{ id: 'groq', label: 'Groq', host: 'api.groq.com' }];
+    server.stack = {
+      description: 'llama',
+      orchestrator: { provider: 'groq', model: 'llama', kind: 'cloud' },
+      specialists: [],
+    };
+    await openRoom();
+    await tapRow('Groq');
+    expect(dom.text()).toContain(
+      'Your server keeps a Groq key too, and it is deleted there as well. The model on your server runs on it, so it stops until you choose another.',
+    );
+    await dom.click('Disconnect');
+    for (let i = 0; i < 3; i++) await dom.settle();
+    expect(useApp.getState().toast).toBe(
+      'Groq disconnected, and its key was deleted from your server. The model on your server ran on it, so choose another.',
+    );
+  });
+
+  it('a server that offers this device no keys gets no note when it is down at disconnect', async () => {
+    server = freshServer({ keysOnServer: false });
+    useApp.setState({ connectedProviders: { groq: true } });
+    secrets.set('oscode.secret.groq', 'gsk_test');
+    await openRoom();
+    server.down = true;
+    await tapRow('Groq');
+    await dom.click('Disconnect');
+    for (let i = 0; i < 3; i++) await dom.settle();
+    await waitOut();
+    expect(useApp.getState().toast).toBe('Groq disconnected.');
+    expect(dom.container.querySelector(OPEN)).toBeNull();
+  });
+
+  it('a key replaced here is offered to the server that keeps one, and sent on a yes', async () => {
+    useApp.setState({ connectedProviders: { groq: true } });
+    secrets.set('oscode.secret.groq', 'gsk_old');
+    server.keys = [{ id: 'groq', label: 'Groq', host: 'api.groq.com' }];
+    await openRoom();
+    await tapRow('Groq');
+    await dom.click('replace its key');
+    await waitOut();
+    const groq = PROVIDERS.find((p) => p.id === 'groq')!;
+    await dom.type(groq.keyHint, 'gsk_new');
+    calls = [];
+    await dom.click('Save');
+    for (let i = 0; i < 3; i++) await dom.settle();
+    await waitOut();
+    // Saving here changed nothing there.
+    expect(keyCalls()).toEqual([]);
+    expect(dom.container.querySelector(`${CONFIRM} h3`)?.textContent).toBe(
+      'Send the new Groq key?',
+    );
+    expect(dom.container.querySelector(CONFIRM)!.textContent).toContain(
+      'Your server keeps a Groq key of its own, which a key saved here does not change.',
+    );
+    await dom.click('Send');
+    for (let i = 0; i < 3; i++) await dom.settle();
+    expect(calls.find((c) => c.method === 'PUT')!.body).toMatchObject({ key: 'gsk_new' });
+    expect(useApp.getState().toast).toBe('The new Groq key is on your server now.');
+  });
+});
+
+describe('forgetting a server from Computer', () => {
+  async function openComputer(): Promise<void> {
+    const { PairScreen } = await import('../src/screens/PairScreen.js');
+    await dom.render(<PairScreen />);
+    for (let i = 0; i < 3; i++) await dom.settle();
+  }
+
+  it('says the keys go first, then deletes them and says so', async () => {
+    server.keys = [{ id: 'groq', label: 'Groq', host: 'api.groq.com' }];
+    await openComputer();
+    await dom.click('Forget this server');
+    expect(dom.container.querySelector(`${CONFIRM} p`)?.textContent).toBe(
+      'This device stops reaching it. If the server answers, every provider key it keeps is deleted there first, then it drops this device from its list. To use it again, scan a new QR.',
+    );
+    calls = [];
+    await dom.click('Forget');
+    for (let i = 0; i < 3; i++) await dom.settle();
+    expect(keyCalls()).toEqual(['DELETE /keys', 'DELETE /pair/self']);
+    expect(useApp.getState().toast).toBe(
+      'Your server forgotten on this device, and the provider keys it kept were deleted there.',
+    );
+  });
+
+  it('a server that is down opens the SSH note, only once the confirm has left', async () => {
+    server.keys = [{ id: 'groq', label: 'Groq', host: 'api.groq.com' }];
+    await openComputer();
+    server.down = true;
+    await dom.click('Forget this server');
+    await dom.click('Forget');
+    for (let i = 0; i < 3; i++) await dom.settle();
+    expect(useApp.getState().toast).toBe('Your server forgotten on this device.');
+    // Sheets never stack: nothing rises while the confirm is leaving.
+    expect(dom.container.querySelectorAll(OPEN)).toHaveLength(0);
+    expect(dom.container.querySelectorAll('.confirm-card.closing')).toHaveLength(1);
+    await waitOut();
+    expect(sheetTitle()).toBe('Keys may stay on 100.64.0.9');
+    expect(dom.container.querySelector(`${OPEN} .sheet-sub`)?.textContent).toContain(
+      'OpenShore could not delete the provider keys 100.64.0.9 may keep.',
+    );
+    expect(
+      [...dom.container.querySelectorAll(`${OPEN} .dock-command-text`)].map((c) => c.textContent),
+    ).toEqual([SERVER_KEY_LIST_COMMAND, serverKeyRemoveCommand('<provider>')]);
   });
 });
 
@@ -741,7 +1064,7 @@ describe('what leaves this device says so', () => {
     expect(entry.what).toContain('Nothing goes through us.');
     expect(entry.what).not.toMatch(/encrypt/i);
     expect(entry.when).toMatch(
-      /^Only when you turn a provider on for that server in Cloud Connections\./,
+      /^Only when you turn a provider on for that server in Cloud Connections, or say yes to sending it a key you replaced here\./,
     );
     expect(entry.when).toContain('names only, never a key');
   });
@@ -761,11 +1084,8 @@ describe('the copy that a cloud model on a server would make false', () => {
     expect(stack).toContain('dockedNoModelLine(daemon, role)');
   });
 
-  it('forgetting a server says its keys go first, never to a member', () => {
+  it('forgetting never says keys go first to a member', () => {
     const pair = src('screens/PairScreen.tsx').replace(/\s+/g, ' ');
-    expect(pair).toContain(
-      'If the server answers, every provider key it keeps is deleted there first, then it drops this device from its list.',
-    );
     expect(pair).toContain("return hub.kind === 'server' && roles?.[hub.baseUrl] !== 'member';");
   });
 });

@@ -27,6 +27,7 @@ import { ServerSetup } from '../components/ServerSetup.js';
 import { ServerKeysLeftSheet, type KeysLeft } from '../components/ServerKeys.js';
 import type { HubKeysCleared } from '../state/serverKeysOps.js';
 import { DOCK_PATHS, dockedNoun, unreachableLine, type DockPath } from '../lib/docking.js';
+import { sheetExitMs } from '../lib/motion.js';
 
 export { phoneDeviceName } from '../components/DockForm.js';
 import { thisDeviceNoun } from '../lib/deviceNoun.js';
@@ -508,7 +509,7 @@ function PhonePair() {
   const { settings, removeHub, showToast, startGuideChat, setView } = useApp();
   const [tailscaleOpen, setTailscaleOpen] = useState(false);
   const [forgetting, setForgetting] = useState(false);
-  // A forgotten server that could not be reached to delete its keys.
+  // A forgotten server whose keys could not be deleted there.
   const [left, setLeft] = useState<KeysLeft | undefined>();
   const titleRef = useRef<HTMLHeadingElement>(null);
   const paired = settings.daemon;
@@ -614,7 +615,9 @@ function PhonePair() {
             if (!paired) return;
             const keys = await removeHub(paired.baseUrl);
             showToast(forgottenLine(dockedNoun(paired), keys));
-            if (keys.kind === 'failed') setLeft({ where: computerLabel(paired) });
+            // Sheets never stack: a fast failure waits for the confirm to leave.
+            const where = computerLabel(paired);
+            if (keys.kind === 'failed') setTimeout(() => setLeft({ where }), sheetExitMs());
           }}
         />
         <ServerKeysLeftSheet left={left} onClose={() => setLeft(undefined)} />
@@ -685,7 +688,7 @@ function keysGoFirst(
 /** The toast once a hub is forgotten, and what became of a server's keys. */
 function forgottenLine(noun: string, keys: HubKeysCleared): string {
   if (keys.kind === 'cleared' && keys.removed.length) {
-    return `${noun} forgotten on this device, and the provider keys it kept deleted there.`;
+    return `${noun} forgotten on this device, and the provider keys it kept were deleted there.`;
   }
   return `${noun} forgotten on this device.`;
 }
@@ -811,7 +814,7 @@ function HubList() {
     server: boolean;
     keys: boolean;
   }>();
-  // A forgotten server that could not be reached to delete its keys.
+  // A forgotten server whose keys could not be deleted there.
   const [left, setLeft] = useState<KeysLeft | undefined>();
   const hubs = hubList(settings);
   const activeUrl = settings.daemon?.baseUrl;
@@ -882,7 +885,10 @@ function HubList() {
           if (!target) return;
           const keys = await removeHub(target.baseUrl);
           showToast(forgottenLine(target.server ? 'Server' : 'Computer', keys));
-          if (keys.kind === 'failed') setLeft({ where: target.name });
+          // Sheets never stack: a fast failure waits for the confirm to leave.
+          if (keys.kind === 'failed') {
+            setTimeout(() => setLeft({ where: target.name }), sheetExitMs());
+          }
         }}
       />
       <ServerKeysLeftSheet left={left} onClose={() => setLeft(undefined)} />

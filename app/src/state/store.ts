@@ -74,6 +74,7 @@ import {
   daemonApplyOutbox,
   daemonClearHandoffs,
   daemonCreateSession,
+  daemonForgetSelf,
   daemonHealth,
   daemonVerifyCommit,
   type DaemonTarget,
@@ -15312,17 +15313,16 @@ export const useApp = create<AppState>((set, get, api) => {
         name: target.name ?? prior?.name,
         kind: target.kind ?? prior?.kind,
       };
-      // Pairing the same computer again: the old credential is revoked there
-      // (best effort), so one phone is one row on the computer. On a server,
-      // the keys it keeps are deleted first, while that credential still
-      // works (keys on your server, 2026-10-09; serverKeysOps).
-      if (prior?.token && prior.token !== target.token) {
-        await leaveHub(prior, get().settings.hubRoles?.[prior.baseUrl]);
-      }
       const others = list.filter((d) => d.baseUrl !== target.baseUrl);
       // The credential goes to the secret store (APP-11); the settings blob
       // carries the hub without it (see persistSettings).
       await secretSet(hubSecretKey(target.baseUrl), target.token);
+      // Pairing the same computer again: once the new credential is saved,
+      // the old one is revoked there (best effort), so one phone is one row
+      // on the computer. Only revoked: a server's provider keys and its model
+      // stay, since the new credential manages them as the old one did (keys
+      // on your server, 2026-10-09).
+      if (prior?.token && prior.token !== target.token) void daemonForgetSelf(prior);
       // The hub's role for this credential: what pairing reported, else asked
       // now. An older hub answers nothing and keeps deciding per request.
       const role = opts?.role ?? (await readHubRole(merged));
@@ -15520,7 +15520,7 @@ export const useApp = create<AppState>((set, get, api) => {
       const servers = dockedServers(hubList(get().settings), get().settings.hubRoles);
       const onServers: KeyRemoval = servers.length
         ? await removeKeyFromServers(servers, id)
-        : { removedFrom: [], notRemoved: [] };
+        : { removedFrom: [], modelClearedOn: [], notRemoved: [] };
       logEvent('provider_disconnected', { provider: id });
       return onServers;
     },

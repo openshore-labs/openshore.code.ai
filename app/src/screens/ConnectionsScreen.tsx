@@ -41,7 +41,8 @@ import {
   useServerKeys,
   type KeysLeft,
 } from '../components/ServerKeys.js';
-import { namesLine, serverWhere } from '../lib/serverKeys.js';
+import { namesLine, serverWhere, whereStartsSentence } from '../lib/serverKeys.js';
+import { putKeyOnServer } from '../state/serverKeysOps.js';
 import {
   connectionsOfflineLine,
   keyCheckWaits,
@@ -116,28 +117,78 @@ export function ConnectionsScreen() {
     (h) => h.kind === 'server',
   );
   // What each server that keeps keys for this device keeps, read from it
-  // (the source of truth) when this room opens and after each change.
-  const { views: serverViews, refresh: refreshServer } = useServerKeys(servers);
+  // (the source of truth) when this room opens, when a sheet opens, and
+  // after each change.
+  const { views: serverViews, offersNone, refresh: refreshServer } = useServerKeys(servers);
   // The server whose keys sheet, or model sheet, is open.
   const [keysFor, setKeysFor] = useState<string | undefined>();
   const [modelFor, setModelFor] = useState<string | undefined>();
-  // A key a server could not be reached to delete, while its note is open.
+  // A key that could not be deleted on a server, while its note is open.
   const [left, setLeft] = useState<KeysLeft | undefined>();
+  // A key replaced here that servers keep their own of, while the offer to
+  // send the new one is open.
+  const [resend, setResend] = useState<{ id: string; name: string } | undefined>();
   const keysServer = servers.find((h) => h.baseUrl === keysFor);
   const modelServer = servers.find((h) => h.baseUrl === modelFor);
+  const openKeys = (baseUrl: string) => {
+    setKeysFor(baseUrl);
+    void refreshServer(baseUrl);
+  };
+  const openModel = (baseUrl: string) => {
+    setModelFor(baseUrl);
+    void refreshServer(baseUrl);
+  };
   // Sheets never stack: the keys sheet leaves before the model sheet rises.
   const chooseModel = (baseUrl: string) => {
     setKeysFor(undefined);
-    setTimeout(() => setModelFor(baseUrl), sheetExitMs());
+    setTimeout(() => openModel(baseUrl), sheetExitMs());
   };
-  // The servers that keep the key of the provider being disconnected, as
-  // they last said, so its question can say so.
-  const holders = removing
-    ? servers.filter((h) => {
-        const keys = serverViews[h.baseUrl]?.keys;
-        return Array.isArray(keys) && keys.some((k) => k.id === removing.id);
+  // The servers that keep a key for a provider, as they last said.
+  const holdersOf = (id: string) =>
+    servers.filter((h) => {
+      const keys = serverViews[h.baseUrl]?.keys;
+      return Array.isArray(keys) && keys.some((k) => k.id === id);
+    });
+  // The servers that keep the key of the provider being disconnected, so its
+  // question can say so, and those whose model runs on it.
+  const holders = removing ? holdersOf(removing.id) : [];
+  const runsOn = removing
+    ? holders.filter((h) => {
+        const stack = serverViews[h.baseUrl]?.stack;
+        return typeof stack === 'object' && stack.orchestrator?.provider === removing.id;
       })
     : [];
+  const named = (hs: readonly { baseUrl: string; name?: string }[]) =>
+    namesLine(hs.map((h) => serverWhere(h, servers.length)));
+  // A new key saved here leaves a server's own key as it was: once the key
+  // sheet has left, offer to send the new one where a server keeps one.
+  const offerResend = (id: string, name: string) => {
+    if (holdersOf(id).length) setTimeout(() => setResend({ id, name }), sheetExitMs());
+  };
+  const resendTo = resend ? holdersOf(resend.id) : [];
+  const sendNewKey = async () => {
+    const target = resend;
+    setResend(undefined);
+    const p = target && PROVIDERS.find((x) => x.id === target.id);
+    if (!target || !p) return;
+    const to = holdersOf(target.id);
+    const sent = await Promise.all(
+      to.map((h) =>
+        putKeyOnServer(h, p, useApp.getState().settings.anthropicWorkspaceId).then(
+          () => true,
+          () => false,
+        ),
+      ),
+    );
+    const ok = to.filter((_, i) => sent[i]);
+    const failed = to.filter((_, i) => !sent[i]);
+    showToast(
+      failed.length
+        ? `${whereStartsSentence(named(failed))} did not take the new ${p.name} key, and still ${failed.length === 1 ? 'keeps its' : 'keep their'} own.`
+        : `The new ${p.name} key is on ${named(ok)} now.`,
+    );
+    for (const h of to) void refreshServer(h.baseUrl);
+  };
 
   const openSheet = (id: string) => {
     setEditing(id);
@@ -206,6 +257,7 @@ export function ConnectionsScreen() {
         ? 'Claude workspace saved. Claude can answer now.'
         : 'Claude workspace saved. We could not check it right now.',
     );
+    offerResend('anthropic', 'Claude');
   };
 
   const save = async (id: string, name: string) => {
@@ -239,7 +291,9 @@ export function ConnectionsScreen() {
       return;
     }
     closeSheet();
+    const replacing = Boolean(connectedProviders[id]);
     await connectProvider(id, key, id === 'anthropic' ? workspace : undefined);
+    if (replacing) offerResend(id, name);
     showToast(
       check === 'valid'
         ? `${name} connected. Its models are on your bench.`
@@ -293,12 +347,15 @@ export function ConnectionsScreen() {
                 value={<span className="pill ok">Docked</span>}
                 onClick={() => setView('pair')}
               />,
+              // These two arrive once the server has answered, after the
+              // group did, so they step in on the shared stagger.
               view ? (
                 <SettingsRow
                   key={`${h.baseUrl}-keys`}
                   label={`Keys on ${where}`}
                   sub={keysRowSub(view)}
-                  onClick={() => setKeysFor(h.baseUrl)}
+                  arrive={0}
+                  onClick={() => openKeys(h.baseUrl)}
                 />
               ) : null,
               view ? (
@@ -306,7 +363,8 @@ export function ConnectionsScreen() {
                   key={`${h.baseUrl}-model`}
                   label={`Model on ${where}`}
                   sub={modelRowSub(view, where)}
-                  onClick={() => setModelFor(h.baseUrl)}
+                  arrive={1}
+                  onClick={() => openModel(h.baseUrl)}
                 />
               ) : null,
             ];
@@ -530,6 +588,22 @@ export function ConnectionsScreen() {
         onClose={() => setModelFor(undefined)}
       />
       <ServerKeysLeftSheet left={left} onClose={() => setLeft(undefined)} />
+      <Sheet open={Boolean(resend)} onClose={() => setResend(undefined)} variant="confirm">
+        <h3>Send the new {resend?.name} key?</h3>
+        <p>
+          {whereStartsSentence(named(resendTo))} {resendTo.length === 1 ? 'keeps' : 'keep'} a{' '}
+          {resend?.name} key of {resendTo.length === 1 ? 'its' : 'their'} own, which a key saved
+          here does not change. Send this one in its place, over your private Tailscale link?
+        </p>
+        <div className="confirm-row">
+          <button type="button" className="btn ghost press-fb" onClick={() => setResend(undefined)}>
+            Not now
+          </button>
+          <button type="button" className="btn primary press-fb" onClick={() => void sendNewKey()}>
+            Send
+          </button>
+        </div>
+      </Sheet>
 
       <Sheet open={settingUpServer} onClose={() => setSettingUpServer(false)}>
         {settingUpServer ? (
@@ -558,10 +632,7 @@ export function ConnectionsScreen() {
             the question says so, and offers the one way to keep them. */}
         <p>
           Its API key is removed from this device, and its models leave your bench and every stack.
-          {holders.length
-            ? ` ${capitalFirst(namesLine(holders.map((h) => serverWhere(h, servers.length))))} ${holders.length === 1 ? 'keeps' : 'keep'} its key too, and it is deleted there as well.`
-            : ''}{' '}
-          To keep them,{' '}
+          To keep its models,{' '}
           <button
             type="button"
             className="linklike press-fb"
@@ -570,6 +641,12 @@ export function ConnectionsScreen() {
             replace its key
           </button>{' '}
           instead.
+          {holders.length
+            ? ` ${whereStartsSentence(named(holders))} ${holders.length === 1 ? 'keeps' : 'keep'} a ${removing?.name} key too, and it is deleted there as well.`
+            : ''}
+          {runsOn.length
+            ? ` The model on ${named(runsOn)} runs on it, so it stops until you choose another.`
+            : ''}
         </p>
         <div className="confirm-row">
           <button
@@ -587,18 +664,21 @@ export function ConnectionsScreen() {
               setRemoving(undefined);
               if (!target) return;
               const onServers = await disconnectProvider(target.id);
-              const named = (hs: typeof servers) =>
-                namesLine(hs.map((h) => serverWhere(h, servers.length)));
+              const gone = onServers.removedFrom.length
+                ? `${target.name} disconnected, and its key was deleted from ${named(onServers.removedFrom)}.`
+                : `${target.name} disconnected.`;
               showToast(
-                onServers.removedFrom.length
-                  ? `${target.name} disconnected, and its key deleted from ${named(onServers.removedFrom)}.`
-                  : `${target.name} disconnected.`,
+                onServers.modelClearedOn.length
+                  ? `${gone} The model on ${named(onServers.modelClearedOn)} ran on it, so choose another.`
+                  : gone,
               );
               for (const h of onServers.removedFrom) void refreshServer(h.baseUrl);
-              // A server that did not answer may still keep it: say so, and
-              // how to delete it there. One this room last read as keeping
-              // no such key is not worth a word.
+              // A server that did not answer, or would not delete it, may
+              // still keep it: say so, and how to delete it there. One this
+              // room last read as keeping no such key, or that offers this
+              // device no keys at all, is not worth a word.
               const mayKeep = onServers.notRemoved.filter((h) => {
+                if (offersNone[h.baseUrl]) return false;
                 const keys = serverViews[h.baseUrl]?.keys;
                 return !Array.isArray(keys) || keys.some((k) => k.id === target.id);
               });
@@ -620,11 +700,6 @@ export function ConnectionsScreen() {
       </Sheet>
     </div>
   );
-}
-
-/** "your server" at the start of a sentence. */
-function capitalFirst(text: string): string {
-  return `${text.charAt(0).toUpperCase()}${text.slice(1)}`;
 }
 
 /** The More providers row's line: the first few names it holds, plainly. */

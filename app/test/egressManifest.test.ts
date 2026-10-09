@@ -301,6 +301,10 @@ describe('the guides claim no more than the list', () => {
     // A key is sent with every request to its provider, so it is stored
     // only here, never "stays" here (2026-10-01 #9; egress-claims-3).
     /\b(?:API key|keys?) stays? on (?:this|your|the) device/i,
+    // A key the person turns on for a docked server is kept there too
+    // (keys on your server, 2026-10-09), so "sent only to its provider"
+    // never ends a sentence without that exception.
+    /\bsent only to (?:the |that |its |their )(?:own )?providers?(?: they belong to)?\./i,
   ];
   const sources: Array<[string, string]> = [
     ...GUIDE_CARDS.map((c): [string, string] => [`guide card ${c.id}`, c.text]),
@@ -311,6 +315,8 @@ describe('the guides claim no more than the list', () => {
       'screens/ConnectionsScreen.tsx',
       'screens/SettingsScreen.tsx',
       'components/StackManager.tsx',
+      'lib/setupGuides.ts',
+      'lib/guidedSetup.ts',
     ].map((f): [string, string] => [f, readFileSync(join(process.cwd(), 'src', f), 'utf8')]),
   ];
 
@@ -326,6 +332,10 @@ describe('the guides claim no more than the list', () => {
     );
     expect(src('components/StackManager.tsx').replace(/\s+/g, ' ')).toContain(
       'The API key is stored only on this device and sent only to that address',
+    );
+    // Harbor Lite answers "where are my keys?" from this line.
+    expect(APP_KNOWLEDGE).toContain(
+      'API keys and secrets are stored only on the device and sent only to the provider they belong to, except a key you turn on for your docked server in Cloud Connections, which is kept there too.',
     );
   });
 

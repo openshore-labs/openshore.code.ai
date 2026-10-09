@@ -1,11 +1,13 @@
 // Keys on your server (founder, 2026-10-09), the store's half: what turning a
 // key on or off for a docked server sends, and what disconnecting a provider
-// and forgetting or re-pairing a server do to the keys a server keeps. Plain
-// functions over the daemon wire (drivers/remoteDriver.ts); the store wires
-// the lifecycle into disconnectProvider, removeHub and saveHub, and Cloud
-// Connections calls the rest. Every step is best effort: a server that does
-// not answer is said plainly, never waited on forever, and the person is told
-// how to remove a key over SSH instead. Test: app/test/serverKeys.test.tsx.
+// and forgetting a server do to the keys a server keeps. Plain functions over
+// the daemon wire (drivers/remoteDriver.ts); the store wires the lifecycle
+// into disconnectProvider and removeHub, and Cloud Connections calls the
+// rest. Re-pairing over a server only revokes the old credential: the new one
+// manages the same keys, so nothing there is deleted. Every step is tried
+// once: a server that does not answer is said plainly, never waited on
+// forever, and the person is told how to remove a key over SSH instead.
+// Test: app/test/serverKeys.test.tsx.
 import {
   daemonDeleteAllKeys,
   daemonDeleteKey,
@@ -50,6 +52,8 @@ export async function putKeyOnServer(
 export interface KeyRemoval {
   /** The servers its key was removed from. */
   removedFrom: DaemonTarget[];
+  /** Of those, the servers whose model ran on it, and so have none now. */
+  modelClearedOn: DaemonTarget[];
   /** The servers that did not answer, or would not remove it, and so may
    *  still keep it. */
   notRemoved: DaemonTarget[];
@@ -64,27 +68,28 @@ export async function removeKeyFromServers(
   providerId: string,
 ): Promise<KeyRemoval> {
   const outcomes = await Promise.all(
-    servers.map(async (server): Promise<'removed' | 'none' | 'failed'> => {
+    servers.map(async (server): Promise<'removed' | 'model' | 'none' | 'failed'> => {
       try {
         const keys = await daemonListKeys(server);
         if (!keys.some((k) => k.id === providerId)) return 'none';
-        await daemonDeleteKey(server, providerId);
-        return 'removed';
+        const gone = await daemonDeleteKey(server, providerId);
+        return gone.slotsCleared.includes('orchestrator') ? 'model' : 'removed';
       } catch (err) {
         return keysNotOffered(err) ? 'none' : 'failed';
       }
     }),
   );
   return {
-    removedFrom: servers.filter((_, i) => outcomes[i] === 'removed'),
+    removedFrom: servers.filter((_, i) => outcomes[i] === 'removed' || outcomes[i] === 'model'),
+    modelClearedOn: servers.filter((_, i) => outcomes[i] === 'model'),
     notRemoved: servers.filter((_, i) => outcomes[i] === 'failed'),
   };
 }
 
 /** What forgetting a hub did to the keys it keeps: nothing to do (a
  *  computer, or a server that offers this device no keys), every key
- *  deleted, or the server could not be reached, so any key it keeps stays
- *  there until it is removed over SSH. */
+ *  deleted, or the server did not answer or would not delete them, so any
+ *  key it keeps stays there until it is removed over SSH. */
 export type HubKeysCleared =
   { kind: 'none' } | { kind: 'cleared'; removed: string[] } | { kind: 'failed' };
 
@@ -107,9 +112,10 @@ export async function clearServerKeys(
   }
 }
 
-/** This device leaving a hub: the keys there go first, then this device's
- *  credential is revoked (best effort, as it always was), so the device is
- *  never left unable to delete the keys it put there. */
+/** This device forgetting a hub: the keys there go first, then this
+ *  device's credential is revoked (best effort, as it always was), so the
+ *  device is not left unable to delete the keys it put there. Forgetting
+ *  only: re-pairing keeps a credential that manages them. */
 export async function leaveHub(target: DaemonTarget, role?: HubRole): Promise<HubKeysCleared> {
   const cleared = await clearServerKeys(target, role);
   if (target.token) void daemonForgetSelf(target);

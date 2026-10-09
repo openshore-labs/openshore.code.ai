@@ -2,9 +2,10 @@
 // part 3), the room's half. Cloud Connections lists, under each docked server
 // that keeps keys and takes this device as its admin, which provider keys it
 // keeps and which model it runs; these are the two sheets those rows open,
-// and the note shown when a server could not be reached to delete a key.
-// The server is the source of truth: each sheet reads it when it opens, and
-// nothing about it is kept on this device. Pure choices and copy live in
+// and the note shown when a key could not be deleted there. The server is
+// the source of truth: it is read when the room opens, when either sheet
+// opens, and after each change made there, and nothing about it is kept on
+// this device. Pure choices and copy live in
 // lib/serverKeys.ts, the wire in drivers/remoteDriver.ts, the lifecycle in
 // state/serverKeysOps.ts. A member device, a computer and an older server
 // see none of it.
@@ -23,13 +24,19 @@ import { putKeyOnServer } from '../state/serverKeysOps.js';
 import {
   SERVER_KEYS_HOLD,
   SERVER_KEYS_LEAD,
+  SERVER_MODEL_LOCAL_ONLY,
   dockedModelLine,
   namesLine,
   serverKeyProviders,
   serverModelChoices,
   serverModelWindow,
+  whereStartsSentence,
 } from '../lib/serverKeys.js';
-import { SERVER_KEY_LIST_COMMAND, serverKeyRemoveCommand } from '../lib/docking.js';
+import {
+  SERVER_KEY_LIST_COMMAND,
+  serverKeyRemoveCommand,
+  serverStackUseCommand,
+} from '../lib/docking.js';
 import type { ProviderInfo } from '../lib/providers.js';
 import { Sheet } from './Sheet.js';
 import { SheetHead } from './SheetHead.js';
@@ -46,12 +53,16 @@ export interface ServerKeysView {
 /** The docked servers whose keys this device may see and change: each
  *  says it keeps keys (GET /health's keysOnServer) and answers this device
  *  as its admin. A server that does not answer, a member's device and an
- *  older server get no entry, so the room shows nothing new for them. */
+ *  older server get no entry, so the room shows nothing new for them.
+ *  `offersNone` names the servers that answered and offer this device no
+ *  keys (an older server, a member's device), which can keep none of its. */
 export function useServerKeys(servers: readonly DaemonTarget[]): {
   views: Record<string, ServerKeysView>;
+  offersNone: Readonly<Record<string, true>>;
   refresh: (baseUrl: string) => Promise<void>;
 } {
   const [views, setViews] = useState<Record<string, ServerKeysView>>({});
+  const [offersNone, setOffersNone] = useState<Record<string, true>>({});
   const read = useCallback(async (server: DaemonTarget, live: () => boolean) => {
     const [keys, stack] = await Promise.all([
       daemonListKeys(server).catch(() => 'error' as const),
@@ -64,10 +75,15 @@ export function useServerKeys(servers: readonly DaemonTarget[]): {
   useEffect(() => {
     let live = true;
     setViews({});
+    setOffersNone({});
     for (const server of servers) {
       void (async () => {
         const health = await daemonHealth(server);
-        if (!live || !health.ok || !health.keysOnServer || health.role !== 'admin') return;
+        if (!live || !health.ok) return;
+        if (!health.keysOnServer || health.role !== 'admin') {
+          setOffersNone((n) => ({ ...n, [server.baseUrl]: true }));
+          return;
+        }
         setViews((v) => ({ ...v, [server.baseUrl]: { keys: 'checking', stack: 'checking' } }));
         await read(server, () => live);
       })();
@@ -84,7 +100,7 @@ export function useServerKeys(servers: readonly DaemonTarget[]): {
     },
     [servers, read],
   );
-  return { views, refresh };
+  return { views, offersNone, refresh };
 }
 
 /** The keys row's line: what the server keeps, by name. */
@@ -97,19 +113,34 @@ export function keysRowSub(view: ServerKeysView): string {
   return `Keeps ${namesLine(view.keys.map((k) => k.label))}.`;
 }
 
+/** Where the server says a provider's key goes, for naming who gets its
+ *  model's turns (dockedModelLine). Unknown until its keys are read. */
+function keyHost(view: ServerKeysView, provider: string): string | undefined {
+  return Array.isArray(view.keys) ? view.keys.find((k) => k.id === provider)?.host : undefined;
+}
+
 /** The model row's line: what the server runs, where, or how to choose. */
 export function modelRowSub(view: ServerKeysView, where: string): string {
   if (view.stack === 'checking') return 'Checking...';
   if (view.stack === 'error') return 'Could not read its model right now.';
-  if (view.stack.orchestrator) return dockedModelLine(view.stack.orchestrator, where);
+  const orchestrator = view.stack.orchestrator;
+  if (orchestrator)
+    return dockedModelLine(orchestrator, where, keyHost(view, orchestrator.provider));
   return Array.isArray(view.keys) && view.keys.length
     ? 'No model yet. Choose one from a provider it keeps a key for.'
     : 'No model yet. Turn on a provider key for it first, then choose one of its models.';
 }
 
+/** A question the keys sheet asks in place, before a delete: a key only the
+ *  server keeps, or turning off the key the server's model runs on. */
+type KeysQuestion =
+  { kind: 'only'; key: DaemonProviderKey } | { kind: 'off'; provider: ProviderInfo; model: string };
+
 /** Which keys a server keeps, and a switch for each of this device's
- *  providers it can take. A key it keeps that this device does not hold
- *  (added over SSH, or from another device) can be removed, after a word. */
+ *  providers it can take. The server says only which providers it keeps a
+ *  key for, never whose key it is, so the rows say no more than that. A key
+ *  it keeps for a provider this device has no key for can be removed, after
+ *  a word. */
 export function ServerKeysSheet({
   server,
   where,
@@ -128,13 +159,14 @@ export function ServerKeysSheet({
   const connectedProviders = useApp((s) => s.connectedProviders);
   const workspaceId = useApp((s) => s.settings.anthropicWorkspaceId);
   const showToast = useApp((s) => s.showToast);
-  // The provider whose key is going on or off right now.
-  const [busy, setBusy] = useState<string | undefined>();
-  // A key only the server holds, while its question is open.
-  const [confirming, setConfirming] = useState<DaemonProviderKey | undefined>();
+  // The provider whose key is going on or off right now, and which way its
+  // switch was turned, so the knob moves at the tap.
+  const [busy, setBusy] = useState<{ id: string; on?: boolean } | undefined>();
+  // A delete's question, while it is open.
+  const [asking, setAsking] = useState<KeysQuestion | undefined>();
   const open = Boolean(server && view);
   useEffect(() => {
-    if (!open) setConfirming(undefined);
+    if (!open) setAsking(undefined);
   }, [open]);
 
   const held = view && Array.isArray(view.keys) ? view.keys : [];
@@ -142,10 +174,16 @@ export function ServerKeysSheet({
   const offered = serverKeyProviders(connectedProviders);
   const offeredIds = new Set(offered.map((p) => p.id));
   const only = held.filter((k) => !offeredIds.has(k.id));
+  const Where = whereStartsSentence(where);
+  const orchestrator =
+    view && view.stack !== 'checking' && view.stack !== 'error'
+      ? view.stack.orchestrator
+      : undefined;
 
   const turn = async (p: ProviderInfo, on: boolean) => {
     if (!server || busy) return;
-    setBusy(p.id);
+    setAsking(undefined);
+    setBusy({ id: p.id, on });
     try {
       if (on) {
         await putKeyOnServer(server, p, workspaceId);
@@ -166,10 +204,20 @@ export function ServerKeysSheet({
     }
   };
 
+  // Turning off the key the server's model runs on stops that model, so it
+  // asks first, as deleting a key only the server keeps does.
+  const switchTo = (p: ProviderInfo, on: boolean) => {
+    if (!on && orchestrator?.provider === p.id) {
+      setAsking({ kind: 'off', provider: p, model: orchestrator.model });
+      return;
+    }
+    void turn(p, on);
+  };
+
   const remove = async (key: DaemonProviderKey) => {
     if (!server || busy) return;
-    setConfirming(undefined);
-    setBusy(key.id);
+    setAsking(undefined);
+    setBusy({ id: key.id });
     try {
       await daemonDeleteKey(server, key.id);
       showToast(`${key.label} key deleted from ${where}.`);
@@ -181,36 +229,59 @@ export function ServerKeysSheet({
     }
   };
 
-  const orchestrator =
-    view && view.stack !== 'checking' && view.stack !== 'error'
-      ? view.stack.orchestrator
-      : undefined;
-
   return (
     <Sheet open={open} onClose={onClose}>
       {server && view ? (
-        confirming ? (
+        asking?.kind === 'only' ? (
           <>
-            <SheetHead title={`Delete the ${confirming.label} key?`} onClose={onClose} />
+            <SheetHead title={`Delete the ${asking.key.label} key?`} onClose={onClose} />
             <p className="sheet-sub">
               It is deleted from {where}, and its coding sessions stop using it.
-              {orchestrator?.provider === confirming.id
+              {orchestrator?.provider === asking.key.id
                 ? ` Its model, ${orchestrator.model}, runs on it, so the server has none until you choose another.`
                 : ''}{' '}
-              This device does not hold it, so putting it back means adding it over SSH again.
+              This device has no key for it, so putting it back means adding it again over SSH, or
+              from a device that has one.
             </p>
             <div className="confirm-row">
               <button
                 type="button"
                 className="btn ghost press-fb"
-                onClick={() => setConfirming(undefined)}
+                onClick={() => setAsking(undefined)}
               >
                 Keep
               </button>
               <button
                 type="button"
                 className="btn danger press-fb"
-                onClick={() => void remove(confirming)}
+                onClick={() => void remove(asking.key)}
+              >
+                Delete
+              </button>
+            </div>
+          </>
+        ) : asking?.kind === 'off' ? (
+          <>
+            <SheetHead
+              title={`Delete the ${asking.provider.name} key from ${where}?`}
+              onClose={onClose}
+            />
+            <p className="sheet-sub">
+              The model on {where}, {asking.model}, runs on it, so the server has none until you
+              choose another. The key stays on this device.
+            </p>
+            <div className="confirm-row">
+              <button
+                type="button"
+                className="btn ghost press-fb"
+                onClick={() => setAsking(undefined)}
+              >
+                Keep
+              </button>
+              <button
+                type="button"
+                className="btn danger press-fb"
+                onClick={() => void turn(asking.provider, false)}
               >
                 Delete
               </button>
@@ -236,17 +307,20 @@ export function ServerKeysSheet({
                   {offered.length ? (
                     offered.map((p) => {
                       const on = heldIds.has(p.id);
+                      // The tapped switch shows where it is going while the
+                      // server answers; a refusal puts it back.
+                      const shown = busy?.id === p.id && busy.on !== undefined ? busy.on : on;
                       return (
                         <SettingsRow
                           key={p.id}
                           label={p.name}
-                          sub={on ? `Kept on ${where} too.` : 'Only on this device.'}
+                          sub={on ? `${Where} keeps a ${p.name} key.` : 'Only on this device.'}
                           trailing={
                             <Switch
-                              checked={on}
+                              checked={shown}
                               disabled={busy !== undefined}
                               label={`Keep the ${p.name} key on ${where}`}
-                              onChange={(next) => void turn(p, next)}
+                              onChange={(next) => switchTo(p, next)}
                             />
                           }
                         />
@@ -267,15 +341,16 @@ export function ServerKeysSheet({
                         label={k.label}
                         sub={
                           k.host
-                            ? `Added there, not from this device. It goes to ${k.host}.`
-                            : 'Added there, not from this device.'
+                            ? `${Where} keeps it; this device has no key for it. It goes to ${k.host}.`
+                            : `${Where} keeps it; this device has no key for it.`
                         }
                         trailing={
                           <button
                             type="button"
                             className="btn ghost sm press-fb"
                             disabled={busy !== undefined}
-                            onClick={() => setConfirming(k)}
+                            aria-label={`Delete the ${k.label} key from ${where}`}
+                            onClick={() => setAsking({ kind: 'only', key: k })}
                           >
                             Delete
                           </button>
@@ -301,7 +376,10 @@ export function ServerKeysSheet({
 }
 
 /** Choosing the server's model from the models this device knows for a
- *  provider it keeps a key for. The window this device knows goes with it. */
+ *  provider it keeps a key for. The window this device knows goes with it.
+ *  Every model offered here is a cloud model, so placing one over a local
+ *  model asks first: Crew routines and Chat with your server stop while it
+ *  is there, and the local one goes back only over SSH. */
 export function ServerModelSheet({
   server,
   where,
@@ -317,19 +395,28 @@ export function ServerModelSheet({
 }) {
   const showToast = useApp((s) => s.showToast);
   const [placing, setPlacing] = useState<string | undefined>();
+  // A cloud model picked over the local one, while its question is open.
+  const [asking, setAsking] = useState<{ provider: string; model: string; label: string }>();
+  const open = Boolean(server && view);
+  useEffect(() => {
+    if (!open) setAsking(undefined);
+  }, [open]);
   const held = view && Array.isArray(view.keys) ? view.keys : [];
   const choices = serverModelChoices(held.map((k) => k.id));
   const known = new Set(choices.map((c) => c.provider));
   // A provider the server keeps a key for whose models this device does not
   // know (a live provider not connected here, a name only the server has).
-  const unknown = held.filter((k) => !known.has(k.id)).map((k) => k.label);
+  const unknown = held.filter((k) => !known.has(k.id));
   const current =
     view && view.stack !== 'checking' && view.stack !== 'error'
       ? view.stack.orchestrator
       : undefined;
+  const currentLine =
+    current && view ? dockedModelLine(current, where, keyHost(view, current.provider)) : '';
 
   const place = async (provider: string, model: string, label: string) => {
     if (!server || placing) return;
+    setAsking(undefined);
     setPlacing(`${provider}:${model}`);
     try {
       const contextTokens = serverModelWindow(provider, model);
@@ -348,76 +435,122 @@ export function ServerModelSheet({
     }
   };
 
+  const pick = (provider: string, model: string, label: string) => {
+    if (current && current.kind !== 'cloud') {
+      setAsking({ provider, model, label });
+      return;
+    }
+    void place(provider, model, label);
+  };
+
   return (
-    <Sheet open={Boolean(server && view)} onClose={onClose}>
+    <Sheet open={open} onClose={onClose}>
       {server && view ? (
-        <>
-          <SheetHead title={`Model on ${where}`} onClose={onClose} />
-          <p className="sheet-sub">
-            {view.stack === 'checking'
-              ? `Checking the model on ${where}...`
-              : view.stack === 'error'
-                ? `Could not read the model on ${where} right now.`
-                : current
-                  ? current.kind === 'cloud'
-                    ? `${dockedModelLine(current, where)}. Its coding sessions ask first in each task.`
-                    : `${dockedModelLine(current, where)}.`
-                  : `No model on ${where} yet. Choose one of the models this device knows for a provider it keeps a key for.`}
-          </p>
-          {view.keys === 'checking' ? (
-            <p className="hint" role="status">
-              Checking what {where} keeps...
+        asking && current ? (
+          <>
+            <SheetHead title={`Make ${asking.label} the model on ${where}?`} onClose={onClose} />
+            <p className="sheet-sub">
+              {current.model} runs on {where} now. {SERVER_MODEL_LOCAL_ONLY} To put {current.model}{' '}
+              back, run this over SSH:
             </p>
-          ) : view.keys === 'error' ? (
-            <p className="hint" role="status">
-              Could not read what {where} keeps right now. Check that it is running and on
-              Tailscale.
-            </p>
-          ) : choices.length ? (
-            <div className="settings">
-              {choices.map((c, i) => (
-                <SettingsGroup key={c.provider} title={c.name} index={i}>
-                  {c.models.map((m) => {
-                    const now = current?.provider === c.provider && current.model === m.id;
-                    return (
-                      <SettingsRow
-                        key={m.id}
-                        label={m.label}
-                        sub={m.id === m.label ? undefined : m.id}
-                        value={now ? <span className="pill ink">Current</span> : undefined}
-                        disabled={placing !== undefined}
-                        onClick={now ? undefined : () => void place(c.provider, m.id, m.label)}
-                      />
-                    );
-                  })}
-                </SettingsGroup>
-              ))}
+            <CommandRow
+              command={serverStackUseCommand(current.provider, current.model, 'served')}
+              label={`Copy the command that puts ${current.model} back`}
+            />
+            <div className="confirm-row">
+              <button
+                type="button"
+                className="btn ghost press-fb"
+                onClick={() => setAsking(undefined)}
+              >
+                Keep
+              </button>
+              <button
+                type="button"
+                className="btn primary press-fb"
+                onClick={() => void place(asking.provider, asking.model, asking.label)}
+              >
+                Use {asking.label}
+              </button>
             </div>
-          ) : held.length ? null : (
-            <p className="hint" role="status">
-              {capital(where)} keeps no provider key yet. Turn one on under Keys on {where}, then
-              choose one of its models here.
+          </>
+        ) : (
+          <>
+            <SheetHead title={`Model on ${where}`} onClose={onClose} />
+            <p className="sheet-sub">
+              {view.stack === 'checking'
+                ? `Checking the model on ${where}...`
+                : view.stack === 'error'
+                  ? `Could not read the model on ${where} right now.`
+                  : current
+                    ? current.kind === 'cloud'
+                      ? `${currentLine}. Its coding sessions ask first in each task.`
+                      : `${currentLine}.`
+                    : `No model on ${where} yet. Choose one of the models this device knows for a provider it keeps a key for.`}
             </p>
-          )}
-          {unknown.length ? (
-            <p className="hint">
-              For {namesLine(unknown)}, this device knows no models. Choose one over SSH with osc
-              stack use.
-            </p>
-          ) : null}
-        </>
+            {view.keys === 'checking' ? (
+              <p className="hint" role="status">
+                Checking what {where} keeps...
+              </p>
+            ) : view.keys === 'error' ? (
+              <p className="hint" role="status">
+                Could not read what {where} keeps right now. Check that it is running and on
+                Tailscale.
+              </p>
+            ) : choices.length ? (
+              <>
+                <p className="hint">{SERVER_MODEL_LOCAL_ONLY}</p>
+                <div className="settings">
+                  {choices.map((c, i) => (
+                    <SettingsGroup key={c.provider} title={c.name} index={i}>
+                      {c.models.map((m) => {
+                        const now = current?.provider === c.provider && current.model === m.id;
+                        const going = placing === `${c.provider}:${m.id}`;
+                        return (
+                          <SettingsRow
+                            key={m.id}
+                            label={m.label}
+                            sub={going ? 'Placing...' : m.id === m.label ? undefined : m.id}
+                            value={now ? <span className="pill ink">Current</span> : undefined}
+                            disabled={placing !== undefined}
+                            onClick={now ? undefined : () => pick(c.provider, m.id, m.label)}
+                          />
+                        );
+                      })}
+                    </SettingsGroup>
+                  ))}
+                </div>
+              </>
+            ) : held.length ? null : (
+              <p className="hint" role="status">
+                {whereStartsSentence(where)} keeps no provider key yet. Turn one on under Keys on{' '}
+                {where}, then choose one of its models here.
+              </p>
+            )}
+            {unknown.length ? (
+              <>
+                <p className="hint">
+                  For {namesLine(unknown.map((k) => k.label))}, this device knows no models. Choose
+                  one over SSH, as the server&apos;s account, with the window its model page lists:
+                </p>
+                <CommandRow
+                  command={serverStackUseCommand(
+                    unknown.length === 1 ? unknown[0]!.id : '<provider>',
+                  )}
+                  label="Copy the command that chooses a model"
+                />
+              </>
+            ) : null}
+          </>
+        )
       ) : null}
     </Sheet>
   );
 }
 
-/** "your server" at the start of a sentence. */
-function capital(text: string): string {
-  return `${text.charAt(0).toUpperCase()}${text.slice(1)}`;
-}
-
-/** A key a server may still keep, because it could not be reached to delete
- *  it: said plainly, with the commands that delete it over SSH. */
+/** A key a server may still keep, because it could not be deleted there
+ *  (the server did not answer, or would not delete it): said plainly, with
+ *  the commands that delete it over SSH. */
 export interface KeysLeft {
   /** The server, named in a sentence. */
   where: string;
@@ -433,7 +566,7 @@ export function ServerKeysLeftSheet({ left, onClose }: { left?: KeysLeft; onClos
           <SheetHead
             title={
               left.provider
-                ? `Its key may still be on ${left.where}`
+                ? `The ${left.provider.name} key may still be on ${left.where}`
                 : `Keys may stay on ${left.where}`
             }
             onClose={onClose}
@@ -441,8 +574,8 @@ export function ServerKeysLeftSheet({ left, onClose }: { left?: KeysLeft; onClos
           {left.provider ? (
             <>
               <p className="sheet-sub">
-                OpenShore could not reach {left.where} to delete its {left.provider.name} key, if it
-                keeps one. It stays there until you delete it over SSH:
+                OpenShore could not delete the {left.provider.name} key on {left.where}, if it keeps
+                one. It stays there until you delete it over SSH:
               </p>
               <CommandRow
                 command={serverKeyRemoveCommand(left.provider.id)}
@@ -452,8 +585,8 @@ export function ServerKeysLeftSheet({ left, onClose }: { left?: KeysLeft; onClos
           ) : (
             <>
               <p className="sheet-sub">
-                OpenShore could not reach {left.where} to delete the provider keys it may keep. They
-                stay there until you delete them over SSH. List them, then delete each by its name:
+                OpenShore could not delete the provider keys {left.where} may keep. They stay there
+                until you delete them over SSH. List them, then delete each by its name:
               </p>
               <CommandRow
                 command={SERVER_KEY_LIST_COMMAND}

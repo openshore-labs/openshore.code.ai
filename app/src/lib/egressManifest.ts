@@ -275,8 +275,8 @@ export const EGRESS: EgressEntry[] = [
     // once to the person's own server over the docked link, never to us.
     id: 'server-keys',
     recipient: 'Services you connect',
-    what: "A provider's API key and its provider's address (for Claude, its workspace ID instead), to a server you dock, over your private Tailscale network, so its coding sessions can use it while this device sleeps. The server keeps it until it is deleted there: turning it off, disconnecting the provider here, or forgetting the server deletes it whenever the server answers, and osc key remove deletes it over SSH. A server with no keychain keeps it in a file its OpenShore account and root can read, and the company you rent from can reach that disk. Nothing goes through us.",
-    when: 'Only when you turn a provider on for that server in Cloud Connections. Opening Cloud Connections asks each server you dock which providers it keeps a key for and which model it runs, names only, never a key.',
+    what: "A provider's API key and its provider's address (for Claude, its workspace ID instead), to a server you dock, over your private Tailscale network, so its coding sessions can use it while this device sleeps. The server keeps it until it is deleted there: turning it off, disconnecting the provider here, or forgetting the server deletes it if the server answers at that moment, and if it does not, osc key remove deletes it over SSH. A server with no keychain keeps it in a file its OpenShore account and root can read, and the company you rent from can reach that disk. Nothing goes through us.",
+    when: 'Only when you turn a provider on for that server in Cloud Connections, or say yes to sending it a key you replaced here. Opening Cloud Connections, or its sheets for that server, asks each server you dock which providers it keeps a key for and which model it runs, names only, never a key.',
     start: 'off',
     hosts: [],
   },
