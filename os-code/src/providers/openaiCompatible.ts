@@ -27,9 +27,19 @@ import { idleError, idleGuard, type IdleGuard } from './streamIdle.js';
 import { deriveModelClass, servedContextTokens } from '../harness/profile.js';
 import { hostRamGB } from './hostMemory.js';
 import { getCredential } from '../auth/store.js';
+import { isProviderKeyRef } from '../config/providerKeyRef.js';
 import { extraGB, hasMoreRoom, kvBytesPerToken, ollamaDefaultNumCtx } from './servedWindow.js';
 
 const log = logger('openai-compatible');
+
+/** What a provider's API is treated as: OpenAI-compatible, native tools, no
+ *  grammar decoding (validate and repair applies). */
+const GENERIC_BACKEND: BackendProfile = {
+  flavor: 'generic',
+  grammar: false,
+  nativeTools: true,
+  label: 'OpenAI-compatible API',
+};
 
 interface ShowInfo {
   contextTokens?: number;
@@ -64,17 +74,34 @@ const CREDENTIAL_FOR_ENV: Readonly<Record<string, string>> = {
 };
 
 /** The key an endpoint sends: its variable from the environment when it is
- *  set, else the credential store entry that stands in for that variable. */
+ *  set, else the credential store entry that stands in for that variable,
+ *  else the store entry its `apiKeyRef` names (keys on your server,
+ *  2026-10-09). A bare variable name reads as `{ apiKeyEnv }`. */
 export function endpointApiKey(
-  apiKeyEnv: string | undefined,
+  source: string | undefined | Pick<OpenAICompatibleEndpoint, 'apiKeyEnv' | 'apiKeyRef'>,
   env: NodeJS.ProcessEnv = process.env,
   readCredential: (name: string) => string | undefined = getCredential,
 ): string | undefined {
-  if (!apiKeyEnv) return undefined;
-  const fromEnv = env[apiKeyEnv];
-  if (fromEnv) return fromEnv;
-  const name = CREDENTIAL_FOR_ENV[apiKeyEnv];
-  return name ? readCredential(name) : undefined;
+  const { apiKeyEnv, apiKeyRef } =
+    typeof source === 'object' ? source : { apiKeyEnv: source, apiKeyRef: undefined };
+  if (apiKeyEnv) {
+    const fromEnv = env[apiKeyEnv];
+    if (fromEnv) return fromEnv;
+    const name = CREDENTIAL_FOR_ENV[apiKeyEnv];
+    const stored = name ? readCredential(name) : undefined;
+    if (stored) return stored;
+  }
+  return keyFromRef(apiKeyRef, readCredential);
+}
+
+/** The key a `provider-key:<id>` reference names. The namespace is checked
+ *  again here, at the read, so a config that got past the schema some other
+ *  way still never reads the Claude key, a token or the data key. */
+export function keyFromRef(
+  ref: string | undefined,
+  readCredential: (name: string) => string | undefined = getCredential,
+): string | undefined {
+  return isProviderKeyRef(ref) ? readCredential(ref) : undefined;
 }
 
 export class OpenAICompatibleProvider implements Provider, EmbeddingProvider {
@@ -111,12 +138,29 @@ export class OpenAICompatibleProvider implements Provider, EmbeddingProvider {
 
   private headers(): Record<string, string> {
     const headers: Record<string, string> = { 'content-type': 'application/json' };
-    const key = endpointApiKey(this.endpoint.apiKeyEnv);
+    const key = endpointApiKey(this.endpoint);
     if (key) headers.authorization = `Bearer ${key}`;
     return headers;
   }
 
+  /** An OpenAI-compatible path on this endpoint: under /v1 unless the base
+   *  already carries its version (`versionedBase`). */
+  private api(path: '/models' | '/chat/completions' | '/embeddings'): string {
+    return `${this.baseUrl}${this.endpoint.versionedBase ? '' : '/v1'}${path}`;
+  }
+
+  /** A keyed endpoint off this network is a provider's API, not a model
+   *  server someone runs: it is never sent the four unauthenticated probes
+   *  that tell Ollama from LM Studio, llama.cpp and vLLM (keys on your
+   *  server, 2026-10-09). An unkeyed server at a public address is still
+   *  probed, since its flavor sets the window it serves. */
+  private get providerApi(): boolean {
+    const keyed = Boolean(this.endpoint.apiKeyRef || this.endpoint.apiKeyEnv);
+    return this.remote && (keyed || this.endpoint.versionedBase === true);
+  }
+
   async backend(): Promise<BackendProfile> {
+    if (this.providerApi) return GENERIC_BACKEND;
     return probeBackend(this.baseUrl);
   }
 
@@ -150,11 +194,11 @@ export class OpenAICompatibleProvider implements Provider, EmbeddingProvider {
       const body = (await res.json()) as { models?: Array<{ name: string }> };
       return (body.models ?? []).map((m) => m.name);
     }
-    const res = await fetch(`${this.baseUrl}/v1/models`, {
+    const res = await fetch(this.api('/models'), {
       headers: this.headers(),
       signal: AbortSignal.timeout(3000),
     });
-    if (!res.ok) throw new ProviderError(this.id, `GET /v1/models returned ${res.status}`);
+    if (!res.ok) throw new ProviderError(this.id, `GET models returned ${res.status}`);
     const body = (await res.json()) as { data?: Array<{ id: string }> };
     return (body.data ?? []).map((m) => m.id);
   }
@@ -280,8 +324,13 @@ export class OpenAICompatibleProvider implements Provider, EmbeddingProvider {
     return { room: 'more', window: larger, ...(gb !== undefined ? { gb } : {}) };
   }
 
+  /** The model's own window: what Ollama's /api/show says, else, for an
+   *  endpoint off this network, the window the app placed it with
+   *  (`contextWindows`), else a guess by family. A local server's listed
+   *  window is never read: the engine budgets against the one it serves. */
   private async nativeWindow(model: string): Promise<number> {
-    return (await this.showInfo(model)).contextTokens ?? defaultContextTokens(model);
+    const listed = this.remote ? this.endpoint.contextWindows?.[model] : undefined;
+    return (await this.showInfo(model)).contextTokens ?? listed ?? defaultContextTokens(model);
   }
 
   async capabilities(model: string): Promise<ProviderCapabilities> {
@@ -449,7 +498,7 @@ export class OpenAICompatibleProvider implements Provider, EmbeddingProvider {
     }
 
     const guard = idleGuard(signal);
-    const res = await this.fetchGuarded(`${this.baseUrl}/v1/chat/completions`, body, guard);
+    const res = await this.fetchGuarded(this.api('/chat/completions'), body, guard);
     if (!res.ok) {
       guard.stop();
       const text = await res.text();
@@ -635,7 +684,7 @@ export class OpenAICompatibleProvider implements Provider, EmbeddingProvider {
       const body = (await res.json()) as { embeddings: number[][] };
       return body.embeddings;
     }
-    const res = await fetch(`${this.baseUrl}/v1/embeddings`, {
+    const res = await fetch(this.api('/embeddings'), {
       method: 'POST',
       headers: this.headers(),
       body: JSON.stringify({ model, input: texts }),

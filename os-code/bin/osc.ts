@@ -39,6 +39,7 @@ import {
   tokenRevokeCommand,
   tokenRotateCommand,
 } from '../src/commands/token.js';
+import { KEY_HELP, keyAddCommand, keyListCommand, keyRemoveCommand } from '../src/commands/key.js';
 import { logger } from '../src/util/log.js';
 
 const log = logger('cli');
@@ -149,6 +150,10 @@ stack
   .description('set the orchestrator model')
   .argument('<model>')
   .argument('[provider]')
+  .option(
+    '--context <tokens>',
+    "the model's context window, as its provider lists it (a provider off this network only)",
+  )
   .action(stackUseCommand);
 stack
   .command('enable')
@@ -272,6 +277,34 @@ tokenCmd
   .command('rotate')
   .description('replace the shared token in ~/.os-code/daemon.token with a new one')
   .action(tokenRotateCommand);
+
+// Keys on your server (2026-10-09): a provider's API key for this machine's
+// coding sessions, read from the terminal or a pipe, never from the command
+// line.
+const keyCmd = program
+  .command('key')
+  .description("keep a provider's API key on this machine for its coding sessions")
+  .addHelpText('after', KEY_HELP);
+keyCmd
+  .command('add')
+  .description('add or replace a key, read from the terminal or a pipe, never the command line')
+  .argument('<provider>', 'a provider id, like openrouter, groq or anthropic')
+  .option('--base-url <url>', "the provider's OpenAI-compatible address (known providers have one)")
+  .option('--label <name>', 'a name for it')
+  .option('--workspace <id>', 'Claude only: the workspace an identity-linked key acts in')
+  .addHelpText('after', KEY_HELP)
+  .action((id: string, options: { baseUrl?: string; label?: string; workspace?: string }) =>
+    keyAddCommand(id, options),
+  );
+keyCmd
+  .command('list', { isDefault: true })
+  .description('list the providers holding a key here (never the key)')
+  .action(keyListCommand);
+keyCmd
+  .command('remove')
+  .description('delete a provider key, and clear its models from the stack')
+  .argument('<provider>')
+  .action(keyRemoveCommand);
 
 program.hook('preAction', () => {
   if (program.opts().color === false) setColorEnabled(false);

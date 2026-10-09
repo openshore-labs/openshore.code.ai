@@ -1,6 +1,7 @@
 // Provider registry: instantiate every configured endpoint once, hand out by
-// id. The Anthropic key getter is injected so the provider layer never
-// touches the credential store directly.
+// id. The Claude key getter is injected; an endpoint that names a key of its
+// own (`apiKeyRef`, keys on your server, 2026-10-09) is given that key here,
+// so every place that builds a registry picks it up with no change.
 //
 // THE ETHICS LAYER LIVES HERE.
 //
@@ -18,9 +19,10 @@
 // raw provider ever escapes.
 import type { OscConfig } from '../config/schema.js';
 import type { EmbeddingProvider, ImageProvider, Provider } from './types.js';
-import { OpenAICompatibleProvider } from './openaiCompatible.js';
+import { OpenAICompatibleProvider, keyFromRef } from './openaiCompatible.js';
 import { hostRamGB } from './hostMemory.js';
 import { AnthropicProvider } from './anthropic.js';
+import { isClaudeAddress } from '../auth/claude.js';
 import { ImageGenProvider } from './imageGen.js';
 import {
   GuardedImageProvider,
@@ -47,7 +49,12 @@ export class ProviderRegistry {
         // computer is served from the same ceiling (CTO I1).
         this.add(id, new OpenAICompatibleProvider(id, endpoint, {}, { ramGB: hostRamGB }));
       } else if (endpoint.kind === 'anthropic') {
-        this.add(id, new AnthropicProvider(id, endpoint, getAnthropicKey));
+        // Its own key when it names one, else the Claude key; the Claude
+        // workspace rides only with the Claude key at Anthropic's address.
+        const ref = endpoint.apiKeyRef;
+        const getKey = ref ? () => keyFromRef(ref) : getAnthropicKey;
+        const workspace = !ref && isClaudeAddress(endpoint.baseUrl) ? 'claude' : 'none';
+        this.add(id, new AnthropicProvider(id, endpoint, getKey, { workspace }));
       }
     }
     if (config.imageGen) {

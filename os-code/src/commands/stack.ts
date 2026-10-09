@@ -3,6 +3,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { t } from '../brand/theme.js';
 import { globalConfigPath, loadConfig, saveGlobalConfig } from '../config/load.js';
+import { placeOrchestrator } from '../auth/providerKeys.js';
 import {
   CAPABILITIES,
   ROLE_CATEGORY,
@@ -55,7 +56,11 @@ export async function stackShowCommand(): Promise<void> {
   );
 }
 
-export async function stackUseCommand(model: string, provider?: string): Promise<void> {
+export async function stackUseCommand(
+  model: string,
+  provider?: string,
+  options: { context?: string } = {},
+): Promise<void> {
   const { config } = loadConfig();
   const providerId = provider ?? config.stack.orchestrator?.provider ?? 'ollama';
   if (!config.providers[providerId]) {
@@ -63,6 +68,30 @@ export async function stackUseCommand(model: string, provider?: string): Promise
       `No provider "${providerId}" in your config. Configured: ${Object.keys(config.providers).join(', ')}.`,
     );
     process.exitCode = 1;
+    return;
+  }
+  // The window a provider off this network lists for the model (keys on your
+  // server, 2026-10-09): placed the way the app places it, so a keyed
+  // frontier model is not budgeted at the 8192 guess.
+  if (options.context !== undefined) {
+    try {
+      const placed = placeOrchestrator({
+        provider: providerId,
+        model,
+        contextTokens: Number(options.context),
+      });
+      okLine(`The orchestrator is now ${model} on ${providerId}.`);
+      if (placed.contextTokens === undefined) {
+        out(
+          t.muted(
+            'A model on this network is budgeted against the window its server serves, so --context is not kept for it.',
+          ),
+        );
+      }
+    } catch (err) {
+      warnLine((err as Error).message);
+      process.exitCode = 1;
+    }
     return;
   }
   saveGlobalConfig({ stack: { orchestrator: { provider: providerId, model } } });

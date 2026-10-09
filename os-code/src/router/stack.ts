@@ -21,7 +21,12 @@ export interface ResolvedStack {
 }
 
 export class StackError extends Error {
-  constructor(message: string) {
+  constructor(
+    message: string,
+    /** Which part of the stack is missing, so a host can word its own next
+     *  step (a server has no osc init to run). */
+    readonly reason: 'no-orchestrator' | 'unknown-provider' = 'unknown-provider',
+  ) {
     super(message);
     this.name = 'StackError';
   }
@@ -34,6 +39,7 @@ export function resolveStack(config: OscConfig, registry: ProviderRegistry): Res
   if (!stackConfig.orchestrator) {
     throw new StackError(
       'No orchestrator is configured yet. Run osc init to set up your stack; it takes about two minutes.',
+      'no-orchestrator',
     );
   }
   if (!registry.has(stackConfig.orchestrator.provider)) {

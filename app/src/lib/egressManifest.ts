@@ -226,6 +226,19 @@ export const EGRESS: EgressEntry[] = [
       'api.perplexity.ai',
       'api.venice.ai',
       'openrouter.ai',
+      // The named providers of 2026-10-09, which a key kept on your server
+      // (osc key add, os-code/src/auth/providerKeys.ts) reaches too.
+      'api.groq.com',
+      'api.together.ai',
+      'api.deepseek.com',
+      'api.mistral.ai',
+      'api.x.ai',
+      'api.cerebras.ai',
+      'router.huggingface.co',
+      'api.tokenfactory.nebius.com',
+      'api.novita.ai',
+      'api.minimax.io',
+      'integrate.api.nvidia.com',
     ],
   },
   {

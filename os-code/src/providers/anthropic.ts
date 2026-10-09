@@ -30,6 +30,10 @@ export class AnthropicProvider implements Provider {
     private readonly endpoint: AnthropicEndpoint,
     /** Injected so the provider layer stays free of credential-store imports. */
     private readonly getApiKey: () => string | undefined,
+    /** Whether requests carry the Claude workspace id. The registry sends
+     *  'none' for an endpoint with a key of its own or at another address,
+     *  so the person's workspace never goes to a third-party host. */
+    private readonly options: { workspace?: 'claude' | 'none' } = {},
   ) {}
 
   get label(): string {
@@ -71,7 +75,10 @@ export class AnthropicProvider implements Provider {
   private headers(): Record<string, string> {
     return {
       'content-type': 'application/json',
-      ...anthropicAuthHeaders(this.requireKey()),
+      ...anthropicAuthHeaders(
+        this.requireKey(),
+        this.options.workspace === 'none' ? null : undefined,
+      ),
     };
   }
 

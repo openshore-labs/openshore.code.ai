@@ -1,6 +1,7 @@
 // Shared helpers for command-line wizards: questions, secret input, and a
 // numbered picker that works over any SSH connection.
 import { createInterface } from 'node:readline';
+import { StringDecoder } from 'node:string_decoder';
 import { GLYPHS, t } from '../brand/theme.js';
 
 export function out(text = ''): void {
@@ -57,6 +58,88 @@ export function askSecret(question: string): Promise<string> {
       }
     };
     stdin.on('data', onData);
+  });
+}
+
+/** Where `readSecret` reads and writes; the process's own by default. */
+export interface SecretIo {
+  stdin: NodeJS.ReadableStream & {
+    isTTY?: boolean;
+    isRaw?: boolean;
+    setRawMode?: (mode: boolean) => unknown;
+  };
+  stdout: { write(text: string): unknown };
+}
+
+/** The person pressed Ctrl-C at a secret prompt. */
+export class SecretCancelled extends Error {
+  constructor() {
+    super('Cancelled.');
+    this.name = 'SecretCancelled';
+  }
+}
+
+/**
+ * One secret line, read without echo, from a terminal or a pipe (keys on your
+ * server, 2026-10-09). On a terminal the characters are not shown, a paste
+ * arrives whole, Backspace works and Ctrl-C cancels. From a pipe
+ * (`printf '%s' "$KEY" | osc key add groq`) it is the first line, or all of
+ * it when there is no newline: askSecret waits for an Enter a pipe never
+ * sends. A secret never comes from the command line, where ps and the shell
+ * history would keep it.
+ */
+export function readSecret(
+  question: string,
+  io: SecretIo = { stdin: process.stdin, stdout: process.stdout },
+  maxChars = 16 * 1024,
+): Promise<string> {
+  const { stdin, stdout } = io;
+  const tty = stdin.isTTY === true && typeof stdin.setRawMode === 'function';
+  return new Promise((resolve, reject) => {
+    const decoder = new StringDecoder('utf8');
+    const wasRaw = stdin.isRaw ?? false;
+    let value = '';
+    let settled = false;
+    const finish = (err?: Error): void => {
+      if (settled) return;
+      settled = true;
+      stdin.off('data', onData);
+      stdin.off('end', onEnd);
+      stdin.off('error', onError);
+      if (tty) {
+        stdin.setRawMode!(wasRaw);
+        stdout.write('\n');
+      }
+      stdin.pause();
+      if (err) reject(err);
+      else resolve(value.trim());
+    };
+    const onData = (chunk: Buffer | string): void => {
+      const text = typeof chunk === 'string' ? chunk : decoder.write(chunk);
+      for (const ch of text) {
+        if (ch === '\r' || ch === '\n' || ch === '\u0004') return finish();
+        if (tty && ch === '\u0003') return finish(new SecretCancelled());
+        if (tty && (ch === '\u007f' || ch === '\b')) {
+          value = value.slice(0, -1);
+          continue;
+        }
+        // Other control characters (an arrow key, a paste bracket) are
+        // never part of a key.
+        if (ch < ' ' || ch === '\u007f') continue;
+        value += ch;
+        if (value.length > maxChars) return finish(new Error('That is too long to be a key.'));
+      }
+    };
+    const onEnd = (): void => finish();
+    const onError = (err: Error): void => finish(err);
+    if (tty) {
+      stdout.write(t.text(`${question} `));
+      stdin.setRawMode!(true);
+    }
+    stdin.on('data', onData);
+    stdin.on('end', onEnd);
+    stdin.on('error', onError);
+    stdin.resume();
   });
 }
 

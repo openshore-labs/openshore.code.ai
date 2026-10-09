@@ -717,6 +717,66 @@ export interface DaemonStackInfo {
   offlineSeat?: { model: string; provider: string };
 }
 
+// Keys on your server (2026-10-09): the routes a docked server answers to an
+// admin device, and only on a server (`GET /health` says `keysOnServer`).
+// No row ever carries a key, a fingerprint, or a date.
+export { PROVIDER_ID_PATTERN, isProviderId } from './config/providerKeyRef.js';
+
+/** One provider holding a key on the server (GET /keys). */
+export interface DaemonProviderKey {
+  id: string;
+  label: string;
+  /** The host its requests go to, e.g. "openrouter.ai". */
+  host: string;
+}
+
+export interface DaemonKeysList {
+  keys: DaemonProviderKey[];
+}
+
+/** PUT /keys/:id. `baseUrl` is the provider's versioned OpenAI-compatible
+ *  base (https, or http on the server's own network); a provider the engine
+ *  names may leave it out. `workspaceId` goes only with the Claude key. */
+export interface DaemonPutKeyBody {
+  key: string;
+  baseUrl?: string;
+  label?: string;
+  workspaceId?: string;
+}
+
+export interface DaemonPutKeyAnswer {
+  ok: true;
+  provider: DaemonProviderKey;
+}
+
+/** DELETE /keys/:id and DELETE /keys (every key the server keeps, for
+ *  forgetting it). `slotsCleared` names each stack slot that pointed at a
+ *  removed provider ('orchestrator', or a specialist role). */
+export interface DaemonRemoveKeysAnswer {
+  ok: true;
+  removed: string[];
+  slotsCleared: string[];
+}
+
+/** POST /stack/orchestrator: place a configured provider's model as the
+ *  server's model. `contextTokens` is the window the app knows for it, kept
+ *  only for a provider off the server's network. */
+export interface DaemonPlaceOrchestratorBody {
+  provider: string;
+  model: string;
+  contextTokens?: number;
+}
+
+export interface DaemonPlaceOrchestratorAnswer {
+  ok: true;
+  orchestrator: {
+    provider: string;
+    model: string;
+    kind: 'local' | 'cloud';
+    contextTokens?: number;
+  };
+}
+
 // The Vault index (Vault M3, CTO H3) and the readConfig folder rule (H5).
 // Pure: the index takes the shared core's grammar and resolution as an
 // injected VaultIndexCore; hosts own every read, write and file.
