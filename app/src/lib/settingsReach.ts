@@ -35,6 +35,10 @@ export const SETTINGS_REACH: Record<keyof AppSettings, SettingReach> = {
   voiceReplies: 'follows',
   voiceRate: 'follows',
 
+  // The chat splash's Easter egg deck (lib/greetingDecks.ts): a bit of fun
+  // picked on this device, kept off the account's eight preferences.
+  greetingStyle: 'device',
+
   // Device state and flags: what this device has, has seen, or was told.
   onboarded: 'device',
   deviceId: 'device',
