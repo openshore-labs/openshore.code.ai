@@ -1,4 +1,4 @@
-// Create a Stripe Checkout session for Personal or a commercial OS Code plan. The purchase
+// Create a Stripe Checkout session for a commercial OS Code plan (team seats; nothing is sold to a person). The purchase
 // happens on the WEB (openshore.ai), in the system browser, never inside the
 // iOS app: seat-based SaaS bought in-app trips Apple 3.1.1. The app only ever
 // signs in and reads the resulting entitlement.
@@ -17,7 +17,7 @@
 import Stripe from 'https://esm.sh/stripe@14?target=deno';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders, json } from '../_shared/cors.ts';
-import { checkoutDecision, isEntitled, tierCoversSeats } from '../_shared/entitlement.ts';
+import { checkoutDecision, tierCoversSeats } from '../_shared/entitlement.ts';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') ?? '', { apiVersion: '2024-06-20' });
 
@@ -26,12 +26,8 @@ const PRICE_BY_TIER: Record<string, string | undefined> = {
   commercial_small: Deno.env.get('STRIPE_PRICE_SMALL'),
   commercial_mid: Deno.env.get('STRIPE_PRICE_GROWTH'),
   commercial_large: Deno.env.get('STRIPE_PRICE_SCALE'),
-  // The individual Personal unlock ($49.99 a year, the same on both rails;
-  // 2026-09-30). Bought on the web/desktop here; on iOS the same unlock is an
-  // Apple IAP (Apple 3.1.1), never this endpoint. No trial at launch: the
-  // CFO's 14-day trial would be subscription_data.trial_period_days here AND
-  // an Apple introductory offer, set together (DECISIONS 2026-09-30).
-  personal: Deno.env.get('STRIPE_PRICE_PERSONAL'),
+  // No individual plan: OpenShore sells nothing to a person (open source,
+  // founder 2026-10-11). Only a commercial org's seats are bought here.
 };
 
 // After payment, return the buyer to the checkout-return function, which
@@ -100,14 +96,9 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
     );
 
-    // Individual Personal purchase: no org, the buyer pays for themselves. No
-    // admin check (there is nobody to be an admin of); identity is the caller.
-    if (!orgId) {
-      if (tierId !== 'personal') {
-        return json({ error: 'Only the Personal plan is an individual purchase.' }, 400, req);
-      }
-      return await checkoutIndividual(user.id, user.email, price, req, admin);
-    }
+    // Nothing is sold to an individual (open source, 2026-10-11): an org is
+    // required, and the unknown 'personal' tier was already refused above.
+    if (!orgId) return json({ error: 'OpenShore is free. There is nothing to buy.' }, 400, req);
 
     // The caller must be an admin of this org (checked as the caller, not the
     // service role, so auth.uid() resolves inside is_org_admin).
@@ -167,81 +158,3 @@ Deno.serve(async (req) => {
     return json({ error: 'Could not start checkout. Try again.' }, 500, req);
   }
 });
-
-// Individual Personal checkout. The customer id persists on the buyer's
-// user_entitlements row so repeat checkouts reuse one Stripe customer and the
-// portal can find it; the row is created here with a revoked status (no access)
-// and flipped to active by the webhook when payment completes. Access is never
-// granted here, only by the webhook (the sole entitlement writer).
-async function checkoutIndividual(
-  userId: string,
-  email: string | undefined,
-  price: string,
-  req: Request,
-  // deno-lint-ignore no-explicit-any
-  admin: any,
-): Promise<Response> {
-  const { data: ent, error: entErr } = await admin
-    .from('user_entitlements')
-    .select('stripe_customer_id, status, source')
-    .eq('user_id', userId)
-    .maybeSingle();
-  if (entErr) return json({ error: 'Could not start checkout. Try again.' }, 500, req);
-
-  // Already entitled by EITHER rail: never start a second purchase. An Apple sub
-  // is managed on the device (no Stripe portal); a Stripe sub opens the portal.
-  // This also protects an active Apple row from being clobbered to
-  // incomplete/stripe by the customer-create upsert below.
-  if (ent && isEntitled({ status: ent.status })) {
-    if (ent.source === 'apple' || !ent.stripe_customer_id) {
-      return json(
-        { error: 'You already have Personal. Manage it on your iPhone (Settings > your name > Subscriptions).' },
-        409,
-        req,
-      );
-    }
-    const portal = await stripe.billingPortal.sessions.create({
-      customer: ent.stripe_customer_id,
-      return_url: PORTAL_RETURN,
-    });
-    return json({ url: portal.url, alreadySubscribed: true }, 200, req);
-  }
-
-  let customer = ent?.stripe_customer_id as string | undefined;
-  if (!customer) {
-    const created = await stripe.customers.create({ email, metadata: { userId } });
-    customer = created.id;
-    // Persist the customer id so a second checkout reuses it and the portal can
-    // open. If a row already exists (e.g. a lapsed/incomplete one), UPDATE only
-    // the customer id so we never clobber another rail's source/status; else
-    // insert a fresh revoked row ('incomplete' = no access) that the webhook
-    // flips to active when payment resolves.
-    const write = ent
-      ? admin.from('user_entitlements').update({ stripe_customer_id: customer }).eq('user_id', userId)
-      : admin.from('user_entitlements').insert({
-          user_id: userId,
-          tier_id: 'personal',
-          status: 'incomplete',
-          source: 'stripe',
-          stripe_customer_id: customer,
-          issued_at: new Date().toISOString(),
-        });
-    const { error: upErr } = await write;
-    if (upErr) return json({ error: 'Could not start checkout. Try again.' }, 500, req);
-  }
-
-  // A3 and BE-7: a live subscription goes to the portal, never a second sub.
-  const routed = await routeExistingSubscription(customer, req);
-  if (routed) return routed;
-
-  const session = await stripe.checkout.sessions.create({
-    mode: 'subscription',
-    customer,
-    line_items: [{ price, quantity: 1 }],
-    success_url: SUCCESS_URL,
-    cancel_url: CANCEL_URL,
-    metadata: { userId, tierId: 'personal' },
-    subscription_data: { metadata: { userId, tierId: 'personal' } },
-  });
-  return json({ url: session.url }, 200, req);
-}

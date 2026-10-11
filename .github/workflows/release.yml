@@ -69,6 +69,9 @@ jobs:
   # hand run with Publish off publishes nothing and keeps the committed
   # version.
   version:
+    # Only the upstream repository releases; on a fork every job below skips,
+    # since each one needs this one.
+    if: github.repository == 'openshore-labs/openshore.code.ai'
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.pick.outputs.version }}

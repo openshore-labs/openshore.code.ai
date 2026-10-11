@@ -70,6 +70,9 @@ concurrency:
 
 jobs:
   build-and-publish:
+    # Only the upstream repository publishes; a fork's copy of this workflow
+    # (its schedule or its own main) does nothing.
+    if: github.repository == 'openshore-labs/openshore.code.ai'
     runs-on: ubuntu-latest
     env:
       # Only a yes/no travels at job level, so the publish gate can test
