@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Native video framing for OpenShore: compress a clip and lift stills with AVFoundation, so a vision model reviews it frame by frame and never sees the video.",
-  "license": "UNLICENSED",
+  "license": "Apache-2.0",
   "files": [
     "ios/Sources",
     "Package.swift"

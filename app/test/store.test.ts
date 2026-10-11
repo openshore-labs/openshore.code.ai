@@ -103,7 +103,7 @@ vi.mock('../src/lib/insights.js', () => ({
   clearInsights: async () => {},
 }));
 
-const { useApp, driverFor, isEntitled, personalUnlocked } = await import('../src/state/store.js');
+const { useApp, driverFor, isEntitled } = await import('../src/state/store.js');
 const CONVERSATIONS_KEY = 'oscode.conversations.v1';
 const SETTINGS_KEY = 'oscode.settings.v1';
 const HUB = { baseUrl: 'http://127.0.0.1:1', token: 'tok-1' };
@@ -355,41 +355,12 @@ describe('entitlement gate (billing A1)', () => {
     expect(isEntitled({ status: 'active', validUntil: past })).toBe(false);
   });
 
-  it('personalUnlocked: either an individual OR an org entitlement unlocks', () => {
-    const active = { status: 'active' as const };
-    const dead = { status: 'canceled' as const };
-    // Individual rail alone unlocks (Personal buyer with no org).
-    expect(personalUnlocked(active, undefined)).toBe(true);
-    // Org rail alone unlocks (commercial member, no personal sub).
-    expect(personalUnlocked(undefined, active)).toBe(true);
-    // Both dead, or neither present: locked.
-    expect(personalUnlocked(dead, dead)).toBe(false);
-    expect(personalUnlocked(undefined, undefined)).toBe(false);
-  });
-
-  it('beta: pay gates are off, coding + marketplace are free for everyone', () => {
-    // PAY_GATES_ENABLED is false for the beta, so with no entitlement at all the
-    // user is still treated as unlocked and nothing routes to the paywall.
-    useApp.setState({ userEntitlement: undefined, entitlement: undefined, paywall: undefined });
-    expect(useApp.getState().personalUnlockedNow()).toBe(true);
-
-    // Marketplace navigation is NOT intercepted, and no paywall opens.
-    useApp.setState({ view: 'chat' });
+  it('nothing is paid: with no entitlement at all, every room opens', () => {
+    // Open source (founder, 2026-10-11): no paywall, so a room is never
+    // intercepted for money.
+    useApp.setState({ entitlement: undefined, view: 'chat' });
     useApp.getState().setView('marketplace');
     expect(useApp.getState().view).toBe('marketplace');
-    expect(useApp.getState().paywall).toBeUndefined();
-  });
-
-  it('an active Personal entitlement unlocks coding + marketplace', async () => {
-    useApp.setState({
-      userEntitlement: { tierId: 'personal', status: 'active' },
-      paywall: undefined,
-    });
-    expect(useApp.getState().personalUnlockedNow()).toBe(true);
-    useApp.setState({ view: 'chat' });
-    useApp.getState().setView('marketplace');
-    expect(useApp.getState().view).toBe('marketplace');
-    expect(useApp.getState().paywall).toBeUndefined();
   });
 
   it('canGrowTeam stays true for a local (unbilled) org', async () => {

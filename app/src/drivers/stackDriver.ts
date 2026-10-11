@@ -265,11 +265,9 @@ export interface StackVaultTools {
   /** One guarded write through the vault seam, made only after the person
    *  approves the end-of-send card. */
   write: (path: string, text: string, guard: WriteGuard) => Promise<WriteResult>;
-  /** Whether a write may be offered this turn (absent: yes). False while
-   *  OpenShore Plus is shut (CTO, 2026-09-30): the chat still reads the notes
-   *  the person made, but is never offered the proposal tool, so no card
-   *  appears that could not land. Read each turn, so buying Plus mid-chat
-   *  brings the tool back. */
+  /** Whether a write may be offered this turn (absent: yes). False: the
+   *  chat still reads the notes the person made, but is never offered the
+   *  proposal tool, so no card appears that could not land. Read each turn. */
   canWrite?: () => boolean;
   /** True while the team vault is the target (D15: never in context). */
   teamVault?: () => boolean;

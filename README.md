@@ -142,3 +142,11 @@ site 1:1. Local work carries the water teal; cloud and spend carry amber.
 Tokens live in `app/src/theme.css`; the CLI mirror is
 `os-code/src/brand/theme.ts`. Harbor, the built-in guide model, is
 documented in `docs/HARBOR.md`.
+
+## License
+
+OpenShore is open source under the Apache License 2.0 (`LICENSE`, `NOTICE`).
+The OpenShore name and logo are trademarks of Open Shore LLC
+(`TRADEMARKS.md`). Contributions are welcome under the contributor license
+agreement (`CONTRIBUTING.md`, `CLA.md`); security reports go to
+`SECURITY.md`.

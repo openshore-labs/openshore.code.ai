@@ -4,14 +4,13 @@
 // few careful switches. No telemetry to toggle because there is none. Built
 // with the Creative Studio (2026-09-02, "The Ledger" direction).
 import { SHIPS_ADMIN, SHIPS_LAUNCH, SHIPS_STACKHEALTH, SHIPS_TEAMS } from '../lib/focus.js';
-import { accountCopy } from '../lib/accountGate.js';
+import { ACCOUNT_PITCH } from '../lib/accountGate.js';
 import { Fragment, useEffect, useRef, useState } from 'react';
-import { PAY_GATES_ENABLED, isOrgAdmin, useApp, type HarborDownload } from '../state/store.js';
+import { isOrgAdmin, useApp, type HarborDownload } from '../state/store.js';
 import { useAuth } from '../hooks/useAuth.js';
 import { platform, isDesktop, isPhone, openExternal } from '../lib/platform.js';
 import { PRIVACY_URL, TERMS_URL } from '../lib/legalLinks.js';
 import { WEB_FETCH_LABEL, WEB_FETCH_MODES, webFetchLine } from '../lib/webFetchMode.js';
-import { iapAvailable } from '../lib/iap.js';
 import { noticeEnabled, noticePermission } from '../lib/notices.js';
 import type { NoticePermission } from '../lib/llamaPlugin.js';
 import { bridge } from '../lib/electronBridge.js';
@@ -39,7 +38,7 @@ import {
   setStackHealthVisibility,
   type StackHealthVisibility,
 } from '../lib/stackHealth.js';
-import { tierById, shownPrice } from '../lib/plans.js';
+import { tierById } from '../lib/plans.js';
 import { REPO_CONNECTORS } from '../lib/repos.js';
 import { clearInsights, insightsAsText, insightsCount } from '../lib/insights.js';
 import { hapticCommit } from '../lib/haptics.js';
@@ -299,19 +298,14 @@ export function SettingsScreen() {
       document.getElementById(target)?.scrollIntoView({ block: 'start', behavior: 'smooth' }),
     );
   }, []);
-  const restorePurchases = useApp((s) => s.restorePurchases);
-  const recheckPersonal = useApp((s) => s.recheckPersonal);
-  const manageSubscription = useApp((s) => s.manageSubscription);
   const setWebSearchAllowed = useApp((s) => s.setWebSearchAllowed);
   const setWebFetchMode = useApp((s) => s.setWebFetchMode);
-  const personalUnlockedNow = useApp((s) => s.personalUnlockedNow);
-  const userEntitlement = useApp((s) => s.userEntitlement);
   const deleteAccount = useApp((s) => s.deleteAccount);
-  // The free ways out while their rooms are shut (CTO, 2026-09-30):
+  // The ways out while their rooms are shut (signed out, CTO 2026-09-30):
   // exporting the iPhone's sealed vault and removing a git host's sign-in.
   const exportPersonalVault = useApp((s) => s.exportPersonalVault);
-  const vaultRoomShut = useApp((s) => s.personalDoor('vault') !== 'open');
-  const reposRoomShut = useApp((s) => s.personalDoor('repos') !== 'open');
+  const vaultRoomShut = useApp((s) => s.needsAccountNow());
+  const reposRoomShut = vaultRoomShut;
   const connectedRepoPlatforms = useApp((s) => s.connectedRepoPlatforms);
   const disconnectRepoPlatform = useApp((s) => s.disconnectRepoPlatform);
   // Vault settings over Settings (Vault M7, CX Y4): the personal vault's.
@@ -414,37 +408,8 @@ export function SettingsScreen() {
       ? (org?.name ?? 'Company account')
       : 'Your account'
     : 'Sign in';
-  const accountValue = signedIn
-    ? account?.type === 'commercial' && org
-      ? tierById(org.tierId).name
-      : PAY_GATES_ENABLED
-        ? personalUnlockedNow()
-          ? 'Plus'
-          : 'Free'
-        : undefined
-    : undefined;
-  // Personal's standing on this device, in plain words: free for everyone
-  // while the pay gates are off (the beta), else active (until when) or not.
-  const personalUntil = userEntitlement?.validUntil
-    ? new Date(userEntitlement.validUntil).toLocaleDateString(undefined, {
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric',
-      })
-    : undefined;
-  // The Plus row shows only while the pay gates are on, so there is no
-  // gates-off wording here (and never "beta", App Review 2.2).
-  const personalValue = personalUnlockedNow() ? 'Active' : 'Not yet';
-  const personalSub = personalUnlockedNow()
-    ? personalUntil
-      ? `All of OpenShore is open. Renews or ends ${personalUntil}.`
-      : 'All of OpenShore is open.'
-    : 'Chats, Projects, the Stack and Cloud Connections are free. Plus opens the rest.';
-  // The Personal rows (2026-09-30): an Apple device restores through the App
-  // Store and manages its subscription with Apple; the desktop re-reads the
-  // account ("I already paid") and manages it in the Stripe portal.
-  const appleDevice = iapAvailable();
-  const showManage = PAY_GATES_ENABLED && configured && signedIn && Boolean(userEntitlement);
+  const accountValue =
+    signedIn && account?.type === 'commercial' && org ? tierById(org.tierId).name : undefined;
 
   const termDesktopLocal = isDesktop() && Boolean(bridge()) && !settings.preferRemoteHub;
   const termTargetId = terminalTargetId({
@@ -507,11 +472,7 @@ export function SettingsScreen() {
           <SettingsRow
             label={accountLabel}
             subTruncate={signedIn}
-            sub={
-              signedIn
-                ? email
-                : `Chatting needs no account. ${accountCopy(PAY_GATES_ENABLED).pitch}`
-            }
+            sub={signedIn ? email : `Chatting needs no account. ${ACCOUNT_PITCH}`}
             value={accountValue}
             onClick={
               configured
@@ -522,42 +483,6 @@ export function SettingsScreen() {
                 : undefined
             }
           />
-          {PAY_GATES_ENABLED ? (
-            <SettingsRow label="OpenShore Plus" sub={personalSub} value={personalValue} />
-          ) : null}
-          {PAY_GATES_ENABLED && configured && appleDevice ? (
-            <SettingsRow
-              label="Restore purchases"
-              sub={
-                signedIn
-                  ? 'Bought Plus already? Unlock it on this device.'
-                  : 'Sign in first, then restore.'
-              }
-              onClick={() => void restorePurchases()}
-            />
-          ) : null}
-          {PAY_GATES_ENABLED && configured && !appleDevice ? (
-            <SettingsRow
-              label="I already paid"
-              sub={
-                signedIn
-                  ? 'Bought Plus already? Check your account again.'
-                  : 'Sign in with the email you paid with.'
-              }
-              onClick={() => void recheckPersonal()}
-            />
-          ) : null}
-          {showManage ? (
-            <SettingsRow
-              label="Manage subscription"
-              sub={
-                appleDevice
-                  ? 'Renewal and cancellation, with Apple.'
-                  : 'Renewal, card, and cancellation.'
-              }
-              onClick={() => void manageSubscription()}
-            />
-          ) : null}
         </SettingsGroup>
 
         {/* Privacy comes straight after Account (founder, D16, 2026-10-07), so
@@ -1428,11 +1353,8 @@ export function SettingsScreen() {
         {/* A team's plan and price are v4 (founder 2026-09-30: Personal first). */}
         {SHIPS_TEAMS && signedIn && account?.type === 'commercial' && org ? (
           <p className="sheet-sub">
-            {tierById(org.tierId).name} plan ·{' '}
-            {shownPrice(tierById(org.tierId), PAY_GATES_ENABLED)
-              ? `${shownPrice(tierById(org.tierId), PAY_GATES_ENABLED)} · `
-              : ''}
-            {org.members.length} {org.members.length === 1 ? 'person' : 'people'}
+            {tierById(org.tierId).name} plan · {org.members.length}{' '}
+            {org.members.length === 1 ? 'person' : 'people'}
           </p>
         ) : null}
         <SignInCard variant="sheet" onModeChange={setSignInMode} />

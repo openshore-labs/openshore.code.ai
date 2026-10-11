@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "OS Code (Open Shore Code): a terminal-first coding agent for your own stack of local LLMs. Your machine, your models, your keys.",
   "type": "module",
-  "license": "SEE LICENSE IN LICENSE",
+  "license": "Apache-2.0",
   "bin": {
     "osc": "./dist/bin/osc.js"
   },

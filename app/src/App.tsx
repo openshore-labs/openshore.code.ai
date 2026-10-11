@@ -10,7 +10,6 @@ import { useSheetFocusTrap } from './hooks/useSheetFocusTrap.js';
 import { hapticTick } from './lib/haptics.js';
 import { platform } from './lib/platform.js';
 import { Sidebar } from './components/Sidebar.js';
-import { Paywall } from './components/Paywall.js';
 import { AuthConfirmSheet } from './components/AuthConfirmSheet.js';
 import { WebSearchAsk } from './components/WebSearchAsk.js';
 import { AccountGateSheet } from './components/AccountGateSheet.js';
@@ -323,11 +322,10 @@ export function App() {
     return () => document.removeEventListener('click', onTap, true);
   }, []);
 
-  // When the app returns to the foreground, re-check the Personal entitlement.
-  // Stripe checkout completes in the system browser, so the unlock is written
-  // server-side while OS Code is backgrounded. This makes it land on return
-  // instead of leaving a paid user staring at the paywall. Native uses the
-  // Capacitor app-state event; web and Electron use visibilitychange.
+  // When the app returns to the foreground, re-check a commercial org's seat
+  // billing: Stripe checkout completes in the system browser, so seats land
+  // on return. Native uses the Capacitor app-state event; web and Electron use
+  // visibilitychange.
   useEffect(() => {
     let removeNative: (() => void) | undefined;
     const onVisible = () => {
@@ -425,7 +423,6 @@ export function App() {
             dragProps={gesture.drawerProps}
           />
         ) : null}
-        <Paywall />
         <AuthConfirmSheet />
         {OrgJoinSheet ? (
           <Suspense fallback={null}>

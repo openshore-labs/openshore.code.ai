@@ -71,15 +71,6 @@ vi.mock('../src/lib/supabase.js', async (importOriginal) => {
   return { ...real, isConfigured: () => true, ...sb };
 });
 
-const iap = { purchase: vi.fn(), restore: vi.fn() };
-vi.mock('../src/lib/iap.js', () => ({
-  iapAvailable: () => true,
-  PERSONAL_YEARLY_PRODUCT_ID: 'ai.openshore.oscode.personal.yearly',
-  purchase: (...args: unknown[]) => iap.purchase(...args),
-  restore: (...args: unknown[]) => iap.restore(...args),
-  onTransactionUpdate: async () => ({ remove: async () => {} }),
-}));
-
 const { SupabaseRequestError } = await import('../src/lib/supabase.js');
 const { clearSession } = await import('../src/lib/authSession.js');
 const { recordEthicsEvent } = await import('../src/lib/ethics.js');
@@ -90,7 +81,6 @@ type Session = import('../src/lib/supabase.js').Session;
 
 const SESSION_KEY = 'oscode.auth.session.v1';
 const PENDING_AUTH_KEY = 'oscode.auth.pending.v1';
-const PENDING_LINK_KEY = 'oscode.iap.pendingLink.v1';
 const CALLBACK = 'oscode://auth-callback#access_token=at&refresh_token=rt&expires_in=3600';
 const RECOVERY = `${CALLBACK}&type=recovery`;
 
@@ -132,7 +122,6 @@ async function resetAll() {
   memberships = [];
   ownerOf = {};
   for (const fn of Object.values(sb)) fn.mockReset();
-  for (const fn of Object.values(iap)) fn.mockReset();
   sb.rpc.mockResolvedValue(null);
   sb.invokeFunction.mockResolvedValue({});
   sb.signOut.mockResolvedValue(undefined);
@@ -164,12 +153,10 @@ async function resetAll() {
     authSession: undefined,
     serverRole: undefined,
     entitlement: undefined,
-    userEntitlement: undefined,
     passwordRecovery: undefined,
     authConfirm: undefined,
     orgJoin: undefined,
     toast: undefined,
-    paywall: undefined,
     settings: { onboarded: true, claudeModel: 'x', deviceModels: {} },
   });
 }
@@ -181,15 +168,11 @@ describe('one fresh token for every server call (APP-1)', () => {
 
   it('refreshes an expired session once and hands the new token to concurrent callers', async () => {
     useApp.setState({ authSession: expired() });
-    iap.purchase.mockResolvedValue({ state: 'purchased', jws: 'JWS1' });
     const s = useApp.getState();
-    await Promise.all([s.refreshEntitlement(), s.buyPersonal()]);
+    await Promise.all([s.refreshEntitlement(), s.refreshOrgRole(), s.refreshOrgRole()]);
     expect(sb.refreshSession).toHaveBeenCalledTimes(1);
     expect(sb.select).toHaveBeenCalled();
     for (const call of sb.select.mock.calls) expect(call[1]).toBe('fresh-token');
-    expect(sb.invokeFunction).toHaveBeenCalledWith('link-apple-purchase', 'fresh-token', {
-      jws: 'JWS1',
-    });
     expect(useApp.getState().authSession?.accessToken).toBe('fresh-token');
   });
 });
@@ -215,28 +198,6 @@ describe('a dead refresh token signs the device out (APP-2)', () => {
     await useApp.getState().refreshEntitlement();
     expect(useApp.getState().authSession?.refreshToken).toBe('rt-1');
     expect(useApp.getState().toast).toBeUndefined();
-  });
-});
-
-describe('an Apple purchase the server could not link (UI-10)', () => {
-  beforeEach(resetAll);
-
-  it('keeps the receipt, names the recovery, and retries on the next foreground', async () => {
-    useApp.setState({ authSession: live() });
-    iap.purchase.mockResolvedValue({ state: 'purchased', jws: 'JWS1' });
-    sb.invokeFunction.mockRejectedValueOnce(new TypeError('fetch failed'));
-    await useApp.getState().buyPersonal();
-    expect(useApp.getState().toast).toBe(
-      'Apple confirmed your purchase. OpenShore could not reach its server to unlock it. Tap Restore purchases when you are back online.',
-    );
-    expect(mem.get(PENDING_LINK_KEY)).toContain('JWS1');
-
-    sb.invokeFunction.mockClear();
-    await useApp.getState().reconcileEntitlementOnForeground();
-    expect(sb.invokeFunction).toHaveBeenCalledWith('link-apple-purchase', 'fresh-token', {
-      jws: 'JWS1',
-    });
-    expect(mem.has(PENDING_LINK_KEY)).toBe(false);
   });
 });
 

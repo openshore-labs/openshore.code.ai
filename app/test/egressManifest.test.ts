@@ -312,7 +312,6 @@ describe('the guides claim no more than the list', () => {
     ...GUIDE_CARDS.map((c): [string, string] => [`guide card ${c.id}`, c.text]),
     ['Harbor Lite persona', HARBOR_MINI_PERSONA],
     ['app knowledge', APP_KNOWLEDGE],
-    ['Paywall', readFileSync(join(process.cwd(), 'src', 'components', 'Paywall.tsx'), 'utf8')],
     ...[
       'screens/ConnectionsScreen.tsx',
       'screens/SettingsScreen.tsx',

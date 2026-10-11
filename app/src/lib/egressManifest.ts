@@ -14,7 +14,6 @@
 
 import { featureOn, type ReleaseTier, type TieredFeature, RELEASE_TIER } from './focus.js';
 import type { Platform } from './platform.js';
-import { PAY_GATES_ENABLED } from './payGate.js';
 import { followsList } from './profile.js';
 import { VAULT_CARRY_CAVEAT, VAULT_PRIVATE_OFF_CLOUD } from './vaultCopy.js';
 
@@ -35,13 +34,8 @@ export interface EgressEntry {
   /** The later-tier feature this belongs to (docs/release-tiers.md); a build
    *  without it leaves the entry off the list, since it cannot happen there. */
   feature?: TieredFeature;
-  /** The platforms it can happen on, when not all of them. The iPhone and
-   *  iPad list leaves out what they never contact (the Stripe rail), so the
-   *  list there names no other way to pay (App Store 3.1.1; CTO, 2026-09-30). */
+  /** The platforms it can happen on, when not all of them. */
   platforms?: readonly Platform[];
-  /** Only happens in a build with the pay gates on, so a build without them
-   *  leaves it off the list (first submission, 2026-10-01). */
-  paid?: true;
 }
 
 /** Crew routines follow the web search switch, and only search (founder,
@@ -77,7 +71,7 @@ export const EGRESS: EgressEntry[] = [
   {
     id: 'account',
     recipient: 'OpenShore (us)',
-    what: 'Your email and password to sign in, then what your account needs to work: its sign-in renewed, and its plan.',
+    what: 'Your email and password to sign in, then what your account needs to work: its sign-in renewed, and, for a team account, its plan.',
     when: 'Only once you sign in, and then each time the app opens while you are signed in. Chatting needs no account; building, Projects, Vault, Crew, Terminal, and pairing do.',
     start: 'off',
     hosts: ['env:VITE_SUPABASE_URL'],
@@ -124,36 +118,6 @@ export const EGRESS: EgressEntry[] = [
     when: 'Only when you connect one.',
     start: 'tap',
     hosts: ['env:VITE_SUPABASE_URL', 'github.com', 'gitlab.com', 'bitbucket.org'],
-  },
-  {
-    id: 'purchase',
-    recipient: 'OpenShore (us)',
-    what: 'Your App Store receipt, to link a purchase to your account.',
-    when: 'Only when you buy or restore a purchase.',
-    start: 'tap',
-    hosts: ['env:VITE_SUPABASE_URL'],
-    platforms: ['ios'],
-    paid: true,
-  },
-  {
-    id: 'purchase-web',
-    recipient: 'OpenShore (us)',
-    what: 'Your sign-in, asking our server to start an OpenShore Plus checkout or open your subscription. Our server makes the Stripe page for your account and answers its address; your card never touches OpenShore.',
-    when: 'Only on the desktop or the web, when you tap Get Plus or Manage subscription.',
-    start: 'tap',
-    hosts: ['env:VITE_SUPABASE_URL'],
-    platforms: ['electron', 'web'],
-    paid: true,
-  },
-  {
-    id: 'stripe',
-    recipient: 'Payments',
-    what: 'Stripe Checkout and the Stripe billing page open in your own browser, where you give Stripe your email and card. Stripe tells our server that you paid and until when, and nothing about your chats or work.',
-    when: 'Only on the desktop or the web, after you tap Get Plus or Manage subscription.',
-    start: 'tap',
-    hosts: ['checkout.stripe.com', 'billing.stripe.com'],
-    platforms: ['electron', 'web'],
-    paid: true,
   },
   {
     id: 'account-deletion',
@@ -394,7 +358,6 @@ export const STAYS_ON_DEVICE: string[] = [
 export function egressByRecipient(
   tier: ReleaseTier = RELEASE_TIER,
   on?: Platform,
-  payGates: boolean = PAY_GATES_ENABLED,
 ): Array<{ recipient: string; entries: EgressEntry[] }> {
   return RECIPIENT_ORDER.map((recipient) => ({
     recipient,
@@ -402,7 +365,6 @@ export function egressByRecipient(
       (e) =>
         e.recipient === recipient &&
         (!e.feature || featureOn(e.feature, tier)) &&
-        (!e.paid || payGates) &&
         (!on || !e.platforms || e.platforms.includes(on)),
     ),
   })).filter((g) => g.entries.length > 0);

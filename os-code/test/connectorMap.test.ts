@@ -86,7 +86,7 @@ describe('connector manifest', () => {
   it('the public projection renders nicknames only, never secret names or homes', () => {
     const projection = JSON.stringify(publicProjection());
     expect(projection).not.toMatch(/ANTHROPIC_API_KEY|GITHUB_TOKEN|BRAVE_API_KEY|TAVILY_API_KEY/);
-    expect(projection).not.toMatch(/credential-store|daemon\.token|license\.json/);
+    expect(projection).not.toMatch(/credential-store|daemon\.token/);
   });
 
   it('every connector names at least one consumer', () => {

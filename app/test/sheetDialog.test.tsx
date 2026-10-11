@@ -1,13 +1,13 @@
 // Every sheet is a named dialog that animates out (G2, the screens review).
 // The house <Sheet> gives its card role="dialog" and aria-modal, and its
-// SheetHead (or SheetTitle) names it through aria-labelledby. The paywall,
-// the connection sheet, and the QR scanner used to hand-roll their scrims
+// SheetHead (or SheetTitle) names it through aria-labelledby. The connection
+// sheet and the QR scanner used to hand-roll their scrims
 // with no dialog role; they ride the house sheet now. Mounted in a real
 // (small) DOM, since the name is wired up in a layout effect.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mountDom, type TestDom } from './support/dom.js';
 
-// The store, as far as the paywall reads it.
+// The store, as far as these sheets read it.
 const app = vi.hoisted(() => {
   const listeners = new Set<() => void>();
   const state: Record<string, unknown> = {};
@@ -16,12 +16,7 @@ const app = vi.hoisted(() => {
     listeners.forEach((l) => l());
   };
   Object.assign(state, {
-    paywall: undefined,
     authSession: undefined,
-    buyPersonal: async () => {},
-    restorePurchases: async () => {},
-    recheckPersonal: async () => {},
-    closePaywall: () => set({ paywall: undefined }),
   });
   return { state, set, listeners };
 });
@@ -29,7 +24,6 @@ const app = vi.hoisted(() => {
 vi.mock('../src/state/store.js', async () => {
   const { useSyncExternalStore } = await import('react');
   return {
-    PAY_GATES_ENABLED: false,
     useApp: (select: (s: Record<string, unknown>) => unknown = (s) => s) =>
       useSyncExternalStore(
         (listener) => {
@@ -44,7 +38,6 @@ vi.mock('../src/state/store.js', async () => {
 let dom: TestDom;
 beforeEach(async () => {
   dom = await mountDom();
-  app.set({ paywall: undefined });
 });
 afterEach(async () => {
   await dom.unmount();
@@ -83,19 +76,6 @@ describe('the house sheet', () => {
 });
 
 describe('the sheets that used to hand-roll their scrims', () => {
-  it('the paywall opens as a named dialog and plays its exit on Not now', async () => {
-    const { Paywall } = await import('../src/components/Paywall.js');
-    await dom.render(<Paywall />);
-    expect(dialog()).toBeNull();
-    const { act } = await import('react');
-    await act(async () => app.set({ paywall: 'coding' }));
-    expect(nameOf(dialog())).toBe('Let OpenShore build it.');
-    await dom.click('Not now. Keep chatting.');
-    // Still on screen, leaving: it animates out rather than vanishing.
-    expect(dialog()?.className).toMatch(/\bclosing\b/);
-    expect(dom.container.querySelector('.sheet-scrim.closing')).not.toBeNull();
-  });
-
   it('the QR scanner is a named dialog whose Cancel closes it', async () => {
     // The small DOM has no animation frames; the scanner never gets that far.
     vi.stubGlobal('requestAnimationFrame', () => 0);

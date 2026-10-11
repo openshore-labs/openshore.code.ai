@@ -104,11 +104,6 @@
     "refreshHours": 24
   },
 
-  "license": {
-    "verifyUrl": "https://openshore.ai/api/os-code/license/verify",
-    "graceDays": 14
-  },
-
   "ui": {
     "plain": false
   },

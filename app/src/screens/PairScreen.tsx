@@ -5,7 +5,7 @@
 // server. On the phone: every way in (lib/docking.ts), with the computer at
 // home and a server you rent docked right here, by a scan or a typed code the
 // device trades for its own credential. The daemon owns the run, so a dropped
-// connection reattaches with nothing lost. Free (lib/payGate.ts, 2026-10-07).
+// connection reattaches with nothing lost. Free, like everything in OpenShore.
 // docs/pairing-review.md, docs/connect-anywhere-proposal.md.
 import { useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode';

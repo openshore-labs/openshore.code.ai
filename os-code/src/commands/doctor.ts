@@ -12,7 +12,6 @@ import { resolveStack, StackError } from '../router/stack.js';
 import { budgetFor, detectHardware } from '../router/resourceBudget.js';
 import { checkLinks } from '../connect/health.js';
 import { searchProviderFor } from '../core/tools/search/index.js';
-import { readLicenseState, describeEntitlement } from '../license/verify.js';
 import { keyHome } from '../auth/keyHome.js';
 import { listSessions } from '../daemon/session.js';
 import { failLine, header, okLine, out, skipLine, warnLine } from './util.js';
@@ -140,15 +139,6 @@ export async function doctorCommand(): Promise<void> {
     } else if (link.state === 'warn') warnLine(`${link.label}: ${link.detail}`, link.fix);
     else skipLine(`${link.label}: ${link.detail}${link.fix ? ` (${link.fix})` : ''}`);
   }
-
-  // License.
-  header('License');
-  const license = readLicenseState();
-  if (license?.status === 'active') okLine(describeEntitlement(license));
-  else
-    skipLine(
-      'No license on this machine. Everything local works; the curated feed and updates come with one (openshore.ai).',
-    );
 
   // Vault. The folder every surface resolves to (machine config only), so a
   // person can check where the agent's notes land. An unusable vault.dir is

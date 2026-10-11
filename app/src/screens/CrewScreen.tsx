@@ -5,8 +5,6 @@
 // projects, or let it work across all of them.
 import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../state/store.js';
-import { PlusNote } from '../components/PlusNote.js';
-import { CREW_PLUS_LINE } from '../lib/payGate.js';
 import { BackBar } from '../components/BackBar.js';
 import { SwipeRow } from '../components/SwipeRow.js';
 import { ProjectMultiSelect } from '../components/ProjectMultiSelect.js';
@@ -162,8 +160,6 @@ export function CrewScreen() {
           Build your own agents. Each has a name, a persona, and a rule for how and when it is
           called. Point them at specific projects, or let them work across all of them.
         </p>
-
-        <PlusNote feature="crew" line={CREW_PLUS_LINE} />
 
         {/* The door to the command center: the crew's unattended work, with
             a live line so the roster reads as a team, not a list. Before a

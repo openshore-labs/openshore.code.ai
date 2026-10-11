@@ -389,9 +389,8 @@ describe('the Stack batches every proposal into one approval card', () => {
     driver.dispose();
   });
 
-  // Writing notes from a chat is Vault authoring, part of OpenShore Plus (CTO,
-  // 2026-09-30): while it is shut the chat still reads, but is never offered
-  // the proposal tool, so no card appears that could not land.
+  // While writing is shut (the canWrite seam), the chat still reads, but is
+  // never offered the proposal tool, so no card appears that could not land.
   it('offers no proposal tool while writing is shut, and shows no card', async () => {
     let open = false;
     const { driver, events, write } = setup(() => open);

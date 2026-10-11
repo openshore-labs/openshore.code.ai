@@ -24,7 +24,7 @@ import {
   providerInfo,
 } from '../src/lib/providers.js';
 import { daemonHealth } from '../src/drivers/remoteDriver.js';
-import { PAY_GATE } from '../src/lib/payGate.js';
+import { ROOM_ACCOUNT } from '../src/lib/accountGate.js';
 import { ROOM_LABELS } from '../src/lib/navRooms.js';
 
 const read = (...p: string[]) => readFileSync(join(process.cwd(), ...p), 'utf8');
@@ -49,7 +49,9 @@ describe('docking, the words', () => {
 
   it('the room is Computer, and docking is free', () => {
     expect(ROOM_LABELS.pair).toBe('Computer');
-    expect(PAY_GATE.pairing).toBe('free');
+    // Nothing in OpenShore is paid (open source, 2026-10-11); docking sits
+    // behind the free sign-in only.
+    expect(ROOM_ACCOUNT.pair).toBe('pairing');
   });
 
   it('lists every way in, in order, and two of them dock right here', () => {

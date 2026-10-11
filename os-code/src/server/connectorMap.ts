@@ -116,19 +116,6 @@ export const CONNECTORS: Connector[] = [
     optional: true,
   },
   {
-    id: 'openshore-license',
-    nickname: 'OpenShore licensing',
-    purpose: 'License activation for the curated feed and update channel.',
-    secrets: [{ name: 'License key + cached entitlement', homes: ['file'], file: 'license.json' }],
-    consumers: [
-      'license/verify',
-      'license/entitlement',
-      'commands/license',
-      'market/catalog (gating)',
-    ],
-    optional: true,
-  },
-  {
     id: 'daemon',
     nickname: 'OS Code daemon',
     purpose: 'The phone-facing control channel over the tailnet.',

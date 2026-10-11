@@ -55,7 +55,6 @@ export const PROJECT_POLICY: Record<keyof OscConfig, KeyPolicy> = {
   // shorter nor point a push grant at a host of its choosing.
   daemon: 'machine',
   catalog: 'machine',
-  license: 'machine',
   ui: 'project',
   // Whether a Crew routine may search the web is the person's own switch,
   // never a repo's (founder, 2026-10-01).

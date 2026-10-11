@@ -222,7 +222,7 @@ export const GuardrailsSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
-// Daemon, catalog, license, UI
+// Daemon, catalog, UI
 // ---------------------------------------------------------------------------
 
 export const DaemonSchema = z.object({
@@ -255,12 +255,6 @@ export const DaemonSchema = z.object({
 export const CatalogSchema = z.object({
   url: z.string().default('https://openshore.ai/os-code/catalog.json'),
   refreshHours: z.number().min(1).default(24),
-});
-
-export const LicenseSchema = z.object({
-  verifyUrl: z.string().default('https://openshore.ai/api/os-code/license/verify'),
-  /** Days a cached entitlement keeps working with no network. */
-  graceDays: z.number().int().min(1).default(14),
 });
 
 export const UiSchema = z.object({
@@ -479,6 +473,8 @@ const HarnessSchema = z.object({
     .prefault({}),
 });
 
+// Unknown keys are stripped, so an old config's `license` section (the key
+// client removed when OpenShore went open source, 2026-10-11) still loads.
 export const ConfigSchema = z.object({
   providers: z
     .record(z.string(), ProviderEndpointSchema)
@@ -493,7 +489,6 @@ export const ConfigSchema = z.object({
   guardrails: GuardrailsSchema.prefault({}),
   daemon: DaemonSchema.prefault({}),
   catalog: CatalogSchema.prefault({}),
-  license: LicenseSchema.prefault({}),
   ui: UiSchema.prefault({}),
   routines: RoutinesSchema.prefault({}),
   vault: VaultSchema.prefault({}),

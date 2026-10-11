@@ -1,6 +1,7 @@
 {
   "name": "openshore-code",
   "private": true,
+  "license": "Apache-2.0",
   "version": "0.1.0",
   "description": "OS Code: native iOS and Linux desktop apps for building with your own stack of local LLMs. Your machine, your models, your keys.",
   "packageManager": "pnpm@10.33.0",

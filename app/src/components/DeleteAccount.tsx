@@ -26,7 +26,6 @@ import { SUPPORT_EMAIL } from 'os-code/protocol';
 import type { DeleteAccountOutcome } from '../state/accountDeletion.js';
 import { hapticCommit } from '../lib/haptics.js';
 import { openExternal } from '../lib/platform.js';
-import { PAY_GATES_ENABLED } from '../lib/payGate.js';
 import { Sheet } from './Sheet.js';
 import { SettingsRow } from './SettingsRow.js';
 
@@ -56,8 +55,6 @@ export const DELETE_ACCOUNT_COPY = {
   doneBody: 'This device is signed out. Your chats and projects are still here.',
   appleNote:
     'Your Apple subscription is separate. Cancel it on your iPhone in Settings, then your name, then Subscriptions, or it keeps renewing.',
-  appleNoteIf:
-    'If you pay for OpenShore Plus through Apple, that subscription is separate. Cancel it on your iPhone in Settings, then your name, then Subscriptions, or it keeps renewing.',
   done: 'Done',
 } as const;
 
@@ -196,9 +193,6 @@ export function DeleteAccount({
         <h3>{DELETE_ACCOUNT_COPY.doneTitle}</h3>
         <p>{DELETE_ACCOUNT_COPY.doneBody}</p>
         {appleNote === true ? <p>{DELETE_ACCOUNT_COPY.appleNote}</p> : null}
-        {appleNote === undefined && PAY_GATES_ENABLED ? (
-          <p>{DELETE_ACCOUNT_COPY.appleNoteIf}</p>
-        ) : null}
         <div className="confirm-row">
           <button type="button" className="btn primary press-fb" onClick={finish}>
             {DELETE_ACCOUNT_COPY.done}

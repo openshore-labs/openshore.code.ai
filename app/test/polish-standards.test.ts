@@ -498,7 +498,6 @@ describe('polish standards', () => {
     // A press rides `scale` (press-fb's property) with one of the three press
     // tokens, so a button that also carries press-fb dips once, not twice.
     const SKIP: Array<[RegExp, string]> = [
-      [/\.sidebar-plus\b/, 'the pay gate, reviewed with the paywall'],
       [/\.account-card\b/, 'teams and plans, v4'],
       [
         /\.(lib-cta|facet-chip|market-card|cat-chip|hero-card|store-get|store-row)\b/,

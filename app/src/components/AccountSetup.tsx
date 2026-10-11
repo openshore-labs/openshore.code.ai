@@ -6,8 +6,8 @@
 // Everything about the app is identical either way; commercial just adds the
 // admin controls and the shared, admin-owned stack.
 import { useState } from 'react';
-import { PAY_GATES_ENABLED, useApp } from '../state/store.js';
-import { COMMERCIAL_TIERS, shownPrice, tierForSeats } from '../lib/plans.js';
+import { useApp } from '../state/store.js';
+import { COMMERCIAL_TIERS, tierForSeats } from '../lib/plans.js';
 import { BrandMark } from './BrandMark.js';
 
 export function AccountSetup() {
@@ -120,9 +120,6 @@ export function AccountSetup() {
                     <h3 style={{ color: 'var(--local)' }}>{tier.name} plan</h3>
                     <div className="sub">{tier.blurb}</div>
                   </div>
-                  {shownPrice(tier, PAY_GATES_ENABLED) ? (
-                    <span className="pill price">{shownPrice(tier, PAY_GATES_ENABLED)}</span>
-                  ) : null}
                 </div>
               </div>
               <p className="hint" style={{ marginTop: 8 }}>

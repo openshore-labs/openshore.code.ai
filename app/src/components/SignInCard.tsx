@@ -12,13 +12,12 @@
 // Sign out ends this device's sign-in only (CX ruling 4). A quiet link below
 // it ends every device's, after one confirm (state/signinOps.ts).
 import { featureOn } from '../lib/focus.js';
-import { SIGNED_IN_PERKS, accountCopy } from '../lib/accountGate.js';
+import { ACCOUNT_PITCH, SIGNED_IN_PERKS } from '../lib/accountGate.js';
 import { useId, useState } from 'react';
 import { useApp } from '../state/store.js';
-import { PAY_GATES_ENABLED } from '../lib/payGate.js';
 
 // The pitch for this build: what signing in opens with the pay gates off or on.
-const pitch = accountCopy(PAY_GATES_ENABLED).pitch;
+const pitch = ACCOUNT_PITCH;
 import { useAuth } from '../hooks/useAuth.js';
 import { plainError } from '../lib/plainError.js';
 import { Sheet } from './Sheet.js';

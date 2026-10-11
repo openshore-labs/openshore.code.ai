@@ -51,7 +51,6 @@ const CONTRACTS: Record<string, { file: string; contract: string }> = {
     file: 'src/lib/authSessionPlugin.ts',
     contract: 'OscodeAuthSessionContract',
   },
-  'oscode-iap': { file: 'src/lib/iap.ts', contract: 'OscodeIapPlugin' },
   'oscode-icloud': { file: 'src/lib/gitos/icloudPlugin.ts', contract: 'IcloudPluginContract' },
   'oscode-llama': { file: 'src/lib/llamaPlugin.ts', contract: 'LlamaPluginContract' },
   'oscode-media': { file: 'src/lib/mediaPlugin.ts', contract: 'MediaPluginContract' },

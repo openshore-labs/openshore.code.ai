@@ -277,7 +277,7 @@ though its server is localhost (privacy review, 2026-10-08).
 
 v1 is **Personal**: one person, their desktop and their own phone. Chats,
 Projects, Terminal, Repositories, Stack, Vault, Crew (routines), Cloud
-Connections, Computer (docking; once Pairing), Settings, and buying Personal. v2 is Agentic and
+Connections, Computer (docking; once Pairing), and Settings. v2 is Agentic and
 Harness Currents, Stack Health, and Launch with Codemagic; v3 the Marketplace;
 v4 Enterprise (Admin, teams, shared projects, the team vault, project
 permissions, shared-hub members). "Build personal for now and get that working
@@ -325,29 +325,29 @@ main's function deployed, both 2026-09-30 (`docs/vault-gate1-runbook.md` 7.4). T
 address is one constant, `SUPPORT_EMAIL` (support@openshore.ai, founder F1
 2026-09-30), and `app/test/contactAddress.test.ts` holds 0022's ladder and
 the Terms to it.
-The paid gate (sold as OpenShore Plus, never "Personal", in customer copy):
-the advisors (CTO, CFO, CX, 2026-09-30) put coding, building and agentic work
-behind it on actions; the founder widened it the same day to every room but
-five. Free: Chats, Projects, the Stack, Cloud Connections and Settings (and
-what they reach), and since 2026-10-07 Computer (docking, the founder's
-"Do not gate anything"). Plus: Terminal, Repositories, Vault, My Crew, and the later tiers' rooms. A Plus room opens the paywall at
-`setView` (after the sign-in), and a purchase carries on to it; the actions
-keep their doors (a coding session anywhere, a routine made, edited or run,
-the docked computer's shell from another device). The
-free sidebar puts the free rooms up top and the Plus rooms greyed under a
-gold "Upgrade to OpenShore Plus" banner; Plus gets the familiar layout
-(`components/Sidebar.tsx`, `app/test/sidebarPlus.test.tsx`). Nothing a
-person made is locked away, and stopping, revoking, forgetting and exporting
-are always free (CTO, 2026-09-30): Crew opens while routines exist (Computer is free, so it always opens), and Settings holds
-the iPhone's vault export and each git host's Remove while those rooms are
-shut (`app/test/plusRoomPass.test.tsx`). The switch for the review build is
-the Codemagic `store_release` input, never the `Harbor-os-code` group
-(`docs/TESTFLIGHT.md` section 7). Every account
-feature is classified in `app/src/lib/payGate.ts` (`PAY_GATE`, a type error
-until complete), the logic is `app/src/state/payOps.ts`, and the switch is
-the build flag `VITE_PAY_GATES`, off by default and set only in the build
-submitted to App Review. iOS buys through the App Store only; the desktop
-and the web through Stripe; $49.99 on both. `app/test/payGate.test.ts`.
+Nothing is paid (open source, founder 2026-10-11): the OpenShore Plus gate,
+its paywall, the in-app purchase and the `VITE_PAY_GATES` flag are removed,
+and every room and action meets only the free sign-in above (`requireAccount`
+in the store). Stopping, revoking, forgetting and exporting never need even
+that. The only billing code left is a commercial org's team seats, a later
+tier with its door shut (`lib/entitlement.ts`, `growthGatedByBilling`).
+`app/test/personalReady.test.ts` holds that the paywall stays gone. Do NOT
+bring back a paid gate on a person's own rooms without a founder ruling in
+`os-code/DECISIONS.md`.
+
+## Open source: Apache 2.0, and the company keeps the ship (founder 2026-10-11)
+
+OpenShore is open source under the Apache License 2.0 (`LICENSE`, `NOTICE`).
+The founder's terms: the code is open, but Open Shore LLC keeps sole say over
+what ships and owns the repository, the apps, and the names. That is held by
+three files, not by the license: `TRADEMARKS.md` (OpenShore, OS Code, Harbor,
+Harbor Lite, DeepBlue and the logo stay Open Shore LLC's; a distributed fork
+renames), `CLA.md` (contributors keep their copyright and grant a license
+that includes relicensing, so the company can change terms later; payment is
+never owed), and `CONTRIBUTING.md` (maintainers decide what merges and ships;
+rewards are discretionary, never promised). Every `package.json` says
+`Apache-2.0`. Keep contributor-facing copy to those terms: never promise
+payment, a merge, or a say in the roadmap.
 
 ## The premium build's standing rules (2026-09-29)
 

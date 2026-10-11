@@ -17,8 +17,8 @@ const read = (...parts: string[]) => readFileSync(join(ROOT, ...parts), 'utf8');
 const edgeEntitlement = () => read('supabase', 'functions', '_shared', 'entitlement.ts');
 const migration0015 = () => read('supabase', 'migrations', '0015_review_2026_09_05.sql');
 const appleNotifications = () => read('supabase', 'functions', 'apple-notifications', 'index.ts');
-// The client's entitled set lives with the paid gate (state/payOps.ts).
-const storeSrc = () => read('app', 'src', 'state', 'payOps.ts');
+// The client's entitled set (org seat billing) lives in lib/entitlement.ts.
+const storeSrc = () => read('app', 'src', 'lib', 'entitlement.ts');
 
 /** The quoted strings inside `new Set([...])` following `const NAME`. */
 function setLiteral(src: string, name: string): string[] {

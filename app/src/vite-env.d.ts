@@ -7,9 +7,6 @@ interface ImportMetaEnv {
   /** The release tier this build carries: unset is 1 (Personal); 2, 3 or 4
    *  add that tier and every one before it (src/lib/focus.ts). */
   readonly VITE_RELEASE_TIER?: string;
-  /** '1' only in the build submitted to App Review and the store release
-   *  after it: the Personal paid gate is on (src/lib/payGate.ts). */
-  readonly VITE_PAY_GATES?: string;
   readonly VITE_SUPABASE_ANON_KEY?: string;
   readonly VITE_STRIPE_PUBLISHABLE_KEY?: string;
   readonly VITE_GDRIVE_IOS_CLIENT_ID?: string;

@@ -72,6 +72,22 @@ describe('saveGlobalConfig durability', () => {
     expect(config.daemon.port).toBe(5000);
   });
 
+  // The license key client is gone (open source, 2026-10-11); a config written
+  // before then still carries its section and must still load and save.
+  it('loads and saves a config that still holds the retired license section', () => {
+    writeFileSync(
+      globalConfigPath(),
+      JSON.stringify({
+        license: { verifyUrl: 'https://openshore.ai/api/os-code/license/verify', graceDays: 14 },
+        guardrails: { maxDollars: 7 },
+      }),
+    );
+    const { config } = loadConfig(home);
+    expect(config.guardrails.maxDollars).toBe(7);
+    expect('license' in config).toBe(false);
+    expect(() => saveGlobalConfig({ daemon: { port: 5004 } })).not.toThrow();
+  });
+
   it('leaves no temp file behind after a successful write', () => {
     saveGlobalConfig({ daemon: { port: 5001 } });
     const strays = readdirSync(home).filter((f) => f.includes('.tmp'));

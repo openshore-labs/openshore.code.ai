@@ -1,0 +1,14 @@
+OpenShore
+Copyright 2026 Open Shore LLC
+
+This product includes software developed by Open Shore LLC
+(https://openshore.ai), licensed under the Apache License, Version 2.0
+(see LICENSE).
+
+The names OpenShore, OS Code, Harbor, Harbor Lite and DeepBlue, and the
+OpenShore logo, are trademarks of Open Shore LLC. The Apache License does
+not grant permission to use them; see TRADEMARKS.md.
+
+Model weights are not part of this repository. Each model OpenShore can
+download carries its own license from its publisher; see
+app/MODEL-LICENSES.md.

@@ -10,18 +10,11 @@
 // lib/sidebarOrder.ts). The recent chats sit under the top group, as many as
 // fit cleanly, with View all to the Chats room. Settings and the sign-in card
 // are pinned to the bottom and never move.
-//
-// Two layouts (founder, 2026-09-30). With OpenShore Plus (and in every build
-// while the pay gates are off), the one below. Without it, the free rooms
-// (Chats, Projects, Stack, Cloud Connections, Settings) move up top, and the
-// rest sit greyed at the bottom under a gold Upgrade banner. A greyed room
-// still answers the tap: it opens the paywall (store.ts setView).
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { roomOpen } from '../lib/focus.js';
 import { isDesktop } from '../lib/platform.js';
-import { PAY_GATES_ENABLED, roomPaid } from '../lib/payGate.js';
-import { accountCopy } from '../lib/accountGate.js';
-import { accountInitial, planStanding, useProfileSheet } from '../lib/profile.js';
+import { ACCOUNT_SIGN_IN_SUB } from '../lib/accountGate.js';
+import { accountInitial, useProfileSheet } from '../lib/profile.js';
 import { isOrgAdmin, useApp, type ViewName } from '../state/store.js';
 import { useAuth } from '../hooks/useAuth.js';
 import type { GestureProps } from '../hooks/useDrawerGesture.js';
@@ -90,10 +83,6 @@ export function defaultNavOrder(device: { desktop: boolean; hubPaired: boolean }
 }
 
 const entryOf = (view: MovableRoom): NavEntry => nav(view);
-
-/** The banner's words, and each greyed room's spoken label. */
-export const UPGRADE_BANNER = 'Upgrade to OpenShore Plus';
-export const PLUS_ROOM_LABEL = (label: string) => `${label}, part of OpenShore Plus`;
 
 // Hand-drawn line icons for the nav, in the same language as PairScreen's
 // download tiles: a 24-unit grid, 2px round-cap / round-join strokes, and
@@ -257,15 +246,9 @@ export function Sidebar({
   progress?: number | null;
   dragProps?: GestureProps;
 }) {
-  const { view, viewTrail, setView, setDrawer, settings, openPaywall, saveSettings } = useApp();
+  const { view, viewTrail, setView, setDrawer, settings, saveSettings } = useApp();
   const { configured: authConfigured, signedIn, email } = useAuth();
   const showProfile = useProfileSheet((st) => st.show);
-  // True in every build while the pay gates are off (state/payOps.ts), so
-  // only the build with them on ever shows the free layout.
-  const plus = useApp((s) => s.personalUnlockedNow());
-  // The account card's second line once signed in: the plan, in plain words.
-  const planShort = planStanding({ gates: PAY_GATES_ENABLED, unlocked: plus }).short;
-
   // An order saved under the old two-group default is set aside once, so
   // every room comes up under the Vault; the person's moves from here on keep.
   // A saved order wins over the device's default: only someone who never
@@ -306,19 +289,14 @@ export function Sidebar({
         ? 'vault'
         : 'projects'
       : (ROOM_OF[view] ?? view);
-  const item = (
-    { view: v, label }: NavEntry,
-    i: number,
-    opts: { locked?: boolean; movable?: boolean } = {},
-  ) => {
+  const item = ({ view: v, label }: NavEntry, i: number, opts: { movable?: boolean } = {}) => {
     const movable = opts.movable && v !== 'settings' && v !== 'admin';
     const lifted = movable && reorder.lifted === v;
     return (
       <button
         key={v}
-        className={`nav-item press-fb press-fb--row${lit === v ? ' active' : ''}${opts.locked ? ' nav-item--plus' : ''}${movable ? ' nav-item--movable' : ''}${lifted ? ' lifted' : ''}`}
+        className={`nav-item press-fb press-fb--row${lit === v ? ' active' : ''}${movable ? ' nav-item--movable' : ''}${lifted ? ' lifted' : ''}`}
         style={stagger(1 + i)}
-        aria-label={opts.locked ? PLUS_ROOM_LABEL(label) : undefined}
         aria-current={lit === v ? 'page' : undefined}
         onClick={() => setView(v, { root: true })}
         {...(movable ? reorder.rowProps(v as MovableRoom) : {})}
@@ -336,20 +314,13 @@ export function Sidebar({
       ? item({ view: 'admin', label: 'Admin' }, i)
       : null;
 
-  // With Plus, the person's two groups as they left them. Without it, the free
-  // rooms in the same order up top and every Plus room greyed under the
-  // banner, so a room moves between them by its classification alone
-  // (lib/payGate.ts) and keeps its place among its own kind.
-  const flat = [...order.top, ...order.bottom].map(entryOf);
-  const top = plus ? order.top.map(entryOf) : flat.filter((e) => !roomPaid(e.view));
-  const bottom = plus ? order.bottom.map(entryOf) : [];
-  const plusRooms = plus ? [] : flat.filter((e) => roomPaid(e.view));
+  // The person's two groups as they left them.
+  const top = order.top.map(entryOf);
+  const bottom = order.bottom.map(entryOf);
   const hasAdmin = adminItem(0) !== null;
-  const afterTop = top.length + (plus || !hasAdmin ? 0 : 1);
+  const afterTop = top.length;
   const afterRecents = afterTop + 1;
-  const afterBottom = plus
-    ? afterRecents + (hasAdmin ? 1 : 0) + bottom.length
-    : afterRecents + 1 + plusRooms.length;
+  const afterBottom = afterRecents + (hasAdmin ? 1 : 0) + bottom.length;
 
   const body = (
     <aside
@@ -383,48 +354,23 @@ export function Sidebar({
         </span>
       </div>
 
-      {/* The top group, where the hand lands first. With Plus it is the
-          person's to reorder; without it, the free rooms, Admin among them. */}
+      {/* The top group, where the hand lands first, the person's to reorder. */}
       <nav className="sidebar-nav sidebar-nav--primary">
-        {top.map((entry, i) => item(entry, i, { movable: plus }))}
-        {plus ? null : adminItem(top.length)}
+        {top.map((entry, i) => item(entry, i, { movable: true }))}
       </nav>
 
-      <RecentChats divider={plus ? reorder.dividerRef : undefined} i={1 + afterTop} />
+      <RecentChats divider={reorder.dividerRef} i={1 + afterTop} />
 
-      {plus ? (
-        /* The second-session rooms, the person's to reorder. Admin, when the
-           account carries it, leads the group. */
-        <nav className="sidebar-nav">
-          {adminItem(afterRecents)}
-          {bottom.map((entry, i) =>
-            item(entry, afterRecents + (hasAdmin ? 1 : 0) + i, { movable: true }),
-          )}
-        </nav>
-      ) : (
-        /* Free: the gold banner, then every Plus room, greyed but live. */
-        <nav className="sidebar-nav sidebar-nav--plus" aria-label="OpenShore Plus">
-          <button
-            type="button"
-            className="sidebar-plus press-fb"
-            style={stagger(1 + afterRecents)}
-            onClick={() => openPaywall('plus')}
-          >
-            <span className="sidebar-plus-mark" aria-hidden="true">
-              <Icon size={16} variant="fill">
-                <path
-                  fill="currentColor"
-                  d="M12 3.5l2.5 5.3 5.7.7-4.2 3.9 1.1 5.7L12 16.3l-5.1 2.8 1.1-5.7-4.2-3.9 5.7-.7L12 3.5Z"
-                />
-              </Icon>
-            </span>
-            {UPGRADE_BANNER}
-          </button>
-          {plusRooms.map((entry, i) => item(entry, 2 + afterRecents + i, { locked: true }))}
-        </nav>
-      )}
+      {/* The second-session rooms, the person's to reorder. Admin, when the
+          account carries it, leads the group. */}
+      <nav className="sidebar-nav">
+        {adminItem(afterRecents)}
+        {bottom.map((entry, i) =>
+          item(entry, afterRecents + (hasAdmin ? 1 : 0) + i, { movable: true }),
+        )}
+      </nav>
 
-      {/* Pinned to the bottom in both layouts: Settings, then the account
+      {/* Pinned to the bottom: Settings, then the account
           card under it (founder, 2026-10-01): Sign in while signed out, and
           once signed in the same card names the account and opens the
           profile (founder, 2026-10-02). */}
@@ -448,7 +394,7 @@ export function Sidebar({
             </span>
             <span className="sidebar-signin-label">
               <span className="sidebar-signin-title">Sign in</span>
-              <span className="sidebar-signin-sub">{accountCopy(PAY_GATES_ENABLED).signInSub}</span>
+              <span className="sidebar-signin-sub">{ACCOUNT_SIGN_IN_SUB}</span>
             </span>
           </button>
         ) : authConfigured && signedIn ? (
@@ -467,7 +413,6 @@ export function Sidebar({
             </span>
             <span className="sidebar-signin-label">
               <span className="sidebar-signin-title sidebar-account-name">{email}</span>
-              {planShort ? <span className="sidebar-signin-sub">{planShort}</span> : null}
             </span>
           </button>
         ) : null}

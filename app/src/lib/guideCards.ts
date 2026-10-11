@@ -11,7 +11,6 @@ import type { GuideCard } from './guideHarness.js';
 import { guideStepsCompact } from './setupGuides.js';
 import { LOCAL_IMAGE_READER, SMALL_IMAGE_READER, aboutGB } from './imageReading.js';
 import { thisDeviceNoun } from './deviceNoun.js';
-import { PAY_GATES_ENABLED } from './payGate.js';
 import { AGENTIC_CURRENTS, AGENTIC_CURRENTS_TITLE } from './currents.js';
 import { HARNESS_CURRENTS, HARNESS_CURRENTS_TITLE } from './harnessCurrents.js';
 import { ROUTINE_NOTES_PLACE, VAULT_PRIVATE_OFF_MARKED, vaultGuideText } from './vaultCopy.js';
@@ -38,8 +37,6 @@ const stackHealthOn = SHIPS_STACKHEALTH;
 const marketplaceOn = SHIPS_MARKETPLACE;
 const adminOn = SHIPS_ADMIN;
 const teamsOn = SHIPS_TEAMS;
-// The pay gates, folded at build time like the tiers (lib/payGate.ts).
-const gatesOn = PAY_GATES_ENABLED;
 
 function listOf(names: readonly string[]): string {
   return names.length > 1
@@ -919,14 +916,8 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     id: 'account',
     title: 'Account',
     where: 'Menu, Settings, Account, or the Sign in row',
-    // With the pay gates off there is nothing to buy; with them on, signing
-    // in opens Projects and Cloud Connections and the rest is Plus (CTO,
-    // 2026-09-30).
-    text: `${
-      gatesOn
-        ? "Chatting needs no account. Signing in is free, opens Projects and Cloud Connections, and takes your theme and a few preferences to your other devices. The rest of OpenShore (the coding agent, Terminal, Repositories, Vault, and Crew) is part of OpenShore Plus, which rides on your account; get it or restore it in Settings. Computer, docking to your computer or a server, is free. Chats are not synced between devices; docked to your computer, your phone reaches your computer's chats."
-        : "Chatting needs no account. Signing in is free and opens building, Projects, Vault, Crew, and docking, and takes your theme and a few preferences to your other devices. Chats are not synced between devices; your phone reaches your computer's chats once docked."
-    }${teamsOn ? ' After creating one you choose personal or business; a business adds a company, admins, and a shared stack managed from Admin.' : ''}`,
+    // There is nothing to buy: OpenShore is free and open source.
+    text: `Chatting needs no account. Signing in is free and opens building, Projects, Vault, Crew, and docking, and takes your theme and a few preferences to your other devices. Chats are not synced between devices; your phone reaches your computer's chats once docked.${teamsOn ? ' After creating one you choose personal or business; a business adds a company, admins, and a shared stack managed from Admin.' : ''}`,
     keywords: [
       'account',
       'sign in',

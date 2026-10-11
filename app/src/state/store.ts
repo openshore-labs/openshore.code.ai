@@ -116,15 +116,6 @@ import {
   type ServerOrg,
 } from './orgSync.js';
 import {
-  currentEntitlement as iapCurrentEntitlement,
-  iapAvailable,
-  purchase as iapPurchase,
-  onTransactionUpdate,
-  type TransactionUpdate,
-  restore as iapRestore,
-  PERSONAL_YEARLY_PRODUCT_ID,
-} from '../lib/iap.js';
-import {
   AuthExpiredError,
   clearSession,
   freshSession,
@@ -605,7 +596,7 @@ import {
 } from './webSearchAskOps.js';
 import { RELEASE_TIER, featureOn, roomOpen, type ReleaseTier } from '../lib/focus.js';
 import {
-  accountCopy,
+  ACCOUNT_NOTICE,
   SOURCE_ACCOUNT,
   needsAccount,
   roomAccountFeature,
@@ -619,24 +610,8 @@ import {
   rewindableIds,
   rewindsFiles,
 } from './rewindOps.js';
-import { PAY_GATES_ENABLED, roomPaid } from '../lib/payGate.js';
 import { exportVaultToFiles, vaultExportLine } from '../lib/vaultExport.js';
-import {
-  APPLE_SUBSCRIPTIONS_URL,
-  PaywallLockedError,
-  RESTORE_FOUND_NOTHING,
-  appleUpdateAction,
-  chatPaidFeature,
-  chatPaywall,
-  isEntitled,
-  paidDoor,
-  paywallReasonFor,
-  personalUnlocked,
-  roomPass,
-  personalUnlockedFor,
-  routinePatchFree,
-  startWebCheckout,
-} from './payOps.js';
+import { isEntitled } from '../lib/entitlement.js';
 import { appActionPlan, writingVoiceSeed, type ComposerSeed } from './appActionOps.js';
 import { sweepProviderRefs } from './providerOps.js';
 import {
@@ -727,11 +702,6 @@ export type ViewName =
   | 'project'
   | 'projectmemory'
   | 'onboarding';
-
-// Which locked surface triggered the Personal upgrade sheet: the coding agent,
-// Crew, Pairing, the Marketplace, or 'plus' for a paid room and the
-// sidebar's Upgrade banner (lib/payGate.ts).
-export type PaywallReason = 'coding' | 'marketplace' | 'crew' | 'pairing' | 'plus';
 
 export interface AppSettings {
   onboarded: boolean;
@@ -1339,15 +1309,9 @@ function asSentence(line: string): string {
 // Drivers are module state, keyed by conversation id.
 const drivers = new Map<string, ChatDriver>();
 
-// The Personal paid gate's build flag lives in lib/payGate.ts: on only when the
-// build sets VITE_PAY_GATES=1 (the one submitted to App Review), off in every
-// other build. While it is off, the coding agent and Crew routines are open
-// to everyone and the paywall never opens. The whole gate is routed through
-// personalUnlockedNow() and state/payOps.ts, so this one flag covers every
-// call site. (Commercial team-seat billing is a separate gate,
-// growthGatedByBilling, and is not affected by this.) Every price a person can
-// read also sits behind this flag, through plans.ts shownPrice().
-export { PAY_GATES_ENABLED };
+// Nothing a person uses is paid (open source, founder 2026-10-11). The only
+// billing left is a commercial org's team seats (a later tier), read by
+// refreshEntitlement and checked by growthGatedByBilling.
 
 // Throttle for the foreground entitlement re-check, so returning to the app many
 // times in a row never hammers the entitlement read.
@@ -1386,52 +1350,14 @@ async function clearPendingAuth(): Promise<void> {
 // nobody confirmed should not survive a relaunch.
 let pendingCallback: { session: Session; recovery: boolean } | undefined;
 
-// An Apple purchase the server has not yet linked (UI-10): Apple finished the
-// transaction, the link call failed (offline, a 401), so the signed receipt is
-// kept sealed on the device and retried on the next foreground or Restore.
-const PENDING_APPLE_LINK_KEY = 'oscode.iap.pendingLink.v1';
-/** The last server-verified Personal entitlement, so a launch with no network
- *  (a local-model product must open offline) keeps what the person paid for
- *  until it runs out, instead of locking the coding agent. */
-const ENTITLEMENT_CACHE_KEY = 'oscode.entitlement.personal.v1';
+// Device keys the retired Personal plan wrote (open source, 2026-10-11); init
+// deletes them.
+const RETIRED_ENTITLEMENT_CACHE_KEY = 'oscode.entitlement.personal.v1';
+const RETIRED_APPLE_LINK_KEY = 'oscode.iap.pendingLink.v1';
 
 /** What an entitlement refresh learned: the server answered, it could not be
  *  reached, or nobody is signed in. */
 export type EntitlementRefresh = 'ok' | 'offline' | 'signed-out';
-
-/** The entitlement a launch starts from before the server answers: the last
- *  one the server verified (while it lasts), else, on an iPhone, StoreKit's
- *  own verified subscription. Exported for its test. */
-export async function restoreOfflineEntitlement(
-  apply: (e: Entitlement) => void,
-  deps: {
-    read?: () => Promise<Entitlement | null | undefined>;
-    storeKit?: () => Promise<{ active: boolean; expiresAt?: string } | undefined>;
-  } = {},
-): Promise<void> {
-  try {
-    const cached = await (
-      deps.read ?? (() => storeGetJson<Entitlement | null>(ENTITLEMENT_CACHE_KEY))
-    )();
-    if (cached && isEntitled(cached)) {
-      apply(cached);
-      return;
-    }
-    const kit =
-      deps.storeKit ??
-      (() =>
-        iapAvailable()
-          ? iapCurrentEntitlement(PERSONAL_YEARLY_PRODUCT_ID)
-          : Promise.resolve(undefined));
-    const live = await kit();
-    if (live?.active) {
-      const e: Entitlement = { tierId: 'personal', status: 'active', validUntil: live.expiresAt };
-      if (isEntitled(e)) apply(e);
-    }
-  } catch {
-    // Nothing kept and nothing verifiable here: the server decides once reached.
-  }
-}
 
 // Hub pairing credentials live in the secret store (Keychain, safeStorage),
 // keyed by hub, never in the settings blob (APP-11). In memory the DaemonTarget
@@ -1648,11 +1574,6 @@ interface AppState {
   desktopStatus?: DesktopStatus;
   /** The org's billing entitlement (Stripe webhook is the writer), when known. */
   entitlement?: Entitlement;
-  /** The signed-in individual's Personal entitlement (Stripe or Apple IAP is the
-   *  writer), when known. Independent of any org: a Personal buyer has this even
-   *  with no org. The unified paid-access resolver (personalUnlocked) treats an
-   *  individual OR org entitlement as unlocking. */
-  userEntitlement?: Entitlement;
   /** Live progress while Harbor Lite downloads for the first time. */
   harborMiniDownload?: HarborDownload;
   /** Live progress while Harbor downloads for the first time. */
@@ -1787,9 +1708,6 @@ interface AppState {
    *  in the Vault so pending work is never silently stuck on the device. */
   repoSyncConflicts?: ReconcileResult[];
   toast?: string;
-  /** When set, the Personal upgrade sheet is showing, and which locked surface
-   *  triggered it. Free is chat only; coding and the Marketplace need Personal. */
-  paywall?: PaywallReason;
   /** When set, the sign-in sheet is showing for a feature that needs an
    *  account (lib/accountGate.ts). */
   accountGate?: AccountFeature;
@@ -1818,9 +1736,6 @@ interface AppState {
   setDrawer(open: boolean): void;
   showToast(message: string): void;
   setUpdateStatus(update: PendingUpdate | undefined): void;
-  /** Show the Personal upgrade sheet for a locked surface. */
-  openPaywall(reason: PaywallReason): void;
-  closePaywall(): void;
   /** Whether account features need a sign-in right now: this build has
    *  accounts and nobody is signed in (lib/accountGate.ts). */
   needsAccountNow(): boolean;
@@ -1828,20 +1743,6 @@ interface AppState {
    *  when a room was asked for. */
   openAccountGate(feature: AccountFeature, returnTo?: ViewName): void;
   closeAccountGate(): void;
-  /** Whether the signed-in person has the Personal unlock, by EITHER rail (an
-   *  individual Personal subscription OR an entitled commercial org). Free
-   *  (signed out or no entitlement) is chat only. */
-  personalUnlockedNow(): boolean;
-  /** Where a paid action on this feature goes right now: on, to the sign-in
-   *  sheet, or to the paywall (lib/payGate.ts, state/payOps.ts). */
-  personalDoor(feature: AccountFeature): 'open' | 'account' | 'paywall';
-  /** One door for a paid action a screen takes (the coding agent, a
-   *  routine, the computer's home shell): the sign-in sheet first, then the paywall.
-   *  True when the action may go ahead. */
-  requirePersonal(feature: AccountFeature): boolean;
-  /** Re-read the account's entitlement after a purchase made elsewhere (the
-   *  desktop's "I already paid"), and carry on when it unlocks. */
-  recheckPersonal(): Promise<void>;
   /** Whether a chat source can produce a real answer on this device right now
    *  (a downloaded on-device model, a paired computer, or a stored cloud key).
    *  The empty-state composer checks this before starting a chat, so a first
@@ -1854,20 +1755,9 @@ interface AppState {
   stackVisionReady(): boolean;
   /** Re-read the desktop engine's status (Electron only; no-op elsewhere). */
   refreshDesktopStatus(): Promise<void>;
-  /** Buy Personal: Apple In-App Purchase on iOS, Stripe web checkout elsewhere.
-   *  Resolves once the purchase flow has been handed off (IAP sheet shown, or
-   *  the browser opened); entitlement lands via refreshEntitlement. */
-  buyPersonal(): Promise<void>;
-  /** Restore a prior Apple purchase (iOS only; required by Apple 3.1.1), then
-   *  re-read the account, so a web buyer signing in on an iPad is unlocked. */
-  restorePurchases(): Promise<void>;
-  /** Manage the Personal subscription: Apple's page on iOS, the Stripe
-   *  customer portal elsewhere. */
-  manageSubscription(): Promise<void>;
 
   /** Open a new chat on `source` and resolve to its id, or to undefined when
-   *  no chat opened: the coding agent's sign-in sheet or the paywall stood in
-   *  the way, and the caller hands anything typed back to the person. */
+   *  no chat opened: the coding agent's sign-in sheet stood in the way, and the caller hands anything typed back to the person. */
   newConversation(
     source: ConversationSource,
     opts?: {
@@ -2060,16 +1950,15 @@ interface AppState {
   refreshOrgRole(): Promise<void>;
   /** Re-read the org's billing entitlement from the server. */
   refreshEntitlement(): Promise<EntitlementRefresh>;
-  /** Re-check entitlement when the app returns to the foreground, so a purchase
-   *  completed in the browser lands without the user hunting for a refresh.
-   *  Fires only when signed in and not already unlocked, and is self-throttled. */
+  /** Re-check a commercial org's seat billing when the app returns to the
+   *  foreground, so seats bought in the browser land without a refresh.
+   *  Fires only for a synced org not yet entitled, and is self-throttled. */
   reconcileEntitlementOnForeground(): Promise<void>;
-  /** Handle the checkout-return deep link: refresh entitlement now (unthrottled)
-   *  and reflect the result, so a Stripe payer is unlocked the moment they land
-   *  back in the app. */
+  /** Handle the checkout-return deep link: refresh the org's entitlement now
+   *  (unthrottled) and say what landed. */
   onCheckoutReturn(): Promise<void>;
-  /** Open web billing: the Stripe customer portal if subscribed, else the
-   *  purchase page. Always in the system browser (Apple 3.1.1); seats are
+  /** Open a commercial org's web billing: the Stripe customer portal if
+   *  subscribed, else the purchase page. Always in the system browser (Apple 3.1.1); seats are
    *  never bought in-app. */
   manageBilling(): Promise<void>;
   /** Authorize an admin action: server role when signed in, else local UX. */
@@ -2122,10 +2011,8 @@ interface AppState {
 
   // Crew: user-authored agents.
   /** Create a crew agent and return its id. */
-  /** Resolves to the new member's id, or undefined when the paid door held
-   *  it (the sign-in sheet or the paywall opened instead). */
+  /** Resolves to the new member's id. */
   createCrewAgent(input: Omit<CrewAgent, 'id' | 'createdAt'>): Promise<string | undefined>;
-  /** Resolves false when the paid door held it. */
   updateCrewAgent(
     id: string,
     patch: Partial<Omit<CrewAgent, 'id' | 'createdAt'>>,
@@ -2970,10 +2857,16 @@ function healedAnchor(stack: AppStack, harborReady: boolean, harborMiniReady: bo
   return promote ? { ...stack, reasoning: promote } : stack;
 }
 
-// isEntitled and personalUnlocked live in state/payOps.ts with the rest of the
-// paid gate; they are re-exported here for the callers that read them from
-// the store.
-export { isEntitled, personalUnlocked };
+/** Whether a routine change is a pause only (enabled set to false, and
+ *  nothing else), which never needs an account. */
+function routinePause(patch: Record<string, unknown>): boolean {
+  const keys = Object.keys(patch);
+  return keys.length === 1 && keys[0] === 'enabled' && patch.enabled === false;
+}
+
+// isEntitled lives in lib/entitlement.ts; re-exported for the callers that
+// read it from the store.
+export { isEntitled };
 
 /** The signed-in member's role in a commercial org, if any. */
 export function selfMember(account?: Account): OrgMember | undefined {
@@ -3126,6 +3019,15 @@ export const useApp = create<AppState>((set, get, api) => {
     return message;
   }
 
+  /** One door for an account action a screen takes (a routine, a crew
+   *  member): the sign-in sheet when nobody is signed in. True when the
+   *  action may go ahead. */
+  function requireAccount(feature: AccountFeature): boolean {
+    if (!get().needsAccountNow()) return true;
+    get().openAccountGate(feature);
+    return false;
+  }
+
   /** One door to the coding agent (state/gateOps.ts): signed out, no coding
    *  session is built or attached, whichever path asks. Reading a coding chat
    *  stays free; its saved snapshot is what shows. */
@@ -3133,84 +3035,18 @@ export const useApp = create<AppState>((set, get, api) => {
     return codingLocked(conv, get().needsAccountNow());
   }
 
-  /** The facts a paid room's pass reads (state/payOps.ts roomPass). */
-  function roomPassNow(view: ViewName): boolean {
-    return roomPass(view, {
-      routines: get().routines.routines.length,
-      desktop: isDesktop() && Boolean(bridge()),
-      savedHubs: hubList(get().settings).length,
-    });
-  }
-
-  /** Whether a chat with the computer goes over the network from here: a
-   *  phone, or a desktop set to run on another computer (isRemote's test,
-   *  before any driver exists). */
-  function reachesHubNow(): boolean {
-    return !(isDesktop() && bridge() && !get().settings.preferRemoteHub);
-  }
-
-  /** The paid door, after the account door (state/payOps.ts): a coding
-   *  session anywhere, and a chat with the computer from another device, is
-   *  built or reattached only while Plus is open. Checked at the build, so a
-   *  turn already running is never cut. The door that holds it, or null. */
-  function chatPaywallNow(conv: Conversation | undefined): AccountFeature | null {
-    return chatPaywall(conv, get().personalUnlockedNow(), reachesHubNow());
-  }
-
-  /** One door for a paid action: the sign-in sheet first, then the paywall.
-   *  True when the action may go ahead. */
-  function requirePersonal(feature: AccountFeature): boolean {
-    const door = get().personalDoor(feature);
-    if (door === 'account') {
-      get().openAccountGate(feature);
-      return false;
-    }
-    if (door === 'paywall') {
-      get().openPaywall(paywallReasonFor(feature));
-      return false;
-    }
-    return true;
-  }
-
-  /** Read the account's entitlements from the server (refreshEntitlement's
-   *  body). Marks the server as having answered, so a late offline answer
-   *  (the cache or StoreKit at launch) can never overrule it. */
+  /** Read a commercial org's seat entitlement from the server
+   *  (refreshEntitlement's body). */
   async function readEntitlementsNow(): Promise<EntitlementRefresh> {
     let session: Session | undefined;
     try {
       session = await freshAuth();
     } catch {
-      // Offline: keep whatever entitlement we last knew (the cache below
-      // carries it across a launch).
+      // Offline: keep whatever entitlement we last knew.
       return 'offline';
     }
     if (!session) return 'signed-out';
     const serverId = get().settings.account?.org?.serverId;
-    // Individual (Personal) entitlement: readable whenever signed in, with no
-    // org. This is the path a solo Personal buyer needs; the old code gated
-    // the whole method on an org serverId and so never read it.
-    try {
-      const rows = await supabaseSelect<{
-        tier_id: string;
-        status: Entitlement['status'];
-        valid_until: string | null;
-      }>(
-        'user_entitlements',
-        session.accessToken,
-        `select=tier_id,status,valid_until&user_id=eq.${session.user.id}`,
-      );
-      const row = rows[0];
-      const userEntitlement: Entitlement | undefined = row
-        ? { tierId: row.tier_id, status: row.status, validUntil: row.valid_until ?? undefined }
-        : undefined;
-      set({ userEntitlement });
-      entitlementAnswered = true;
-      // Kept on the device for the next launch that has no network.
-      void storeSetJson(ENTITLEMENT_CACHE_KEY, userEntitlement ?? null).catch(() => {});
-    } catch {
-      // Offline or transient: keep whatever we last knew.
-      return 'offline';
-    }
     // Org entitlement: only when the account is a synced commercial org. Gates
     // team-seat growth (growthGatedByBilling), unchanged.
     if (!serverId) {
@@ -3235,31 +3071,9 @@ export const useApp = create<AppState>((set, get, api) => {
       });
     } catch {
       // Offline or transient: keep whatever entitlement we last knew.
+      return 'offline';
     }
     return 'ok';
-  }
-
-  /** Personal just unlocked (a purchase, a restore, a checkout return, a
-   *  re-check): close the sheet and carry on to a message kept at the paid
-   *  door on the open chat (a coding session, or a chat with the computer
-   *  from the phone), the way a sign-in carries on. */
-  function afterPersonalUnlocked(message: string): void {
-    const room = paywallReturn;
-    paywallReturn = undefined;
-    set({ paywall: undefined });
-    get().showToast(message);
-    // Opened from a paid room: go there now.
-    if (room) get().setView(room);
-    const openId = get().activeId;
-    const open = openId ? get().conversations[openId] : undefined;
-    if (
-      openId &&
-      chatPaidFeature(open, reachesHubNow()) &&
-      open?.pendingFirstMessage &&
-      !open.pendingFirstError
-    ) {
-      ensureDriver(openId);
-    }
   }
 
   /** The driver could not be built. Say so once, and if a message is parked
@@ -3270,16 +3084,6 @@ export const useApp = create<AppState>((set, get, api) => {
     if (err instanceof CodingLockedError) {
       if (get().conversations[conversationId]?.pendingFirstMessage) {
         get().openAccountGate('coding');
-      }
-      return;
-    }
-    // Refused at the paid door: a waiting message opens the paywall and stays
-    // parked for the build after the purchase. A coding chat met the sign-in
-    // above, so it goes straight to the paywall; a signed-out phone's chat
-    // with its computer meets the sign-in sheet first.
-    if (err instanceof PaywallLockedError) {
-      if (get().conversations[conversationId]?.pendingFirstMessage) {
-        requirePersonal(err.feature);
       }
       return;
     }
@@ -3310,14 +3114,6 @@ export const useApp = create<AppState>((set, get, api) => {
     if (codingLockedNow(conv)) {
       if (get().resumingId === conversationId) set({ resumingId: undefined });
       failOpen(conversationId, new CodingLockedError());
-      return;
-    }
-    // Signed in without Personal (the pay gates on): the same, at the paid
-    // door. The purchase carries on to this chat (afterPersonalUnlocked).
-    const shut = chatPaywallNow(conv);
-    if (shut) {
-      if (get().resumingId === conversationId) set({ resumingId: undefined });
-      failOpen(conversationId, new PaywallLockedError(shut));
       return;
     }
     building.add(conversationId);
@@ -3372,12 +3168,6 @@ export const useApp = create<AppState>((set, get, api) => {
     // A coding session that finished building after a sign-out is let go:
     // the door holds for builds that straddle it too.
     if (codingLockedNow(get().conversations[conversationId])) {
-      driver.dispose();
-      return;
-    }
-    // A coding session built after Personal lapsed is let go the same way;
-    // a driver already attached keeps its running turn.
-    if (chatPaywallNow(get().conversations[conversationId])) {
       driver.dispose();
       return;
     }
@@ -4257,8 +4047,6 @@ export const useApp = create<AppState>((set, get, api) => {
     // The account door, before anything opens or resumes a session on the
     // engine: every build passes here, so no path reaches it signed out.
     if (codingLockedNow(conv)) throw new CodingLockedError();
-    const shut = chatPaywallNow(conv);
-    if (shut) throw new PaywallLockedError(shut);
     return guardDriver(await buildUnguardedDriver(conv, seed, extra));
   }
 
@@ -4488,10 +4276,6 @@ export const useApp = create<AppState>((set, get, api) => {
         return r;
       },
       teamVault: () => get().vaultScope === 'team',
-      // Writing notes from a chat is Vault authoring: Plus (CTO, 2026-09-30).
-      // Reading what the person made stays.
-      // Keyed on Plus itself, so a build with the gates off is unchanged.
-      canWrite: () => get().personalUnlockedNow(),
       // The vault's agent folder (Vault M7, CTO L2), at the offer and again
       // at approve.
       agentFolder: () => personalSettings()?.agent.folder,
@@ -5061,27 +4845,6 @@ export const useApp = create<AppState>((set, get, api) => {
   // Accounts (lib/accountGate.ts): the room the sign-in sheet was opened for,
   // so signing in carries on to it.
   let accountReturn: ViewName | undefined;
-  /** The paid room the paywall was opened for, so a purchase carries on to
-   *  it the way a sign-in carries on to accountReturn. */
-  let paywallReturn: ViewName | undefined;
-  /** The server has answered an entitlement read this launch: from then on
-   *  it alone decides, and the offline restore (the cache, StoreKit) never
-   *  applies over it (CTO, 2026-09-30). */
-  let entitlementAnswered = false;
-  /** The sheet that was open when Get Plus, Restore or I already paid was
-   *  tapped signed out: signing in reopens it (CTO, 2026-09-30), so buying
-   *  signed out is never a dead end. */
-  let paywallAfterSignIn: PaywallReason | undefined;
-
-  /** Buying needs an account: close the sheet, open the sign-in sheet, and
-   *  come back to the sheet once signed in (onSignedIn). */
-  function signInToBuy(): void {
-    paywallAfterSignIn = get().paywall ?? 'plus';
-    // Not closePaywall: the room the sheet was opened for stays remembered.
-    set({ paywall: undefined });
-    get().openAccountGate('plus');
-  }
-
   // Preferences that follow a signed-in person (lib/settingsReach.ts). A local
   // change is sent a moment after the last one; the account's copy is read at
   // launch and at sign-in. Each is one merge, key by key (state/signinOps.ts).
@@ -5201,8 +4964,6 @@ export const useApp = create<AppState>((set, get, api) => {
       choice?.target.providerId === 'org' &&
       !(keepNote && choice.path === open?.path && choice.target.owner === uid);
     if (!keepNote && get().vaultScope === 'team') vaultLiveDraft = undefined;
-    // The cached entitlement belonged to this account; it leaves with it.
-    void storeSetJson(ENTITLEMENT_CACHE_KEY, null).catch(() => {});
     // One door to the coding agent: no coding session stays attached past the
     // sign-in, so nothing typed or approved from here reaches the engine. Its
     // work goes on on the computer, journaled; the chat keeps its snapshot,
@@ -5221,7 +4982,6 @@ export const useApp = create<AppState>((set, get, api) => {
       authSession: undefined,
       serverRole: undefined,
       entitlement: undefined,
-      userEntitlement: undefined,
       passwordRecovery: undefined,
       authConfirm: undefined,
       orgJoin: undefined,
@@ -5270,65 +5030,6 @@ export const useApp = create<AppState>((set, get, api) => {
     const role = await readHubRole(daemon);
     if (role && role !== get().settings.hubRoles?.[daemon.baseUrl]) {
       await get().setHubRole(daemon.baseUrl, role);
-    }
-  }
-
-  /** Apple's transaction updates, once per launch: a live Personal purchase
-   *  is linked to the signed-in account (or kept for the next sign-in or
-   *  Restore), a revocation re-reads the account. */
-  let appleUpdatesWired = false;
-  function listenForAppleUpdates(): void {
-    if (appleUpdatesWired) return;
-    appleUpdatesWired = true;
-    const handle = (update: TransactionUpdate) => {
-      const action = appleUpdateAction(update, {
-        signedIn: Boolean(authConfigured() && get().authSession),
-        productId: PERSONAL_YEARLY_PRODUCT_ID,
-      });
-      if (action === 'ignore') return;
-      void (async () => {
-        if (action === 'keep' || action === 'link') {
-          await storeSetJson(PENDING_APPLE_LINK_KEY, {
-            jws: update.jws,
-            at: new Date().toISOString(),
-          });
-          if (action === 'keep') return;
-          // retryPendingAppleLink links it and clears it, or leaves it for
-          // the next foreground or Restore.
-          if (!(await retryPendingAppleLink())) return;
-        }
-        const wasUnlocked = get().personalUnlockedNow();
-        await get().refreshEntitlement();
-        if (!wasUnlocked && get().personalUnlockedNow()) {
-          afterPersonalUnlocked(
-            'Apple completed your purchase. Plus is on. The agent can build on your computer.',
-          );
-        }
-      })().catch(() => {});
-    };
-    try {
-      void onTransactionUpdate(handle).catch(() => {
-        appleUpdatesWired = false;
-      });
-    } catch {
-      // No plugin on this build: nothing arrives, and nothing is lost.
-      appleUpdatesWired = false;
-    }
-  }
-
-  /** UI-10: link an Apple receipt the server has not seen yet. Returns true
-   *  once the pending receipt is linked (or there was none to link). */
-  async function retryPendingAppleLink(): Promise<boolean> {
-    const pending = await storeGetJson<{ jws: string; at: string }>(PENDING_APPLE_LINK_KEY);
-    if (!pending?.jws) return false;
-    const token = await accessToken();
-    if (!token) return false;
-    try {
-      await supabaseInvoke('link-apple-purchase', token, { jws: pending.jws });
-      await storeDelete(PENDING_APPLE_LINK_KEY);
-      return true;
-    } catch {
-      return false;
     }
   }
 
@@ -8696,11 +8397,8 @@ export const useApp = create<AppState>((set, get, api) => {
       await reconcileOrg();
       await get().refreshOrgRole();
     }
-    // An Apple purchase kept while nobody was signed in (Ask to Buy approved
-    // later) links to this account first, then the entitlement is read.
-    const entitlementRead = retryPendingAppleLink()
-      .catch(() => false)
-      .then(() => get().refreshEntitlement())
+    void get()
+      .refreshEntitlement()
       .catch(() => {});
     if (featureOn('teams')) void get().syncOrgProjects();
     // Preferences that follow the person arrive (or leave) now.
@@ -8717,41 +8415,19 @@ export const useApp = create<AppState>((set, get, api) => {
     // for, or back to where the person was.
     if (get().accountGate) {
       const to = accountReturn;
-      const sheet = paywallAfterSignIn;
       get().closeAccountGate();
-      if (sheet && PAY_GATES_ENABLED) {
-        // Signed in to buy: once the account is read, the sheet comes back,
-        // or Plus is already on and the person carries on.
-        void entitlementRead.then(() => {
-          if (get().personalUnlockedNow()) {
-            afterPersonalUnlocked('Plus is on. The agent can build on your computer.');
-            return;
-          }
-          const room = paywallReturn;
-          get().openPaywall(sheet);
-          paywallReturn = room;
-        });
-      } else if (to && PAY_GATES_ENABLED && roomPaid(to)) {
-        // A paid room reads the entitlement at its door, so with the pay
-        // gates on the step waits for that read: a subscriber walks in.
-        void entitlementRead.then(() => get().setView(to));
-      } else if (to) get().setView(to);
+      if (to) get().setView(to);
     }
-    // A message kept at the door on the open chat (a coding session, or a
-    // chat with the computer from the phone) goes out now: the driver builds
-    // and its attach delivers the parked message. With the pay gates on, the
-    // paid door reads the entitlement, so the build waits for that read and
-    // a subscriber never meets the paywall on the way in.
+    // A message kept at the sign-in door on the open chat (a coding session,
+    // or a chat with the computer) goes out now: the driver builds and its
+    // attach delivers it.
     const openId = get().activeId;
     const open = openId ? get().conversations[openId] : undefined;
-    if (
-      openId &&
-      chatPaidFeature(open, reachesHubNow()) &&
-      open?.pendingFirstMessage &&
-      !open.pendingFirstError
-    ) {
-      if (PAY_GATES_ENABLED) void entitlementRead.then(() => ensureDriver(openId));
-      else ensureDriver(openId);
+    const kept =
+      open &&
+      (SOURCE_ACCOUNT[open.source.kind] === 'coding' || open.source.kind === 'desktop-chat');
+    if (openId && kept && open.pendingFirstMessage && !open.pendingFirstError) {
+      ensureDriver(openId);
     }
     // Back on the team note: list the team vault again and replay what was
     // kept for this account while it was signed out.
@@ -8804,17 +8480,6 @@ export const useApp = create<AppState>((set, get, api) => {
             'cloud',
           ),
       });
-
-      // What the person paid for holds on a launch with no network: the last
-      // server-verified entitlement first, then (iPhone) StoreKit's own
-      // verified answer, until the server is reached again.
-      const offlineRestore = restoreOfflineEntitlement((e) => {
-        if (!entitlementAnswered && !get().userEntitlement) set({ userEntitlement: e });
-      });
-
-      // A purchase Apple completes later (Ask to Buy, another device) reaches
-      // the account too (state/payOps.ts appleUpdateAction).
-      if (iapAvailable()) listenForAppleUpdates();
 
       // Wire the team vault (org tier) to the signed-in session: a fresh-token
       // getter and a readiness predicate, so the Supabase-backed provider can
@@ -9086,13 +8751,11 @@ export const useApp = create<AppState>((set, get, api) => {
       // once the app is already open, so it does not need to gate this.
       const stored: Session | undefined = authConfigured() ? await loadStoredSession() : undefined;
 
-      // With the pay gates on, the sidebar and the paid doors read the
-      // entitlement from the first frame: wait for the cache (already on
-      // its way), giving StoreKit's fallback half a second at most (CTO,
-      // 2026-09-30), so a subscriber never sees the free layout first.
-      if (PAY_GATES_ENABLED) {
-        await Promise.race([offlineRestore, new Promise((r) => setTimeout(r, 500))]);
-      }
+      // The retired Personal plan's device keys (its cached entitlement and
+      // an unlinked Apple receipt) are let go once, so nothing about a
+      // purchase stays on the device.
+      void storeDelete(RETIRED_ENTITLEMENT_CACHE_KEY).catch(() => {});
+      void storeDelete(RETIRED_APPLE_LINK_KEY).catch(() => {});
       set({
         settings,
         conversations,
@@ -9121,10 +8784,6 @@ export const useApp = create<AppState>((set, get, api) => {
         view: 'chat',
       });
       logEvent('app_open', { onboarded: settings.onboarded });
-      // With the pay gates on, Crew's pass reads the routine list (CTO,
-      // 2026-09-30), so read it live now: a routine made from another device
-      // then opens Crew here to be paused or deleted.
-      if (PAY_GATES_ENABLED) void get().refreshRoutines();
       // Signed in: the account's preferences, if newer, arrive now. Someone
       // signed in already knows what the account opens, so the notice below
       // never reaches them on a later signed-out launch (onSignedIn marks a
@@ -9139,7 +8798,7 @@ export const useApp = create<AppState>((set, get, api) => {
       // once that their work is still here and what signing in opens.
       if (accountNoticeDue(settings, { configured: authConfigured(), signedIn: Boolean(stored) })) {
         void get().saveSettings({ accountNoticeSeen: true });
-        get().showToast(accountCopy(PAY_GATES_ENABLED).notice);
+        get().showToast(ACCOUNT_NOTICE);
       }
       // First open: no Personal-or-Business question (no account means
       // personal) and no setup wall. On the phone, open the built-in guide's
@@ -9414,20 +9073,6 @@ export const useApp = create<AppState>((set, get, api) => {
         get().openAccountGate(accountFeature, view);
         return;
       }
-      // Plus (founder, 2026-09-30): every room but Chats, Projects, the Stack,
-      // Cloud Connections and Settings is paid (lib/payGate.ts). The sheet
-      // opens instead, and a purchase carries on to this room.
-      // Stopping, revoking and forgetting stay free (CTO, 2026-09-30): a
-      // room holding something to stop or let go of opens (roomPass).
-      if (
-        accountFeature &&
-        get().personalDoor(accountFeature) === 'paywall' &&
-        !roomPassNow(view)
-      ) {
-        get().openPaywall(paywallReasonFor(accountFeature));
-        paywallReturn = view;
-        return;
-      }
       const { view: current, viewTrail } = get();
       if (view === current) {
         set({ drawerOpen: false });
@@ -9458,32 +9103,11 @@ export const useApp = create<AppState>((set, get, api) => {
         get().openAccountGate(accountFeature, prev);
         return;
       }
-      // And a paid room (Plus lapsed since) opens the paywall, the step spent.
-      if (
-        accountFeature &&
-        get().personalDoor(accountFeature) === 'paywall' &&
-        !roomPassNow(prev)
-      ) {
-        set({ viewTrail: viewTrail.slice(0, -1) });
-        get().openPaywall(paywallReasonFor(accountFeature));
-        paywallReturn = prev;
-        return;
-      }
       set({ view: prev, viewTrail: viewTrail.slice(0, -1), drawerOpen: false, arrivedBack: true });
     },
 
     setDrawer(open) {
       set({ drawerOpen: open });
-    },
-
-    openPaywall(reason) {
-      logEvent('paywall_shown', { reason });
-      paywallReturn = undefined;
-      set({ paywall: reason, drawerOpen: false });
-    },
-    closePaywall() {
-      paywallReturn = undefined;
-      set({ paywall: undefined });
     },
 
     needsAccountNow() {
@@ -9496,30 +9120,7 @@ export const useApp = create<AppState>((set, get, api) => {
     },
     closeAccountGate() {
       accountReturn = undefined;
-      paywallAfterSignIn = undefined;
       set({ accountGate: undefined });
-    },
-
-    personalUnlockedNow() {
-      // The flag off (every build but the one for App Review), or no account
-      // backend: everyone is unlocked (state/payOps.ts).
-      return personalUnlockedFor({
-        gates: PAY_GATES_ENABLED,
-        configured: authConfigured(),
-        userEntitlement: get().userEntitlement,
-        orgEntitlement: get().entitlement,
-      });
-    },
-
-    personalDoor(feature) {
-      return paidDoor(feature, {
-        needsAccount: get().needsAccountNow(),
-        unlocked: get().personalUnlockedNow(),
-      });
-    },
-
-    requirePersonal(feature) {
-      return requirePersonal(feature);
     },
 
     sourceReady(source) {
@@ -9601,182 +9202,6 @@ export const useApp = create<AppState>((set, get, api) => {
       }
     },
 
-    async buyPersonal() {
-      // Buying requires an account to attach the entitlement to: the sign-in
-      // sheet opens, and signing in brings the sheet back.
-      if (!authConfigured()) return;
-      if (!get().authSession) {
-        signInToBuy();
-        return;
-      }
-      // iOS: Apple In-App Purchase (Apple 3.1.1). Never open web checkout in the
-      // app. The signed StoreKit transaction is verified server-side; the client
-      // claim is only a hint.
-      if (iapAvailable()) {
-        let result;
-        try {
-          // The account's id rides on the purchase as Apple's appAccountToken,
-          // so a delayed purchase (Ask to Buy) still reaches this account.
-          result = await iapPurchase(PERSONAL_YEARLY_PRODUCT_ID, get().authSession?.user.id);
-        } catch (err) {
-          get().showToast(err instanceof Error ? err.message : 'Could not complete the purchase.');
-          return;
-        }
-        if (result.state === 'pending') {
-          // Ask to Buy, or a payment that needs another step: Apple finishes it
-          // later and Restore (or the next launch) picks it up.
-          get().showToast(
-            'Waiting for approval. Plus turns on as soon as Apple completes the purchase.',
-          );
-          return;
-        }
-        if (result.state === 'cancelled') return;
-        if (result.state !== 'purchased' || !result.jws) {
-          get().showToast('The purchase did not complete. Nothing was charged. Try again.');
-          return;
-        }
-        // Apple has charged and finished the transaction by now. If the link
-        // to the server fails here (offline, a dead session), the receipt is
-        // kept and retried on the next foreground or Restore (UI-10); the copy
-        // names that path instead of a raw error.
-        try {
-          const token = await accessToken();
-          if (!token) throw new Error('signed out');
-          await supabaseInvoke('link-apple-purchase', token, { jws: result.jws });
-        } catch {
-          await storeSetJson(PENDING_APPLE_LINK_KEY, {
-            jws: result.jws,
-            at: new Date().toISOString(),
-          });
-          get().showToast(
-            'Apple confirmed your purchase. OpenShore could not reach its server to unlock it. Tap Restore purchases when you are back online.',
-          );
-          return;
-        }
-        await get().refreshEntitlement();
-        if (get().personalUnlockedNow()) {
-          afterPersonalUnlocked('Plus is on. The agent can build on your computer.');
-        }
-        return;
-      }
-      // Desktop and web: Stripe Checkout in the system browser (the
-      // 2026-09-30 ruling supersedes the Apple-only 2026-08-31 one). The
-      // checkout-return deep link and the foreground re-check unlock this
-      // device; "I already paid" re-reads the account by hand.
-      let token: string | undefined;
-      try {
-        token = await accessToken();
-      } catch {
-        token = undefined;
-      }
-      if (!token) {
-        get().showToast('Sign in again, then get Plus.');
-        return;
-      }
-      const outcome = await startWebCheckout({
-        token,
-        invoke: supabaseInvoke,
-        open: openExternal,
-      });
-      if (outcome.kind === 'error') {
-        get().showToast(outcome.message);
-        return;
-      }
-      // The foreground re-check runs as soon as the person comes back.
-      lastEntitlementForegroundAt = 0;
-      get().showToast(
-        outcome.kind === 'manage'
-          ? 'You already have Plus. Your subscription opened in the browser.'
-          : 'Checkout opened in your browser. Plus turns on here when you finish.',
-      );
-    },
-
-    async recheckPersonal() {
-      if (!authConfigured()) return;
-      if (!get().authSession) {
-        signInToBuy();
-        return;
-      }
-      const refreshed = await get().refreshEntitlement();
-      if (refreshed === 'offline') {
-        get().showToast('Could not reach OpenShore. Try again when you are online.');
-        return;
-      }
-      if (get().personalUnlockedNow()) {
-        afterPersonalUnlocked('Plus is on. The agent can build on your computer.');
-        return;
-      }
-      get().showToast(
-        'No Plus subscription on this account yet. A payment can take a minute to land.',
-      );
-    },
-
-    async manageSubscription() {
-      // iOS: Apple manages an App Store subscription, and a web buyer's Stripe
-      // portal is never linked from the app there (App Store 3.1.1).
-      if (iapAvailable()) {
-        openExternal(APPLE_SUBSCRIPTIONS_URL);
-        return;
-      }
-      await get().manageBilling();
-    },
-
-    async restorePurchases() {
-      if (!authConfigured()) return;
-      if (!get().authSession) {
-        signInToBuy();
-        return;
-      }
-      // A receipt from a purchase the server never saw goes first (UI-10).
-      await retryPendingAppleLink();
-      let session: Session | undefined;
-      try {
-        session = await freshAuth();
-      } catch {
-        get().showToast('You are offline. Restore once you are back online.');
-        return;
-      }
-      if (!session) {
-        get().showToast('Sign in again, then restore.');
-        return;
-      }
-      if (!iapAvailable()) {
-        // Not an Apple device: a web/desktop buyer's entitlement is already on
-        // the account, so a re-read is the "restore" ("I already paid").
-        await get().recheckPersonal();
-        return;
-      }
-      let transactions: Array<{ jws?: string }> = [];
-      let restoreError: string | undefined;
-      try {
-        ({ transactions } = await iapRestore(PERSONAL_YEARLY_PRODUCT_ID));
-      } catch (err) {
-        restoreError = err instanceof Error ? err.message : 'Could not restore purchases.';
-      }
-      // Each receipt links on its own, so one refused record never hides the
-      // rest; then the account is re-read either way, so a Personal bought on
-      // the web unlocks an iPad signed in with the same email.
-      let linkFailed = false;
-      for (const t of transactions) {
-        if (!t.jws) continue;
-        try {
-          await supabaseInvoke('link-apple-purchase', session.accessToken, { jws: t.jws });
-        } catch {
-          linkFailed = true;
-        }
-      }
-      await get().refreshEntitlement();
-      if (get().personalUnlockedNow()) {
-        afterPersonalUnlocked('Plus restored. The agent can build on your computer.');
-      } else if (restoreError) {
-        get().showToast(restoreError);
-      } else if (linkFailed) {
-        get().showToast('Could not link your purchase. Try Restore purchases again in a moment.');
-      } else {
-        get().showToast(RESTORE_FOUND_NOTHING);
-      }
-    },
-
     showToast(message) {
       set({ toast: message });
       setTimeout(() => set((s) => (s.toast === message ? { toast: undefined } : s)), 3200);
@@ -9787,22 +9212,17 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     async newConversation(source, opts) {
-      // Free is chat only. The coding AGENT is a 'desktop' repo session (it reads
-      // the repo, writes edits, runs tools) and that is the paid surface; chat
-      // with local models ('device' Harbor/Ollama) and with a connected stack
-      // ('stack') stays free. Central choke point so every coding entry (Repos,
-      // Launch) is gated one way. Resolves to undefined when no chat opened, so
-      // no caller mistakes the chat already on screen for the new one.
+      // The coding AGENT is a 'desktop' repo session (it reads the repo, writes
+      // edits, runs tools). Central choke point so every coding entry (Repos,
+      // Launch) meets the sign-in one way. Resolves to undefined when no chat
+      // opened, so no caller mistakes the chat already on screen for the new
+      // one.
       const coding = SOURCE_ACCOUNT[source.kind] === 'coding';
       // The coding agent needs a free sign-in (lib/accountGate.ts); chat does
       // not, the free chat with a computer's own model included. The caller
       // hands a typed first message back to the composer.
       if (coding && get().needsAccountNow()) {
         get().openAccountGate('coding');
-        return undefined;
-      }
-      if (coding && !get().personalUnlockedNow()) {
-        get().openPaywall('coding');
         return undefined;
       }
       logEvent('source_chosen', { kind: source.kind });
@@ -10388,9 +9808,8 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     async createRoutine(input) {
-      // Routines sit inside Personal (CFO, 2026-09-30): with the pay gates on,
-      // making one is a Personal feature like the coding agent. Off otherwise.
-      if (!requirePersonal('crew')) return undefined;
+      // Making a routine is Crew's work: it needs the free sign-in.
+      if (!requireAccount('crew')) return undefined;
       if (!get().crewControl().can) {
         get().showToast(CONTROL_REQUIRES_DOCK);
         return undefined;
@@ -10415,8 +9834,8 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     async updateRoutine(id, patch) {
-      // Editing or resuming a routine is paid; pausing one stays free.
-      if (!routinePatchFree(patch) && !requirePersonal('crew')) return;
+      // Editing or resuming a routine needs the sign-in; pausing one never does.
+      if (!routinePause(patch) && !requireAccount('crew')) return;
       if (!get().crewControl().can) {
         get().showToast(CONTROL_REQUIRES_DOCK);
         return;
@@ -10457,7 +9876,7 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     async runRoutineNow(id) {
-      if (!requirePersonal('crew')) return;
+      if (!requireAccount('crew')) return;
       if (!get().crewControl().can) {
         get().showToast(CONTROL_REQUIRES_DOCK);
         return;
@@ -11078,7 +10497,7 @@ export const useApp = create<AppState>((set, get, api) => {
         // sealed for the same account.
         forgetSession: () => forgetSession(),
         endSignIn: () => forgetSession(true),
-        clearPendingAppleLink: () => storeDelete(PENDING_APPLE_LINK_KEY),
+        clearPendingAppleLink: () => storeDelete(RETIRED_APPLE_LINK_KEY),
       });
       logEvent(outcome.kind === 'deleted' ? 'account_deleted' : `account_delete_${outcome.kind}`);
       return outcome;
@@ -11115,48 +10534,28 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     async refreshEntitlement() {
-      const wasUnlocked = get().personalUnlockedNow();
-      const result = await readEntitlementsNow();
-      // A sheet left open while the read landed (a subscriber whose cached
-      // row had lapsed and renewed, tapping a paid room before the server
-      // answered) closes and carries on by itself (CTO, 2026-09-30).
-      if (!wasUnlocked && get().paywall && get().personalUnlockedNow()) {
-        afterPersonalUnlocked('Plus is on. The agent can build on your computer.');
-      }
-      return result;
+      return readEntitlementsNow();
     },
 
     async reconcileEntitlementOnForeground() {
       const s = get();
-      if (!authConfigured() || !s.authSession) return;
-      // A purchase Apple confirmed while the server was out of reach is linked
-      // first, whatever the gate says (UI-10).
-      if (await retryPendingAppleLink()) {
-        await get().refreshEntitlement();
-        afterPersonalUnlocked(
-          'Your purchase is linked. Plus is on. The agent can build on your computer.',
-        );
-        return;
-      }
-      // Already unlocked: nothing to reconcile.
-      if (s.personalUnlockedNow()) return;
+      // Only a synced commercial org has billing to re-read (team seats).
+      if (!authConfigured() || !s.authSession || !s.settings.account?.org?.serverId) return;
+      if (isEntitled(s.entitlement)) return;
       const now = Date.now();
       if (now - lastEntitlementForegroundAt < 30000) return;
       lastEntitlementForegroundAt = now;
       await get().refreshEntitlement();
-      if (get().personalUnlockedNow()) {
-        afterPersonalUnlocked('Plus is on. The agent can build on your computer.');
-      }
     },
 
     async onCheckoutReturn() {
       if (!authConfigured() || !get().authSession) return;
       await get().refreshEntitlement();
-      if (get().personalUnlockedNow()) {
-        afterPersonalUnlocked('Plus is on. The agent can build on your computer.');
-      } else {
-        get().showToast('Payment received. Your unlock will appear shortly.');
-      }
+      get().showToast(
+        isEntitled(get().entitlement)
+          ? 'Payment received. Your team seats are ready.'
+          : 'Payment received. Your seats will appear shortly.',
+      );
     },
 
     async manageBilling() {
@@ -11172,20 +10571,14 @@ export const useApp = create<AppState>((set, get, api) => {
         openExternal(BILLING_URL);
         return;
       }
-      // A subscribed individual OR org gets the Stripe customer portal; otherwise
-      // the web purchase page. An individual Personal sub (userEntitlement, no
-      // org) opens the portal with no orgId; a commercial org opens it with its
-      // serverId. Either way it opens in the system browser. (An Apple-purchased
-      // Personal sub is managed in iOS Settings, not here; the caller keeps this
-      // off iOS.)
-      const orgEntitled = !!get().entitlement && !!serverId;
-      const userEntitled = !!get().userEntitlement;
-      if (userEntitled || orgEntitled) {
+      // A subscribed commercial org gets the Stripe customer portal, in the
+      // system browser; otherwise the web purchase page.
+      if (get().entitlement && serverId) {
         try {
           const { url } = await supabaseInvoke<{ url: string }>(
             'stripe-portal',
             session.accessToken,
-            orgEntitled ? { orgId: serverId } : {},
+            { orgId: serverId },
           );
           openExternal(url);
           return;
@@ -11610,9 +11003,9 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     async createCrewAgent(input) {
-      // Making a crew member is Crew's work: paid (CTO, 2026-09-30). Deleting
-      // one stays free.
-      if (!requirePersonal('crew')) return undefined;
+      // Making a crew member is Crew's work: it needs the free sign-in.
+      // Deleting one never does.
+      if (!requireAccount('crew')) return undefined;
       const id = `a${Date.now().toString(36)}${(convSeq++).toString(36)}`;
       const agent: CrewAgent = { ...input, id, createdAt: new Date().toISOString() };
       const crew = [...(get().settings.crew ?? []), agent];
@@ -11622,7 +11015,7 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     async updateCrewAgent(id, patch) {
-      if (!requirePersonal('crew')) return false;
+      if (!requireAccount('crew')) return false;
       const crew = (get().settings.crew ?? []).map((a) => (a.id === id ? { ...a, ...patch } : a));
       await get().saveSettings({ crew });
       return true;
@@ -13070,8 +12463,7 @@ export const useApp = create<AppState>((set, get, api) => {
 
     async exportPersonalVault() {
       // The iPhone's way out of the sealed Local vault, free from Settings
-      // while the Vault room is shut (CTO, 2026-09-30): exporting is never
-      // behind the paywall.
+      // while the Vault room is shut: exporting never needs an account.
       const target = personalVault();
       if (!target) return;
       try {
@@ -14327,8 +13719,7 @@ export const useApp = create<AppState>((set, get, api) => {
         void (async () => {
           if (get().vaultScope !== 'personal') await get().setVaultScope('personal');
           get().setView('vault');
-          // The Vault room is Plus: when the sign-in sheet or the paywall
-          // opened instead, nothing opens behind it (CTO, 2026-09-30).
+          // When the sign-in sheet opened instead, nothing opens behind it.
           if (get().view !== 'vault') return;
           await get().vaultOpen(path);
         })();
@@ -14340,9 +13731,6 @@ export const useApp = create<AppState>((set, get, api) => {
       const item = conv?.thread.items.find((i) => i.id === itemId);
       if (!item || item.kind !== 'note' || !item.handoff) return undefined;
       if (item.handoff.savedPath) return item.handoff.savedPath;
-      // Saving a handoff writes a Vault note: Plus (CTO, 2026-09-30). With
-      // the gates off Plus is open to everyone, so nothing changes there.
-      if (!get().personalUnlockedNow() && !requirePersonal('vault')) return undefined;
       const t = personalVault();
       if (!t) {
         get().showToast('Your Vault is not ready on this device yet.');
@@ -14725,8 +14113,6 @@ export const useApp = create<AppState>((set, get, api) => {
         get().openAccountGate('coding');
         return;
       }
-      // And it is the coding agent's work: paid, checked before the copy.
-      if (!requirePersonal('coding')) return;
       if (!get().sourceReady({ kind: 'desktop' })) {
         get().showToast('Pick a model for this computer first, then try the sample.');
         get().setView('stack');
@@ -14739,7 +14125,7 @@ export const useApp = create<AppState>((set, get, api) => {
       }
       // The prompt rides in on the sample's own chat, parked until its driver
       // attaches, so it can never land in whatever chat was open before when
-      // no chat opens (the paywall).
+      // no chat opens.
       await get().newConversation(
         { kind: 'desktop', cwd: made.path, repoName: SAMPLE_REPO_NAME },
         { firstMessage: { text: SAMPLE_PROMPT } },
@@ -15046,12 +14432,6 @@ export const useApp = create<AppState>((set, get, api) => {
       // agent: the sign-in sheet opens, never "this chat has no terminal".
       if (codingLockedNow(get().conversations[activeId])) {
         get().openAccountGate('coding');
-        return;
-      }
-      // A command inside a coding chat is the coding agent's work: paid.
-      const shut = chatPaywallNow(get().conversations[activeId]);
-      if (shut) {
-        get().openPaywall(paywallReasonFor(shut));
         return;
       }
       const driver = drivers.get(activeId);

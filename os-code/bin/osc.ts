@@ -25,11 +25,6 @@ import {
   marketInstallCommand,
   marketPresetsCommand,
 } from '../src/commands/market.js';
-import {
-  licenseActivateCommand,
-  licenseDeactivateCommand,
-  licenseShowCommand,
-} from '../src/commands/license.js';
 import { evalCommand } from '../src/commands/eval.js';
 import { attachImageCommand } from '../src/commands/attachImage.js';
 import { DEVICE_CREDENTIAL_TTL_DAYS } from '../src/core/security/credentials.js';
@@ -191,21 +186,6 @@ market
   .option('--apply <id>', 'write a preset into your config')
   .action((options: { apply?: string }) => marketPresetsCommand(options.apply));
 program.command('models').description('alias for osc market').action(marketBrowseCommand);
-
-const license = program.command('license').description('license and entitlement');
-license
-  .command('activate')
-  .description('activate a key')
-  .argument('<key>')
-  .action(licenseActivateCommand);
-license
-  .command('show', { isDefault: true })
-  .description('current state')
-  .action(licenseShowCommand);
-license
-  .command('deactivate')
-  .description('remove the license from this machine')
-  .action(licenseDeactivateCommand);
 
 program
   .command('eval')

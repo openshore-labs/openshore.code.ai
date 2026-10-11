@@ -138,7 +138,7 @@ const {
   ACCOUNT_GATE_BODY,
   ACCOUNT_NOTICE,
   ACCOUNT_PITCH,
-  accountCopy,
+  ACCOUNT_SIGN_IN_SUB,
   needsAccount,
 } = await import('../src/lib/accountGate.js');
 const {
@@ -229,8 +229,7 @@ describe('the gate: chat is free, everything else is a free sign-in', () => {
       .filter(([, f]) => f === null)
       .map(([v]) => v)
       .sort();
-    // Stack Health left the list when it became part of Plus (founder,
-    // 2026-09-30): buying needs an account.
+    // Stack Health (a later tier) sits behind the sign-in too.
     expect(free).toEqual(['chat', 'chats', 'onboarding', 'settings', 'stack']);
   });
 
@@ -247,44 +246,16 @@ describe('the gate: chat is free, everything else is a free sign-in', () => {
       expect(ROOM_ACCOUNT[view as keyof typeof ROOM_ACCOUNT], view).not.toBeNull();
   });
 
-  // The account copy says only what is true for this build (CTO,
-  // 2026-09-30): with the pay gates on, signing in never "opens" the Plus
-  // rooms; with them off, nothing talks about buying.
-  it('keeps the account copy true with the pay gates on and off', async () => {
-    const { accountCopy } = await import('../src/lib/accountGate.js');
-    const on = accountCopy(true);
-    for (const line of [on.body, on.pitch, on.notice, on.signInSub]) {
-      expect(line, line).not.toMatch(/opens? (building|Vault|Crew|pairing)/i);
-      expect(line, line).not.toMatch(/\bto build\b/i);
-    }
-    expect(on.body).toMatch(/OpenShore Plus/);
-    const off = accountCopy(false);
-    for (const line of [off.body, off.pitch, off.notice, off.signInSub])
+  // Nothing is sold (open source, founder 2026-10-11): no account copy, guide
+  // card or Harbor Lite line talks about buying.
+  it('never talks about buying', async () => {
+    for (const line of [ACCOUNT_GATE_BODY, ACCOUNT_PITCH, ACCOUNT_NOTICE, ACCOUNT_SIGN_IN_SUB])
       expect(line, line).not.toMatch(/\bbuy|purchase|OpenShore Plus/i);
-    // This suite runs with the gates off: the guide and Harbor Lite say
-    // nothing about buying either.
     const { GUIDE_CARDS } = await import('../src/lib/guideCards.js');
     const account = GUIDE_CARDS.find((c) => c.id === 'account')!;
     expect(account.text).not.toMatch(/\bbuy|OpenShore Plus/i);
     const { HARBOR_MINI_PERSONA } = await import('../src/lib/harborMini.js');
     expect(HARBOR_MINI_PERSONA).not.toMatch(/OpenShore Plus/);
-  });
-
-  it('says what Plus holds in the guide and Harbor Lite once the gates are on', async () => {
-    vi.stubEnv('VITE_PAY_GATES', '1');
-    vi.resetModules();
-    try {
-      const { GUIDE_CARDS } = await import('../src/lib/guideCards.js');
-      const account = GUIDE_CARDS.find((c) => c.id === 'account')!;
-      expect(account.text).toMatch(/part of OpenShore Plus/);
-      expect(account.text).not.toMatch(/opens building/);
-      const { HARBOR_MINI_PERSONA } = await import('../src/lib/harborMini.js');
-      expect(HARBOR_MINI_PERSONA).toMatch(/part of OpenShore Plus/);
-      expect(HARBOR_MINI_PERSONA).not.toMatch(/stripe|on the web|checkout/i);
-    } finally {
-      vi.unstubAllEnvs();
-      vi.resetModules();
-    }
   });
 
   it('asks only when the build has accounts and nobody is signed in', () => {
@@ -303,17 +274,14 @@ describe('the gate: chat is free, everything else is a free sign-in', () => {
     // "your settings", since the writing voice, the app icon, approvals, web
     // search and the vault stay on the device.
     expect(ACCOUNT_PITCH).toMatch(/take your theme and a few preferences to every device/);
-    for (const pitch of [ACCOUNT_PITCH, accountCopy(true).pitch, accountCopy(false).pitch]) {
-      expect(pitch, pitch).not.toMatch(/your settings/i);
-      expect(pitch, pitch).toMatch(/Your chats stay on your devices\./);
-    }
+    expect(ACCOUNT_PITCH).not.toMatch(/your settings/i);
+    expect(ACCOUNT_PITCH).toMatch(/Your chats stay on your devices\./);
     // The sidebar's one line names what signing in opens, and says nothing
     // about settings at all: the pitch carries the few that follow.
-    for (const sub of [accountCopy(true).signInSub, accountCopy(false).signInSub])
-      expect(sub, sub).not.toMatch(/settings/i);
+    expect(ACCOUNT_SIGN_IN_SUB).not.toMatch(/settings/i);
     // Pairing goes by its door's words, never "pair your phone", which on the
     // phone itself reads as pairing it with itself.
-    for (const line of [ACCOUNT_PITCH, accountCopy(false).signInSub]) {
+    for (const line of [ACCOUNT_PITCH, ACCOUNT_SIGN_IN_SUB]) {
       expect(line, line).toMatch(/connect your computer/);
       expect(line, line).not.toMatch(/pair your phone/i);
     }

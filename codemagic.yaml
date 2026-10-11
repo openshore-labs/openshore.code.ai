@@ -71,20 +71,6 @@ workflows:
           npm install -g pnpm@10.33.0
           pnpm --version
           pnpm install --frozen-lockfile
-      - name: Check the Apple receipt roots
-        script: |
-          set -euo pipefail
-          # A build that can sell Plus must not ship while the backend still
-          # checks receipts against placeholder Apple roots (next build E0): a
-          # real purchase would charge and stay locked. It fails only for a
-          # build that can sell (VITE_PAY_GATES=1 or OPENSHORE_STORE_RELEASE=1,
-          # both set by the store_release input); while the gates are off it
-          # warns and the TestFlight build carries on. Roots kept in the
-          # function secrets instead: set APPLE_ROOTS_IN_SECRETS=1 in the group.
-          # The pay gates are off in every iOS build until after approval
-          # (founder, 2026-10-01): nothing here can turn them on.
-          unset VITE_PAY_GATES OPENSHORE_STORE_RELEASE
-          node app/scripts/check-apple-roots.mjs
       - name: Gate the build on the test suite
         script: |
           set -euo pipefail
@@ -103,15 +89,6 @@ workflows:
           set -euo pipefail
           # The engine dist is already built by the gate step above; this step
           # only bundles the web app against it.
-          #
-          # The pay gates (OpenShore Plus) are on only in the build for review:
-          # the store_release input (or OPENSHORE_STORE_RELEASE=1 from the
-          # Builds API) exports VITE_PAY_GATES=1 for this step alone, so the
-          # test gate above runs without it and every TestFlight build stays
-          # free.
-          # The pay gates are off in every iOS build until after approval
-          # (founder, 2026-10-01): nothing here can turn them on.
-          unset VITE_PAY_GATES OPENSHORE_STORE_RELEASE
           cd app
           npx vite build
           npx cap sync ios
@@ -258,11 +235,7 @@ workflows:
         # same way it works on the iOS build) and any other VITE_-prefixed build
         # value already set there. Its CERTIFICATE_PRIVATE_KEY (iOS-only) is
         # simply unused here. This group already exists, so this workflow needs
-        # no new Codemagic setup at all. VITE_PAY_GATES never goes in this
-        # group (CTO, 2026-09-30): set there, it would turn on the paywall in
-        # this Mac build, which sells through Stripe only once Stripe is set
-        # up, and in every TestFlight build of iOS. The desktop's switch is its own
-        # call, made with the Linux and Windows builds (release.yml).
+        # no new Codemagic setup at all.
         - Harbor-os-code
         # The Mac release signing key, alone in a group of its own (CTO
         # ruling 1, 2026-09-29), so nothing else that imports a group can

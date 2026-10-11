@@ -25,8 +25,7 @@ export const DEFAULT_EGRESS: EgressConfig = {
   blocklist: [],
 };
 
-export type EgressPurpose =
-  'web-search' | 'web-fetch' | 'cloud-api' | 'catalog' | 'license' | 'model-pull';
+export type EgressPurpose = 'web-search' | 'web-fetch' | 'cloud-api' | 'catalog' | 'model-pull';
 
 export interface EgressDecision {
   allowed: boolean;

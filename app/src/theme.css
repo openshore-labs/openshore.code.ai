@@ -81,10 +81,6 @@
   /* Voice as text: the gold darkened to clear 4.5:1 on every light ground;
      --voice stays the fill. */
   --voice-ink: #805913;
-  /* Plus: the gold of the free build's Upgrade banner (founder, 2026-09-30),
-     kept apart from the spend amber and the people-signal honey. */
-  --plus: #c9a24a;
-  --plus-ink: #2a2111;
 
   /* Status. Deepened so they read as text on a light ground. */
   --ok: #236b3b;
@@ -335,8 +331,6 @@
     --voice: #eab94f;
     --voice-ink: var(--voice);
     --voice-soft: rgba(234, 185, 79, 0.18);
-    --plus: #d8b667;
-    --plus-ink: #0b1417;
     --ok: #5fbf7e;
     --ok-soft: rgba(95, 191, 126, 0.16);
     --warn: #c4b163;
@@ -388,8 +382,6 @@
   --voice: #eab94f;
   --voice-ink: var(--voice);
   --voice-soft: rgba(234, 185, 79, 0.18);
-  --plus: #d8b667;
-  --plus-ink: #0b1417;
   --ok: #5fbf7e;
   --ok-soft: rgba(95, 191, 126, 0.16);
   --warn: #c4b163;
@@ -926,10 +918,6 @@ textarea {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.profile-plan {
-  font-size: var(--text-3);
-  color: var(--muted);
-}
 .profile-body .settings-group:first-of-type {
   margin-top: 0;
 }
@@ -1036,45 +1024,6 @@ textarea {
   transition: none;
 }
 
-/* The free build's Plus rooms (founder, 2026-09-30): greyed, still live. A
-   tap opens the paywall; the label says so to assistive tech. */
-.nav-item--plus {
-  color: color-mix(in srgb, var(--muted) 60%, transparent);
-}
-
-.nav-item--plus .glyph {
-  opacity: 0.6;
-}
-
-/* The gold Upgrade banner, just above the Plus rooms: one solid gold row with
-   ink type, the same shape and press as the sign-in card. */
-.sidebar-plus {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  margin: 0 0 6px;
-  padding: 11px 12px;
-  border-radius: var(--radius-md);
-  background: var(--plus);
-  color: var(--plus-ink);
-  font-size: var(--text-4);
-  font-weight: var(--weight-semibold);
-  text-align: left;
-  transition: transform var(--press-out);
-}
-
-.sidebar-plus:active {
-  transform: scale(0.985);
-}
-
-.sidebar-plus-mark {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
 /* Mobile drawer variant of the sidebar */
 @property --drawer-width {
   syntax: '<length>';
@@ -1136,8 +1085,7 @@ textarea {
 .sidebar.drawer .sidebar-head,
 .sidebar.drawer .nav-item,
 .sidebar.drawer .sidebar-recents,
-.sidebar.drawer .sidebar-signin,
-.sidebar.drawer .sidebar-plus {
+.sidebar.drawer .sidebar-signin {
   animation: drawer-row-in var(--dur-5) var(--ease-glide) backwards;
   animation-delay: calc(var(--dur-2) + var(--i, 0) * var(--stagger));
 }
@@ -1145,14 +1093,12 @@ textarea {
 .sidebar.drawer.via-gesture .nav-item,
 .sidebar.drawer.via-gesture .sidebar-recents,
 .sidebar.drawer.via-gesture .sidebar-signin,
-.sidebar.drawer.via-gesture .sidebar-plus,
 /* Arrived (Sidebar sets it once the stagger has run, or at a lift): a row
    that remounts after a reorder must not replay the entrance. */
 .sidebar.drawer.entered .sidebar-head,
 .sidebar.drawer.entered .nav-item,
 .sidebar.drawer.entered .sidebar-recents,
-.sidebar.drawer.entered .sidebar-signin,
-.sidebar.drawer.entered .sidebar-plus {
+.sidebar.drawer.entered .sidebar-signin {
   animation: none;
 }
 @keyframes drawer-row-in {
@@ -6257,7 +6203,7 @@ button.vault-tag {
   margin-bottom: 14px;
 }
 
-/* Personal upgrade sheet: benefit list + price line. */
+/* A benefit list (the Stack's connect sheet). */
 .paywall-benefits {
   list-style: none;
   margin: 0 0 14px;
@@ -6283,22 +6229,6 @@ button.vault-tag {
   border-radius: 50%;
   background: var(--accent);
   opacity: 0.85;
-}
-.paywall-price {
-  font-family: var(--font-display);
-  font-size: var(--text-5);
-  font-weight: var(--weight-medium);
-  letter-spacing: -0.01em;
-  margin: 0 0 14px;
-}
-
-/* The paywall's legal line (Apple 3.1.2): Terms of Use and the Privacy
-   Policy, quiet links under the actions. */
-.paywall-legal {
-  display: flex;
-  justify-content: center;
-  gap: 16px;
-  margin: 12px 0 0;
 }
 .link-quiet {
   font-size: var(--text-2);

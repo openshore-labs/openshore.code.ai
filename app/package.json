@@ -1,6 +1,7 @@
 {
   "name": "oscode-app",
   "private": true,
+  "license": "Apache-2.0",
   "version": "0.1.0",
   "description": "OpenShore: the native app. Chat and build with your own stack of local LLMs.",
   "homepage": "https://openshore.ai",
@@ -47,7 +48,6 @@
     "jsqr": "1.4.0",
     "os-code": "workspace:*",
     "oscode-authsession": "file:./plugins/oscode-authsession",
-    "oscode-iap": "file:./plugins/oscode-iap",
     "oscode-icloud": "file:./plugins/oscode-icloud",
     "oscode-llama": "file:./plugins/oscode-llama",
     "oscode-media": "file:./plugins/oscode-media",

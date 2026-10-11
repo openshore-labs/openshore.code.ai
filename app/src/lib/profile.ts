@@ -1,8 +1,7 @@
 // The signed-in person's profile (founder, 2026-10-02): the account button in
 // the sidebar names the account, and tapping it opens the profile sheet
 // (components/ProfileSheet.tsx). Nothing here is a new stored field: the name
-// shown is the account's own email, and the plan reads the entitlement the
-// app already holds.
+// shown is the account's own email.
 import type { AppSettings } from '../state/store.js';
 import { SETTINGS_REACH } from './settingsReach.js';
 import { featureOn } from './focus.js';
@@ -66,42 +65,6 @@ export function notCopiedLine(teams: boolean = featureOn('teams')): string {
 export function accountInitial(email?: string): string {
   const c = email?.trim().charAt(0);
   return c ? c.toUpperCase() : '?';
-}
-
-/** Personal's standing in plain words, for the sidebar, Settings and the
- *  profile: free for everyone while the pay gates are off (the beta), else
- *  Plus (until when) or Free. */
-export function planStanding(opts: { gates: boolean; unlocked: boolean; validUntil?: string }): {
-  short: string;
-  value: string;
-  sub: string;
-} {
-  if (!opts.gates) {
-    // Nothing is sold, so there is no plan to name (the App Store build,
-    // 2026-10-02): no "Free", and never "beta" (App Review 2.2).
-    return { short: '', value: '', sub: '' };
-  }
-  if (opts.unlocked) {
-    const until = opts.validUntil
-      ? new Date(opts.validUntil).toLocaleDateString(undefined, {
-          day: 'numeric',
-          month: 'short',
-          year: 'numeric',
-        })
-      : undefined;
-    return {
-      short: 'OpenShore Plus',
-      value: 'Active',
-      sub: until
-        ? `All of OpenShore is open. Renews or ends ${until}.`
-        : 'All of OpenShore is open.',
-    };
-  }
-  return {
-    short: 'Free',
-    value: 'Not yet',
-    sub: 'Chats, Projects, the Stack and Cloud Connections are free. Plus opens the rest.',
-  };
 }
 
 /** Whether the profile sheet is up. Its own small store, so the shell can

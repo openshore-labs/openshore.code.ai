@@ -114,7 +114,6 @@ agent from `osc init` alone; specialists, routing, and cloud stay opt-in.
 | `osc stack`        | View and edit the orchestrator and specialists               |
 | `osc market`       | Browse and install models from the curated catalog           |
 | `osc eval`         | Probe whether a model holds up as an orchestrator            |
-| `osc license`      | Activate, show, or remove a license                          |
 | `osc attach-image` | Drop a screenshot into the vision inbox                      |
 
 ## Configuration

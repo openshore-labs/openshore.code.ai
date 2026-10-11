@@ -313,7 +313,6 @@ export const RULES: Array<{ name: string; check(path: string, src: string): stri
         'screens/LaunchScreen.tsx': LATER_TIER['screens/LaunchScreen.tsx']!,
         'screens/MarketplaceScreen.tsx': LATER_TIER['screens/MarketplaceScreen.tsx']!,
         'components/AccountSetup.tsx': 'teams and plans, v4: no door in Personal',
-        'components/PlusNote.tsx': 'the pay gate, reviewed with the paywall',
       };
       if (!path.endsWith('.tsx') || EXEMPT[path]) return [];
       return openingTags(stripComments(src), 'button')

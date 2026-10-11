@@ -3,14 +3,12 @@
 // and what signing in gives, and holds the sign-in card itself, so nobody is
 // sent off to Settings to find it. Signing in closes it and carries on to the
 // room that was asked for (store.onSignedIn). "Not now" leaves them where they
-// were, with chat still open: the dismiss costs nothing. With the pay gates
-// on, a Plus feature's sheet says the paywall comes after the sign-in.
+// were, with chat still open: the dismiss costs nothing.
 import { Sheet } from './Sheet.js';
 import { SheetHead } from './SheetHead.js';
 import { SignInCard } from './SignInCard.js';
 import { useApp } from '../state/store.js';
-import { ACCOUNT_GATE_PLUS_BODY, ACCOUNT_GATE_TITLE, accountCopy } from '../lib/accountGate.js';
-import { PAY_GATES_ENABLED, featurePaid } from '../lib/payGate.js';
+import { ACCOUNT_GATE_BODY, ACCOUNT_GATE_TITLE } from '../lib/accountGate.js';
 
 export function AccountGateSheet() {
   const feature = useApp((s) => s.accountGate);
@@ -20,11 +18,7 @@ export function AccountGateSheet() {
       {feature ? (
         <>
           <SheetHead title={ACCOUNT_GATE_TITLE[feature]} onClose={close} />
-          <p className="sheet-sub">
-            {PAY_GATES_ENABLED && featurePaid(feature)
-              ? ACCOUNT_GATE_PLUS_BODY
-              : accountCopy(PAY_GATES_ENABLED).body}
-          </p>
+          <p className="sheet-sub">{ACCOUNT_GATE_BODY}</p>
           <SignInCard />
           <div className="sheet-actions">
             <button type="button" className="btn ghost press-fb" onClick={close}>

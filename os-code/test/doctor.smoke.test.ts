@@ -31,7 +31,6 @@ describe('osc doctor', () => {
       'GitHub',
       'Web search',
       'Connectivity',
-      'License',
       'Vault',
     ]) {
       expect(output).toContain(section);

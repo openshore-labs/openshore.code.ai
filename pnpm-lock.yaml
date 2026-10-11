@@ -55,9 +55,6 @@ importers:
       oscode-authsession:
         specifier: file:./plugins/oscode-authsession
         version: file:app/plugins/oscode-authsession(@capacitor/core@8.5.0)
-      oscode-iap:
-        specifier: file:./plugins/oscode-iap
-        version: file:app/plugins/oscode-iap(@capacitor/core@8.5.0)
       oscode-icloud:
         specifier: file:./plugins/oscode-icloud
         version: file:app/plugins/oscode-icloud(@capacitor/core@8.5.0)
@@ -2470,11 +2467,6 @@ packages:
 
   oscode-authsession@file:app/plugins/oscode-authsession:
     resolution: {directory: app/plugins/oscode-authsession, type: directory}
-    peerDependencies:
-      '@capacitor/core': '>=8.0.0'
-
-  oscode-iap@file:app/plugins/oscode-iap:
-    resolution: {directory: app/plugins/oscode-iap, type: directory}
     peerDependencies:
       '@capacitor/core': '>=8.0.0'
 
@@ -5916,10 +5908,6 @@ snapshots:
       word-wrap: 1.2.5
 
   oscode-authsession@file:app/plugins/oscode-authsession(@capacitor/core@8.5.0):
-    dependencies:
-      '@capacitor/core': 8.5.0
-
-  oscode-iap@file:app/plugins/oscode-iap(@capacitor/core@8.5.0):
     dependencies:
       '@capacitor/core': 8.5.0
 

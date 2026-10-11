@@ -1,5 +1,5 @@
 // The profile (founder, 2026-10-02): signed in, the sidebar's account card
-// names the account and opens the profile sheet, a standard set: plan, what
+// names the account and opens the profile sheet, a standard set: what
 // follows you between devices, privacy and help, sign-in, delete.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mountDom, type TestDom } from './support/dom.js';
@@ -9,7 +9,6 @@ import {
   followingKeys,
   followsLabel,
   followsLine,
-  planStanding,
   useProfileSheet,
 } from '../src/lib/profile.js';
 
@@ -69,17 +68,14 @@ describe('the profile rules', () => {
   // egress-claims-4 (sp-plan): the signed-in card named four of the six.
   // It now reads the same list, and the sign-in sheets list none of them.
   it('names every preference that follows on the signed-in card, from the one list', async () => {
-    const { SIGNED_IN_PERKS, ACCOUNT_GATE_BODY, accountCopy } =
-      await import('../src/lib/accountGate.js');
+    const { SIGNED_IN_PERKS, ACCOUNT_GATE_BODY } = await import('../src/lib/accountGate.js');
     for (const k of followingKeys()) {
       expect(SIGNED_IN_PERKS.toLowerCase(), String(k)).toContain(followsLabel(k).toLowerCase());
     }
     expect(SIGNED_IN_PERKS).toBe(
       'These follow you to every device you sign in on: appearance, effort, Humanize Writing, Chain of Thought, notices, and voice. Signing out keeps everything on this device.',
     );
-    for (const body of [ACCOUNT_GATE_BODY, accountCopy(true).body]) {
-      expect(body).toMatch(/takes your theme and a few preferences to every device/);
-    }
+    expect(ACCOUNT_GATE_BODY).toMatch(/takes your theme and a few preferences to every device/);
     // What leaves this device names them in the same words (one name per
     // thing, sign-off): it said theme, reasoning and humanized writing.
     const { EGRESS } = await import('../src/lib/egressManifest.js');
@@ -91,12 +87,6 @@ describe('the profile rules', () => {
   it('draws the avatar from the email', () => {
     expect(accountInitial('founder@openshore.ai')).toBe('F');
     expect(accountInitial(undefined)).toBe('?');
-  });
-
-  it('says the plan plainly with the gates off and on', () => {
-    expect(planStanding({ gates: false, unlocked: true }).short).toBe('');
-    expect(planStanding({ gates: true, unlocked: true }).short).toBe('OpenShore Plus');
-    expect(planStanding({ gates: true, unlocked: false }).short).toBe('Free');
   });
 });
 
