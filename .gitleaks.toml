@@ -1,0 +1,12 @@
+# Secret scanning for this repository (gitleaks; GitHub's own scanning reads
+# similar patterns). A full-history scan on 2026-10-11 found no real secret.
+# The hits it did find are made-up keys in tests that prove redaction works,
+# so test files are allowed; a real key anywhere else still fails.
+title = "OpenShore"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Fake keys in tests, used to prove redaction"
+paths = ['''(^|/)test/''', '''\.test\.tsx?$''']

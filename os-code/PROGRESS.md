@@ -4,9 +4,12 @@ The recent-state source of truth for OS Code, kept in the same spirit as the
 Uki app repo: current state first, then what remains, then the log.
 
 Older Current state sections and log entries are in `docs/progress-archive.md`
-(newest first); the parked build prompts are in `docs/parked-ideas.md`. Keep
-this file to one Current state, one What remains, and the last five log
-entries (`test/progressShape.test.ts` enforces the shape).
+(newest first), and the parked build prompts in `docs/parked-ideas.md`, both
+in the private `openshore-hq` repository under `openshore-code/internal-docs/os-code/`
+since this one went open source (2026-10-11). Keep this file to one Current
+state, one What remains, and the last five log entries
+(`test/progressShape.test.ts` enforces the shape); an entry that rotates out
+is appended to the archive there.
 
 ## Current state (2026-10-11 open source under Apache 2.0, the pay gate removed; 2026-10-08 connect anywhere merged after the CTO review, docking to a computer or a server; 2026-10-08 v0.1.65 released with the CX and CMO rulings; 2026-10-08 CX and the CMO rule the open calls, built; 2026-10-08 v0.1.64 released for Linux and Windows; 2026-10-08 the release privacy review, fixed; 2026-10-08 the open follow-ups, built, and CI green again; 2026-10-07 image reading and desktop Offline; 2026-10-07 the review's directions, built; 2026-10-07 the UI/UX review; 2026-10-02 app actions only when asked; 2026-10-01 your writing voice and app actions; 2026-09-30 the Personal paid gate; 2026-09-30 the curated models on Apache weights; 2026-09-29 packages B and C, reviews from production's view and account deletion as one design; 2026-09-29 CTO 11, main matches production's migration history; 2026-09-29 the premium build; 2026-09-27 accounts and the privacy calls; 2026-09-27 release tiers, this build is Personal; 2026-09-27 v1 for the first-time person, built; 2026-09-27 Vault M8, the ship gate opened; 2026-09-27 Vault M7, the customization surface; 2026-09-27 Vault M6, Obsidian day one; 2026-09-27 Vault M5, context layer II; 2026-09-27 Vault M4, context layer I; 2026-09-14 the premium harness begun; 2026-09-09 Agentic Currents and Wayfinding; 2026-09-06 voice mode, the plan-first workflow, and video attachments; 2026-09-05 phone storefront, Crew routines, ethics layer, review remediation)
 

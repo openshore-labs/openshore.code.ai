@@ -36,9 +36,13 @@ describe('PROGRESS.md shape', () => {
     expect(lines.length).toBeLessThan(1000);
   });
 
-  it('keeps the archive and the parked prompts where the pointer says', () => {
-    expect(existsSync(resolve(ROOT, 'docs/progress-archive.md'))).toBe(true);
-    expect(existsSync(resolve(ROOT, 'docs/parked-ideas.md'))).toBe(true);
+  // The archive and the parked prompts are the company's own records: they
+  // moved to the private openshore-hq repository when this one went open
+  // source (2026-10-11), and PROGRESS says where.
+  it('points at the archive and the parked prompts in openshore-hq', () => {
+    expect(existsSync(resolve(ROOT, 'docs/progress-archive.md'))).toBe(false);
+    expect(existsSync(resolve(ROOT, 'docs/parked-ideas.md'))).toBe(false);
+    expect(progress).toContain('openshore-hq');
     expect(progress).toContain('docs/progress-archive.md');
     expect(progress).toContain('docs/parked-ideas.md');
   });

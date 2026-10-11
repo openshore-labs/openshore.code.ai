@@ -1,5 +1,12 @@
 # Working notes for Claude, OS Code (openshore.code.ai)
 
+This repository is open source (Apache 2.0, 2026-10-11). The company's own
+records it names (advisor and Board memos, the UX and security reviews, the
+App Store notes, `os-code/docs/progress-archive.md` and `parked-ideas.md`)
+live in the private `openshore-labs/openshore-hq` repository under
+`openshore-code/internal-docs/`, at the same path they have below. A doc named
+here that is not in this tree is there. Never copy internal material back in.
+
 ## Read PROGRESS at session start (standing rule)
 
 `os-code/PROGRESS.md` is the recent-state source of truth for OS Code: current
@@ -544,5 +551,4 @@ context budgets, retrieval-first), then the Claude Code moment on the engine
 then the pure-core extraction with subagents, then the phone host, then Lessons
 (local-only learning, per owner and workspace, cleared with the chats). A
 subagent always draws down its parent's step and dollar rails; lessons are never
-mined machine-wide on a shared hub. Pricing (Personal $50, Micro $100, Small
-$250, Growth $500, Scale $1000) is a Board gate, not harness work.
+mined machine-wide on a shared hub. Pricing is not harness work.

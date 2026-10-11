@@ -55,12 +55,8 @@ const GUARD_FILES = new Set([
 ]);
 
 // Every exemption is a decision with a reason, never a reflex.
-const EXEMPT_FILES = new Map<string, string>([
-  [
-    'docs/archive/CODE-REVIEW-FINDINGS.md',
-    'historical review record, archived verbatim (2026-08-20 review, fully addressed)',
-  ],
-]);
+// (None today: the one archived review moved to openshore-hq, 2026-10-11.)
+const EXEMPT_FILES = new Map<string, string>([]);
 
 function normalize(text: string): string {
   return text.replace(ENCODED, EM_DASH);

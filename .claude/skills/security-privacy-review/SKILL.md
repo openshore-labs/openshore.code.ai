@@ -81,8 +81,9 @@ Star for how we want to keep our users private and secure on the platform."
   collect and why, how long, processors (Supabase, Apple, the search
   provider, GitHub, and Stripe only when it sells), rights (access, export,
   deletion), children, contact (`SUPPORT_EMAIL`), and changes.
-- App Store Connect's privacy answers and `docs/app-review-notes.md` match the
-  code on the day of submission.
+- App Store Connect's privacy answers and the App Review notes (in
+  `openshore-hq`, `openshore-code/internal-docs/docs/app-review-notes.md`)
+  match the code on the day of submission.
 
 ## 5. Output
 
