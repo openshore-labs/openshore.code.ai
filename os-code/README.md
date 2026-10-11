@@ -19,7 +19,7 @@ You need Node 22.12 or newer, and a local model server such as
 [Ollama](https://ollama.com) (`osc init` helps you get one).
 
 ```
-npm install -g os-code
+npm install -g @openshore/os-code
 osc init
 ```
 

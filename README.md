@@ -38,7 +38,7 @@ OS Code (`osc`) is the same agent as a terminal CLI. With Node 22.12 or newer
 and a local model server such as Ollama:
 
 ```
-npm install -g os-code
+npm install -g @openshore/os-code
 osc init
 cd ~/your-project && osc
 ```

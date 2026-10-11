@@ -114,7 +114,7 @@ domain-allowlist design. Open follow-ups are in `os-code/PROGRESS.md`.
 The `osc` CLI in `os-code/` (parked 2026-08-18) is back as a supported way to
 use OpenShore, keeping the name **OS Code** and every command already built
 (`osc init`, `osc`, `pair`, `serve`, `attach`, `market`, `doctor`, `stack`,
-`key`). It installs with `npm install -g os-code` (`.github/workflows/cli-publish.yml`
+`key`). It installs with `npm install -g @openshore/os-code` (`.github/workflows/cli-publish.yml`
 publishes on a `cli-v*` tag once the `NPM_TOKEN` secret is set; the package
 ships only `dist`, the bundled catalog, the example config and `NOTICE`), or
 from source with `pnpm link --global`. The CLI and the apps share one engine,
