@@ -33,8 +33,9 @@ on something that will not land.
   hardware fit, install flows that work on more machines.
 - **Model servers and providers**: anything that speaks to a local model
   server, or a provider people bring their own key for.
-- **The engine** (`os-code/`): tools, the agent loop, and the checks that let
-  a small local model do real work.
+- **OS Code, the terminal CLI, and the engine** (`os-code/`): `osc` commands,
+  tools, the agent loop, and the checks that let a small local model do real
+  work.
 
 ## The agreement
 

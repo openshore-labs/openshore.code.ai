@@ -4,9 +4,28 @@
   "description": "OS Code (Open Shore Code): a terminal-first coding agent for your own stack of local LLMs. Your machine, your models, your keys.",
   "type": "module",
   "license": "Apache-2.0",
+  "homepage": "https://openshore.ai",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/openshore-labs/openshore.code.ai.git",
+    "directory": "os-code"
+  },
+  "keywords": [
+    "coding-agent",
+    "local-llm",
+    "ollama",
+    "cli",
+    "terminal"
+  ],
   "bin": {
     "osc": "./dist/bin/osc.js"
   },
+  "files": [
+    "dist",
+    "catalog.sample.json",
+    "os-code.config.example.json",
+    "NOTICE"
+  ],
   "engines": {
     "node": ">=22.12"
   },

@@ -37,6 +37,14 @@ import {
 import { KEY_HELP, keyAddCommand, keyListCommand, keyRemoveCommand } from '../src/commands/key.js';
 import { logger } from '../src/util/log.js';
 
+// Output piped into something that stops reading early (`osc market browse |
+// head`) closes the pipe; like any Unix tool, osc then exits quietly rather
+// than crashing on EPIPE.
+process.stdout.on('error', (err: NodeJS.ErrnoException) => {
+  if (err.code === 'EPIPE') process.exit(0);
+  throw err;
+});
+
 const log = logger('cli');
 const program = new Command();
 

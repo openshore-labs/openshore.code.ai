@@ -23,14 +23,28 @@ agent, running on models you download and keys you hold.
 
 ## The pieces
 
-| Path                        | What it is                                                                                       |
-| --------------------------- | ------------------------------------------------------------------------------------------------ |
-| `os-code/`                  | The engine: agent loop, tools, edit engine, router, daemon, security. Also a parked terminal UI. |
-| `app/`                      | The one React codebase both shells ship.                                                         |
-| `app/electron/`             | Linux desktop shell; the engine runs in-process.                                                 |
-| `app/ios/`                  | Capacitor iOS project (SPM mode, iOS 16+).                                                       |
-| `app/plugins/oscode-llama/` | Swift plugin: on-device GGUF inference via llama.cpp.                                            |
-| `codemagic.yaml`            | CI to TestFlight. Setup walkthrough in `docs/TESTFLIGHT.md`.                                     |
+| Path                        | What it is                                                                                           |
+| --------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `os-code/`                  | OS Code: the terminal CLI (`osc`) and the engine behind the apps: agent loop, tools, router, daemon. |
+| `app/`                      | The one React codebase both shells ship.                                                             |
+| `app/electron/`             | Linux desktop shell; the engine runs in-process.                                                     |
+| `app/ios/`                  | Capacitor iOS project (SPM mode, iOS 16+).                                                           |
+| `app/plugins/oscode-llama/` | Swift plugin: on-device GGUF inference via llama.cpp.                                                |
+| `codemagic.yaml`            | CI to TestFlight. Setup walkthrough in `docs/TESTFLIGHT.md`.                                         |
+
+## OS Code, in your terminal
+
+OS Code (`osc`) is the same agent as a terminal CLI. With Node 22.12 or newer
+and a local model server such as Ollama:
+
+```
+npm install -g os-code
+osc init
+cd ~/your-project && osc
+```
+
+From a checkout instead: `pnpm install && pnpm --filter os-code build`, then
+`cd os-code && pnpm link --global`. More in `os-code/README.md`.
 
 ## Running it
 

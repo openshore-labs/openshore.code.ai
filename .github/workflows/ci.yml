@@ -134,6 +134,20 @@ jobs:
       - name: Build the engine
         run: pnpm --filter os-code build
 
+      # OS Code, the terminal CLI, ships to npm as `os-code`
+      # (cli-publish.yml). Install the packed tarball into an empty prefix and
+      # run it, so a file the CLI needs at runtime can never be left out of
+      # the package.
+      - name: Install the CLI from its package and run it
+        run: |
+          set -euo pipefail
+          OUT="$RUNNER_TEMP/osc-pack"
+          mkdir -p "$OUT/prefix" "$OUT/home"
+          (cd os-code && npm pack --pack-destination "$OUT" >/dev/null)
+          npm install -g --prefix "$OUT/prefix" "$OUT"/os-code-*.tgz >/dev/null
+          HOME="$OUT/home" "$OUT/prefix/bin/osc" --version
+          HOME="$OUT/home" "$OUT/prefix/bin/osc" --plain market browse | head -3
+
       # Then build every package, which is where the app's `vite build` and the
       # Electron `tsc` emit run. Until this step existed a bundling break (a bad
       # `@import` in theme.css, a renderer import of a Node-only module) passed

@@ -1,51 +1,56 @@
-# OS Code engine
+# OS Code
 
-**The brain of the OS Code apps: agent loop, router, marketplace, security.**
-Your machine, your models, your keys.
+**A coding agent in your terminal, on your own models.** Your machine, your
+models, your keys.
 
-> STATUS (2026-08-18): this package is now the shared ENGINE behind the native
-> OS Code apps (Linux desktop and iOS, in `../app`). The terminal CLI/TUI
-> (`osc`) below still works but is PARKED: no new features land on it. The
-> founder's call; the native apps are the product.
+OS Code (`osc`) is OpenShore's terminal CLI, and the engine behind the
+OpenShore apps (`../app`). It gives local models the complete, polished
+experience developers know from the best cloud coding agents: a streaming
+transcript, slash commands, tool approvals with real diffs, web search with
+citations, repo-aware editing, and a status line that always tells the truth.
+The local fleet is the default engine. A cloud model is one deliberate,
+always-confirmed keystroke away, on your own key.
 
-OS Code (`osc`) gives local models the complete, polished experience developers
-know from the best cloud coding agents: a streaming transcript, slash commands,
-tool approvals with real diffs, web search with citations, repo-aware editing,
-and a status line that always tells the truth. The local fleet is the default
-engine. Cloud Claude is one deliberate, always-confirmed keystroke away, on
-your own key.
+Open source under the Apache License 2.0.
 
-## Zero to working in a few minutes
+## Install
 
-1. Install dependencies from the repository root (this package is a workspace
-   member; the only lockfile is the root one) and build the engine:
+You need Node 22.12 or newer, and a local model server such as
+[Ollama](https://ollama.com) (`osc init` helps you get one).
 
-   ```
-   pnpm install && pnpm --filter os-code build
-   ```
+```
+npm install -g os-code
+osc init
+```
 
-2. Put `osc` on your PATH (or use `node os-code/dist/bin/osc.js` directly):
+`osc init` detects your GPU and memory, offers preset stacks in plain
+language, and pulls a starter model. Then open any repository and start:
 
-   ```
-   cd os-code && pnpm link --global
-   ```
-
-3. Set up your stack. This detects your GPU and VRAM, guides an Ollama install
-   if you need one, offers preset stacks in plain language, and pulls a starter
-   model:
-
-   ```
-   osc init
-   ```
-
-4. Open any repository and start:
-
-   ```
-   cd ~/your-project && osc
-   ```
+```
+cd ~/your-project && osc
+```
 
 That is the whole onboarding. A first-time user gets a working single-model
 agent from `osc init` alone; specialists, routing, and cloud stay opt-in.
+`osc doctor` checks every link and names the one command that fixes a broken
+one; `osc --help` lists everything.
+
+### From source
+
+From a checkout of this repository (the root holds the only lockfile):
+
+```
+pnpm install && pnpm --filter os-code build
+cd os-code && pnpm link --global
+osc init
+```
+
+Or run it in place, without linking: `node os-code/dist/bin/osc.js`.
+
+### On a server
+
+To run OS Code on a Linux server you rent and dock your phone to it, use the
+server installer (`scripts/install-server.sh`, published with each release).
 
 ## What it does
 

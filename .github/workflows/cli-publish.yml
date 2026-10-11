@@ -1,0 +1,73 @@
+# Publish OS Code, the terminal CLI (`osc`), to npm as `os-code`, so anyone
+# can install it with `npm install -g os-code` (founder, 2026-10-11).
+#
+# Runs on a `cli-v*` tag (the CLI keeps its own version, apart from the apps'
+# `v*` releases): `git tag cli-v0.2.0 && git push origin cli-v0.2.0`. The tag's
+# version is stamped into os-code/package.json for the publish only; nothing
+# is committed back. The engine's tests run first; a red suite publishes
+# nothing.
+#
+# One-time setup: an npm automation token in the repository secret NPM_TOKEN.
+# Until it is there, this workflow says so and publishes nothing. Provenance
+# links the package on npm back to the exact commit and run that built it.
+name: Publish the CLI
+
+on:
+  push:
+    tags: ["cli-v*"]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    if: github.repository == 'openshore-labs/openshore.code.ai'
+    runs-on: ubuntu-latest
+    env:
+      NPM_TOKEN_SET: ${{ secrets.NPM_TOKEN != '' }}
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        with:
+          version: 10.33.0
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build and test the engine
+        run: |
+          pnpm --filter os-code build
+          pnpm --filter os-code test
+
+      - name: Stamp the version from the tag
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#cli-v}"
+          cd os-code
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
+
+      - name: Publish to npm
+        if: env.NPM_TOKEN_SET == 'true'
+        working-directory: os-code
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # npm signs provenance only for a public repository.
+          PRIVATE_REPO: ${{ github.event.repository.private }}
+        run: |
+          if [ "$PRIVATE_REPO" = "true" ]; then npm publish --access public
+          else npm publish --provenance --access public; fi
+
+      - name: Say what is missing
+        if: env.NPM_TOKEN_SET != 'true'
+        run: echo "NPM_TOKEN is not set, so nothing was published. Add it under Settings, Secrets, Actions."

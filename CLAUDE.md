@@ -109,6 +109,19 @@ backends, short plain queries, no search after a private read). Do NOT add a
 per-routine web switch, and do NOT give a routine `webFetch`, without a
 domain-allowlist design. Open follow-ups are in `os-code/PROGRESS.md`.
 
+## OS Code, the terminal CLI, is supported again (founder, 2026-10-11)
+
+The `osc` CLI in `os-code/` (parked 2026-08-18) is back as a supported way to
+use OpenShore, keeping the name **OS Code** and every command already built
+(`osc init`, `osc`, `pair`, `serve`, `attach`, `market`, `doctor`, `stack`,
+`key`). It installs with `npm install -g os-code` (`.github/workflows/cli-publish.yml`
+publishes on a `cli-v*` tag once the `NPM_TOKEN` secret is set; the package
+ships only `dist`, the bundled catalog, the example config and `NOTICE`), or
+from source with `pnpm link --global`. The CLI and the apps share one engine,
+so a change to the engine is a change to both; do NOT fork the agent loop for
+the CLI, and keep `osc --help` working in a clean install
+(`npm pack`, then install the tarball, then run it).
+
 ## Connect anywhere: docking to a computer or a server (founder, 2026-10-07)
 
 The main ways to give OpenShore a brain are a cloud provider on your key, a
