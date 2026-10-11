@@ -115,9 +115,15 @@ afterEach(() => {
   // moment after the daemon closes (EBUSY on CI, 2026-10-09), so the
   // removals retry the way Node's own rm does for that case.
   const gone = { recursive: true, force: true, maxRetries: 20, retryDelay: 100 };
-  rmSync(home, gone);
-  rmSync(logs, gone);
-  rmSync(workspace, gone);
+  // Past the retries a leftover temp directory is the runner's to sweep, not
+  // a failed test, so only a busy or locked directory is let go.
+  for (const dir of [home, logs, workspace]) {
+    try {
+      rmSync(dir, gone);
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'EBUSY') throw e;
+    }
+  }
 });
 
 describe('the key routes on a server', () => {
