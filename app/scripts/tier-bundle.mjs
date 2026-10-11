@@ -20,15 +20,16 @@ export const LATER_TIER_WORDS = [
 ];
 
 /** The later tiers' room modules (lib/focus.ts ROOM_FEATURE). */
-export const LATER_ROOM_FILES = [
-  'StackHealthScreen',
-  'LaunchScreen',
-  'MarketplaceScreen',
-  'AdminScreen',
-];
+export const LATER_ROOM_FILES = ['StackHealthScreen', 'LaunchScreen', 'AdminScreen'];
 
 /** Rooms that must wait for their first open, never load at launch. */
-export const LAZY_ROOM_FILES = ['SettingsScreen', 'VaultScreen', 'PairScreen', 'StackScreen'];
+export const LAZY_ROOM_FILES = [
+  'SettingsScreen',
+  'VaultScreen',
+  'PairScreen',
+  'StackScreen',
+  'MarketplaceScreen',
+];
 
 /** Heavy libraries that wait for their first use, never load at launch, each
  *  found in a chunk by a word its own code keeps through minification. The

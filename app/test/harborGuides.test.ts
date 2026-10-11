@@ -323,8 +323,8 @@ describe('the guides say when a cloud model runs, with no exception', () => {
       'under Cloud Connections; it spends on your key only when you pick it or place it.',
     );
     expect(APP_KNOWLEDGE).not.toMatch(EXCEPTION);
-    // A Personal build has no Marketplace, so its knowledge carries the
-    // other way to name a cloud model.
+    // A Personal build carries the Marketplace (v1 since 2026-10-11) and
+    // still names the plain way to connect a cloud model.
     vi.stubEnv('VITE_RELEASE_TIER', '');
     vi.resetModules();
     const personal = (await import('../src/lib/guideKnowledge.js')).APP_KNOWLEDGE;

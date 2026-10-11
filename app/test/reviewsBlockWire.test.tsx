@@ -14,6 +14,15 @@ import { mountDom, type TestDom } from './support/dom.js';
 vi.stubEnv('VITE_SUPABASE_URL', 'https://sb.test');
 vi.stubEnv('VITE_SUPABASE_ANON_KEY', 'anon');
 
+// Reviews are shut on every build (REVIEWS_OPEN, since production's 0027
+// revoked review writes), so the room renders nothing. This test opens that
+// one door and keeps the rest of the client real, so the wire stays proven
+// for the day a migration grants writes back.
+vi.mock('../src/lib/reviews.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../src/lib/reviews.js')>()),
+  reviewsAvailable: () => true,
+}));
+
 const reviews = await import('../src/lib/reviews.js');
 const supabase = await import('../src/lib/supabase.js');
 

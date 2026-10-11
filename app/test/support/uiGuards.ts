@@ -205,11 +205,14 @@ function lineHits(
   return out;
 }
 
-// The later tiers' files, each with no door in a Personal build. A rule that
-// skips them says so where it does.
+// The later tiers' files, each with no door in a Personal build, and the
+// Marketplace, a v1 room since 2026-10-11 (founder) that came back with its
+// UI polish debt left open for contributors to fix. A rule that skips them
+// says so where it does.
 const LATER_TIER: Record<string, string> = {
   'screens/AdminScreen.tsx': 'Admin, v4: no door in Personal',
-  'screens/MarketplaceScreen.tsx': 'the Marketplace, v3: no door in Personal',
+  'screens/MarketplaceScreen.tsx':
+    'the Marketplace (v1 since 2026-10-11): known UI polish debt, open for contributors',
   'screens/StackHealthScreen.tsx': 'Stack Health, v2: no door in Personal',
   'screens/LaunchScreen.tsx': 'Launch with Codemagic, v2: no door in Personal',
 };
@@ -334,7 +337,8 @@ export const RULES: Array<{ name: string; check(path: string, src: string): stri
     check(path, src) {
       const EXEMPT: Record<string, string> = {
         'screens/MarketplaceScreen.tsx': LATER_TIER['screens/MarketplaceScreen.tsx']!,
-        'components/LibraryIntro.tsx': 'the Marketplace library, v3: no door in Personal',
+        'components/LibraryIntro.tsx':
+          'the Marketplace library (v1 since 2026-10-11): known UI polish debt, open for contributors',
       };
       if (!path.endsWith('.tsx') || EXEMPT[path]) return [];
       return lineHits(path, stripComments(src), 'typedGlyph', /[▾▸▴›✓↗]/);
@@ -348,7 +352,8 @@ export const RULES: Array<{ name: string; check(path: string, src: string): stri
     check(path, src) {
       const EXEMPT: Record<string, string> = {
         'screens/MarketplaceScreen.tsx': LATER_TIER['screens/MarketplaceScreen.tsx']!,
-        'components/Stars.tsx': 'the Marketplace ratings, v3: no door in Personal',
+        'components/Stars.tsx':
+          'the Marketplace ratings (v1 since 2026-10-11): known UI polish debt, open for contributors',
         'components/AccountSetup.tsx': 'teams and plans, v4: no door in Personal',
       };
       const LINES: Array<{ file: string; match: RegExp; why: string }> = [
@@ -395,7 +400,8 @@ export const RULES: Array<{ name: string; check(path: string, src: string): stri
       const SCALE = new Set([12, 14, 16, 18, 20, 22, 26, 30]);
       const EXEMPT: Record<string, string> = {
         'screens/MarketplaceScreen.tsx': LATER_TIER['screens/MarketplaceScreen.tsx']!,
-        'components/LibraryIntro.tsx': 'the Marketplace library, v3: no door in Personal',
+        'components/LibraryIntro.tsx':
+          'the Marketplace library (v1 since 2026-10-11): known UI polish debt, open for contributors',
       };
       if (!path.endsWith('.tsx') || EXEMPT[path]) return [];
       return openingTags(stripComments(src), 'Icon')

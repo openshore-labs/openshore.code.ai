@@ -265,6 +265,15 @@ export const EGRESS: EgressEntry[] = [
     hosts: ['ollama.com', 'huggingface.co'],
   },
   {
+    id: 'icloud-models',
+    recipient: 'Model downloads',
+    what: 'A model you choose to keep in iCloud: Apple stores its file in your iCloud Drive, under your Apple account. Nothing else rides along.',
+    when: 'Only when you download a model from the Marketplace to iCloud instead of this device.',
+    start: 'tap',
+    hosts: [],
+    platforms: ['ios'],
+  },
+  {
     id: 'decisions',
     recipient: 'Services you connect',
     what: 'The task and its result, to the decision service you turned on for a project, for a quick call on which model answers.',

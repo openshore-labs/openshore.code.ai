@@ -3,14 +3,13 @@
 // truth about OpenShore lives here, once, and both guides' personas splice it
 // in. Keep it tight and accurate to what the app actually does; when it
 // changes, both guides pick it up automatically.
-import { SHIPS_CURRENTS, SHIPS_LAUNCH, SHIPS_MARKETPLACE } from './focus.js';
+import { SHIPS_CURRENTS, SHIPS_LAUNCH } from './focus.js';
 import { thisDeviceNoun } from './deviceNoun.js';
 
 // Release tiers (docs/release-tiers.md): facts about a later tier's feature
 // stay out of an earlier build, so a guide never sends a person to a room the
 // build does not have. The build-time gates keep the words out of that
 // build's bundle too.
-const marketplaceOn = SHIPS_MARKETPLACE;
 const currentsOn = SHIPS_CURRENTS;
 const launchOn = SHIPS_LAUNCH;
 
@@ -19,24 +18,10 @@ export const APP_KNOWLEDGE = [
   '- What you may share: every front-end capability, feature, screen, and setup step is fair game, in as much depth as the person wants, so they can go deep on setting their system up. What you must never share: backend build internals, infrastructure, server code, or anything about how OpenShore is implemented under the hood. If asked about implementation, say plainly that you keep to what the person can see and do in the app.',
   '- Your models. Your keys. OpenShore is a local-first coding assistant for your computer (Mac, Windows, or Linux) and the iPhone. You build a stack of models you own. Local models are the default; the cloud is a manual, opt-in flip.',
   '- Stack (the room is named Stack): one model is the Reasoning model (the orchestrator) that plans, reasons, and routes each task. Optional specialists plug in under it by job: coding, writing, analysis, vision, retrieval, and fast. Anything with no specialist, the Reasoning model handles itself.',
-  ...(marketplaceOn
-    ? [
-        '- The Marketplace is where more models will live, downloaded straight from their public source; OpenShore never rehosts weights. It is marked Coming soon in the Menu for now. A downloaded or connected model lands on the Bench until placed in the stack.',
-      ]
-    : []),
-  ...(marketplaceOn
-    ? [
-        '- The Marketplace is not limited to a fixed list. On your computer, "Install by name" pulls ANY model from the Ollama library by its name (for example qwen3-coder:30b, deepseek-r1:14b, gemma3:12b), so the newest models are available the day they land on Ollama, without waiting for a catalog update.',
-      ]
-    : []),
-  ...(marketplaceOn
-    ? [
-        '- Very large cloud-scale models (Kimi K3, Kimi K2.7 Code, and Kimi K2.6 from Moonshot; Claude; GPT-5; Gemini) do not run locally. The Marketplace lists them under "Frontier, on your key": tap Connect to add the provider API key under Cloud Connections, and the model lands on your Bench to place in the stack. They run on the provider, on your own API key, never as a local download. On a computer with an Ollama account, the Kimi models can also be pulled through Ollama by name (kimi-k3:cloud, kimi-k2.7-code:cloud, kimi-k2.6:cloud).',
-      ]
-    : [
-        "- Very large cloud-scale models (Kimi from Moonshot, Claude, GPT-5, Gemini, and the models on Venice or OpenRouter) do not run locally. Connect one by adding that provider's API key under Cloud Connections; it then runs on your own key, and only once you pick it or place it in your Stack. A big open model can also run on a GPU server you rent, docked under Computer; the server's provider bills it by the hour while it runs.",
-      ]),
-  `- Three curated models come out of the box${marketplaceOn ? ', never through the Marketplace' : ''}: Harbor Lite (built into the iPhone app, a guide), Harbor (a coding model that runs on the iPhone), and DeepBlue (the most capable, a real coding agent that runs on your own computer through Ollama, sized to that computer, installed from Settings > Harbor or the first-run card on your computer). Paired, the phone reaches DeepBlue as Your computer.`,
+  '- The Marketplace (in the Menu) is a curated catalog of more models, each rated for how well it fits this device, downloaded straight from its public source to run locally; OpenShore never rehosts weights. On a computer a model installs through Ollama; on an iPhone it downloads to the phone, or to your iCloud when it is too big to fit. A downloaded or connected model lands on the Bench until placed in the stack.',
+  '- The Marketplace is not limited to a fixed list. On your computer, "Install by name" pulls ANY model from the Ollama library by its name (for example qwen3-coder:30b, deepseek-r1:14b, gemma3:12b), so the newest models are available the day they land on Ollama, without waiting for a catalog update.',
+  '- Very large cloud-scale models (Kimi from Moonshot, Claude, GPT-5, Gemini, and the models on Venice or OpenRouter) do not run locally. Connect one by adding that provider\'s API key under Cloud Connections; it then runs on your own key, and only once you pick it or place it in your Stack. The Marketplace lists some of them under "Frontier, on your key": tap Connect to add the key, and the model lands on your Bench. On a computer with an Ollama account, the Kimi models can also be pulled through Ollama by name (kimi-k3:cloud, kimi-k2.7-code:cloud, kimi-k2.6:cloud). A big open model can also run on a GPU server you rent, docked under Computer; the server\'s provider bills it by the hour while it runs.',
+  `- Three curated models come out of the box, never through the Marketplace: Harbor Lite (built into the iPhone app, a guide), Harbor (a coding model that runs on the iPhone), and DeepBlue (the most capable, a real coding agent that runs on your own computer through Ollama, sized to that computer, installed from Settings > Harbor or the first-run card on your computer). Paired, the phone reaches DeepBlue as Your computer.`,
   `- Three ways to grow the stack: (1) Harbor, the coding model that runs fully on ${thisDeviceNoun()}, private and offline, from Settings, Harbor. (2) Your computer: run OpenShore there and dock ${thisDeviceNoun()} to it over your own private Tailscale network, under Computer. A rented server docks the same way. (3) Claude on your own API key: connect an Anthropic API key (and its Workspace id, if Claude asks for one) under Cloud Connections; it spends on your key only when you pick it or place it.`,
   '- API keys and secrets are stored only on the device and sent only to the provider they belong to, except a key you turn on for your docked server in Cloud Connections, which is kept there too. There is no telemetry.',
   '- Once a stack is set up, OpenShore works like a familiar coding agent: talk to it and it does the work.',

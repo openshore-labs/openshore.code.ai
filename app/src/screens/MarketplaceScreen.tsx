@@ -44,6 +44,7 @@ import {
   type StorageFit,
 } from '../lib/modelStorage.js';
 import { bridge } from '../lib/electronBridge.js';
+import { SHIPS_STACKHEALTH } from '../lib/focus.js';
 import { InstallByName } from '../components/InstallByName.js';
 import { isPhone } from '../lib/platform.js';
 import { hapticSuccess } from '../lib/haptics.js';
@@ -412,7 +413,9 @@ export function MarketplaceScreen() {
     // The user's OWN local, lifetime usage, read through the desktop bridge and
     // folded from the session journals on THIS machine. No bridge (iOS/web)
     // means no usage axis. Private by construction: nothing here is cross-user
-    // and nothing is ever sent anywhere.
+    // and nothing is ever sent anywhere. Stack Health is a v2 feature, so a
+    // build without it has no usage axis either (lib/focus.ts).
+    if (!SHIPS_STACKHEALTH) return;
     const b = bridge();
     if (!b) return;
     void b

@@ -19,7 +19,6 @@ import {
   SHIPS_ADMIN,
   SHIPS_CURRENTS,
   SHIPS_LAUNCH,
-  SHIPS_MARKETPLACE,
   SHIPS_STACKHEALTH,
   SHIPS_TEAMS,
   featureOn,
@@ -34,7 +33,6 @@ import {
 const launchOn = SHIPS_LAUNCH;
 const currentsOn = SHIPS_CURRENTS;
 const stackHealthOn = SHIPS_STACKHEALTH;
-const marketplaceOn = SHIPS_MARKETPLACE;
 const adminOn = SHIPS_ADMIN;
 const teamsOn = SHIPS_TEAMS;
 
@@ -128,7 +126,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
       'Crew',
       'Cloud Connections',
       'Computer',
-      ...(marketplaceOn ? ['Marketplace (Coming soon)'] : []),
+      'Marketplace',
       ...(stackHealthOn ? ['Stack Health'] : []),
       ...(launchOn ? ['Launch with Codemagic'] : []),
     ].join(
@@ -469,28 +467,22 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     text: 'On an empty chat when nothing can answer yet, one card sets you up: on your computer, one tap installs DeepBlue sized to it. More ways to start offers Connect your computer, Add an API key, and Open Stack.',
     keywords: ['first run', 'no model', 'first seat', 'nothing answers', 'one tap', 'empty chat'],
   },
-  ...(marketplaceOn
-    ? ([
-        {
-          id: 'marketplace',
-          feature: 'marketplace',
-          title: 'Marketplace',
-          where: 'Menu, Marketplace (grayed, Coming soon)',
-          text: 'A catalog of more models rated against your hardware, downloaded straight from their source. It is marked Coming soon in the Menu; today you grow the stack with the three built-in models, a cloud model on your own API key, or your own model (BYOM), all from Stack and Settings, Harbor.',
-          keywords: [
-            'marketplace',
-            'more models',
-            'other models',
-            'download models',
-            'new model',
-            'catalog',
-            'store',
-            'coming soon',
-            'bundles',
-          ],
-        },
-      ] satisfies GuideCard[])
-    : []),
+  {
+    id: 'marketplace',
+    title: 'Marketplace',
+    where: 'Menu, Marketplace',
+    text: 'A curated catalog of more models, each rated for how well it fits this device, downloaded straight from its public source to run locally; OpenShore never rehosts weights. On a computer a model installs through Ollama; on a phone it downloads to the phone, or to your iCloud when it is too big to fit. A downloaded model lands on the Bench until you place it in the stack.',
+    keywords: [
+      'marketplace',
+      'more models',
+      'other models',
+      'download models',
+      'new model',
+      'catalog',
+      'store',
+      'bundles',
+    ],
+  },
   ...(stackHealthOn
     ? ([
         {

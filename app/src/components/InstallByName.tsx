@@ -3,8 +3,8 @@
 // they land) can be pulled on this computer and placed. Desktop only; the pull
 // runs on this machine's engine. A wrong name, or any pull that fails, comes
 // back as one plain line with the way on (the engine's pullFailedLine), never
-// a fabricated success or Ollama's raw error. Lives in Stack for every build (the
-// Marketplace, which also shows it, is a later tier; docs/release-tiers.md).
+// a fabricated success or Ollama's raw error. Lives in Stack and in the
+// Marketplace.
 import { useState } from 'react';
 import { useApp } from '../state/store.js';
 import { bridge } from '../lib/electronBridge.js';

@@ -4,9 +4,10 @@
 //
 //   v1 Personal: one person, their desktop and their phone. Chats, Projects,
 //      Terminal, Repositories, Stack, Vault, Crew, Cloud Connections,
-//      Pairing, Settings.
+//      Pairing, the Marketplace, Settings.
 //   v2: Agentic and Harness Currents, Stack Health, Launch with Codemagic.
-//   v3: the Marketplace.
+//   v3: reserved, owns no feature today (the Marketplace, once v3, became a
+//      v1 room on 2026-10-11 so the community can help build it).
 //   v4 Enterprise: Admin, teams (shared projects, the team vault, project
 //      permissions), and shared-hub members.
 //
@@ -22,20 +23,19 @@ export type ReleaseTier = 1 | 2 | 3 | 4;
 export const TIER_NAMES: Record<ReleaseTier, string> = {
   1: 'Personal',
   2: 'Currents',
-  3: 'Marketplace',
+  3: 'Reserved',
   4: 'Enterprise',
 };
 
 /** The features a later tier owns. */
 export type TieredFeature =
-  'currents' | 'stackhealth' | 'launch' | 'marketplace' | 'admin' | 'teams' | 'hubMembers';
+  'currents' | 'stackhealth' | 'launch' | 'admin' | 'teams' | 'hubMembers';
 
 /** The tier each feature ships in. */
 export const FEATURE_TIER: Record<TieredFeature, ReleaseTier> = {
   currents: 2,
   stackhealth: 2,
   launch: 2,
-  marketplace: 3,
   admin: 4,
   teams: 4,
   hubMembers: 4,
@@ -45,7 +45,6 @@ export const FEATURE_TIER: Record<TieredFeature, ReleaseTier> = {
 export const ROOM_FEATURE: Readonly<Record<string, TieredFeature>> = {
   stackhealth: 'stackhealth',
   launch: 'launch',
-  marketplace: 'marketplace',
   admin: 'admin',
 };
 
@@ -77,7 +76,6 @@ export const RELEASE_TIER: ReleaseTier =
 export const SHIPS_CURRENTS = RELEASE_TIER >= 2;
 export const SHIPS_STACKHEALTH = RELEASE_TIER >= 2;
 export const SHIPS_LAUNCH = RELEASE_TIER >= 2;
-export const SHIPS_MARKETPLACE = RELEASE_TIER >= 3;
 export const SHIPS_ADMIN = RELEASE_TIER >= 4;
 export const SHIPS_TEAMS = RELEASE_TIER >= 4;
 export const SHIPS_HUBMEMBERS = RELEASE_TIER >= 4;

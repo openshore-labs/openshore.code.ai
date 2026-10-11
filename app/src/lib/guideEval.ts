@@ -212,11 +212,12 @@ export const GUIDE_EVAL_CASES: readonly GuideEvalCase[] = [
     mustNot: [/settings, under get started/i],
   },
   {
-    id: 'marketplace-soon',
-    message: 'Why is the Marketplace grayed out?',
+    id: 'marketplace-download',
+    message: 'How do I download a model from the Marketplace?',
     route: 'app',
     cards: ['marketplace'],
-    mustInclude: [['coming soon', 'soon']],
+    mustInclude: [['catalog', 'download']],
+    mustNot: [/coming soon/i],
   },
   // Setup and optimizing it: the harness does the sizing.
   {

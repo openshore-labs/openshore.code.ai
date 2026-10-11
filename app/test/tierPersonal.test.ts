@@ -31,22 +31,25 @@ describe('a Personal build, loaded as one', () => {
       '../src/lib/guideCards.js',
     );
     const ids = GUIDE_CARDS.map((c) => c.id);
-    for (const later of [
-      'marketplace',
-      'stack-health',
-      'launch',
-      'agentic-currents',
-      'harness-currents',
-    ]) {
+    for (const later of ['stack-health', 'launch', 'agentic-currents', 'harness-currents']) {
       expect(ids, later).not.toContain(later);
     }
-    for (const v1 of ['my-crew', 'routines', 'terminal', 'vault', 'pair-phone', 'repositories']) {
+    for (const v1 of [
+      'my-crew',
+      'routines',
+      'terminal',
+      'vault',
+      'pair-phone',
+      'repositories',
+      'marketplace',
+    ]) {
       expect(ids, v1).toContain(v1);
     }
     const text = GUIDE_CARDS.map((c) => c.text).join('\n');
-    expect(text).not.toMatch(
-      /Stack Health|Launch with Codemagic|Marketplace|Admin \(|its currents/,
-    );
+    expect(text).not.toMatch(/Stack Health|Launch with Codemagic|Admin \(|its currents/);
+    // The Marketplace is a v1 room since 2026-10-11, and live, never Coming soon.
+    expect(text).toMatch(/Marketplace/);
+    expect(text).not.toMatch(/Coming soon/i);
     // The old claim was false: chats live on the device.
     expect(text).not.toMatch(/syncs your chats/);
     expect(GUIDE_CARDS.find((c) => c.id === 'account')!.text).toMatch(/not synced between devices/);
@@ -56,7 +59,9 @@ describe('a Personal build, loaded as one', () => {
     const { APP_KNOWLEDGE } = await asPersonal<typeof import('../src/lib/guideKnowledge.js')>(
       '../src/lib/guideKnowledge.js',
     );
-    expect(APP_KNOWLEDGE).not.toMatch(/Marketplace|Launch with Codemagic|Currents on the project/);
+    expect(APP_KNOWLEDGE).not.toMatch(/Launch with Codemagic|Currents on the project/);
+    expect(APP_KNOWLEDGE).toMatch(/The Marketplace \(in the Menu\)/);
+    expect(APP_KNOWLEDGE).not.toMatch(/Coming soon/i);
     expect(APP_KNOWLEDGE).toMatch(/Crew command/);
   });
 
@@ -86,11 +91,9 @@ describe('a Personal build, loaded as one', () => {
     }
     const { ROOM_LABELS } =
       await asPersonal<typeof import('../src/lib/navRooms.js')>('../src/lib/navRooms.js');
-    expect([ROOM_LABELS.stackhealth, ROOM_LABELS.launch, ROOM_LABELS.marketplace]).toEqual([
-      '',
-      '',
-      '',
-    ]);
+    expect([ROOM_LABELS.stackhealth, ROOM_LABELS.launch]).toEqual(['', '']);
+    // The Marketplace is a v1 room since 2026-10-11 (founder).
+    expect(ROOM_LABELS.marketplace).toBe('Marketplace');
     expect(ROOM_LABELS.vault).toBe('Vault');
   });
 
@@ -135,9 +138,11 @@ describe('every later-tier door the store and the screens opened is shut', () =>
 
   it('the Harbor download stays in place instead of opening the Marketplace', () => {
     for (const name of ['beginHarborMiniWithIntro() {', 'beginHarborWithIntro() {']) {
-      const body = store.slice(store.indexOf(`    ${name}`));
-      const upToView = body.slice(0, body.indexOf("view: 'marketplace'"));
-      expect(upToView, name).toContain("if (!roomOpen('marketplace')) return;");
+      const start = store.indexOf(`    ${name}`);
+      expect(start, name).toBeGreaterThan(0);
+      const body = store.slice(start, store.indexOf('\n    },\n', start));
+      expect(body, name).not.toContain("view: 'marketplace'");
+      expect(body, name).not.toContain('libraryIntro: true');
     }
   });
 

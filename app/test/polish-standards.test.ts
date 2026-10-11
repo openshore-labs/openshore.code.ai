@@ -501,7 +501,7 @@ describe('polish standards', () => {
       [/\.account-card\b/, 'teams and plans, v4'],
       [
         /\.(lib-cta|facet-chip|market-card|cat-chip|hero-card|store-get|store-row)\b/,
-        'the Marketplace, v3',
+        'the Marketplace (v1 since 2026-10-11): known UI polish debt, open for contributors',
       ],
     ];
     const offenders: string[] = [];
@@ -531,7 +531,12 @@ describe('polish standards', () => {
     // unless the list names scale too (the switch, the Chats rows and Crew's
     // day chips did until the 2026-10-07 sign-off; .seg.press-fb is the
     // other way to keep it).
-    const SKIP: Array<[RegExp, string]> = [[/\.family-chip\b/, 'the Marketplace, v3']];
+    const SKIP: Array<[RegExp, string]> = [
+      [
+        /\.family-chip\b/,
+        'the Marketplace (v1 since 2026-10-11): known UI polish debt, open for contributors',
+      ],
+    ];
     const withPress = new Set<string>();
     for (const file of tsxFiles()) {
       const src = readFileSync(file, 'utf8');

@@ -12,7 +12,6 @@
 import {
   RELEASE_TIER,
   SHIPS_LAUNCH,
-  SHIPS_MARKETPLACE,
   SHIPS_STACKHEALTH,
   visibleRooms,
   type ReleaseTier,
@@ -53,7 +52,7 @@ export const ROOM_LABELS: Record<NavRoom, string> = {
   stack: 'Stack',
   vault: 'Vault',
   crew: 'Crew',
-  marketplace: SHIPS_MARKETPLACE ? 'Marketplace' : '',
+  marketplace: 'Marketplace',
   stackhealth: SHIPS_STACKHEALTH ? 'Stack Health' : '',
   launch: SHIPS_LAUNCH ? 'Launch with Codemagic' : '',
   connections: 'Cloud Connections',
@@ -70,7 +69,8 @@ const PRIMARY_BASE: NavEntry[] = (['chats', 'projects', 'repos', 'stack', 'vault
 );
 
 // Crew, Cloud Connections and Pairing straight under the day-one rooms
-// (founder, 2026-10-01), then the later tiers' rooms, then Settings.
+// (founder, 2026-10-01), then the Marketplace (v1 since 2026-10-11) and the
+// later tiers' rooms, then Settings.
 const EXPLORE_BASE: NavEntry[] = (
   ['crew', 'connections', 'pair', 'marketplace', 'stackhealth', 'launch', 'settings'] as const
 ).map(entry);

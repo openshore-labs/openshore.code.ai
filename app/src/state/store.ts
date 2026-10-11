@@ -11261,20 +11261,16 @@ export const useApp = create<AppState>((set, get, api) => {
 
     beginHarborMiniWithIntro() {
       logEvent('library_intro_open', { model: HARBOR_MINI_MODEL_ID });
-      // Kick the download in the background, then walk the Library intro over
-      // the marketplace. ensureHarborMini manages harborMiniDownload / harborMiniReady.
+      // Kick the download in the background. ensureHarborMini manages
+      // harborMiniDownload / harborMiniReady. Setup downloads in place and the
+      // row shows the progress; it does not walk into the Marketplace (a v1
+      // room since 2026-10-11), so first-run setup stays on its own page.
       void get().ensureHarborMini();
-      // The Library intro walks over the Marketplace, a v3 room: an earlier
-      // build downloads in place and the row shows the progress.
-      if (!roomOpen('marketplace')) return;
-      set({ libraryIntro: true, view: 'marketplace', viewTrail: [], drawerOpen: false });
     },
 
     beginHarborWithIntro() {
       logEvent('library_intro_open', { model: HARBOR_MODEL_ID });
       void get().ensureHarbor();
-      if (!roomOpen('marketplace')) return;
-      set({ libraryIntro: true, view: 'marketplace', viewTrail: [], drawerOpen: false });
     },
 
     endLibraryIntro() {

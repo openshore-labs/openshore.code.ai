@@ -53,7 +53,6 @@ describe('which tier a build carries', () => {
       currents: 2,
       stackhealth: 2,
       launch: 2,
-      marketplace: 3,
       admin: 4,
       teams: 4,
       hubMembers: 4,
@@ -62,7 +61,7 @@ describe('which tier a build carries', () => {
 });
 
 describe('a Personal build', () => {
-  it('shows the v1 rooms, Crew and Terminal included, and nothing later', () => {
+  it('shows the v1 rooms, Crew, Terminal and the Marketplace included, and nothing later', () => {
     const desk = navRooms({ desktop: true, hubPaired: false }, 1);
     expect(desk.primary.map((r) => r.view)).toEqual([
       'chats',
@@ -72,22 +71,36 @@ describe('a Personal build', () => {
       'stack',
       'vault',
     ]);
-    expect(desk.explore.map((r) => r.view)).toEqual(['crew', 'connections', 'pair', 'settings']);
-    for (const view of ['stackhealth', 'launch', 'marketplace', 'admin']) {
+    expect(desk.explore.map((r) => r.view)).toEqual([
+      'crew',
+      'connections',
+      'pair',
+      'marketplace',
+      'settings',
+    ]);
+    for (const view of ['stackhealth', 'launch', 'admin']) {
       expect(roomOpen(view, 1), view).toBe(false);
     }
-    for (const view of ['chats', 'crew', 'terminalroom', 'vault', 'pair', 'settings']) {
+    for (const view of [
+      'chats',
+      'crew',
+      'terminalroom',
+      'vault',
+      'pair',
+      'marketplace',
+      'settings',
+    ]) {
       expect(roomOpen(view, 1), view).toBe(true);
     }
-    expect(visibleRooms([{ view: 'marketplace' }, { view: 'crew' }], 1)).toEqual([
-      { view: 'crew' },
-    ]);
+    // The Marketplace is a v1 room since 2026-10-11 (founder).
+    expect(
+      visibleRooms([{ view: 'launch' }, { view: 'marketplace' }, { view: 'crew' }], 1),
+    ).toEqual([{ view: 'marketplace' }, { view: 'crew' }]);
   });
 
   it('each later tier opens its own rooms and keeps the next one shut', () => {
     expect(roomOpen('stackhealth', 2)).toBe(true);
-    expect(roomOpen('marketplace', 2)).toBe(false);
-    expect(roomOpen('marketplace', 3)).toBe(true);
+    expect(roomOpen('marketplace', 1)).toBe(true);
     expect(roomOpen('admin', 3)).toBe(false);
     expect(roomOpen('admin', 4)).toBe(true);
     expect(featureOn('currents', 1)).toBe(false);
@@ -133,7 +146,6 @@ describe('the build-time gates', () => {
       currents: 'SHIPS_CURRENTS',
       stackhealth: 'SHIPS_STACKHEALTH',
       launch: 'SHIPS_LAUNCH',
-      marketplace: 'SHIPS_MARKETPLACE',
       admin: 'SHIPS_ADMIN',
       teams: 'SHIPS_TEAMS',
       hubMembers: 'SHIPS_HUBMEMBERS',

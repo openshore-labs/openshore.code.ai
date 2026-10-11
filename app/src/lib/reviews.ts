@@ -30,9 +30,13 @@ export const REVIEW_EULA_VERSION = '2026-09-03';
 const REVIEW_COLS =
   'id,model_id,rating,body,use_cases,hardware,ram_gb,tokens_per_sec,quant,felt_speed,created_at,is_staff,is_mine';
 
+/** Community reviews are shut: production's 0027 revoked review writes, so
+ *  they stay off until a migration grants writes back (and Report works). */
+export const REVIEWS_OPEN = false;
+
 /** Whether the community layer can function on this build at all. */
 export function reviewsAvailable(): boolean {
-  return isConfigured();
+  return REVIEWS_OPEN && isConfigured();
 }
 
 /** The store's own session with a live access token (setReviewsAuth), the

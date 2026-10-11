@@ -35,6 +35,16 @@ beforeEach(() => {
   reviews.setReviewsAuth(async () => ({ ...me, accessToken: 'live' }));
 });
 
+describe('reviews are shut', () => {
+  // Production's 0027 revoked review writes, so the Marketplace (a v1 room
+  // since 2026-10-11) shows no review surface until a migration grants them
+  // back, even on a build with a backend.
+  it('keeps every review surface off while REVIEWS_OPEN is false', () => {
+    expect(reviews.REVIEWS_OPEN).toBe(false);
+    expect(reviews.reviewsAvailable()).toBe(false);
+  });
+});
+
 describe('reading reviews', () => {
   it('reads the public view, never the base table, with no author id', async () => {
     await reviews.fetchReviews('qwen2.5:7b');

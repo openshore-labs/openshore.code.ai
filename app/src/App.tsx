@@ -66,6 +66,7 @@ const TerminalRoomScreen = room(
   'TerminalRoomScreen',
 );
 const SettingsScreen = room(() => import('./screens/SettingsScreen.js'), 'SettingsScreen');
+const MarketplaceScreen = room(() => import('./screens/MarketplaceScreen.js'), 'MarketplaceScreen');
 
 // The later tiers' rooms and surfaces (lib/focus.ts ROOM_FEATURE, and the
 // teams sheets) exist only in a build that carries them. The gate is spelled
@@ -77,7 +78,6 @@ const SettingsScreen = room(() => import('./screens/SettingsScreen.js'), 'Settin
 // builds a Personal bundle to check none of it is there.
 const BUILT_TIER = import.meta.env?.VITE_RELEASE_TIER?.trim();
 const BUILT_V2 = BUILT_TIER === '2' || BUILT_TIER === '3' || BUILT_TIER === '4';
-const BUILT_V3 = BUILT_TIER === '3' || BUILT_TIER === '4';
 const BUILT_V4 = BUILT_TIER === '4';
 
 const StackHealthScreen =
@@ -87,10 +87,6 @@ const StackHealthScreen =
 const LaunchScreen =
   BUILT_V2 && roomOpen('launch')
     ? room(() => import('./screens/LaunchScreen.js'), 'LaunchScreen')
-    : null;
-const MarketplaceScreen =
-  BUILT_V3 && roomOpen('marketplace')
-    ? room(() => import('./screens/MarketplaceScreen.js'), 'MarketplaceScreen')
     : null;
 const AdminScreen =
   BUILT_V4 && roomOpen('admin')

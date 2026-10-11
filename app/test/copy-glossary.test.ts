@@ -77,10 +77,7 @@ const RETIRED: Array<{ pattern: RegExp; use: string }> = [
   { pattern: /\bBuffered while off-home\b/, use: 'Waiting to sync home' },
   { pattern: /\bhome system\b/, use: 'your computer' },
   { pattern: /\byour hub\b/i, use: 'your computer' },
-  {
-    pattern: /\bthe marketplace\b/,
-    use: 'the Marketplace (Coming soon), or Stack and Settings, Harbor',
-  },
+  { pattern: /\bthe marketplace\b/, use: 'the Marketplace' },
   { pattern: /\bRead only\b/, use: 'Read-only' },
   { pattern: /(['"`>]\s*)Retry(\s*['"`<])/, use: 'Try again' },
 ];
