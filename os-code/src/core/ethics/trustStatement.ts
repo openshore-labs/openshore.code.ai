@@ -19,7 +19,7 @@ export const TRUST_STATEMENT = [
   'It aligns with recognized frameworks: the NIST AI Risk Management Framework, ISO/IEC 42001, and C2PA content provenance.',
   'We block child sexual abuse material, non-consensual intimate imagery, and weapons uplift outright, and we gate the cloning of real people behind consent.',
   "We're honest about the limit: once open model weights are on your own machine, they are beyond any app's control.",
-  'What we guarantee is that this app, as shipped, does not assist misuse and does not help you strip these protections out.',
+  'What we guarantee is that this app, as shipped, does not assist misuse and does not help you strip these protections out. Because the code is open, anyone can change their own copy; this covers the builds we ship.',
 ].join(' ');
 
 /** The three tiers, in the same words on the site and in Settings. The site
@@ -47,5 +47,5 @@ export const TRUST_STATEMENT_LINES: string[] = [
   'It aligns with recognized frameworks: the NIST AI Risk Management Framework, ISO/IEC 42001, and C2PA content provenance.',
   'We block child sexual abuse material, non-consensual intimate imagery, and weapons uplift outright, and we gate the cloning of real people behind consent.',
   "We're honest about the limit: once open model weights are on your own machine, they are beyond any app's control.",
-  'What we guarantee is that this app, as shipped, does not assist misuse and does not help you strip these protections out.',
+  'What we guarantee is that this app, as shipped, does not assist misuse and does not help you strip these protections out. Because the code is open, anyone can change their own copy; this covers the builds we ship.',
 ];

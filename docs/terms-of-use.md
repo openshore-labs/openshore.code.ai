@@ -1,6 +1,6 @@
 # OpenShore Terms of Use
 
-Last updated: 2026-10-08
+Last updated: 2026-10-11
 
 These terms cover OpenShore: the desktop engine, the iOS and desktop apps,
 and the accounts that connect them. Plain language throughout, because
@@ -11,6 +11,10 @@ terms nobody reads protect nobody.
 OpenShore is a tool for building software with models you choose. You can run
 models on your own hardware, or connect a cloud provider on your own account and
 your own key. Your work stays yours.
+
+The OpenShore source code is licensed under the Apache License 2.0. These terms
+cover your use of the apps we ship and our account service, and do not limit
+what that license allows.
 
 ## 2. Prohibited uses
 
@@ -98,7 +102,8 @@ weights on your own machine are outside the reach of any application, including
 this one. We do not claim otherwise, and we do not claim that misuse is
 impossible. What we guarantee is narrower and real: this app, as shipped, does
 not assist the uses in section 2 and does not help you strip these protections
-out.
+out. Because the code is open, anyone can change their own copy; these
+guarantees cover the builds we ship, not modified ones.
 
 ## 7. Standards alignment
 

@@ -8,13 +8,13 @@
 import { describe, expect, it } from 'vitest';
 import { TRUST_STATEMENT_LINES, TRUST_STATEMENT_TIERS } from 'os-code/protocol';
 
-// Vendored from oscode.js on 2026-09-16 (trust.statement).
+// Vendored from oscode.js on 2026-10-11 (trust.statement).
 const SITE_STATEMENT = [
   'This app enforces its ethical boundaries by default and will not help you remove them.',
   'It aligns with recognized frameworks: the NIST AI Risk Management Framework, ISO/IEC 42001, and C2PA content provenance.',
   'We block child sexual abuse material, non-consensual intimate imagery, and weapons uplift outright, and we gate the cloning of real people behind consent.',
   "We're honest about the limit: once open model weights are on your own machine, they are beyond any app's control.",
-  'What we guarantee is that this app, as shipped, does not assist misuse and does not help you strip these protections out.',
+  'What we guarantee is that this app, as shipped, does not assist misuse and does not help you strip these protections out. Because the code is open, anyone can change their own copy; this covers the builds we ship.',
 ];
 
 // Vendored from oscode.js on 2026-09-16 (trust.tiers).
