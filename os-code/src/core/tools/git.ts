@@ -10,6 +10,42 @@ import { containsSecret } from '../security/redaction.js';
 import { defaultBranchOf } from '../../git/reconcile.js';
 import type { StageFile, StageSecret } from '../agent/types.js';
 import { capContent, type ToolContext, type ToolDef } from './index.js';
+import { scrubbedEnv } from '../exec/childEnv.js';
+
+/** Variables simple-git refuses in an explicit environment (editors, pagers,
+ *  ssh and askpass helpers, config paths). Status, diff and commit need none
+ *  of them, so they are left out rather than allowed. */
+const GIT_UNSAFE_ENV = new Set([
+  'editor',
+  'git_askpass',
+  'git_config',
+  'git_config_count',
+  'git_config_global',
+  'git_config_system',
+  'git_editor',
+  'git_exec_path',
+  'git_external_diff',
+  'git_pager',
+  'git_proxy_command',
+  'git_sequence_editor',
+  'git_ssh',
+  'git_ssh_command',
+  'git_template_dir',
+  'pager',
+  'prefix',
+  'ssh_askpass',
+]);
+
+/** simple-git at `dir`, with every git process it starts (and so the
+ *  repository's own hooks and filters) on the scrubbed child environment
+ *  (core/exec/childEnv.ts), never the engine's keys. */
+function gitAt(dir: string): SimpleGit {
+  const env: NodeJS.ProcessEnv = {};
+  for (const [name, value] of Object.entries(scrubbedEnv())) {
+    if (!GIT_UNSAFE_ENV.has(name.toLowerCase())) env[name] = value;
+  }
+  return simpleGit(dir).env(env);
+}
 import {
   markedLocal,
   noteVisibility,
@@ -29,7 +65,7 @@ export const gitStatusTool: ToolDef<typeof statusSchema> = {
   risk: 'read',
   async execute(_args, ctx) {
     try {
-      const git = simpleGit(ctx.cwd);
+      const git = gitAt(ctx.cwd);
       const status = await git.status();
       const lines = [
         `branch: ${status.current ?? '(detached)'}${status.tracking ? ` (tracks ${status.tracking})` : ''}`,
@@ -134,7 +170,7 @@ export const gitDiffTool: ToolDef<typeof diffSchema> = {
   risk: 'read',
   async execute(args, ctx) {
     try {
-      const git = simpleGit(ctx.cwd);
+      const git = gitAt(ctx.cwd);
       const params: string[] = [];
       if (args.staged) params.push('--staged');
       if (args.path) params.push('--', args.path);
@@ -209,7 +245,7 @@ export const gitLogTool: ToolDef<typeof logSchema> = {
   risk: 'read',
   async execute(args, ctx) {
     try {
-      const git = simpleGit(ctx.cwd);
+      const git = gitAt(ctx.cwd);
       const params = [
         'log',
         `-n${args.count ?? 10}`,
@@ -396,7 +432,7 @@ export const gitCommitTool: ToolDef<typeof commitSchema> = {
   risk: 'write',
   async preview(args, ctx) {
     const scope = args.paths?.length ? args.paths.join(', ') : 'all changes';
-    const git = simpleGit(ctx.cwd);
+    const git = gitAt(ctx.cwd);
     const root = (await git.revparse(['--show-toplevel'])).trim();
     const files = await commitStageFiles(git, root, jailedPaths(args.paths, ctx));
     const pushesTo = await pushDestination(git, ctx.cwd, ctx);
@@ -421,7 +457,7 @@ export const gitCommitTool: ToolDef<typeof commitSchema> = {
       throw err;
     }
     try {
-      const git = simpleGit(ctx.cwd);
+      const git = gitAt(ctx.cwd);
       const root = (await git.revparse(['--show-toplevel'])).trim();
       const listed = await commitStageFiles(git, root, pathspec);
       // What the person ticked, or with no answer naming files, every listed
@@ -437,7 +473,7 @@ export const gitCommitTool: ToolDef<typeof commitSchema> = {
         await git.raw(['diff', '--cached', '--name-only', '-z', '--no-renames']),
       );
       const drop = staged.filter((p) => !chosen.has(p));
-      if (drop.length) await unstage(simpleGit(root), drop);
+      if (drop.length) await unstage(gitAt(root), drop);
       const note = leftOut.length
         ? ` Left out ${plural(leftOut.length, 'file that may hold a secret', 'files that may hold secrets')}: ${leftOut.join(', ')}. They stay out unless the person ticks them.`
         : '';

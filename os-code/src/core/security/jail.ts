@@ -59,9 +59,12 @@ export function realRelativePath(abs: string, root: string): string {
   return relative(realRoot, deepestRealpath(resolve(abs))).replace(/\\/g, '/');
 }
 
+// The native realpath, not the JS one: on a case-insensitive disk (macOS,
+// Windows) it returns the name as stored, so a deny rule for `secrets/**`
+// still catches a path the model spells `Secrets/k`.
 function safeRealpath(p: string): string {
   try {
-    return realpathSync(p);
+    return realpathSync.native(p);
   } catch {
     return p;
   }
@@ -74,7 +77,7 @@ export function deepestRealpath(abs: string): string {
   // Walk up until something exists, carrying the non-existent tail.
   for (;;) {
     try {
-      const real = realpathSync(existing);
+      const real = realpathSync.native(existing);
       return tail ? resolve(real, tail) : real;
     } catch {
       const parent = dirname(existing);

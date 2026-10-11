@@ -3,7 +3,14 @@
 // explicit path that leaves the jail is refused, never handed to git.
 import { describe, expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ConfigSchema } from '../src/config/schema.js';
@@ -75,5 +82,29 @@ describe('gitCommit (ENG-8)', () => {
     const status = git(root, 'status', '--porcelain');
     expect(status).toContain('root.txt');
     expect(status).not.toContain('pkg/file.txt');
+  });
+});
+
+// The repository's own hooks run inside git, so git gets the scrubbed child
+// environment (core/exec/childEnv.ts): a pre-commit hook never reads the
+// engine's keys (security open item, 2026-10-11).
+describe('gitCommit runs hooks without the engine secrets', () => {
+  it("hides a provider key from the repository's pre-commit hook", async () => {
+    const { root, pkg } = dirtyRepo();
+    const seen = join(root, 'seen.txt');
+    const hook = join(root, '.git', 'hooks', 'pre-commit');
+    writeFileSync(hook, `#!/bin/sh\nprintf '%s' "$OPENAI_API_KEY|$OSC_HOOK_CANARY" > "${seen}"\n`);
+    chmodSync(hook, 0o755);
+    process.env.OPENAI_API_KEY = 'sk-test-not-for-hooks';
+    process.env.OSC_HOOK_CANARY = 'plain';
+    try {
+      const result = await gitCommitTool.execute({ message: 'pkg change' }, contextFor(pkg));
+      expect(result.ok).toBe(true);
+    } finally {
+      delete process.env.OPENAI_API_KEY;
+      delete process.env.OSC_HOOK_CANARY;
+    }
+    // The hook ran (it saw the plain variable) and saw no key.
+    expect(readFileSync(seen, 'utf8')).toBe('|plain');
   });
 });
