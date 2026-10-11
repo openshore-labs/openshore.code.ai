@@ -62,7 +62,7 @@ This replaces the earlier drafts (push-0019-0021, v2, and the CTO 4 edition that
 
 **Ground rules**
 
-- "SQL editor" means Dashboard, SQL Editor. Run one block at a time; the editor shows only the last result. Before each block, check that the address contains `/project/lzlrlfdffwiypzreoldb/`, since Uki is on Supabase too (README lines 3-4). If the editor offers a role picker, choose `postgres` (not verified here that it has one).
+- "SQL editor" means Dashboard, SQL Editor. Run one block at a time; the editor shows only the last result. Before each block, check that the address contains `/project/lzlrlfdffwiypzreoldb/`. If the editor offers a role picker, choose `postgres` (not verified here that it has one).
 - Terminal: do every Terminal step in one macOS Terminal window and keep it open. If you open a new one, re-run 2.1 and `cd` into `oscode-main`. Always type `sb`, never `supabase`.
 - Never push from `vault-m2-team` or any branch other than `main`. Never add `--include-all`. Every push carries `--skip-vault`. Never edit a migration that production has applied; any change is a new file numbered above the newest.
 

@@ -1,7 +1,7 @@
 # OS Code backend (Supabase)
 
 Sign-in, org membership, role enforcement, entitlements, and billing for OS
-Code, on the same stack as Uki (Supabase + Stripe). Everything here is inert
+Code, on Supabase and Stripe. Everything here is inert
 until you stand up a project and set the keys; the app runs local-first without
 it.
 

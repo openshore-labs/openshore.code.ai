@@ -1,7 +1,6 @@
 // Connector and secret manifest, the single source of truth for every cloud
 // connector OS Code can talk to, the credential each one uses, WHERE that
-// secret lives, and WHICH components depend on it. Modeled on the pattern
-// proven in the Uki app repo (serverMap.manifest.js): make "what uses what"
+// secret lives, and WHICH components depend on it. Make "what uses what"
 // machine-readable from day one, before connectors multiply, so rotating or
 // removing a key can never silently break a flow.
 //

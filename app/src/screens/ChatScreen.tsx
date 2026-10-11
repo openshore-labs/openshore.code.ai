@@ -390,7 +390,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
     : undefined;
   // The room this chat was opened from, when it is a sub-page (the Chats list,
   // or a project's detail room). Names the way-back button in the header; a
-  // project uses its own name, so the button reads "‹ Uki Audio", not "‹ Project".
+  // project uses its own name, so the button reads "‹ My App", not "‹ Project".
   const backView = viewTrail[viewTrail.length - 1];
   const backTo = !backView
     ? undefined

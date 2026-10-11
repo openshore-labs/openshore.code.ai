@@ -1,7 +1,7 @@
 // Keep the app's build-time env honest: every VITE_ var the code reads must be
 // documented in .env.example, and no server-only secret may ever be listed
 // there (only VITE_-prefixed, public values reach the client bundle). This is
-// the lean version of Uki's serverMap drift test.
+// a lean server-map drift test.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';

@@ -38,29 +38,29 @@ const read = (rel: string) => readFileSync(join(SRC, rel), 'utf8');
 
 describe('repo ids and labels', () => {
   it('tells a GitHub repo from a workspace path and names both short', () => {
-    expect(githubRepoId('openshore-labs/uki-audio')).toBe('github:openshore-labs/uki-audio');
+    expect(githubRepoId('openshore-labs/my-app')).toBe('github:openshore-labs/my-app');
     expect(isGithubRepoId('github:a/b')).toBe(true);
-    expect(isGithubRepoId('/Users/me/code/uki-audio')).toBe(false);
-    expect(repoLabel('github:openshore-labs/uki-audio')).toBe('uki-audio');
-    expect(repoLabel('/Users/me/code/uki-audio')).toBe('uki-audio');
-    expect(repoLabel('C:\\code\\uki-audio')).toBe('uki-audio');
+    expect(isGithubRepoId('/Users/me/code/my-app')).toBe(false);
+    expect(repoLabel('github:openshore-labs/my-app')).toBe('my-app');
+    expect(repoLabel('/Users/me/code/my-app')).toBe('my-app');
+    expect(repoLabel('C:\\code\\my-app')).toBe('my-app');
   });
 
   it('summarizes for the header: none, one, or the first plus a count', () => {
     expect(summarizeRepos([])).toBe('Add a repository');
-    expect(summarizeRepos(['/code/uki-audio'])).toBe('uki-audio');
-    expect(summarizeRepos(['/code/uki-audio', 'github:o/openshore-hq', 'github:o/x'])).toBe(
-      'uki-audio +2',
+    expect(summarizeRepos(['/code/my-app'])).toBe('my-app');
+    expect(summarizeRepos(['/code/my-app', 'github:o/openshore-hq', 'github:o/x'])).toBe(
+      'my-app +2',
     );
   });
 
   it('works in the first workspace and carries every repo as context', () => {
-    const ids = ['github:o/hq', '/code/uki-audio', '/code/other'];
-    expect(firstWorkspace(ids)).toBe('/code/uki-audio');
+    const ids = ['github:o/hq', '/code/my-app', '/code/other'];
+    expect(firstWorkspace(ids)).toBe('/code/my-app');
     expect(firstWorkspace(['github:o/hq'])).toBeUndefined();
     expect(repoContextLine([])).toBeUndefined();
     expect(repoContextLine(ids)).toBe(
-      'Repositories in this chat: o/hq (GitHub); uki-audio at /code/uki-audio; other at /code/other.',
+      'Repositories in this chat: o/hq (GitHub); my-app at /code/my-app; other at /code/other.',
     );
   });
 
@@ -74,11 +74,11 @@ describe('repo ids and labels', () => {
 describe('the GitHub road', () => {
   it('maps /user/repos rows and skips malformed ones', () => {
     const rows = toRepoOptions([
-      { full_name: 'o/uki-audio', name: 'uki-audio', private: true, owner: { login: 'o' } },
+      { full_name: 'o/my-app', name: 'my-app', private: true, owner: { login: 'o' } },
       { full_name: 'broken', name: 'broken' },
     ]);
     expect(rows).toEqual([
-      { id: 'github:o/uki-audio', kind: 'github', name: 'uki-audio', detail: 'o', private: true },
+      { id: 'github:o/my-app', kind: 'github', name: 'my-app', detail: 'o', private: true },
     ]);
   });
 

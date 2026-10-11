@@ -204,7 +204,7 @@ workflows:
         submit_to_testflight: false
 
   # macOS desktop build: an unsigned .dmg and .zip (arm64 and x64) distributed
-  # straight from openshore.ai, the same way the Uki Music desktop app ships,
+  # straight from openshore.ai, outside the App Store,
   # never through the Mac App Store. Needs no Apple Developer certificate and
   # no notarization credentials. The tradeoff, in full: the first time
   # someone opens it, Gatekeeper shows "Apple could not verify this app is free

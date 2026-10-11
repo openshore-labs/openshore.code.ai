@@ -1,6 +1,5 @@
 // EM DASH POLICY GUARD. OpenShore standing rule: no em dash in anything a
-// user reads. A period, a comma, or a rewrite. This repo enforces it the way
-// the Uki repos do: the rule polices itself instead of relying on memory.
+// user reads. A period, a comma, or a rewrite. The rule polices itself instead of relying on memory.
 //
 // Because OS Code started life under the rule, the scan is TOTAL: no em dash
 // anywhere in tracked source, comments included, so nothing can drift from a

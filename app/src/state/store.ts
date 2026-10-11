@@ -4664,7 +4664,7 @@ export const useApp = create<AppState>((set, get, api) => {
   }
 
   // Where a magic-link sign-in returns to. Each shell has its own origin the
-  // token must land on (Uki's "auth callbacks stay on the app's own origin").
+  // token must land on (auth callbacks stay on the app's own origin).
   function authRedirectTo(): string {
     switch (platform()) {
       case 'ios':

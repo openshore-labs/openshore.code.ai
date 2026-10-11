@@ -65,7 +65,7 @@ screen or flow that does not fit it is not done.
 ## Where the tenets come from
 
 The founder named the sources on 2026-09-02: the standing rules in `CLAUDE.md`
-(both Uki repos and this one), `PROGRESS.md`, and the advisor org in
+(this repo's), `PROGRESS.md`, and the advisor org in
 `.claude/agents`. Each tenet above is one of those rules, turned toward the
 person using the app:
 
@@ -118,7 +118,7 @@ back chevron to where it started, the iOS grammar, at two depths:
 
 `app/test/wayBack.test.ts` pins the rooms that carry an inner page.
 
-## Motion: the same bar as Uki
+## Motion: one vocabulary
 
 Every screen, sheet, drawer, toast, and button in this app moves on one
 vocabulary (`theme.css :root` tokens), answers the finger with an asymmetric

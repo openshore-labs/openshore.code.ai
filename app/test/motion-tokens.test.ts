@@ -2,11 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-// Guards the motion vocabulary declared in theme.css :root, ported from the
-// Uki app's gold-standard test. The tokens give the curve/duration family one
+// Guards the motion vocabulary declared in theme.css :root, the house
+// standard. The tokens give the curve/duration family one
 // name each; this pins those names to their canonical values so they cannot
-// drift or be quietly deleted. OS Code had ~31 inlined literals (vs Uki's
-// ~600), so this ALSO bans the two curves the migration retired: a drifted
+// drift or be quietly deleted. OS Code had ~31 inlined literals, so this ALSO bans the two curves the migration retired: a drifted
 // near-duplicate of the iOS standard, and a foreign easing with no home.
 
 const STYLES = readFileSync(join(process.cwd(), 'src', 'theme.css'), 'utf8');

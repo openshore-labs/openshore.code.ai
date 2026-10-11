@@ -1,7 +1,6 @@
 # PROGRESS
 
-The recent-state source of truth for OS Code, kept in the same spirit as the
-Uki app repo: current state first, then what remains, then the log.
+The recent-state source of truth for OS Code, kept to one rule: current state first, then what remains, then the log.
 
 Older Current state sections and log entries are in `docs/progress-archive.md`
 (newest first), and the parked build prompts in `docs/parked-ideas.md`, both
@@ -104,7 +103,7 @@ PROGRESS shape guard, the app Vite build.
   just iOS; the app's `fetch`-based client takes a newer `sb_publishable_...`
   key exactly like the legacy anon key. Windows/Linux get `electron-updater`
   against that Release feed (background download, restart-to-install banner).
-- **macOS: unsigned, matching Uki Music (founder call). SHIPPED 2026-09-17.**
+- **macOS: unsigned, outside the App Store (founder call). SHIPPED 2026-09-17.**
   No certificate, no notarization; cost is one Gatekeeper right-click Open on
   first launch (`docs/MAC-DESKTOP.md`). Can't self-update in place unsigned,
   so it gets a version check that opens the latest Release instead;
@@ -907,7 +906,7 @@ extended that day by the graduated enforcement ladder (migration
   overcharge); its price id is unchanged, so `STRIPE_PRICE_SCALE` needed no
   update. Verified against the Stripe API directly (key mode, per-price
   interval, webhook status). NOTE: this account is shared with another
-  product (a second `riziqavmckobtcyiazht` webhook is Uki's); each webhook
+  product (a second webhook belongs to it); each webhook
   ignores prices it does not recognize, so cross-talk is safe.
   **Still open:** one real end-to-end purchase to prove the Supabase
   function secret VALUES (live key, THIS webhook's signing secret, the four

@@ -2,8 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
-// Enforces the motion and interaction polish standards ported from the Uki app
-// (its CLAUDE.md "Motion & interaction polish is a standard"). A test rather
+// Enforces the motion and interaction polish standards (CLAUDE.md, "Motion and interaction polish is a standard"). A test rather
 // than a note so the standard survives the next session that does not remember
 // it. Emergency door is a targeted .skip with a reason, never loosening a guard.
 

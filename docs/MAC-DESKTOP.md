@@ -1,6 +1,6 @@
 # macOS desktop: unsigned, outside the App Store
 
-OpenShore's Mac build ships the way the Uki Music desktop app does:
+OpenShore's Mac build ships outside the App Store:
 distributed straight from openshore.ai, never through the Mac App Store, with
 no Apple Developer ID certificate and no notarization (founder decision; see
 the `mac-desktop` job's header comment in `codemagic.yaml`). The build runs

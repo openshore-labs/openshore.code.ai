@@ -1,5 +1,4 @@
-// The LLM Library intro: OpenShore's take on the house enablement pattern shared
-// with Uki. A short, self-paced full-screen sequence, eyebrow -> serif headline
+// The LLM Library intro: OpenShore's enablement pattern. A short, self-paced full-screen sequence, eyebrow -> serif headline
 // -> benefit body over a dark caption dock, that explains the Library and the
 // stack and introduces Harbor while it downloads. It ends by returning the user
 // to setup, with the download continuing in the background.

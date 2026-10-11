@@ -207,7 +207,7 @@ raw thought into history (the answer stays clean either way).
 
 ## Motion and interaction polish is a standard, not a nice-to-have (standing rule, founder 2026-09-02)
 
-The bar is the same as the Uki app's: peaceful, tranquil, premium. "Smooth and
+The bar: peaceful, tranquil, premium. "Smooth and
 slow feels premium and lux." Calm breaks at the seams (a screen that hard-cuts,
 a sheet that snaps shut, a button that does not answer the finger), so the
 rules live in tests, not memory. `app/test/motion-tokens.test.ts` pins the
@@ -441,7 +441,7 @@ only what the code does. The first run and its open items are
 No em dash anywhere in tracked source, comments included, encoded spellings
 too. Use a period, a comma, or a rewrite. `test/em-dash-policy.test.ts` in both
 `os-code` and `app` enforces it and fails the build on any violation. This is
-stricter than the Uki repos by design, because OS Code started under the rule.
+deliberately strict, because OS Code started under the rule.
 
 ## Agentic Currents and Wayfinding are BUILT (BETA, 2026-09-09)
 

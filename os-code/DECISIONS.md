@@ -23,8 +23,8 @@ execution contract. Newest at the bottom.
   permanent JSON constraint would forbid final prose answers, so the schema
   constraint applies on retries after a failed parse, where the backend
   supports it.
-- **Em dash policy is TOTAL here** (comments included), stricter than the Uki
-  repos: this codebase started under the rule, so nothing can drift from a
+- **Em dash policy is TOTAL here** (comments included), deliberately strict:
+  this codebase started under the rule, so nothing can drift from a
   comment into copy. Exemptions require a reason in the test.
 - **Code map symbols come from per-language regexes,** behind an interface
   tree-sitter can slot into later; a native parser dependency is not worth the
@@ -244,7 +244,7 @@ execution contract. Newest at the bottom.
   questions between steps, never inventing the procedure.
 
 - **The advisor org is a Crew preset (2026-09-02, founder).** The founder's
-  advisory team (canonical in uki-audio/.claude/agents) ships inside OpenShore
+  advisory team ships inside OpenShore
   as eight named crew members with the org's real activity levels. Personas are
   rewritten for OpenShore, not copied; all advisory, the person decides. The
   engine's own prompts carry the same working loop (lead with the outcome, one
@@ -316,7 +316,7 @@ execution contract. Newest at the bottom.
   in the Chats and Projects rooms, so removing them from the panel loses
   nothing. A room's top bar opens the panel (hamburger) instead of jumping
   back to chat, because the panel is where the next destination is chosen.
-- **Motion standard ported from Uki, with adoption enforced.** The tokens
+- **Motion standard, with adoption enforced.** The tokens
   and guards already existed in the app; the drift was raw values and
   surfaces that snap-unmounted. A presence-aware `Sheet` component was the
   cheapest way to give fifteen state-driven sheets an exit without rewriting
@@ -1627,7 +1627,7 @@ execution contract. Newest at the bottom.
   the `ELECTRON_SKIP_BINARY_DOWNLOAD` guard meant for CI) let the sandbox build
   and smoke-test a real Linux AppImage and deb the same day, not just author
   the packaging config for someone else to prove.
-- **macOS ships unsigned, matching Uki Music, over Developer ID plus
+- **macOS ships unsigned, outside the App Store, over Developer ID plus
   notarization (founder call, 2026-09-17).** The founder chose to skip the
   Apple Developer certificate and notarization API key setup entirely,
   accepting a one-time Gatekeeper right-click-to-open on a user's first
