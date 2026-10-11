@@ -284,8 +284,11 @@ though its server is localhost (privacy review, 2026-10-08).
 
 v1 is **Personal**: one person, their desktop and their own phone. Chats,
 Projects, Terminal, Repositories, Stack, Vault, Crew (routines), Cloud
-Connections, Computer (docking; once Pairing), and Settings. v2 is Agentic and
-Harness Currents, Stack Health, and Launch with Codemagic; v3 the Marketplace;
+Connections, Computer (docking; once Pairing), the Marketplace (v1 since
+2026-10-11, founder, so the community can help build it; community reviews
+stay off, `REVIEWS_OPEN` in `lib/reviews.ts`, until a migration grants review
+writes back), and Settings. v2 is Agentic and Harness Currents, Stack Health,
+and Launch with Codemagic; v3 is reserved;
 v4 Enterprise (Admin, teams, shared projects, the team vault, project
 permissions, shared-hub members). "Build personal for now and get that working
 fully." One gate, `app/src/lib/focus.ts` (`featureOn`, `roomOpen`,
