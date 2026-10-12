@@ -20,7 +20,9 @@ export const SOURCE_KINDS = ['ollama', 'huggingface', 'github', 'civitai', 'publ
  *  `diffusion_models/flux1-schnell.safetensors`). */
 export const CatalogFileSchema = z.object({
   url: z.string(),
-  /** The SHA-256 the download must match, when the source publishes one. */
+  /** The SHA-256 the download must match. The builder fills it from the
+   *  source (market/sources.ts, filePinned) and the downloader refuses a
+   *  file without one. */
   sha256: z
     .string()
     .regex(/^[0-9a-f]{64}$/)

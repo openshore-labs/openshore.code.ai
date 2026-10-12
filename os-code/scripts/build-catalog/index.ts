@@ -19,6 +19,12 @@ import { derivePresets } from './presets.js';
 import { discoverModels, HuggingFaceDiscovery } from './discover.js';
 import { mergeCommunity, SupabaseReviewSource } from './reviews.js';
 import { toV1 } from './v1.js';
+import {
+  dropUnpinned,
+  GitHubReleasePins,
+  HuggingFaceFilePins,
+  pinCatalogFiles,
+} from './pinFiles.js';
 import type { BuildInputs, EvalEntries, ModelMetadata, Overlay } from './types.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -45,7 +51,7 @@ function readJson<T>(path: string, fallback: T): T {
 
 async function main(): Promise<void> {
   const seed = JSON.parse(readFileSync(SEED_PATH, 'utf8'));
-  const seedCatalog = CatalogSchema.parse(seed);
+  let seedCatalog = CatalogSchema.parse(seed);
 
   const benchmarks = readJson<Record<string, Record<string, number>>>(
     join(CURATION_DIR, 'benchmarks.json'),
@@ -85,6 +91,21 @@ async function main(): Promise<void> {
       );
     }
   }
+
+  // Every file a media model downloads is pinned to the SHA-256 its source
+  // publishes (and a Hugging Face file to its commit) before anything is
+  // built; a model with a file left unpinned is taken out, its picks with it
+  // (pinFiles.ts, security review 2026-10-12). Offline nothing can be read,
+  // so only a curator's own pins in the seed survive.
+  if (online) {
+    seedCatalog = await pinCatalogFiles(seedCatalog, {
+      huggingface: new HuggingFaceFilePins(),
+      github: new GitHubReleasePins(),
+    });
+  }
+  const pinned = dropUnpinned(seedCatalog);
+  for (const drop of pinned.drops) console.log(`dropped ${drop.id}: ${drop.reason}`);
+  seedCatalog = pinned.catalog;
 
   // Read the previously published catalog as the regression baseline, keeping
   // three cases distinct so the gate can act on them (H3): absent (undefined,

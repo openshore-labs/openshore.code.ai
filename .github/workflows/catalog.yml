@@ -167,6 +167,9 @@ jobs:
           # Optional: an authenticated Hugging Face token lifts the anonymous
           # rate limit on the popularity fetch. Absent, the build stays anonymous.
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          # The job's own read-only token, for reading a GitHub release asset's
+          # published SHA-256 when a media file is pinned (pinFiles.ts).
+          GITHUB_TOKEN: ${{ github.token }}
           # Optional: the reviews backend, so the builder bakes a community-review
           # snapshot into the catalog (the scale path: a browse row shows a crowd
           # star with no per-view request to Supabase). The anon key is enough,

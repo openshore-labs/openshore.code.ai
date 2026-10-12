@@ -290,6 +290,32 @@ export function saveGlobalConfig(partial: unknown): string {
   return path;
 }
 
+/** Set a media job's placement in this machine's config, or take it out
+ *  (`undefined`). The placement is replaced whole, never merged into the one
+ *  before it, so nothing of an earlier model's (its files, its voice) is left
+ *  on the job (security review, 2026-10-12). `modelsDir` is the ComfyUI
+ *  models folder a Get found, saved when none is set. */
+export function saveMediaPlacement(
+  job: string,
+  placement: Record<string, unknown> | undefined,
+  modelsDir?: string,
+): string {
+  const path = globalConfigPath();
+  const raw = readGlobalForWrite(path);
+  const stack = isPlainObject(raw.stack) ? { ...raw.stack } : {};
+  const media = isPlainObject(stack.media) ? { ...stack.media } : {};
+  if (placement) media[job] = placement;
+  else delete media[job];
+  stack.media = media;
+  let next: Record<string, unknown> = { ...raw, stack };
+  if (modelsDir) {
+    next = deepMerge(next, { media: { comfyui: { modelsDir } } }) as Record<string, unknown>;
+  }
+  ConfigSchema.parse(next);
+  writeFileAtomic(path, `${JSON.stringify(next, null, 2)}\n`);
+  return path;
+}
+
 /** The global file as it stands, for a write: {} when there is none yet. An
  *  unparsable file is preserved and refused, never read as {}. */
 function readGlobalForWrite(path: string): Record<string, unknown> {

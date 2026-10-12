@@ -34,6 +34,7 @@ import {
 } from 'node:fs';
 import { Jail } from 'os-code/dist/src/core/security/jail.js';
 import { MEDIA_JOBS } from 'os-code/dist/src/media/jobs.js';
+import { isLocalUrl } from 'os-code/dist/src/core/security/egress.js';
 import {
   parseCurrentsHandles,
   parseHarnessCurrentsHandle,
@@ -1237,6 +1238,10 @@ guarded('osc:setMediaServer', (runtime: unknown, baseUrl: unknown, modelsDir: un
   const url = optStr(baseUrl, 'baseUrl');
   if (url !== undefined && !/^https?:\/\/[^\s]+$/.test(url))
     throw new Error('An address starts with http:// or https://.');
+  // Plain http only on this network (the tailnet included): elsewhere the
+  // photos and recordings a job sends would cross the internet unencrypted.
+  if (url !== undefined && /^http:/i.test(url) && !isLocalUrl(url))
+    throw new Error('A server off this network needs an https:// address.');
   const dir = optStr(modelsDir, 'modelsDir');
   if (dir !== undefined && !isAbsolute(dir))
     throw new Error('Give the full path of the models folder.');

@@ -573,7 +573,8 @@ export const LIBRARY_SHELVES: LibraryShelf[] = [
     id: 'voice.own',
     category: 'voice',
     name: 'Your own voice',
-    blurb: 'Reads in your own voice from a short sample of it. Only your voice, with your yes.',
+    blurb:
+      'Reads in a voice copied from a sample you set up on your speech server, with a watermark in everything it says. Copy only your own voice, or one you have permission to use.',
     job: 'clone',
   },
   // Music and sound

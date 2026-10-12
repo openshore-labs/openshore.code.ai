@@ -186,6 +186,19 @@ export class EgressPolicy {
     let current = url;
     let currentInit: RequestInit = { ...init, redirect: 'manual' };
     for (let hop = 0; hop <= maxHops; hop++) {
+      // A model download follows only https addresses off this network, on
+      // every hop: a source's redirect cannot turn it to plain http or to a
+      // machine on the person's own network (security review, 2026-10-12).
+      if (purpose === 'model-pull') {
+        const target = new URL(current);
+        const host = target.hostname.replace(/^\[|\]$/g, '');
+        if (target.protocol !== 'https:' || isLocalHost(host) || addressOnOwnNetwork(host)) {
+          throw new EgressBlocked(
+            current,
+            'A model download follows only https addresses off this network.',
+          );
+        }
+      }
       const decision = this.check(current, purpose);
       if (!decision.allowed) {
         throw new EgressBlocked(current, decision.reason);

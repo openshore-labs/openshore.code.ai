@@ -52,7 +52,10 @@ export class SpeechClient {
 
   constructor(private readonly options: SpeechClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/+$/, '');
-    this.fetchImpl = options.fetchImpl ?? fetch;
+    // A redirect is never followed (security review, 2026-10-12): a 307
+    // would re-send an upload, and the key, to wherever it points.
+    const send = options.fetchImpl ?? fetch;
+    this.fetchImpl = (input, init) => send(input, { ...init, redirect: 'error' });
     this.timeoutMs = options.timeoutMs ?? 10 * 60_000;
   }
 

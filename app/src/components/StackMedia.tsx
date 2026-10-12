@@ -75,7 +75,7 @@ export function StackMedia({
       <SettingsGroup
         title="Media"
         index={index}
-        intro="Photo editing, video, transcription, voices, music and sound. Each job is one model, on a program on this computer."
+        intro="Photo editing, video, transcription, voices, music and sound. Each job is one model, run by a program at the address you set in Media servers."
       >
         {placed.length ? (
           placed.map((m) => {

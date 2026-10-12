@@ -152,10 +152,16 @@ describe('the taxonomy', () => {
     expect(LIBRARY_COLLECTIONS.find((c) => c.id === 'health')!.blurb).toMatch(/Not a diagnosis\./);
   });
 
-  it('asks for consent on the one shelf that copies a voice', () => {
+  it('says plainly what the one shelf that copies a voice does, and asks for permission', () => {
+    // No consent step or sample flow exists in OpenShore, so the shelf claims
+    // none (security review, 2026-10-12): it says where the sample lives, that
+    // everything is watermarked, and whose voice to copy.
     const own = LIBRARY_SHELVES.find((s) => s.id === 'voice.own')!;
     expect(own.job).toBe('clone');
-    expect(own.blurb).toMatch(/Only your voice, with your yes\./);
+    expect(own.blurb).toMatch(/a sample you set up on your speech server/);
+    expect(own.blurb).toMatch(/watermark in everything it says/);
+    expect(own.blurb).toMatch(/Copy only your own voice, or one you have permission to use\./);
+    expect(own.blurb).not.toMatch(/with your yes/);
   });
 });
 

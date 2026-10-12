@@ -35,6 +35,21 @@ export function allSourceHosts(): string[] {
   return [...new Set(Object.values(SOURCE_HOSTS).flat())].sort();
 }
 
+/** A Hugging Face file pinned to a commit, so the bytes its hash names cannot
+ *  move under the same address. */
+const HF_PINNED = /^https:\/\/huggingface\.co\/[^/]+\/[^/]+\/resolve\/[0-9a-f]{40}\//;
+
+/** Whether a catalog file is ready to publish (security review, 2026-10-12):
+ *  it starts at its source kind's host, names its SHA-256, and, from Hugging
+ *  Face, is pinned to a commit. The builder drops a model with any file that
+ *  is not; the downloader refuses a file with no SHA-256 whatever else it has.
+ *  Anyone can upload to these hosts, so the host alone proves nothing. */
+export function filePinned(file: { url: string; sha256?: string }, kind: SourceKind): boolean {
+  if (!fileHostAllowed(file.url, kind)) return false;
+  if (!file.sha256 || !/^[0-9a-f]{64}$/.test(file.sha256)) return false;
+  return kind !== 'huggingface' || HF_PINNED.test(file.url);
+}
+
 /** Whether a file URL starts at a host its source kind allows. https only. */
 export function fileHostAllowed(url: string, kind: SourceKind): boolean {
   let parsed: URL;

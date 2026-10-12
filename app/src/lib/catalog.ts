@@ -7,7 +7,7 @@
 import { CatalogSchema, withLibrary, type Catalog } from 'os-code/protocol';
 import bundled from 'os-code/catalog.sample.json';
 import { bridge } from './electronBridge.js';
-import { isDesktop, storeGetJson, storeSetJson } from './platform.js';
+import { isDesktop, storeDelete, storeGetJson, storeSetJson } from './platform.js';
 import { nativeFetch } from './nativeFetch.js';
 import type { DaemonTarget } from '../drivers/remoteDriver.js';
 
@@ -23,6 +23,9 @@ export interface LoadedCatalog {
 // it, so a cache from before the library is not read as fresh.
 const PUBLISHED_CATALOG_URL = 'https://openshore.ai/os-code/catalog.v2.json';
 const CATALOG_CACHE_KEY = 'oscode.cache.catalog.v2';
+// The key before the library, cleared once a library catalog is saved, so
+// the old copy does not sit on the device for good.
+const OLD_CATALOG_CACHE_KEY = 'oscode.cache.catalog.v1';
 // Mirrors the engine's config.catalog.refreshHours default (24h).
 const REFRESH_MS = 24 * 60 * 60 * 1000;
 
@@ -74,6 +77,7 @@ async function loadPublishedCatalog(): Promise<LoadedCatalog> {
     if (res.ok) {
       const catalog = CatalogSchema.parse(await res.json());
       await storeSetJson(CATALOG_CACHE_KEY, { catalog, fetchedAt: Date.now() } as CachedCatalog);
+      void storeDelete(OLD_CATALOG_CACHE_KEY).catch(() => {});
       return { catalog };
     }
   } catch {}

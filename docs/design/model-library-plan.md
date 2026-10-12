@@ -121,7 +121,12 @@ catalog's other models stay for presets and released apps, off the shelves.
   never a wildcard.
 - **Voice cloning needs a watermark.** "Your own voice" holds only Chatterbox,
   whose PerTh watermark marks every output. VoxCPM2 clones too but has none,
-  so it sits on "Many languages" only.
+  so it sits on "Many languages" only. The rule is code
+  (`WATERMARKED_VOICES` in `os-code/src/media/jobs.ts`), so no config file,
+  project or catalog can mark another model watermarked. OpenShore has no
+  sample or consent flow of its own: the person sets the voice up on their
+  speech server, and the shelf says to copy only their own voice or one they
+  have permission to use.
 
 ## Sources
 
@@ -137,9 +142,14 @@ Every host a download may start at is named once in
 | The publisher's own site        | none yet; one named host per publisher |
 
 Weights go straight from the source to the person's machine. OpenShore never
-rehosts or proxies them. A redirect the source issues is re-checked hop by
-hop, and a file is checked against its SHA-256 (from the catalog, or Hugging
-Face's linked etag) before it is kept.
+rehosts or proxies them. Anyone can upload to these hosts, so the host proves
+nothing about the bytes, and every file is pinned before it is published
+(`scripts/build-catalog/pinFiles.ts`): a Hugging Face file to its repo's
+commit and its LFS SHA-256, a GitHub release asset to the digest GitHub
+publishes. A model with a file left unpinned is not published, its picks with
+it. The downloader refuses a file with no SHA-256, follows only https
+addresses off this network on every redirect hop, stops a file that runs past
+its stated size, and keeps a file only once its SHA-256 matches.
 
 ## Media jobs and where they run
 
@@ -150,14 +160,25 @@ Face's linked etag) before it is kept.
 | audio-separator                                | separate stems                                       | checks the program is installed and says the install line if not                    |
 | DeepFilterNet (`deepFilter`)                   | clean up a voice                                     | the same                                                                            |
 
-OpenShore never installs a program. Where each server is, and ComfyUI's models
-folder, are machine config (Stack, Media servers), never a project file. Six
-agent tools run the jobs (`os-code/src/core/tools/media.ts`). Every prompt goes
-through the ethics layer first (`MediaGuard`); every picture is labeled as
-AI-made; a video or sound of an authorized likeness is refused because its
-format cannot carry the label here; and a cloned voice runs only on a
-placement marked watermarked. A media server off this network makes its tools
-network-risk calls.
+OpenShore never installs a program, and the line it shows to install one is
+fixed in code, never read from the catalog. Where each server is, and
+ComfyUI's models folder, are machine config (Stack, Media servers), never a
+project file. Get replaces a job's placement whole and fills a job only from
+a shelf the model is a pick on. Six agent tools run the jobs
+(`os-code/src/core/tools/media.ts`). Every prompt goes through the ethics
+layer first (`MediaGuard`); every picture is labeled as AI-made; a video or
+sound of an authorized likeness is refused because its format cannot carry
+the label here; and a cloned voice runs only on Chatterbox.
+
+A media server off this network (a rented machine, say) gets the file the
+agent named, so the loop judges each call by the server its job is placed on
+(`MediaHost.target`): it asks first on the amber card, once per task per
+model; a vault file the privacy rules keep on this computer is not sent to
+it; nothing is, once the chat holds a private note's text from a seat that
+stays on this network; and a transcript read from such a file on this
+computer comes back marked private. Such a server takes https only (plain
+http is fine on this network and the tailnet), and the media clients follow
+no redirect.
 
 ## Older apps
 
@@ -189,7 +210,12 @@ counsel before release:
    diarization model is OpenMDW-1.1. The attribution lines are in the catalog;
    add them to `NOTICE` or the app's acknowledgements.
 6. **Apache and MIT notices** for every other pick, in the same place.
-7. **Held for counsel, not in the library**: LTX-2.5 (community license under
+7. **Files a pick pulls from another repository**: the builder checks each
+   model's license, not each file's. FLUX.2 klein 4B's VAE comes from
+   Comfy-Org's FLUX.2 dev repack, Qwen-Image-Edit 2511's Lightning LoRA from
+   lightx2v, and several pictures share text encoders from other repacks.
+   Confirm each file's own license before calling every license commercial.
+8. **Held for counsel, not in the library**: LTX-2.5 (community license under
    $10M, and a use policy against competing with Lightricks), Qwen3.8-Flash-Next
    (Qwen Community License with an assistant carve-out), and VibeVoice-ASR
    (Microsoft, research and development only).
@@ -209,7 +235,10 @@ and HunyuanImage, MiniMax H3, SD 3.5 and Krea 2.
   MiniCPM5 architectures).
 - BFL's fp8 file for FLUX.2 klein 4B without a gate, and every Ollama tag,
   Qwen3.8's 8-bit tag above all.
-- The first `catalog.yml` run that publishes `catalog.v2.json`.
+- The first `catalog.yml` run that publishes `catalog.v2.json`, and its pins:
+  each Hugging Face file's commit and SHA-256, and GitHub's digest for LaMa's
+  2022 release asset. If GitHub gives none, LaMa is not published until a
+  curator pins its SHA-256 in the seed.
 
 ## Follow-ups
 
@@ -220,3 +249,9 @@ and HunyuanImage, MiniMax H3, SD 3.5 and Krea 2.
   whether to name them is open.
 - A per-pick eval on the reference box before any copy calls a pick faster or
   better (tenet 2). Today the picks rest on published benchmarks.
+- From the security review: sign the published catalog with a pinned key, as
+  desktop releases are; label video and audio outputs, and screen the input
+  picture of an edit or an animation, not only its words; report an edit's
+  mask path to permission rules; mark a file made from a private one (stems of
+  a private recording) as private; clear media outputs with the chats, or
+  offer a Clear; and offer to delete a model's files when it is removed.

@@ -120,8 +120,11 @@ export const MediaServersSchema = z.object({
 
 /** One media job's placement: the model, and what its runtime is told. A
  *  name the runtime reads (a model file, a voice) is a plain name, never a
- *  flag or a path, since it reaches a program's command line. */
-const RUNTIME_NAME = /^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,199}$/;
+ *  flag or a path, since it reaches a program's command line: no leading
+ *  dash or slash, no `..`, no backslash, no drive letter (a gallery id such
+ *  as `localai@kokoro` and a voice such as `localai://voice-profiles/x`
+ *  keep their `@`, `:` and `/`). */
+const RUNTIME_NAME = /^(?![A-Za-z]:[\\/])(?!.*\.\.)[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,199}$/;
 export const MediaPlacementSchema = z.object({
   runtime: z.enum(MEDIA_RUNTIMES),
   /** The library entry it was placed from, when it came from the Marketplace. */
@@ -132,8 +135,6 @@ export const MediaPlacementSchema = z.object({
   files: z.record(z.string().regex(/^[a-z]+[0-9]?$/), z.string().regex(RUNTIME_NAME)).optional(),
   model: z.string().regex(RUNTIME_NAME).optional(),
   voice: z.string().regex(RUNTIME_NAME).optional(),
-  /** The model watermarks every output (a voice clone requires it). */
-  watermark: z.boolean().optional(),
 });
 
 export const ProviderEndpointSchema = z.discriminatedUnion('kind', [

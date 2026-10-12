@@ -186,3 +186,72 @@ export function slotJobs(slot: MediaSlot): MediaJob[] {
 export function toolJobs(tool: MediaToolName): MediaJob[] {
   return MEDIA_JOBS.filter((job) => MEDIA_JOB_INFO[job].tool === tool);
 }
+
+const MEDIA_TOOL_NAMES: ReadonlySet<string> = new Set<MediaToolName>([
+  'generateImage',
+  'editImage',
+  'makeVideo',
+  'transcribeAudio',
+  'speakText',
+  'makeAudio',
+  'processAudio',
+]);
+
+/** Whether a tool name is one of the media tools. */
+export function isMediaTool(name: string): name is MediaToolName {
+  return MEDIA_TOOL_NAMES.has(name);
+}
+
+/** The job a media tool call runs, read from its arguments the way the tool
+ *  reads them, so the loop can judge where the call goes before it runs. */
+export function callJob(tool: MediaToolName, args: Record<string, unknown>): MediaJob | undefined {
+  switch (tool) {
+    case 'generateImage':
+      return 'create';
+    case 'editImage':
+      return typeof args.job === 'string' &&
+        ['select', 'remove', 'background', 'upscale', 'instruct'].includes(args.job)
+        ? (args.job as MediaJob)
+        : undefined;
+    case 'makeVideo':
+      return args.image ? 'image-to-video' : 'text-to-video';
+    case 'transcribeAudio':
+      return args.speakers === true ? 'speakers' : 'transcribe';
+    case 'speakText':
+      return args.ownVoice === true ? 'clone' : 'speak';
+    case 'makeAudio':
+      return args.kind === 'effects' ? 'effects' : 'music';
+    case 'processAudio':
+      return args.job === 'stems' || args.job === 'cleanup' ? args.job : undefined;
+  }
+}
+
+/** The files a media tool call sends, as the person or the model named them. */
+export function callFiles(tool: MediaToolName, args: Record<string, unknown>): string[] {
+  const keys: Record<MediaToolName, string[]> = {
+    generateImage: [],
+    editImage: ['image', 'mask'],
+    makeVideo: ['image'],
+    transcribeAudio: ['audio'],
+    speakText: [],
+    makeAudio: [],
+    processAudio: ['audio'],
+  };
+  return keys[tool].flatMap((k) => (typeof args[k] === 'string' && args[k] ? [args[k]] : []));
+}
+
+/** The voice models whose own watermark marks everything they say, by their
+ *  library id and the name the speech server knows them by: Chatterbox, with
+ *  Resemble AI's PerTh watermark. Copying a voice runs only on one of these
+ *  (security review, 2026-10-12). It is a rule in code, so neither a config
+ *  file, a project, nor a catalog can mark another model watermarked. */
+export const WATERMARKED_VOICES: Readonly<Record<string, string>> = {
+  chatterbox: 'chatterbox',
+};
+
+/** Whether a placement may copy a voice: a watermarked model, placed as
+ *  itself (its library id and its model name agree). */
+export function cloneAllowed(placement: { catalogId?: string; model?: string }): boolean {
+  const model = placement.catalogId ? WATERMARKED_VOICES[placement.catalogId] : undefined;
+  return model !== undefined && placement.model === model;
+}

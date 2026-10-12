@@ -262,7 +262,7 @@ export const EGRESS: EgressEntry[] = [
     recipient: 'Model downloads',
     // The model library (2026-10-12): a download starts at the source's own
     // host, by kind (os-code/src/market/sources.ts), held equal by a test.
-    what: "A request for the model you picked, straight to where it lives: the Ollama library, Hugging Face, or the publisher's own GitHub releases (and the Ollama installer, on first run). For a model that runs on your computer, nothing about you rides along. A model for a speech server is fetched by that server, from its own gallery, when you tap Get. An Ollama cloud model (a :cloud tag) works only under your Ollama account, which Ollama itself signs in with.",
+    what: "A request for the model you picked, straight to where it lives: the Ollama library, Hugging Face, Civitai, or the publisher's own GitHub releases (and the Ollama installer, on first run). The source may hand the download to its own file storage on the way. For a model that runs on your computer, nothing about you rides along. A model for a speech server is fetched by that server, from its own gallery, when you tap Get. A program you installed for stems or voice cleanup (audio-separator, DeepFilterNet) fetches its own model file from its publisher (GitHub, and Meta's file server for Demucs) the first time it runs. An Ollama cloud model (a :cloud tag) works only under your Ollama account, which Ollama itself signs in with.",
     when: 'Only when you tap to download a model or set up Ollama.',
     start: 'tap',
     hosts: [...new Set(['ollama.com', ...allSourceHosts()])].sort(),
@@ -272,7 +272,7 @@ export const EGRESS: EgressEntry[] = [
     // server are programs the person runs, at an address they set.
     id: 'media-servers',
     recipient: 'Services you connect',
-    what: 'The picture, recording or words a media job works on (a photo to edit, a recording to transcribe, text to read aloud), to ComfyUI or the speech server at the address you set, on this computer unless you set another. One on another machine gets the file, and the coding agent asks first.',
+    what: 'The picture, recording or words a media job works on (a photo to edit, a recording to transcribe, text to read aloud), to ComfyUI or the speech server at the address you set, on this computer unless you set another. One off this network gets the file, over https only, and the coding agent asks first; a file the privacy rules keep on this computer is not sent to it. ComfyUI keeps a copy of each picture it is sent and each one it makes, in its own input and output folders, on the machine it runs on.',
     when: 'Only when a photo, video, voice or music model is placed in your Stack and a task uses it.',
     start: 'off',
     hosts: [],

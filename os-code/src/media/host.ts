@@ -15,6 +15,8 @@ import { ComfyClient, ComfyError, type ComfyFile } from './comfyui.js';
 import { buildGraph, graphFor, graphNodes, versionAtLeast, type GraphInput } from './graphs.js';
 import {
   MEDIA_JOBS,
+  callJob,
+  cloneAllowed,
   MEDIA_JOB_INFO,
   type MediaJob,
   type MediaRuntime,
@@ -100,6 +102,25 @@ export class MediaHost {
     return !isLocalUrl(this.where(runtime));
   }
 
+  /** Where a media tool call goes, judged before it runs (security review,
+   *  2026-10-12): its job, the runtime and address that job is placed on,
+   *  and whether that address is off this network. Undefined when the job
+   *  is not placed (the tool then says so and sends nothing). */
+  target(
+    tool: MediaToolName,
+    args: Record<string, unknown>,
+  ): { job: MediaJob; placement: MediaPlacement; where: string; leaves: boolean } | undefined {
+    const job = callJob(tool, args);
+    const placement = job ? this.placement(job) : undefined;
+    if (!job || !placement) return undefined;
+    return {
+      job,
+      placement,
+      where: this.where(placement.runtime),
+      leaves: this.leaves(placement.runtime),
+    };
+  }
+
   /** Whether any placed job's runtime leaves this network. */
   anyLeaves(tool?: MediaToolName): boolean {
     return this.jobs()
@@ -107,9 +128,24 @@ export class MediaHost {
       .some((job) => this.leaves(this.placement(job)!.runtime));
   }
 
+  /** A server's address, refused when it is plain http to a machine off
+   *  this network (security review, 2026-10-12): the person's photos and
+   *  recordings, and the speech server's key, would cross the internet
+   *  unencrypted. On this network, the tailnet included, http is fine. */
+  private address(runtime: 'comfyui' | 'speech'): string {
+    const url = this.where(runtime);
+    if (/^http:/i.test(url) && !isLocalUrl(url)) {
+      const name = runtime === 'comfyui' ? 'ComfyUI' : 'The speech server';
+      throw new MediaError(
+        `${name} is set to ${url}, off this network over plain http, so nothing was sent. Give it an https address, or reach it over your tailnet.`,
+      );
+    }
+    return url;
+  }
+
   private comfy(): ComfyClient {
     this.comfyClient ??= new ComfyClient({
-      baseUrl: this.where('comfyui'),
+      baseUrl: this.address('comfyui'),
       ...(this.deps.fetchImpl ? { fetchImpl: this.deps.fetchImpl } : {}),
       ...(this.deps.comfySleep ? { sleep: this.deps.comfySleep } : {}),
     });
@@ -118,7 +154,7 @@ export class MediaHost {
 
   private speech(): SpeechClient {
     this.speechClient ??= new SpeechClient({
-      baseUrl: this.where('speech'),
+      baseUrl: this.address('speech'),
       ...(this.deps.speechKey ? { apiKey: this.deps.speechKey } : {}),
       ...(this.deps.fetchImpl ? { fetchImpl: this.deps.fetchImpl } : {}),
     });
@@ -367,12 +403,13 @@ export class MediaHost {
     });
   }
 
-  /** Read text aloud, in a natural voice or (`own`) the person's own. A copy
-   *  of a voice runs only on a model whose watermark marks every output. */
+  /** Read text aloud, in a natural voice or (`own`) the voice set up for
+   *  the clone job. A copy of a voice runs only on a model whose own
+   *  watermark marks every output, by the rule in code (cloneAllowed). */
   async speak(text: string, own: boolean, signal?: AbortSignal): Promise<string> {
     const job: MediaJob = own ? 'clone' : 'speak';
     const placed = this.need(job, 'speech');
-    if (own && placed.watermark !== true) {
+    if (own && !cloneAllowed(placed)) {
       throw new MediaError(
         'Your own voice runs only on a model that watermarks everything it says. The one placed does not, so nothing was made.',
       );

@@ -8,8 +8,13 @@
 // OpenShore's own media folder (what an earlier media tool made), never from
 // anywhere else. Outputs are saved in that media folder, not the workspace,
 // so a media tool writes nothing the person did not see. A media server off
-// this network gets the file the person named, so the tool's risk is
-// 'network' then, and the person is asked; on this computer it is 'read'.
+// this network gets the file the agent named, so the tool's risk is 'network'
+// then; on this computer it is 'read'. The loop judges each call by the
+// server its job is placed on (MediaHost.target, security review 2026-10-12):
+// one off this network asks first on the amber card, once per task per model;
+// it never gets a vault file kept on this computer, nor anything once the
+// chat holds a local-only note's text from a seat that stays; and a result
+// read from such a file on this computer is marked local-only.
 import { isAbsolute, relative, resolve } from 'node:path';
 import { z } from 'zod';
 import type { ToolContext, ToolDef } from './index.js';
@@ -101,7 +106,9 @@ const speakSchema = z.object({
   ownVoice: z
     .boolean()
     .optional()
-    .describe("Use the person's own voice, set up in their Stack. Only when they ask for it."),
+    .describe(
+      'Use the voice copied for the Your own voice job (watermarked). Only when the person asks for it.',
+    ),
 });
 
 const soundSchema = z.object({
@@ -261,7 +268,7 @@ export function mediaTools(opts: {
     const tool: ToolDef<typeof speakSchema> = {
       name: 'speakText',
       description:
-        "Read text aloud with the Stack's voice model and save the audio. ownVoice uses the person's own voice, only when they ask; that voice is watermarked. Returns the saved file.",
+        "Read text aloud with the Stack's voice model and save the audio. ownVoice uses the voice the person copied onto their speech server for the Your own voice job, only when they ask; everything it says is watermarked. Returns the saved file.",
       schema: speakSchema,
       risk: risk('speakText'),
       async execute(args, ctx) {

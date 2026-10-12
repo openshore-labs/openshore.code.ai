@@ -10,7 +10,7 @@
 //      consent gate's promise requires provenance (an authorized likeness),
 //      a video or sound is refused with a plain reason rather than produced
 //      unlabeled. A voice that copies a person's voice runs only on a model
-//      whose own watermark marks every output (the tool checks the placement).
+//      whose own watermark marks every output (media/jobs.ts, cloneAllowed).
 //
 // The registry hands this out (ProviderRegistry.mediaGuard), so the media
 // tools get it the way every model call gets its guard: by construction.

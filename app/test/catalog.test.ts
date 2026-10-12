@@ -4,20 +4,28 @@
 // starter, which carries no ratings, popularity, or staff picks.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { bridgeMock, isDesktopMock, storeGetJsonMock, storeSetJsonMock, nativeFetchMock } =
-  vi.hoisted(() => ({
-    bridgeMock: vi.fn(() => undefined as unknown),
-    isDesktopMock: vi.fn(() => false),
-    storeGetJsonMock: vi.fn<(k: string) => Promise<unknown>>(),
-    storeSetJsonMock: vi.fn<(k: string, v: unknown) => Promise<void>>(),
-    nativeFetchMock: vi.fn(),
-  }));
+const {
+  bridgeMock,
+  isDesktopMock,
+  storeGetJsonMock,
+  storeSetJsonMock,
+  storeDeleteMock,
+  nativeFetchMock,
+} = vi.hoisted(() => ({
+  bridgeMock: vi.fn(() => undefined as unknown),
+  isDesktopMock: vi.fn(() => false),
+  storeGetJsonMock: vi.fn<(k: string) => Promise<unknown>>(),
+  storeSetJsonMock: vi.fn<(k: string, v: unknown) => Promise<void>>(),
+  storeDeleteMock: vi.fn<(k: string) => Promise<void>>(async () => {}),
+  nativeFetchMock: vi.fn(),
+}));
 
 vi.mock('../src/lib/electronBridge.js', () => ({ bridge: bridgeMock }));
 vi.mock('../src/lib/platform.js', () => ({
   isDesktop: isDesktopMock,
   storeGetJson: storeGetJsonMock,
   storeSetJson: storeSetJsonMock,
+  storeDelete: storeDeleteMock,
 }));
 vi.mock('../src/lib/nativeFetch.js', () => ({ nativeFetch: nativeFetchMock }));
 
@@ -52,6 +60,8 @@ describe('loadAppCatalog standalone (MP-F1)', () => {
     const [key, value] = storeSetJsonMock.mock.calls[0];
     expect(key).toBe('oscode.cache.catalog.v2');
     expect((value as { catalog: { updated: string } }).catalog.updated).toBe('2099-01-01');
+    // The copy saved under the key from before the library is cleared.
+    expect(storeDeleteMock).toHaveBeenCalledWith('oscode.cache.catalog.v1');
   });
 
   it('serves a fresh cache without hitting the network', async () => {

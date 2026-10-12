@@ -1,6 +1,6 @@
 // Security layer: the jail, redaction, egress, daemon auth, permissions, and
 // profiles. These are the promises the product makes; they get tests.
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -183,6 +183,31 @@ describe('egress policy', () => {
       ).rejects.toBeInstanceOf(EgressBlocked);
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  it('follows a model download only over https and off this network, on every hop', async () => {
+    // A source's redirect cannot turn a weights download to plain http or to
+    // a machine on the person's own network (security review, 2026-10-12).
+    const policy = new EgressPolicy({ webEnabled: true, allowlist: [], blocklist: [] });
+    await expect(
+      policy.fetch('http://huggingface.co/a/b/resolve/main/f', 'model-pull'),
+    ).rejects.toBeInstanceOf(EgressBlocked);
+    await expect(policy.fetch('https://192.168.1.10/f', 'model-pull')).rejects.toBeInstanceOf(
+      EgressBlocked,
+    );
+    const hops: string[] = [];
+    const spy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      hops.push(String(input));
+      return new Response(null, { status: 302, headers: { location: 'http://cdn.example/f' } });
+    });
+    try {
+      await expect(
+        policy.fetch('https://huggingface.co/a/b/resolve/main/f', 'model-pull'),
+      ).rejects.toThrow(/only https addresses off this network/);
+      expect(hops).toEqual(['https://huggingface.co/a/b/resolve/main/f']);
+    } finally {
+      spy.mockRestore();
     }
   });
 

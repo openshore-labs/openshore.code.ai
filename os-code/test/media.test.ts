@@ -26,7 +26,7 @@ import { ComfyClient, finished } from '../src/media/comfyui.js';
 import { SpeechClient, formatSpeakerLines, speakerLines } from '../src/media/speech.js';
 import { MediaPrograms, denoiserArgs, separatorArgs } from '../src/media/programs.js';
 import { MediaHost } from '../src/media/host.js';
-import { MEDIA_JOBS, MEDIA_JOB_INFO } from '../src/media/jobs.js';
+import { MEDIA_JOBS, MEDIA_JOB_INFO, cloneAllowed } from '../src/media/jobs.js';
 import { buildToolRegistry, offlineCut } from '../src/core/agent/registry.js';
 import { inOwnMedia } from '../src/core/tools/media.js';
 import { CatalogSchema } from '../src/market/schema.js';
@@ -465,9 +465,18 @@ describe('the media host', () => {
     await expect(host.createImage('a poster')).rejects.toThrow(/needs ComfyUI 0\.38\.0 or later/);
   });
 
-  it("speaks in the person's own voice only on a watermarked model", async () => {
-    const { host } = hostFor({ clone: { runtime: 'speech', model: 'xtts' } });
-    await expect(host.speak('hello', true)).rejects.toThrow(/watermarks everything it says/);
+  it('copies a voice only on a watermarked model placed as itself', async () => {
+    for (const clone of [
+      { runtime: 'speech' as const, model: 'xtts' },
+      // A model that is not Chatterbox placed under its id, as a stale merge
+      // or a project file could leave it, is refused too.
+      { runtime: 'speech' as const, catalogId: 'chatterbox', model: 'voxcpm2' },
+      { runtime: 'speech' as const, catalogId: 'voxcpm2', model: 'voxcpm2' },
+    ]) {
+      const { host } = hostFor({ clone });
+      await expect(host.speak('hello', true)).rejects.toThrow(/watermarks everything it says/);
+    }
+    expect(cloneAllowed({ catalogId: 'chatterbox', model: 'chatterbox' })).toBe(true);
   });
 });
 

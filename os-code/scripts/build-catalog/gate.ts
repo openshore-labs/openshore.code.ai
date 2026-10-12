@@ -5,7 +5,7 @@
 // blessed model vanishing) from shipping a broken storefront.
 import { CatalogSchema, type Catalog } from '../../src/market/schema.js';
 import { libraryProblems } from '../../src/market/library.js';
-import { fileHostAllowed } from '../../src/market/sources.js';
+import { filePinned } from '../../src/market/sources.js';
 import type { GateBreach } from './types.js';
 
 export interface RegressionResult {
@@ -73,13 +73,14 @@ export function regressionGate(
   // Every file a model downloads starts at a host its source kind allows
   // (sources.ts), over https, so whoever can write the published catalog
   // cannot point a download anywhere the What leaves this device list does
-  // not name.
+  // not name; and it is pinned to the SHA-256 its source publishes (and, on
+  // Hugging Face, to a commit), since anyone can upload to those hosts.
   for (const model of next.models) {
     for (const file of model.source.files ?? []) {
-      if (!fileHostAllowed(file.url, model.source.kind)) {
+      if (!filePinned(file, model.source.kind)) {
         breaches.push({
-          check: 'file hosts are allowed',
-          detail: `model "${model.id}" file ${file.url} does not start at a ${model.source.kind} host`,
+          check: 'files are pinned',
+          detail: `model "${model.id}" file ${file.url} is not a pinned file from a ${model.source.kind} host`,
         });
       }
     }

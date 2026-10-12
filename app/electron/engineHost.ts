@@ -932,15 +932,12 @@ export class EngineHost {
 
   /** Take a media job out of the Stack. */
   async removeMedia(job: string): Promise<{ ok: boolean; detail: string }> {
-    const { readFileSync, writeFileSync } = await import('node:fs');
-    const { globalConfigPath } = await import('os-code/dist/src/config/load.js');
+    const { saveMediaPlacement } = await import('os-code/dist/src/config/load.js');
     try {
-      const raw = JSON.parse(readFileSync(globalConfigPath(), 'utf8'));
-      if (raw.stack?.media?.[job]) {
-        delete raw.stack.media[job];
-        writeFileSync(globalConfigPath(), `${JSON.stringify(raw, null, 2)}\n`);
-      }
-    } catch {}
+      saveMediaPlacement(job, undefined);
+    } catch (err) {
+      return { ok: false, detail: err instanceof Error ? err.message : String(err) };
+    }
     return { ok: true, detail: 'Taken out of your Stack.' };
   }
 

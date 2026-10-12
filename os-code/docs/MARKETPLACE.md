@@ -24,8 +24,11 @@ host). Media jobs (photo editing, video, transcription, voices, music and
 sound) run in ComfyUI, a speech server, audio-separator or DeepFilterNet
 (`src/media/`). The library publishes as `catalog.v2.json`; `catalog.json`
 is narrowed for apps released before it (`scripts/build-catalog/v1.ts`).
-Live discovery now writes `build/candidates.json` for curators and fills no
-shelf. The plan, the picks and the licenses the founder must act on:
+Every file a media model downloads is pinned to its source's SHA-256 (and a
+Hugging Face file to its commit) by `scripts/build-catalog/pinFiles.ts`
+before publishing; a model left unpinned is not published, and the gate
+refuses an unpinned file. Live discovery now writes `build/candidates.json`
+for curators and fills no shelf. The plan, the picks and the licenses the founder must act on:
 `docs/design/model-library-plan.md`. The sections below that describe the
 family rail, compare, and discovery joining the storefront predate it.
 
