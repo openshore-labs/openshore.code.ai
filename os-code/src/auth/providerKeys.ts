@@ -1,4 +1,4 @@
-// Keys on your server (founder, 2026-10-09; docs/byok-any-provider-plan.md,
+// Keys on your server (founder, 2026-10-09; docs/design/byok-any-provider-plan.md,
 // part 3). The one module the daemon's key routes and `osc key` share: put a
 // provider's key in this machine's credential store and the provider in its
 // config, list which providers hold a key here, and remove them again.

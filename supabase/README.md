@@ -39,8 +39,8 @@ used the number, is `0021_org_vault_v1.sql` now, bytes unchanged.
 
 Rules (CTO 4, CTO 11):
 
-- Migrations go to production from `main` only, and only through
-  `docs/vault-gate1-runbook.md`.
+- Migrations go to production from `main` only, and only by a maintainer,
+  through the maintainers' gate 1 runbook (kept outside this repository).
 - Never edit an applied file. Any change to an applied object is a new file.
 - A new file takes the next number above both main's newest and production's
   newest.
@@ -139,7 +139,7 @@ new fingerprints. That is also why every push command here carries
 
 ## Ship order (CTO 4, CTO 11): production holds 0001 to 0020; the next push is 0021 to 0026, from main
 
-`docs/vault-gate1-runbook.md` is the one verified sequence. In short, from an
+The maintainers' gate 1 runbook is the one verified sequence. In short, from an
 up-to-date `main`:
 
 1. Run the runbook's preflights in the SQL editor (4.1 to 4.5, 5.1 and 5.2),

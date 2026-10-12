@@ -1,4 +1,4 @@
-// Keys on your server (founder, 2026-10-09; docs/byok-any-provider-plan.md,
+// Keys on your server (founder, 2026-10-09; docs/design/byok-any-provider-plan.md,
 // part 3), the daemon's half: the routes answer only on a server and only to
 // an admin device; a key goes in once and never comes back out, in an answer
 // or a log line; removing one clears the stack slots that named it; and a

@@ -835,7 +835,7 @@ export function MessageList({
         // The thread is its own scroller, so an absolute child would ride the
         // content. A zero-height sticky dock holds the chip and the foot veil
         // to the visible bottom at any scroll position (Creative Studio,
-        // docs/jump-to-latest-redesign.md).
+        // docs/design/jump-to-latest-redesign.md).
         <div className={`jump-dock${pillClosing ? ' closing' : ''}`}>
           <div className="jump-veil" aria-hidden="true" />
           <div className="jump-rail">

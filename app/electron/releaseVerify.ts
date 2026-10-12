@@ -183,7 +183,7 @@ export interface DownloadedUpdate {
  * `quitAndInstall`. With a desktop key pinned, the downloaded file installs
  * only when its `.sig` from the same release checks; a missing or bad one is
  * refused. With no key pinned, it installs as before and says so in the log,
- * since the founder has not run the keygen yet (docs/release-signing.md).
+ * since the founder has not run the keygen yet (the maintainer release-signing runbook).
  */
 export async function installIfVerified(opts: {
   downloaded: DownloadedUpdate | undefined;
@@ -200,7 +200,7 @@ export async function installIfVerified(opts: {
   const log = opts.log ?? ((line: string) => console.log(line));
   if (!opts.publicKey.trim()) {
     log(
-      '[update] No desktop release key is pinned in this build, so the update installs without a signature check (docs/release-signing.md).',
+      '[update] No desktop release key is pinned in this build, so the update installs without a signature check (the maintainer release-signing runbook).',
     );
     opts.install();
     return 'installed-unchecked';

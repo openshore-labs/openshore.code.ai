@@ -143,6 +143,8 @@ import {
   launchAtLoginSupport,
   readHubPaused,
   readOfflineChosen,
+  takeQuitMarker,
+  writeQuitMarker,
   writeHubPaused,
   writeOfflineChosen,
   powerBlockerNext,
@@ -891,8 +893,13 @@ function createWindow(): void {
       // reply in flight (and the hub's live link) is not slowed when the window
       // is out of sight.
       backgroundThrottling: false,
+      // The last run ended in Quit: the page opens fresh, with the full
+      // splash and no chat restored. Read by the preload (afterQuit).
+      ...(launchAfterQuit ? { additionalArguments: [AFTER_QUIT_ARG] } : {}),
     },
   });
+  // Only the first window after a Quit opens fresh.
+  launchAfterQuit = false;
 
   // No device for any page but the app's own, and for it only what it uses
   // (mainGuards.ts): Electron's default would grant the camera, microphone,
@@ -988,6 +995,11 @@ function createWindow(): void {
 
   void win.loadFile(join(here, '..', 'dist', 'index.html'));
 }
+
+/** Whether the run before this one ended in Quit (lifecycle.ts), handed to
+ *  the page as an argument the preload reads. */
+let launchAfterQuit = false;
+const AFTER_QUIT_ARG = '--oscode-after-quit';
 
 // The smoke run ends itself once the page and the engine both reported in.
 let smokeSteps = 0;
@@ -1951,6 +1963,7 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   void app.whenReady().then(async () => {
+    launchAfterQuit = takeQuitMarker(app.getPath('userData'));
     const trayReady = createTray();
     // The Dock's own menu (a right-click on the Dock icon) carries New chat
     // too, the tray's twin on a Mac.
@@ -1997,6 +2010,8 @@ if (!app.requestSingleInstanceLock()) {
 
 app.on('before-quit', () => {
   quitting = true;
+  // A deliberate Quit: the next launch opens fresh (lib/resumePoint.ts).
+  writeQuitMarker(app.getPath('userData'));
 });
 
 app.on('window-all-closed', () => {

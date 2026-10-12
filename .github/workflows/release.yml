@@ -6,7 +6,7 @@
 # Electron, so unlike ci.yml it lets the Electron binary download and rebuilds
 # node-pty against Electron's ABI. Linux and Windows packages need no code
 # signing certificate. Every Windows and Linux file is signed for the app's
-# own update check instead (CTO ruling 2, docs/release-signing.md): the
+# own update check instead (CTO ruling 2, the maintainer release-signing runbook): the
 # publish job signs them with OPENSHORE_DESKTOP_SIGNING_KEY, and an installed
 # app with the desktop key pinned installs only a file whose .sig checks.
 # (macOS is a separate, Codemagic-driven build outside
@@ -388,7 +388,7 @@ jobs:
       # a certificate-signed build has shipped, EVERY later Windows build must
       # be signed with it too: never remove these secrets after that. Without
       # the certificate no publisher name is written, and the update check is
-      # the release signature alone (docs/release-signing.md).
+      # the release signature alone (the maintainer release-signing runbook).
       - name: Package the Windows installer
         shell: bash
         env:
@@ -431,7 +431,7 @@ jobs:
   # CTO ruling 2 (2026-09-29): this is the only job that can write, and it
   # runs in the `release` environment, which holds the desktop signing key.
   # The founder limits that environment to main and v* tags, with no required
-  # reviewer (docs/release-signing.md), so every push to main still ships.
+  # reviewer (the maintainer release-signing runbook), so every push to main still ships.
   publish:
     needs: [version, package-linux, package-windows, package-server-arm64]
     # The arm64 server job may fail without holding the release (its own
@@ -490,7 +490,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${OPENSHORE_DESKTOP_SIGNING_KEY:-}" ]; then
-            echo "OPENSHORE_DESKTOP_SIGNING_KEY is not set in the release environment, so this release ships without .sig files. Apps with no desktop key pinned skip the check; see docs/release-signing.md."
+            echo "OPENSHORE_DESKTOP_SIGNING_KEY is not set in the release environment, so this release ships without .sig files. Apps with no desktop key pinned skip the check; see the maintainer release-signing runbook."
             exit 0
           fi
           shopt -s nullglob

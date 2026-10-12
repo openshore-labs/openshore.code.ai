@@ -8867,7 +8867,7 @@ export const useApp = create<AppState>((set, get, api) => {
       // purchase stays on the device.
       void storeDelete(RETIRED_ENTITLEMENT_CACHE_KEY).catch(() => {});
       void storeDelete(RETIRED_APPLE_LINK_KEY).catch(() => {});
-      const resumeId = readResumePoint()?.activeId;
+      const resumeId = readResumePoint(platform())?.activeId;
       const resumeOk = resumeId !== undefined && Boolean(conversations[resumeId]);
       set({
         settings,

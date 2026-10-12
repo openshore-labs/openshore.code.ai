@@ -3,7 +3,7 @@
 // in, and Cloud Connections sets up a server beside the cloud providers, so
 // each lands where it belongs: a docked machine in Computer and the model
 // menu, a provider's models in the Stack. Pure, so the copy and the order
-// are a tested rule. docs/connect-anywhere-proposal.md.
+// are a tested rule. docs/design/connect-anywhere-proposal.md.
 import type { DaemonTarget } from '../drivers/remoteDriver.js';
 
 /** What a docked machine is, as its own /health reports it: the desktop app,

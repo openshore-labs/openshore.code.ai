@@ -1,0 +1,21 @@
+name: Feature request
+description: An idea for something OpenShore should do.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do, and what gets in the way today?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What you would like
+  - type: checkboxes
+    id: build
+    attributes:
+      label: Building it
+      options:
+        - label: I would like to build this myself (open the issue first, so nobody spends a weekend on something that will not land)

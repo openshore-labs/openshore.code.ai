@@ -68,6 +68,9 @@ Point the desktop app at Ollama, or any OpenAI-compatible local server, and
 pick a model. No account, no cloud key and no secrets are needed to build,
 test, or chat; a build with no account backend configured stays open.
 
+`ARCHITECTURE.md` maps the code in one page, and `docs/README.md` indexes
+the feature docs.
+
 ## Before you open a pull request
 
 ```
@@ -118,6 +121,10 @@ contribute.
 
 CI runs on your pull request with no secrets. A first-time contributor's run
 waits for a maintainer to approve it, which is GitHub's default.
+
+## Conduct
+
+Everyone taking part follows the code of conduct (`CODE_OF_CONDUCT.md`).
 
 ## Security
 

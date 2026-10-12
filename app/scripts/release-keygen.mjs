@@ -1,5 +1,5 @@
 // Make OpenShore's release signing keys (CTO rulings 1 and 2, 2026-09-29;
-// docs/release-signing.md). One command, run once by the founder:
+// the maintainer release-signing runbook). One command, run once by the founder:
 //
 //   node app/scripts/release-keygen.mjs            # both key pairs
 //   node app/scripts/release-keygen.mjs mac        # only the Mac pair
@@ -68,7 +68,7 @@ export function keygenReport(which = ['mac', 'desktop'], make = makeReleaseKeyPa
   lines.push(
     'When the secrets are saved and the public keys are pushed, the next release',
     'is signed, and every build from then on checks its updates. Clear this',
-    'terminal once you are done. Full steps: docs/release-signing.md.',
+    'terminal once you are done. Full steps: the maintainer release-signing runbook.',
   );
   return lines.join('\n');
 }

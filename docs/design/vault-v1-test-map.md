@@ -1,7 +1,7 @@
 # Vault v1: every must-fix finding mapped to a test (plan 8.3, 2026-09-27)
 
-Ship gate 1 in `docs/vault-v1-plan.md` ("no silent loss") is pinned by this
-map. Each row is one finding from `docs/vault-v1-review-findings.md` whose
+Ship gate 1 in `docs/design/vault-v1-plan.md` ("no silent loss") is pinned by this
+map. Each row is one finding from `docs/design/vault-v1-review-findings.md` whose
 fields say **v1 must** (the review's own tier: every finding carries "v1 must",
 "v1 should", or "v1 later"; severity is a separate field, so the must tier
 includes some medium and low findings, and every critical and high finding

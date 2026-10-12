@@ -1,4 +1,4 @@
-// The pairing review (CX-led Creative Studio, 2026-10-01; docs/pairing-review.md),
+// The pairing review (CX-led Creative Studio, 2026-10-01; docs/design/pairing-review.md),
 // with the room renamed Computer and pairing called docking by the founder
 // (2026-10-07; the dock form moved to components/DockForm.tsx): the QR is a link the iPhone Camera opens and is
 // only ever for the person's own network, a spent code is never thrown away,

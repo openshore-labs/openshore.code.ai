@@ -1,6 +1,6 @@
 # Vault on iPhone: opening an existing Obsidian vault in place (design, 2026-09-27)
 
-The detailed design behind plan items 2.10a and 2.10b in `docs/vault-v1-plan.md`
+The detailed design behind plan items 2.10a and 2.10b in `docs/design/vault-v1-plan.md`
 (founder ruling 2026-09-27: the iPhone half of D14 moves into v1). Part one is
 the design as drafted against the code; part two is the adversarial check that
 tested it against iOS behavior and Apple's developer forums. Where the two
@@ -10,7 +10,7 @@ disagree, part two wins, and the plan item already carries its corrections.
 
 ### 2.10 The iPhone opens an existing Obsidian vault in place
 
-Repo root: `/home/user/openshore.code.ai`. This design replaces the draft at `docs/vault-v1-plan.md:565-577`. It also fits D2 (`:1031-1035`), D14 (`:1064-1067`) and the out-of-v1 line (`:1009-1010`).
+Repo root: `/home/user/openshore.code.ai`. This design replaces the draft at `docs/design/vault-v1-plan.md:565-577`. It also fits D2 (`:1031-1035`), D14 (`:1064-1067`) and the out-of-v1 line (`:1009-1010`).
 
 **Summary**
 

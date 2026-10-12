@@ -113,6 +113,24 @@ export function writeOfflineChosen(userData: string, chosen: boolean): void {
   writeMarker(join(userData, OFFLINE_CHOSEN_FILE), chosen, 'offline\n');
 }
 
+/** Quit (the tray's, the app menu's, an update's) leaves this marker; the next
+ *  launch takes it and opens fresh, with the full splash and no chat restored
+ *  (lib/resumePoint.ts). A crash or a reboot leaves none, so that launch still
+ *  returns to the open chat. */
+const QUIT_MARKER_FILE = 'quit-clean';
+
+export function writeQuitMarker(userData: string): void {
+  writeMarker(join(userData, QUIT_MARKER_FILE), true, 'quit\n');
+}
+
+/** Whether the last run ended in Quit, removing the marker so it counts once. */
+export function takeQuitMarker(userData: string): boolean {
+  const path = join(userData, QUIT_MARKER_FILE);
+  if (!existsSync(path)) return false;
+  writeMarker(path, false, '');
+  return true;
+}
+
 function writeMarker(path: string, present: boolean, body: string): void {
   try {
     if (present) writeFileSync(path, body);

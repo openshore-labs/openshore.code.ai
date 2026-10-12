@@ -27,6 +27,7 @@ import { useScrollMemory } from './hooks/useScrollMemory.js';
 import { useDrawerGesture } from './hooks/useDrawerGesture.js';
 import { useKeyboardInset } from './hooks/useKeyboardInset.js';
 import { revealActionOf, revealPlan, scrollParentOf, viewTopOf } from './lib/revealField.js';
+import { stampResumePoint } from './lib/resumePoint.js';
 import { useNewChatDoors } from './hooks/useNewChatDoors.js';
 import { drawerExitMs, drawerWidth } from './lib/motion.js';
 
@@ -319,6 +320,34 @@ export function App() {
     };
     document.addEventListener('click', onTap, true);
     return () => document.removeEventListener('click', onTap, true);
+  }, []);
+
+  // Leaving the app restarts the resume clock (lib/resumePoint.ts), so "a quick
+  // return" is counted from when the person left, not from their last chat
+  // switch. The web layer's own events cover every platform; iOS adds its
+  // app-state event, which can arrive when visibility does not change.
+  useEffect(() => {
+    let removeNative: (() => void) | undefined;
+    const onHidden = () => {
+      if (document.visibilityState === 'hidden') stampResumePoint();
+    };
+    const onPageHide = () => stampResumePoint();
+    document.addEventListener('visibilitychange', onHidden);
+    window.addEventListener('pagehide', onPageHide);
+    if (platform() === 'ios') {
+      void (async () => {
+        const { App: CapApp } = await import('@capacitor/app');
+        const l = await CapApp.addListener('appStateChange', ({ isActive }) => {
+          if (!isActive) stampResumePoint();
+        });
+        removeNative = () => void l.remove();
+      })();
+    }
+    return () => {
+      document.removeEventListener('visibilitychange', onHidden);
+      window.removeEventListener('pagehide', onPageHide);
+      removeNative?.();
+    };
   }, []);
 
   // When the app returns to the foreground, re-check a commercial org's seat

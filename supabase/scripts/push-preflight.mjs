@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // The founder's preflight before any `supabase db push` to production (CTO 11,
-// 2026-09-29; docs/vault-gate1-runbook.md 4.1 and 6.2). It connects to
+// 2026-09-29; the maintainer gate 1 runbook 4.1 and 6.2). It connects to
 // nothing: its input is the CSV the Supabase SQL editor downloads for
 //
 //   select version, name from supabase_migrations.schema_migrations order by version;

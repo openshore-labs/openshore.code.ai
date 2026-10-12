@@ -6,7 +6,7 @@
 // home and a server you rent docked right here, by a scan or a typed code the
 // device trades for its own credential. The daemon owns the run, so a dropped
 // connection reattaches with nothing lost. Free, like everything in OpenShore.
-// docs/pairing-review.md, docs/connect-anywhere-proposal.md.
+// docs/design/pairing-review.md, docs/design/connect-anywhere-proposal.md.
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import QRCode from 'qrcode';
 import { hubList, useApp, type HubRole } from '../state/store.js';

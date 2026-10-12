@@ -44,7 +44,7 @@ class ShellViewController: CAPBridgeViewController {
     }
 }
 
-/// Slack Water's floor (app/src/lib/screenSnapshot.ts, docs/slack-water.md):
+/// Slack Water's floor (app/src/lib/screenSnapshot.ts, docs/design/slack-water.md):
 /// one picture of the web view as it is on screen, so the ripple that carries
 /// a new person from the setup walk to the main chat page can bend the app's
 /// own words and buttons the way a pond bends what lies under it. The picture
