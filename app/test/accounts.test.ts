@@ -110,7 +110,7 @@ vi.mock('../src/lib/supabase.js', async (importOriginal) => {
   return {
     ...real,
     isConfigured: () => sb.configured,
-    signInWithPassword: async () => live(),
+    verifyEmailCode: async () => live(),
     signOut: async (token: string, scope: string) => {
       sb.signOuts.push({ token, scope });
     },
@@ -596,7 +596,7 @@ describe('the store', () => {
   it('signing in from the sheet carries on to the room it was opened for', async () => {
     useApp.getState().setView('crew');
     expect(useApp.getState().accountGate).toBe('crew');
-    await useApp.getState().signIn('a@b.c', 'pw');
+    await useApp.getState().verifySignInCode('a@b.c', '123456');
     await tick();
     expect(useApp.getState().accountGate).toBeUndefined();
     expect(useApp.getState().view).toBe('crew');
@@ -608,7 +608,7 @@ describe('the store', () => {
       at: '2026-09-27T10:00:00.000Z',
       prefs: { theme: 'dark', chainOfThought: true },
     };
-    await useApp.getState().signIn('a@b.c', 'pw');
+    await useApp.getState().verifySignInCode('a@b.c', '123456');
     await vi.waitFor(() => expect(useApp.getState().settings.theme).toBe('dark'));
     expect(useApp.getState().settings.chainOfThought).toBe(true);
     // A v: 1 record's one time stands for each of its keys.
@@ -661,7 +661,7 @@ describe('the store', () => {
       v: 2,
       prefs: { noticeDownloads: { v: false, at: '2026-09-28T10:00:00.000Z' } },
     };
-    await useApp.getState().signIn('a@b.c', 'pw');
+    await useApp.getState().verifySignInCode('a@b.c', '123456');
     await vi.waitFor(() => expect(useApp.getState().settings.noticeDownloads).toBe(false));
     // The native side reads its own copy on a background relaunch, with no
     // web layer to ask, so the pull reaches it too.
@@ -691,7 +691,7 @@ describe('the store', () => {
       settings: base({ theme: 'light', prefsOwner: 'u1', prefsStamps: { theme: mine } }),
     });
     sb.remote = { v: 2, prefs: { theme: { v: 'dark', at: ahead } } };
-    await useApp.getState().signIn('a@b.c', 'pw');
+    await useApp.getState().verifySignInCode('a@b.c', '123456');
     await vi.waitFor(() => expect(sb.writes).toHaveLength(1));
     expect(useApp.getState().settings.theme).toBe('light');
     expect((sb.remote as Record2).prefs.theme).toEqual({ v: 'light', at: mine });
@@ -756,7 +756,7 @@ describe('the store', () => {
     // person's change here, and still it is theirs that shows.
     sb.userId = 'u2';
     sb.remote = { v: 2, prefs: { theme: { v: 'light', at: minutesAgo(60) } } };
-    await useApp.getState().signIn('x@y.z', 'pw');
+    await useApp.getState().verifySignInCode('x@y.z', '123456');
     await vi.waitFor(() => expect(useApp.getState().settings.theme).toBe('light'));
     expect(useApp.getState().settings.prefsOwner).toBe('u2');
     expect(sb.writes).toHaveLength(0);
@@ -834,7 +834,7 @@ describe('one door to the coding agent', () => {
     expect(useApp.getState().accountGate).toBe('coding');
 
     // Signing in carries on: the session is built and the kept message goes.
-    await useApp.getState().signIn('a@b.c', 'pw');
+    await useApp.getState().verifySignInCode('a@b.c', '123456');
     await vi.waitFor(() => expect(engine.built[0]?.sent).toEqual(['now the footer']));
     expect(engine.built).toHaveLength(1);
     expect(useApp.getState().accountGate).toBeUndefined();
@@ -944,7 +944,7 @@ describe('the notice for people who used OpenShore before the gate', () => {
 
   it('never reaches someone who has signed in before', async () => {
     useApp.setState({ settings: base({ gitosResources: [VAULT_FOLDER] }) });
-    await useApp.getState().signIn('a@b.c', 'pw');
+    await useApp.getState().verifySignInCode('a@b.c', '123456');
     await vi.waitFor(() => expect(useApp.getState().settings.accountNoticeSeen).toBe(true));
     await useApp.getState().signOutAccount();
     useApp.setState({ initStarted: false, ready: false, toast: undefined });

@@ -31,6 +31,7 @@ import {
   PROJECT_VAULT_PINS_MAX,
   VAULT_PRIVACY_DEFAULTS,
 } from './types.js';
+import { plainError } from '../lib/plainError.js';
 import { tierForSeats, type AccountType } from '../lib/plans.js';
 import {
   CODEMAGIC_SECRET_KEY,
@@ -93,19 +94,15 @@ import {
   insert as supabaseInsert,
   invokeFunction as supabaseInvoke,
   isConfigured as authConfigured,
-  parseAuthCallback,
-  authCallbackType,
+  readAuthCallback,
+  exchangeAuthCode,
+  verifyEmailCode,
+  sendEmailSignIn,
   readUserPrefs,
   writeUserPrefs,
   rpc as supabaseRpc,
   select as supabaseSelect,
-  sendPasswordReset as supabaseSendPasswordReset,
-  resendConfirmation as supabaseResendConfirmation,
-  updatePassword as supabaseUpdatePassword,
-  signInWithOtp,
-  signInWithPassword,
   signOut as supabaseSignOut,
-  signUp as supabaseSignUp,
   update as supabaseUpdate,
   type Session,
 } from '../lib/supabase.js';
@@ -643,6 +640,18 @@ import {
   revokeEverywhere,
   revokeHere,
 } from './signinOps.js';
+import {
+  CODE_REFUSED,
+  LINK_ELSEWHERE,
+  LINK_EXPIRED,
+  addressKey,
+  clearPendingSignIn,
+  codeDigits,
+  openPendingSignIn,
+  readPendingSignIn,
+  signedInAsSomeoneElse,
+  switchesAccount,
+} from './emailSignInOps.js';
 import { preferencesChanged, stampOwnChange, type PreferenceStamps } from '../lib/settingsReach.js';
 import { readProjectSecrets, writeProjectSecrets } from '../lib/projectSecrets.js';
 import {
@@ -934,6 +943,10 @@ export interface AppSettings {
    *  rather than racing the last person's times (state/signinOps.ts). Device
    *  local. */
   prefsOwner?: string;
+  /** Someone who signed in here before passwords went has signed in by
+   *  email since, so the sign-in sheet's one line about it is done (CX Q4,
+   *  2026-10-12). Device local. */
+  passwordsGoneSeen?: boolean;
   /** The one-time line to someone who used OpenShore before the account gate,
    *  signed out, has been shown. Device local. */
   accountNoticeSeen?: boolean;
@@ -1317,39 +1330,6 @@ const drivers = new Map<string, ChatDriver>();
 // times in a row never hammers the entitlement read.
 let lastEntitlementForegroundAt = 0;
 
-// The email the app most recently sent an auth link to (magic link, reset,
-// confirmation). completeAuthCallback only accepts a callback for that account,
-// which is the CSRF/state binding a custom oscode:// scheme cannot get from a
-// browser origin. Persisted sealed and device-local with a short TTL (APP-6),
-// because the link usually launches the app cold from Mail, and a binding held
-// only in memory would be gone exactly when it is needed. Cleared once a
-// callback is accepted, and on sign-out.
-const PENDING_AUTH_KEY = 'oscode.auth.pending.v1';
-const PENDING_AUTH_TTL_MS = 15 * 60_000;
-interface PendingAuth {
-  email: string;
-  at: number;
-}
-async function readPendingAuth(): Promise<string | undefined> {
-  const row = await storeGetJson<PendingAuth>(PENDING_AUTH_KEY);
-  if (!row?.email) return undefined;
-  if (Date.now() - row.at > PENDING_AUTH_TTL_MS) {
-    await storeDelete(PENDING_AUTH_KEY);
-    return undefined;
-  }
-  return row.email;
-}
-async function writePendingAuth(email: string): Promise<void> {
-  await storeSetJson(PENDING_AUTH_KEY, { email: email.trim().toLowerCase(), at: Date.now() });
-}
-async function clearPendingAuth(): Promise<void> {
-  await storeDelete(PENDING_AUTH_KEY);
-}
-// A callback that arrived with no request on record waits here for the
-// person's yes on the confirm sheet (AuthConfirmSheet). Memory only: a link
-// nobody confirmed should not survive a relaunch.
-let pendingCallback: { session: Session; recovery: boolean } | undefined;
-
 // Device keys the retired Personal plan wrote (open source, 2026-10-11); init
 // deletes them.
 const RETIRED_ENTITLEMENT_CACHE_KEY = 'oscode.entitlement.personal.v1';
@@ -1549,12 +1529,6 @@ interface AppState {
   authConfigured: boolean;
   /** The server-verified org role for the signed-in user, when known. */
   serverRole?: 'admin' | 'member';
-  /** True after a password-reset link signs the user in, so the UI prompts them
-   *  to set a new password before doing anything else. Cleared once they do. */
-  passwordRecovery?: boolean;
-  /** A sign-in link arrived that nothing here asked for; the confirm sheet
-   *  shows the account it is for and waits for a yes (APP-6). */
-  authConfirm?: { email: string; recovery: boolean };
   /** A company org someone else added the signed-in person to, waiting for an
    *  explicit yes before this device adopts it (BE-1). */
   orgJoin?: { org: Org; ownerUid: string };
@@ -1907,27 +1881,14 @@ interface AppState {
   setPreviewAsMember(on: boolean): Promise<void>;
 
   // Sign-in (Supabase). All no-op gracefully when accounts are not configured.
-  /** Sign in with email + password. */
-  signIn(email: string, password: string): Promise<void>;
-  /** Create an account with email + password. Returns whether email
-   *  confirmation is required before the account can sign in. */
-  signUpAccount(email: string, password: string): Promise<{ needsConfirmation: boolean }>;
-  /** Send a magic-link email that returns to the app's deep-link origin. */
-  sendMagicLink(email: string): Promise<void>;
-  /** Email a password-reset link that returns to the app to set a new password. */
-  sendPasswordReset(email: string): Promise<void>;
-  /** Resend the sign-up confirmation email (lost or expired link). */
-  resendConfirmation(email: string): Promise<void>;
-  /** Set a new password for the signed-in user and clear the recovery prompt. */
-  updateMyPassword(password: string): Promise<void>;
-  /** Finish a magic-link sign-in from the callback URL the app was opened with.
-   *  Returns true once signed in. False when the link was refused, or when it
-   *  is waiting on the confirm sheet (authConfirm) because nothing asked. */
+  /** Email a sign-in: one message with a link (PKCE, this device only) and a
+   *  6-digit code. The first email to a new address makes the account. */
+  sendSignInEmail(email: string): Promise<void>;
+  /** Sign in with the 6-digit code from that email. Throws when refused. */
+  verifySignInCode(email: string, code: string): Promise<void>;
+  /** Finish a sign-in from the link the app was opened with. Returns true once
+   *  signed in; false when the link was refused, or holds nothing to trade. */
   completeAuthCallback(url: string): Promise<boolean>;
-  /** The confirm sheet's yes: sign in with the link that arrived unasked. */
-  confirmAuthCallback(): Promise<void>;
-  /** The confirm sheet's no: drop the link. */
-  dismissAuthCallback(): void;
   /** Adopt the server org waiting in orgJoin on this device. */
   joinOrg(): Promise<void>;
   /** Decline it on this device (remembered until sign-out). */
@@ -4892,8 +4853,7 @@ export const useApp = create<AppState>((set, get, api) => {
     if (prefsPushTimer) clearTimeout(prefsPushTimer);
     prefsPushTimer = undefined;
     await clearSession();
-    await clearPendingAuth();
-    pendingCallback = undefined;
+    await clearPendingSignIn();
     // Best-effort: signing out of the account also severs any connected
     // Google Drive access, so a shared or handed-off device does not keep
     // standing storage access behind. A revoke failure (offline) must
@@ -4982,8 +4942,6 @@ export const useApp = create<AppState>((set, get, api) => {
       authSession: undefined,
       serverRole: undefined,
       entitlement: undefined,
-      passwordRecovery: undefined,
-      authConfirm: undefined,
       orgJoin: undefined,
       ...(dropChoice ? { vaultConflict: undefined } : {}),
       ...(keepNote
@@ -8335,6 +8293,19 @@ export const useApp = create<AppState>((set, get, api) => {
     return notes.size + held.length;
   }
 
+  // A sign-in from the email (its code or its link). The first email to an
+  // address is also how an account is made, so a device that never answered
+  // Personal or Business asks now, once signed in; a Personal build makes it
+  // a Personal account with no question (Business is v4).
+  async function signedInByEmail(session: Session): Promise<void> {
+    await onSignedIn(session);
+    if (!get().settings.passwordsGoneSeen) await get().saveSettings({ passwordsGoneSeen: true });
+    if (!get().settings.account) {
+      if (featureOn('teams')) set({ accountChoice: true });
+      else await get().saveSettings({ account: { type: 'personal' } });
+    }
+  }
+
   // verified email, claim any invited org seat, and read the server role.
   async function onSignedIn(session: Session): Promise<void> {
     await saveSession(session);
@@ -8855,7 +8826,7 @@ export const useApp = create<AppState>((set, get, api) => {
       if (authConfigured()) {
         void (async () => {
           const href = typeof window !== 'undefined' ? window.location.href : '';
-          const hasCallback = platform() === 'web' && /access_token=|auth-callback/.test(href);
+          const hasCallback = platform() === 'web' && /auth-callback/.test(href);
           if (hasCallback && (await get().completeAuthCallback(href))) {
             get().showToast('Signed in.');
             window.history.replaceState(null, document.title, window.location.pathname);
@@ -10319,124 +10290,68 @@ export const useApp = create<AppState>((set, get, api) => {
       await get().saveSettings({ account: { ...account, previewAsMember: on } });
     },
 
-    async signIn(email, password) {
-      const session = await signInWithPassword(email.trim(), password);
-      await onSignedIn(session);
+    async sendSignInEmail(email) {
+      const challenge = await openPendingSignIn(email);
+      await sendEmailSignIn(email.trim(), authRedirectTo(), challenge);
     },
 
-    async signUpAccount(email, password) {
-      // Pass the app's own deep-link origin so the confirmation link returns
-      // into the app, not onto a generic dashboard page.
-      const session = await supabaseSignUp(email.trim(), password, authRedirectTo());
-      // A new account is the moment to ask Personal or Business, and only when
-      // this device never answered (a company already set up stays as it is).
-      // Business is v4: a Personal build makes it a Personal account, no
-      // question asked.
-      if (!get().settings.account) {
-        if (featureOn('teams')) set({ accountChoice: true });
-        else await get().saveSettings({ account: { type: 'personal' } });
+    async verifySignInCode(email, code) {
+      const digits = codeDigits(code);
+      if (!digits) throw new Error(CODE_REFUSED);
+      let session: Session;
+      try {
+        session = await verifyEmailCode(addressKey(email), digits);
+      } catch (err) {
+        // GoTrue says "Token has expired or is invalid" for a wrong code too.
+        if (/expired|invalid|otp/i.test(err instanceof Error ? err.message : '')) {
+          throw new Error(CODE_REFUSED);
+        }
+        throw err;
       }
-      if (session) {
-        await onSignedIn(session);
-        return { needsConfirmation: false };
+      const current = get().authSession;
+      if (switchesAccount(current, session)) {
+        throw new Error(signedInAsSomeoneElse(current!.user.email!, session.user.email!));
       }
-      // The confirmation link will come back as a callback; bind it to this
-      // address so only this account can complete it.
-      await writePendingAuth(email);
-      return { needsConfirmation: true };
-    },
-
-    async sendMagicLink(email) {
-      await signInWithOtp(email.trim(), authRedirectTo());
-      // Remember who we sent the link to, so the callback only signs in that
-      // person (see completeAuthCallback). A custom-scheme link has no
-      // browser-enforced origin, so this binding is the CSRF guard.
-      await writePendingAuth(email);
-    },
-
-    async sendPasswordReset(email) {
-      await supabaseSendPasswordReset(email.trim(), authRedirectTo());
-      await writePendingAuth(email);
-    },
-
-    async resendConfirmation(email) {
-      await supabaseResendConfirmation(email.trim(), authRedirectTo());
-      await writePendingAuth(email);
-    },
-
-    async updateMyPassword(password) {
-      const token = await accessToken();
-      if (!token) {
-        get().showToast('Sign in first.');
-        return;
-      }
-      await supabaseUpdatePassword(token, password);
-      set({ passwordRecovery: false });
-      get().showToast('Password updated.');
+      await clearPendingSignIn();
+      await signedInByEmail(session);
     },
 
     async completeAuthCallback(url) {
-      const parsed = parseAuthCallback(url);
-      if (!parsed) return false;
-      // A password-reset link signs the user in with a recovery session; flag it
-      // so the UI prompts for a new password instead of dropping them in as if
-      // nothing else is needed.
-      const recovery = authCallbackType(url) === 'recovery';
-      // Fill the user id/email the callback URL does not carry. The token is
-      // validated server-side here: a forged or expired token yields no user
-      // and the callback is refused, never a half-signed-in session.
-      const user = await getUser(parsed.accessToken);
-      if (!user) {
-        get().showToast('That sign-in link is not valid anymore. Request a new one.');
-        return false;
-      }
-      const email = (user.email ?? '').toLowerCase();
-      // Someone else is signed in here: a link must never switch accounts
-      // underneath them.
-      const current = get().authSession?.user.email;
-      if (current && email && current.toLowerCase() !== email) {
+      const read = readAuthCallback(url);
+      if (!read) return false;
+      if (read.kind === 'refused') {
         get().showToast(
-          `You are signed in as ${current}. Sign out first to use a link for ${user.email}.`,
+          /expired|invalid|denied/i.test(read.reason) ? LINK_EXPIRED : plainError(read.reason),
         );
         return false;
       }
-      const session: Session = { ...parsed, user };
-      // Bind the callback to the email this app asked for. Anything on the
-      // machine can open an oscode:// link, so a link for a different account
-      // (login CSRF) is refused rather than silently switching accounts. The
-      // binding is persisted (APP-6), so it holds across the cold start a link
-      // from Mail usually is.
-      const pending = await readPendingAuth();
-      if (pending) {
-        if (email && email !== pending) {
-          get().showToast('That link is for a different account. Request a new one from here.');
-          return false;
-        }
-        await clearPendingAuth();
-        await onSignedIn(session);
-        if (recovery) set({ passwordRecovery: true });
-        return true;
+      // PKCE: only the device that asked holds the verifier. With none (another
+      // device's link, an expired request, or a link something else opened)
+      // there is nothing to trade, so nothing signs in.
+      const pending = await readPendingSignIn();
+      if (!pending) {
+        get().showToast(LINK_ELSEWHERE);
+        return false;
       }
-      // Nothing here asked for this link. Show who it is for and wait for a
-      // yes (AuthConfirmSheet) instead of signing in on arrival.
-      pendingCallback = { session, recovery };
-      set({ authConfirm: { email: user.email ?? '', recovery } });
-      return false;
-    },
-
-    async confirmAuthCallback() {
-      const waiting = pendingCallback;
-      pendingCallback = undefined;
-      set({ authConfirm: undefined });
-      if (!waiting) return;
-      await onSignedIn(waiting.session);
-      if (waiting.recovery) set({ passwordRecovery: true });
-      get().showToast('Signed in.');
-    },
-
-    dismissAuthCallback() {
-      pendingCallback = undefined;
-      set({ authConfirm: undefined });
+      let session: Session;
+      try {
+        session = await exchangeAuthCode(read.code, pending.verifier);
+      } catch (err) {
+        get().showToast(
+          /expired|invalid|not found|flow state/i.test(err instanceof Error ? err.message : '')
+            ? LINK_EXPIRED
+            : plainError(err),
+        );
+        return false;
+      }
+      const current = get().authSession;
+      if (switchesAccount(current, session)) {
+        get().showToast(signedInAsSomeoneElse(current!.user.email!, session.user.email!));
+        return false;
+      }
+      await clearPendingSignIn();
+      await signedInByEmail(session);
+      return true;
     },
 
     async joinOrg() {

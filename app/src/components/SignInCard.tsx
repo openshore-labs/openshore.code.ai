@@ -1,8 +1,10 @@
 // The sign-in surface. It appears only when this build has accounts configured
 // (Supabase keys present); otherwise OpenShore is local-first and shows nothing
-// here. It follows the conventional pattern: one primary action whose label and
-// heading track a Sign in / Create account mode toggle, with a passwordless
-// magic link offered underneath.
+// here. There are no passwords (founder, 2026-10-12): one email field and one
+// button send an email with a 6-digit code and a link, and the code is typed
+// here, the way in from any device. The same step makes a new account, so
+// there is no Sign in / Create account toggle, and no copy that would tell
+// anyone whether an address has an account (CX, 2026-10-12).
 //
 // Sign out deletes the account's unsent team vault text from this device
 // (R-19: text typed under one account never replays under another's). Team
@@ -13,13 +15,13 @@
 // it ends every device's, after one confirm (state/signinOps.ts).
 import { featureOn } from '../lib/focus.js';
 import { ACCOUNT_PITCH, SIGNED_IN_PERKS } from '../lib/accountGate.js';
-import { useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { useApp } from '../state/store.js';
-
-// The pitch for this build: what signing in opens with the pay gates off or on.
-const pitch = ACCOUNT_PITCH;
 import { useAuth } from '../hooks/useAuth.js';
 import { plainError } from '../lib/plainError.js';
+import { isDesktop, openExternal } from '../lib/platform.js';
+import { thisDeviceNoun } from '../lib/deviceNoun.js';
+import { PRIVACY_URL, TERMS_URL } from '../lib/legalLinks.js';
 import { Sheet } from './Sheet.js';
 import {
   SIGNING_OUT_EVERYWHERE,
@@ -27,20 +29,29 @@ import {
   SIGN_OUT_EVERYWHERE_LINK,
   SIGN_OUT_EVERYWHERE_TITLE,
 } from '../state/signinOps.js';
-
-type Mode = 'signin' | 'signup';
-
-/** An address as the account knows it, so "Me@x.com " and "me@x.com" are
- *  the one address waiting on its link. */
-function addressKey(addr: string): string {
-  return addr.trim().toLowerCase();
-}
-
-/** Whether a refused sign-in was refused because the address is not
- *  confirmed yet, the one case where resending the link is the way in. */
-export function awaitsConfirmation(err: unknown): boolean {
-  return /email not confirmed/i.test(err instanceof Error ? err.message : String(err));
-}
+import {
+  CHECK_TITLE,
+  CODE_LABEL,
+  CODE_LENGTH,
+  CODE_REFUSED,
+  CONSENT_LEAD,
+  DIFFERENT_EMAIL,
+  EMAIL_STEP_SUB,
+  NEW_CODE_SENT,
+  PASSWORDS_GONE,
+  RATE_LIMITED,
+  RESEND_WAIT_S,
+  SEND_CODE,
+  SEND_NEW_CODE,
+  SENDING,
+  SIGNED_IN,
+  SIGNING_IN,
+  SIGN_IN,
+  checkBody,
+  codeDigits,
+  rateLimited,
+  resendIn,
+} from '../state/emailSignInOps.js';
 
 /** The sign-out ask's body, for this many unsent team vault notes. */
 export function unsentTeamTextBody(n: number): string {
@@ -48,40 +59,34 @@ export function unsentTeamTextBody(n: number): string {
   return `${which} text that has not reached your team yet. Signing out deletes it from this device.`;
 }
 
-export function SignInCard({
-  variant,
-  onModeChange,
-}: {
-  variant?: 'profile' | 'sheet';
-  /** Told when the form switches between Sign in and Create account, so a
-   *  sheet's own head can follow it. */
-  onModeChange?: (mode: Mode) => void;
-} = {}) {
-  const { showToast, unsentTeamTextCount } = useApp();
+export function SignInCard({ variant }: { variant?: 'profile' | 'sheet' } = {}) {
+  const { showToast, unsentTeamTextCount, settings } = useApp();
   const {
     configured,
     signedIn,
     email,
     role,
-    passwordRecovery,
-    signIn,
-    signUp,
-    sendMagicLink,
-    sendPasswordReset,
-    resendConfirmation,
-    updateMyPassword,
+    sendSignInEmail,
+    verifySignInCode,
     signOut,
     signOutEverywhere,
   } = useAuth();
-  const [mode, setMode] = useState<Mode>('signin');
-  const switchMode = (m: Mode) => {
-    setMode(m);
-    onModeChange?.(m);
-  };
   const [addr, setAddr] = useState('');
-  const [pw, setPw] = useState('');
+  // The address the newest email went to, and when: set, the card is on its
+  // check step, with the code field.
+  const [sentTo, setSentTo] = useState<string | undefined>();
+  const [sentAt, setSentAt] = useState(0);
+  const [code, setCode] = useState('');
+  const [problem, setProblem] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
-  const [newPw, setNewPw] = useState('');
+  // A clock for the resend countdown, ticking only while it counts.
+  const [now, setNow] = useState(() => Date.now());
+  const waitLeft = sentTo ? Math.max(0, RESEND_WAIT_S - Math.floor((now - sentAt) / 1000)) : 0;
+  useEffect(() => {
+    if (waitLeft <= 0) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [waitLeft]);
   // Unsent team vault notes a sign-out would delete; above zero, the ask is open.
   const [unsent, setUnsent] = useState(0);
   // Which sign-out the ask stands in front of, and the confirm before every
@@ -92,12 +97,6 @@ export function SignInCard({
   // both controls hold and a status line takes the link's place, so a second
   // tap cannot fire and the wait is visible. The toasts say how it ended.
   const [leaving, setLeaving] = useState(false);
-  // The address that waits on its confirmation link: a sign-up sent one, or a
-  // sign-in was refused until it is confirmed. While the field still holds
-  // it, Resend confirmation takes the magic link's line, so the sheet offers
-  // two doors under its button, never three.
-  const [awaiting, setAwaiting] = useState<string | undefined>();
-  const awaitingHere = awaiting !== undefined && awaiting === addressKey(addr);
   // Each field's label names it (useId: the card can sit in more than one
   // sheet, so a fixed id could repeat).
   const fieldId = useId();
@@ -175,49 +174,6 @@ export function SignInCard({
     else await (scope === 'everywhere' ? everywhereNow() : signOut());
   };
 
-  // A password-reset link signs the user in with a recovery session. Prompt for
-  // a new password before anything else, so the reset actually completes.
-  if (signedIn && passwordRecovery) {
-    const saveNewPw = async () => {
-      if (newPw.length < 8) {
-        showToast('Use at least 8 characters for your password.');
-        return;
-      }
-      setBusy(true);
-      try {
-        await updateMyPassword(newPw);
-        setNewPw('');
-      } catch (err) {
-        showToast(plainError(err));
-      } finally {
-        setBusy(false);
-      }
-    };
-    return (
-      <div className="card">
-        <h3>Set a new password</h3>
-        <div className="sub" style={{ marginBottom: 10 }}>
-          You are signed in from the reset link. Choose a new password to finish.
-        </div>
-        <div className="field">
-          <label htmlFor={`${fieldId}-new-password`}>New password</label>
-          <input
-            id={`${fieldId}-new-password`}
-            type="password"
-            placeholder="At least 8 characters"
-            autoComplete="new-password"
-            value={newPw}
-            onChange={(e) => setNewPw(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && void saveNewPw()}
-          />
-        </div>
-        <button className="btn primary block" disabled={busy} onClick={() => void saveNewPw()}>
-          {busy ? 'Saving...' : 'Save new password'}
-        </button>
-      </div>
-    );
-  }
-
   if (signedIn) {
     return (
       <>
@@ -265,80 +221,159 @@ export function SignInCard({
     );
   }
 
-  // Field validation up front so the primary action never fails silently.
-  const guard = (needPassword: boolean): boolean => {
-    if (!addr.trim()) {
-      showToast('Enter your email.');
-      return false;
+  const send = async (again: boolean) => {
+    const to = addr.trim();
+    if (!to) {
+      setProblem('Enter your email.');
+      return;
     }
-    if (needPassword && !pw) {
-      showToast('Enter your password.');
-      return false;
-    }
-    if (needPassword && mode === 'signup' && pw.length < 8) {
-      showToast('Use at least 8 characters for your password.');
-      return false;
-    }
-    return true;
-  };
-
-  // `done` is the toast for a finished errand. A sign-up says its own (whether
-  // a link was sent), so it passes none, and an empty one would replace that
-  // line with a blank pill.
-  const run = async (needPassword: boolean, fn: () => Promise<unknown>, done: string) => {
-    if (!guard(needPassword)) return;
     setBusy(true);
+    setProblem(undefined);
     try {
-      await fn();
-      if (done) showToast(done);
+      await sendSignInEmail(to);
+      setSentTo(to);
+      setSentAt(Date.now());
+      setNow(Date.now());
+      setCode('');
+      if (again) showToast(NEW_CODE_SENT);
     } catch (err) {
-      showToast(plainError(err));
+      setProblem(rateLimited(err) ? RATE_LIMITED : plainError(err));
     } finally {
       setBusy(false);
     }
   };
 
-  const submit = () => {
-    if (mode === 'signin') {
-      return run(
-        true,
-        async () => {
-          try {
-            await signIn(addr, pw);
-          } catch (err) {
-            if (awaitsConfirmation(err)) setAwaiting(addressKey(addr));
-            throw err;
-          }
-        },
-        'Signed in.',
-      );
+  const verify = async (typed: string) => {
+    if (!sentTo || busy) return;
+    if (!codeDigits(typed)) {
+      setProblem(CODE_REFUSED);
+      return;
     }
-    return run(
-      true,
-      async () => {
-        const { needsConfirmation } = await signUp(addr, pw);
-        if (needsConfirmation) setAwaiting(addressKey(addr));
-        showToast(
-          needsConfirmation
-            ? 'Account created. Check your email to confirm.'
-            : 'Account created. You are signed in.',
-        );
-      },
-      '',
-    );
+    setBusy(true);
+    setProblem(undefined);
+    try {
+      await verifySignInCode(sentTo, typed);
+      showToast(SIGNED_IN);
+    } catch (err) {
+      setCode('');
+      setProblem(
+        rateLimited(err) ? RATE_LIMITED : err instanceof Error ? err.message : plainError(err),
+      );
+    } finally {
+      setBusy(false);
+    }
   };
 
-  const pitchLine =
-    mode === 'signin'
-      ? featureOn('teams')
-        ? `Sign in to sync your company account and role. ${pitch}`
-        : pitch
-      : featureOn('teams')
-        ? `Create an account to sync your company role across your devices. ${pitch}`
-        : `Creating an account is free. ${pitch}`;
-  // In a sheet the sheet's own head names the mode, so the form sits on the
-  // sheet itself: no card inside a card, and no second title.
+  // The one line under the email button: making an account is now a side
+  // effect of the first email, so the notice says what continuing accepts.
+  const consent = (
+    <div className="sub sign-in-consent">
+      {CONSENT_LEAD}{' '}
+      <button type="button" className="linklike" onClick={() => openExternal(TERMS_URL)}>
+        Terms of Use
+      </button>{' '}
+      and{' '}
+      <button type="button" className="linklike" onClick={() => openExternal(PRIVACY_URL)}>
+        Privacy Policy
+      </button>
+      .
+    </div>
+  );
+
+  const problemLine = problem ? (
+    <p className="hint sign-in-problem" role="alert">
+      {problem}
+    </p>
+  ) : null;
+
+  // In a sheet the sheet's own head names it, so the form sits on the sheet
+  // itself: no card inside a card, and no second title.
   const inSheet = variant === 'sheet';
+
+  if (sentTo) {
+    const device = isDesktop() ? 'this computer' : thisDeviceNoun();
+    return (
+      <>
+        <div className={inSheet ? undefined : 'card'}>
+          {inSheet ? null : <h3>{CHECK_TITLE}</h3>}
+          <p className={inSheet ? 'sheet-sub' : 'sub'}>
+            {inSheet ? <strong>{CHECK_TITLE}. </strong> : null}
+            {checkBody(sentTo, device)}
+          </p>
+          <div className="field">
+            <label htmlFor={`${fieldId}-code`}>{CODE_LABEL}</label>
+            <input
+              id={`${fieldId}-code`}
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              placeholder="000000"
+              maxLength={CODE_LENGTH + 2}
+              value={code}
+              disabled={busy}
+              onChange={(e) => {
+                const next = e.target.value;
+                setCode(next);
+                // The sixth digit is the submit: nothing else to tap.
+                if (codeDigits(next)) void verify(next);
+              }}
+              onKeyDown={(e) => e.key === 'Enter' && void verify(code)}
+            />
+          </div>
+          {problemLine}
+          <button
+            type="button"
+            className="btn primary block"
+            disabled={busy}
+            onClick={() => void verify(code)}
+          >
+            {busy ? SIGNING_IN : SIGN_IN}
+          </button>
+          <div className="sub sign-in-doors">
+            {waitLeft > 0 ? (
+              <span>{resendIn(waitLeft)}</span>
+            ) : (
+              <button
+                type="button"
+                className="linklike"
+                disabled={busy}
+                onClick={() => void send(true)}
+              >
+                {SEND_NEW_CODE}
+              </button>
+            )}
+          </div>
+          <div className="sub sign-in-doors">
+            <button
+              type="button"
+              className="linklike"
+              disabled={busy}
+              onClick={() => {
+                setSentTo(undefined);
+                setCode('');
+                setProblem(undefined);
+              }}
+            >
+              {DIFFERENT_EMAIL}
+            </button>
+          </div>
+        </div>
+        {signOutAsk}
+        {everywhereAsk}
+      </>
+    );
+  }
+
+  // Someone who signed in on this device before passwords went is told once,
+  // here, until their first email sign-in (CX Q4).
+  const passwordsGone = Boolean(settings.prefsOwner) && !settings.passwordsGoneSeen;
+  const pitchLine = [
+    passwordsGone ? PASSWORDS_GONE : EMAIL_STEP_SUB,
+    featureOn('teams') ? 'Your company account and role sync once you are in.' : '',
+    inSheet ? '' : ACCOUNT_PITCH,
+  ]
+    .filter(Boolean)
+    .join(' ');
 
   return (
     <>
@@ -347,7 +382,7 @@ export function SignInCard({
           <p className="sheet-sub">{pitchLine}</p>
         ) : (
           <>
-            <h3>{mode === 'signin' ? 'Sign in' : 'Create account'}</h3>
+            <h3>{SIGN_IN}</h3>
             <div className="sub" style={{ marginBottom: 10 }}>
               {pitchLine}
             </div>
@@ -364,91 +399,19 @@ export function SignInCard({
             autoComplete="email"
             value={addr}
             onChange={(e) => setAddr(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && void send(false)}
           />
         </div>
-        <div className="field">
-          <div className="field-label-row">
-            <label htmlFor={`${fieldId}-password`}>Password</label>
-            {mode === 'signin' ? (
-              <button
-                type="button"
-                className="linklike"
-                disabled={busy}
-                onClick={() =>
-                  void run(
-                    false,
-                    () => sendPasswordReset(addr),
-                    'Check your email for a reset link.',
-                  )
-                }
-              >
-                Forgot your password?
-              </button>
-            ) : null}
-          </div>
-          <input
-            id={`${fieldId}-password`}
-            type="password"
-            placeholder={mode === 'signup' ? 'At least 8 characters' : ''}
-            autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
-            value={pw}
-            onChange={(e) => setPw(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && void submit()}
-          />
-        </div>
-        <button className="btn primary block" disabled={busy} onClick={() => void submit()}>
-          {busy
-            ? mode === 'signin'
-              ? 'Signing in...'
-              : 'Creating account...'
-            : mode === 'signin'
-              ? 'Sign in'
-              : 'Create account'}
+        {problemLine}
+        <button
+          type="button"
+          className="btn primary block"
+          disabled={busy}
+          onClick={() => void send(false)}
+        >
+          {busy ? SENDING : SEND_CODE}
         </button>
-        <div className="sub" style={{ marginTop: 10, textAlign: 'center' }}>
-          {mode === 'signin' ? (
-            <>
-              New to OpenShore?{' '}
-              <button className="linklike" disabled={busy} onClick={() => switchMode('signup')}>
-                Create an account
-              </button>
-            </>
-          ) : (
-            <>
-              Already have an account?{' '}
-              <button className="linklike" disabled={busy} onClick={() => switchMode('signin')}>
-                Sign in
-              </button>
-            </>
-          )}
-        </div>
-        <div className="sub" style={{ marginTop: 6, textAlign: 'center' }}>
-          {awaitingHere ? (
-            <button
-              className="linklike"
-              disabled={busy}
-              onClick={() =>
-                void run(
-                  false,
-                  () => resendConfirmation(addr),
-                  'Confirmation email sent again. Check your inbox.',
-                )
-              }
-            >
-              Resend confirmation email
-            </button>
-          ) : (
-            <button
-              className="linklike"
-              disabled={busy}
-              onClick={() =>
-                void run(false, () => sendMagicLink(addr), 'Check your email for a sign-in link.')
-              }
-            >
-              Email me a link instead
-            </button>
-          )}
-        </div>
+        {consent}
       </div>
       {signOutAsk}
       {everywhereAsk}

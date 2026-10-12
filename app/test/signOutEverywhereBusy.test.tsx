@@ -16,13 +16,8 @@ vi.mock('../src/hooks/useAuth.js', () => ({
     signedIn: true,
     email: 'me@example.com',
     role: undefined,
-    passwordRecovery: false,
-    signIn: async () => {},
-    signUp: async () => {},
-    sendMagicLink: async () => {},
-    sendPasswordReset: async () => {},
-    resendConfirmation: async () => {},
-    updateMyPassword: async () => {},
+    sendSignInEmail: async () => {},
+    verifySignInCode: async () => {},
     signOut: async () => {},
     signOutEverywhere: () => {
       auth.everywhere++;
@@ -32,7 +27,7 @@ vi.mock('../src/hooks/useAuth.js', () => ({
 }));
 
 vi.mock('../src/state/store.js', () => ({
-  useApp: () => ({ showToast: () => {}, unsentTeamTextCount: async () => 0 }),
+  useApp: () => ({ showToast: () => {}, unsentTeamTextCount: async () => 0, settings: {} }),
 }));
 
 let dom: TestDom;

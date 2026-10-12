@@ -347,7 +347,7 @@ const teamNet = {
 };
 let teamToken: string | undefined = 'tok';
 // The account the fake auth server hands out: refreshSession answers with
-// `refresh` (or throws it), and signInWithPassword signs in `nextUser`.
+// `refresh` (or throws it), and verifyEmailCode signs in `nextUser`.
 const auth = {
   refresh: undefined as Error | undefined,
   nextUser: { id: 'u1', email: 'me@example.com' },
@@ -452,7 +452,7 @@ vi.mock('../src/lib/supabase.js', async (importOriginal) => {
       const id = refreshToken.replace(/^r-/, '');
       return session({ id, email: `${id}@example.com` });
     },
-    signInWithPassword: async () => session(),
+    verifyEmailCode: async () => session(),
     signOut: async () => {},
   };
 });
@@ -1442,7 +1442,7 @@ describe('the save target is fixed when the save is scheduled (0.7)', () => {
     expect(useApp.getState().vaultHeldVisible()).toEqual([]);
     // Kept in memory for the same account only: signing back in before the
     // app closes shows it again under Not saved.
-    await useApp.getState().signIn('me@example.com', 'pw');
+    await useApp.getState().verifySignInCode('me@example.com', '123456');
     expect(useApp.getState().vaultHeldVisible()).toEqual([
       expect.objectContaining({ text: 'last keystrokes', owner: 'u1', durable: false }),
     ]);
@@ -1465,7 +1465,7 @@ describe('the save target is fixed when the save is scheduled (0.7)', () => {
     await useApp.getState().signOutAccount();
     await useApp.getState().vaultSave('plan.md', 'A private words', at);
     auth.nextUser = { id: 'u2', email: 'b@example.com' };
-    await useApp.getState().signIn('b@example.com', 'pw');
+    await useApp.getState().verifySignInCode('b@example.com', '123456');
     expect(useApp.getState().vaultHeldVisible()).toEqual([]);
     expect(teamHeld()).toEqual([]);
   });
@@ -1489,7 +1489,7 @@ describe('the save target is fixed when the save is scheduled (0.7)', () => {
     // Another member of the same org signs in on this device and opens the
     // team vault.
     auth.nextUser = { id: 'u2', email: 'b@example.com' };
-    await useApp.getState().signIn('b@example.com', 'pw');
+    await useApp.getState().verifySignInCode('b@example.com', '123456');
     useApp.setState({ vaultScope: 'team' });
     await useApp.getState().vaultRefresh();
     expect(teamNet.puts.filter((p) => p.body === 'A private draft')).toHaveLength(0);
@@ -1529,7 +1529,7 @@ describe('the save target is fixed when the save is scheduled (0.7)', () => {
     expect(useApp.getState().vaultHeldVisible()).toEqual([]);
     expect(useApp.getState().toast).toMatch(/sign in again/i);
     // The same person signs back in and opens the team vault.
-    await useApp.getState().signIn('me@example.com', 'pw');
+    await useApp.getState().verifySignInCode('me@example.com', '123456');
     expect(useApp.getState().vaultHeldVisible()).toEqual([
       expect.objectContaining({ text: 'held team words', owner: 'u1' }),
     ]);
@@ -1578,7 +1578,7 @@ describe('the save target is fixed when the save is scheduled (0.7)', () => {
   it('signing back in as the same person goes on with the kept note and sends its text', async () => {
     const at = await expireOnTeamNote();
     await useApp.getState().vaultSave('plan.md', 'typed as it expired', at);
-    await useApp.getState().signIn('me@example.com', 'pw');
+    await useApp.getState().verifySignInCode('me@example.com', '123456');
     await tick();
     await tick();
     const st = useApp.getState();
@@ -1592,7 +1592,7 @@ describe('the save target is fixed when the save is scheduled (0.7)', () => {
   it('another account signing in after an expiry never sees the kept team note', async () => {
     await expireOnTeamNote();
     auth.nextUser = { id: 'u2', email: 'b@example.com' };
-    await useApp.getState().signIn('b@example.com', 'pw');
+    await useApp.getState().verifySignInCode('b@example.com', '123456');
     const st = useApp.getState();
     expect(st.vaultTeamExpired).toBeUndefined();
     expect(st.vaultScope).toBe('personal');
@@ -1622,7 +1622,7 @@ describe('the save target is fixed when the save is scheduled (0.7)', () => {
   it("another account signing in after an expiry drops the previous account's team text", async () => {
     await expireWithUnsentTeamText();
     auth.nextUser = { id: 'u2', email: 'b@example.com' };
-    await useApp.getState().signIn('b@example.com', 'pw');
+    await useApp.getState().verifySignInCode('b@example.com', '123456');
     expect(pending()).toEqual({});
     expect(teamHeld()).toEqual([]);
     expect(mem.has(HELD)).toBe(false);
@@ -4408,7 +4408,7 @@ describe('round 7: team text belongs to its account and its version', () => {
       await st().signOutAccount();
       signedOut = st().vaultConflict;
       auth.nextUser = U2;
-      await st().signIn('b@example.com', 'pw');
+      await st().verifySignInCode('b@example.com', '123456');
       expect(st().authSession?.user.id).toBe('u2');
       useApp.setState({ vaultScope: 'personal', toast: undefined });
     }
@@ -4479,7 +4479,7 @@ describe('round 7: team text belongs to its account and its version', () => {
       // Put back as if a sign-out had missed it: u2 is now signed in.
       await st().signOutAccount();
       auth.nextUser = U2;
-      await st().signIn('b@example.com', 'pw');
+      await st().verifySignInCode('b@example.com', '123456');
       await st().setVaultScope('team');
       useApp.setState({ vaultConflict: c, toast: undefined });
       expect(await st().vaultResolve('both', 'u1 private words')).toMatchObject({ ok: false });
@@ -4506,7 +4506,7 @@ describe('round 7: team text belongs to its account and its version', () => {
       auth.refresh = undefined;
       expect(st().vaultTeamExpired).toBe(true);
       expect(st().vaultConflict).toMatchObject({ path: 'Plan.md', kind: 'changed' });
-      await st().signIn('me@example.com', 'pw');
+      await st().verifySignInCode('me@example.com', '123456');
       expect(st().vaultConflict).toMatchObject({ path: 'Plan.md', kind: 'changed' });
       expect(await st().vaultResolve('both', 'u1 typed words')).toEqual({ ok: true });
       const copies = [...server.notes.values()].filter(
@@ -4530,7 +4530,7 @@ describe('round 7: team text belongs to its account and its version', () => {
       auth.refresh = undefined;
       const writes = server.rpcs.filter((r) => r.fn === 'org_vault_write').length;
       auth.nextUser = U2;
-      await st().signIn('b@example.com', 'pw');
+      await st().verifySignInCode('b@example.com', '123456');
       expect(st().vaultConflict).toBeUndefined();
       files.set('Other.md', 'u2 personal');
       await st().vaultRefresh();
@@ -4555,7 +4555,7 @@ describe('round 7: team text belongs to its account and its version', () => {
     async function switchTo(user: { id: string; email: string }) {
       await st().signOutAccount();
       auth.nextUser = user;
-      await st().signIn(user.email, 'pw');
+      await st().verifySignInCode(user.email, '123456');
     }
 
     it("a keep-both copy after the account switch is never sent on the new account's token", async () => {
@@ -4654,7 +4654,7 @@ describe('round 7: team text belongs to its account and its version', () => {
       for (let i = 0; i < 10; i++) await tick();
       expect(server.bytes('b.md')).toBeUndefined();
       expect(Object.values(pending()).map((e) => e.text)).toEqual(['u1 draft b']);
-      await st().signIn('me@example.com', 'pw');
+      await st().verifySignInCode('me@example.com', '123456');
       await st().setVaultScope('team');
       for (let i = 0; i < 10; i++) await tick();
       expect(server.notes.get('b.md')).toMatchObject({ body: 'u1 draft b', updated_by: 'u1' });
@@ -4734,7 +4734,7 @@ describe('round 7: team text belongs to its account and its version', () => {
     // u1 signs back in: the text replays into the team vault, shows under
     // Not saved, or waits in the stash under the choice, back on screen.
     async function backAsU1(t: string) {
-      await st().signIn('me@example.com', 'pw');
+      await st().verifySignInCode('me@example.com', '123456');
       if (st().vaultScope !== 'team') await st().setVaultScope('team');
       else await st().vaultRefresh();
       for (let i = 0; i < 10; i++) await tick();
@@ -4854,7 +4854,7 @@ describe('round 7: team text belongs to its account and its version', () => {
       st().vaultCloseNote();
       for (let i = 0; i < 10; i++) await tick();
       auth.nextUser = U2;
-      await st().signIn('b@example.com', 'pw');
+      await st().verifySignInCode('b@example.com', '123456');
       expect(JSON.stringify(pending())).not.toContain('u1 typed');
       expect(JSON.stringify(sealedHeld())).not.toContain('u1 typed');
       expect(st().vaultHeld.some((h) => h.text.includes('u1 typed'))).toBe(false);
@@ -4913,7 +4913,7 @@ describe('round 7: team text belongs to its account and its version', () => {
       await held.reached;
       await st().signOutAccount();
       auth.nextUser = U2;
-      await st().signIn('b@example.com', 'pw');
+      await st().verifySignInCode('b@example.com', '123456');
       await st().setVaultScope('team');
       server.freeBytes = server.usage();
       await st().vaultCreate('Idea', 'u2 words about the idea');
@@ -5361,7 +5361,7 @@ describe('round 7: team text belongs to its account and its version', () => {
       await held.reached;
       await st().signOutAccount();
       auth.nextUser = U2;
-      await st().signIn('b@example.com', 'pw');
+      await st().verifySignInCode('b@example.com', '123456');
       await st().setVaultScope('team');
       await st().vaultOpen('Plan.md');
       held.release();
@@ -5639,7 +5639,7 @@ describe('round 7, batch 2: team text and names stay where they belong', () => {
       await st().signOutAccount();
       expect(roomNow()).toEqual(EMPTY);
       auth.nextUser = U2;
-      await st().signIn('b@example.com', 'pw');
+      await st().verifySignInCode('b@example.com', '123456');
       expect(st().vaultScope).toBe('personal');
       expect(roomNow()).toEqual(EMPTY);
       fail.list = true; // the personal storage does not answer this time
@@ -5650,21 +5650,23 @@ describe('round 7, batch 2: team text and names stay where they belong', () => {
       });
     });
 
-    it('another account arriving on the auth callback clears them too', async () => {
+    it('another account can never arrive without a sign-out in between', async () => {
       await teamTrashAndFolder();
-      // Another account's session arrives with no sign-out in between (the
-      // auth callback, a magic link opened on this device).
+      // Passwordless (2026-10-12): a code or link for another account is
+      // refused while someone is signed in, so the team room never changes
+      // hands underneath them; the sign-out above is the only way across.
       auth.nextUser = U2;
-      await st().signIn('b@example.com', 'pw');
-      expect(st().vaultScope).toBe('personal');
-      expect(roomNow()).toEqual(EMPTY);
+      await expect(st().verifySignInCode('b@example.com', '123456')).rejects.toThrow(
+        /Sign out first/,
+      );
+      expect(st().authSession?.user.email).not.toBe('b@example.com');
     });
 
     it("a personal storage whose Trash does not answer never shows the team's", async () => {
       await teamTrashAndFolder();
       await st().signOutAccount();
       auth.nextUser = U2;
-      await st().signIn('b@example.com', 'pw');
+      await st().verifySignInCode('b@example.com', '123456');
       useApp.setState({ settings: { ...st().settings, gitosResources: personalOn('hub') } });
       hub.files.set('Mine.md', 'u2 personal');
       const withTrash = hub.provider as unknown as Record<string, unknown>;
@@ -5697,7 +5699,7 @@ describe('round 7, batch 2: team text and names stay where they belong', () => {
       auth.refresh = undefined;
       expect(st().vaultTeamExpired).toBe(true);
       expect(st().vaultNote?.path).toBe('Plan.md');
-      await st().signIn('me@example.com', 'pw');
+      await st().verifySignInCode('me@example.com', '123456');
       expect(st().vaultScope).toBe('team');
       expect(st().vaultNote?.path).toBe('Plan.md');
     });
@@ -5725,7 +5727,7 @@ describe('round 7, batch 2: team text and names stay where they belong', () => {
       expect(JSON.stringify(st().settings.vaultEmptyFolders ?? {})).not.toContain('Layoffs Q4');
       expect(JSON.stringify(st().settings.vaultRecent ?? {})).not.toContain('Offer letter');
       auth.nextUser = U2;
-      await st().signIn('b@example.com', 'pw');
+      await st().verifySignInCode('b@example.com', '123456');
       await st().setVaultScope('team');
       await tick();
       expect(st().vaultScope).toBe('team');
@@ -5741,7 +5743,7 @@ describe('round 7, batch 2: team text and names stay where they belong', () => {
       await st().vaultCreateFolder('Layoffs Q4');
       await st().signOutAccount();
       auth.nextUser = U2;
-      await st().signIn('b@example.com', 'pw');
+      await st().verifySignInCode('b@example.com', '123456');
       const avail = st().teamVaultAvailable();
       await st().setVaultScope('team');
       await tick();
@@ -5773,7 +5775,7 @@ describe('round 7, batch 2: team text and names stay where they belong', () => {
       auth.refresh = undefined;
       expect(st().vaultTeamExpired).toBe(true);
       st().vaultCloseNote();
-      await st().signIn('me@example.com', 'pw');
+      await st().verifySignInCode('me@example.com', '123456');
       await st().setVaultScope('team');
       await tick();
       expect(st().vaultFolders ?? []).toContain('Layoffs Q4');
@@ -5797,7 +5799,7 @@ describe('round 7, batch 2: team text and names stay where they belong', () => {
       await st().refreshOrgRole();
       auth.refresh = undefined;
       auth.nextUser = U2;
-      await st().signIn('b@example.com', 'pw');
+      await st().verifySignInCode('b@example.com', '123456');
       await st().setVaultScope('team');
       await tick();
       expect(st().vaultFolders ?? []).not.toContain('Layoffs Q4');
@@ -5817,7 +5819,7 @@ describe('round 7, batch 2: team text and names stay where they belong', () => {
           vaultRecent: { [`org::${ORG}`]: [{ path: 'Old.md', at: '2026-09-01T00:00:00.000Z' }] },
         },
       });
-      await st().signIn('me@example.com', 'pw');
+      await st().verifySignInCode('me@example.com', '123456');
       expect(st().settings.vaultEmptyFolders).toEqual({ 'local::vault.personal': ['Mine'] });
       expect(st().settings.vaultRecent).toBeUndefined();
     });
@@ -6664,7 +6666,7 @@ describe('round 7, batch 3: the team vault answers only for itself', () => {
         'u1 typed then signed out',
         () => new TypeError('Failed to fetch'),
       );
-      await st().signIn('me@example.com', 'pw');
+      await st().verifySignInCode('me@example.com', '123456');
       await st().setVaultScope('team');
       await st().vaultRefresh();
       for (let i = 0; i < 5; i++) await tick();
@@ -6681,7 +6683,7 @@ describe('round 7, batch 3: the team vault answers only for itself', () => {
       );
       expect(sealedTeam()).toEqual([]);
       expect(st().vaultHeldVisible()).toEqual([]);
-      await st().signIn('me@example.com', 'pw');
+      await st().verifySignInCode('me@example.com', '123456');
       expect(
         st()
           .vaultHeldVisible()
@@ -6731,7 +6733,7 @@ describe('round 7, batch 3: the team vault answers only for itself', () => {
       expect(released).toBe(true);
       expect(st().authSession).toBeUndefined();
       expect(Object.keys(pending())).toEqual([`org::${ORG}::plan.md`]);
-      await st().signIn('me@example.com', 'pw');
+      await st().verifySignInCode('me@example.com', '123456');
       await st().setVaultScope('team');
       await st().vaultRefresh();
       expect(server.bytes('plan.md')).toBe('u1 typed as it expired');
@@ -6768,7 +6770,7 @@ describe('round 7, batch 3: the team vault answers only for itself', () => {
       await held.reached;
       await st().signOutAccount();
       auth.nextUser = U2;
-      await st().signIn('b@example.com', 'pw');
+      await st().verifySignInCode('b@example.com', '123456');
       expect(st().authSession?.user.id).toBe('u2');
       await o.between?.();
       held.release();
@@ -6827,7 +6829,7 @@ describe('round 7, batch 3: the team vault answers only for itself', () => {
       await held.reached;
       await st().signOutAccount();
       auth.nextUser = U2;
-      await st().signIn('b@example.com', 'pw');
+      await st().verifySignInCode('b@example.com', '123456');
       teamScope(U2);
       const n = settingsGets();
       const mine = await st().vaultLoadSettings();
@@ -6860,7 +6862,7 @@ describe('round 7, batch 3: the team vault answers only for itself', () => {
       await held.reached;
       await st().signOutAccount();
       auth.nextUser = U2;
-      await st().signIn('b@example.com', 'pw');
+      await st().verifySignInCode('b@example.com', '123456');
       teamScope(U2);
       await st().vaultLoadSettings({ force: true });
       await vi.waitFor(() => expect(st().vaultTeamPlan).toMatchObject({ entitled: true }));
@@ -8340,7 +8342,7 @@ describe('round 7, batch 4: the team vault says what is there, and what it did',
       await reached.promise;
       await st().signOutAccount();
       auth.nextUser = U2;
-      await st().signIn('b@example.com', 'pw');
+      await st().verifySignInCode('b@example.com', '123456');
       await st().setVaultScope('team');
       await settledIndex();
       useApp.setState({ toast: undefined });
@@ -8393,7 +8395,7 @@ describe('round 7, batch 4: the team vault says what is there, and what it did',
       await reached.promise;
       await st().signOutAccount();
       auth.nextUser = U2;
-      await st().signIn('b@example.com', 'pw');
+      await st().verifySignInCode('b@example.com', '123456');
       await st().setVaultScope('team');
       d.resolve();
       await open;
@@ -9323,7 +9325,7 @@ describe('round 7, batch 6: the team vault says what it can do now, truly', () =
       await expire();
       expect(indexDrops.calls).toEqual([]);
       auth.nextUser = { id: 'u2', email: 'b@example.com' };
-      await st().signIn('b@example.com', 'pw');
+      await st().verifySignInCode('b@example.com', '123456');
       expect(indexDrops.calls).toContainEqual(u1Index());
     });
 
@@ -9334,14 +9336,14 @@ describe('round 7, batch 6: the team vault says what it can do now, truly', () =
       await closeVaultIndex();
       useApp.setState({ authSession: undefined });
       auth.nextUser = { id: 'u2', email: 'b@example.com' };
-      await st().signIn('b@example.com', 'pw');
+      await st().verifySignInCode('b@example.com', '123456');
       expect(indexDrops.calls).toContainEqual(u1Index());
     });
 
     it('the same account signing back in after an expiry keeps its index', async () => {
       await indexTeam();
       await expire();
-      await st().signIn('me@example.com', 'pw');
+      await st().verifySignInCode('me@example.com', '123456');
       expect(indexDrops.calls).not.toContainEqual(u1Index());
     });
 

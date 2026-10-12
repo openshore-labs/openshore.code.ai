@@ -7,13 +7,8 @@ export function useAuth() {
     authConfigured,
     authSession,
     serverRole,
-    passwordRecovery,
-    signIn,
-    signUpAccount,
-    sendMagicLink,
-    sendPasswordReset,
-    resendConfirmation,
-    updateMyPassword,
+    sendSignInEmail,
+    verifySignInCode,
     signOutAccount,
     signOutEverywhere,
   } = useApp();
@@ -26,14 +21,10 @@ export function useAuth() {
     email: authSession?.user.email,
     /** Server-verified org role, when known. */
     role: serverRole,
-    /** True while a password-reset link is signing the user in to set a new one. */
-    passwordRecovery: Boolean(passwordRecovery),
-    signIn,
-    signUp: signUpAccount,
-    sendMagicLink,
-    sendPasswordReset,
-    resendConfirmation,
-    updateMyPassword,
+    /** Email a sign-in: a link for this device and a 6-digit code. */
+    sendSignInEmail,
+    /** Sign in with the code from that email. */
+    verifySignInCode,
     signOut: signOutAccount,
     signOutEverywhere,
   };

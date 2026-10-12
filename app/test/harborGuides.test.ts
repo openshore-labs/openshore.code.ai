@@ -287,7 +287,7 @@ describe('the delightful first-run (Creative Studio: The Standing Light)', () =>
     );
     expect(onboarding).not.toContain('AccountSetup');
     const store = readFileSync(join(process.cwd(), 'src/state/store.ts'), 'utf8');
-    const signUp = store.slice(store.indexOf('async signUpAccount('));
+    const signUp = store.slice(store.indexOf('async function signedInByEmail('));
     expect(signUp.slice(0, 800)).toContain('accountChoice: true');
     const setup = readFileSync(join(process.cwd(), 'src/components/AccountSetup.tsx'), 'utf8');
     expect(setup).toContain('<h3>Business</h3>');

@@ -332,9 +332,6 @@ export function SettingsScreen() {
   const org = account?.org;
   const [sheet, setSheet] = useState<SheetName | undefined>();
   const titleRef = useRef<HTMLHeadingElement>(null);
-  // The account sheet's title follows the card's mode (Sign in or Create
-  // account), so the sheet carries one title, never two.
-  const [signInMode, setSignInMode] = useState<'signin' | 'signup'>('signin');
   const [searchChoice, setSearchChoice] = useState<'brave' | 'tavily'>('brave');
   const [searchKeyValue, setSearchKeyValue] = useState('');
   const activeSearchBackend: SearchBackend =
@@ -474,14 +471,7 @@ export function SettingsScreen() {
             subTruncate={signedIn}
             sub={signedIn ? email : `Chatting needs no account. ${ACCOUNT_PITCH}`}
             value={accountValue}
-            onClick={
-              configured
-                ? () => {
-                    setSignInMode('signin');
-                    setSheet('account');
-                  }
-                : undefined
-            }
+            onClick={configured ? () => setSheet('account') : undefined}
           />
         </SettingsGroup>
 
@@ -1346,10 +1336,7 @@ export function SettingsScreen() {
       </div>
 
       <Sheet open={sheet === 'account'} onClose={close}>
-        <SheetHead
-          title={signedIn ? 'Your account' : signInMode === 'signup' ? 'Create account' : 'Sign in'}
-          onClose={close}
-        />
+        <SheetHead title={signedIn ? 'Your account' : 'Sign in'} onClose={close} />
         {/* A team's plan and price are v4 (founder 2026-09-30: Personal first). */}
         {SHIPS_TEAMS && signedIn && account?.type === 'commercial' && org ? (
           <p className="sheet-sub">
@@ -1357,7 +1344,7 @@ export function SettingsScreen() {
             {org.members.length === 1 ? 'person' : 'people'}
           </p>
         ) : null}
-        <SignInCard variant="sheet" onModeChange={setSignInMode} />
+        <SignInCard variant="sheet" />
         {SHIPS_ADMIN && signedIn && account?.type === 'commercial' && isOrgAdmin(account) ? (
           <button
             className="btn ghost block"

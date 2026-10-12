@@ -56,6 +56,7 @@ export const SETTINGS_REACH: Record<keyof AppSettings, SettingReach> = {
   prefsStamps: 'device',
   prefsOwner: 'device',
   accountNoticeSeen: 'device',
+  passwordsGoneSeen: 'device',
   vaultMoveOffer: 'device',
   vaultHubOffer: 'device',
   vaultBeforeHub: 'device',

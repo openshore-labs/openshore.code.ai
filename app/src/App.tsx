@@ -10,7 +10,6 @@ import { useSheetFocusTrap } from './hooks/useSheetFocusTrap.js';
 import { hapticTick } from './lib/haptics.js';
 import { platform } from './lib/platform.js';
 import { Sidebar } from './components/Sidebar.js';
-import { AuthConfirmSheet } from './components/AuthConfirmSheet.js';
 import { WebSearchAsk } from './components/WebSearchAsk.js';
 import { AccountGateSheet } from './components/AccountGateSheet.js';
 import { ProfileSheet } from './components/ProfileSheet.js';
@@ -419,7 +418,6 @@ export function App() {
             dragProps={gesture.drawerProps}
           />
         ) : null}
-        <AuthConfirmSheet />
         {OrgJoinSheet ? (
           <Suspense fallback={null}>
             <OrgJoinSheet />
