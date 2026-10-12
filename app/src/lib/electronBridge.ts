@@ -726,6 +726,11 @@ export interface OscodeBridge {
   // each URL. Returns an unsubscribe function.
   onDeepLink(cb: (url: string) => void): () => void;
 
+  // The tray's and the Dock menu's New chat: the main process shows the
+  // window, then asks the renderer for a plain chat. Optional, so a desktop
+  // build from before it simply has no menu item.
+  onNewChat?(cb: () => void): () => void;
+
   // Pushed unprompted whenever the main process finds (Windows, Linux) or
   // detects (macOS) a newer release than the one running, and again whenever
   // the window reloads, so a fresh renderer is never out of sync with what

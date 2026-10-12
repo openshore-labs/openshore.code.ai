@@ -689,9 +689,18 @@ function refreshTrayMenu(): void {
   );
 }
 
-async function onTrayAction(id: 'open' | 'hub' | 'quit'): Promise<void> {
+/** The tray's and the Dock's New chat: bring the window up, then the renderer
+ *  opens a plain chat (hooks/useNewChatDoors.ts). */
+function newChatFromMenu(): void {
+  showWindow();
+  win?.webContents.send('osc:new-chat');
+}
+
+async function onTrayAction(id: 'open' | 'new' | 'hub' | 'quit'): Promise<void> {
   if (id === 'open') {
     showWindow();
+  } else if (id === 'new') {
+    newChatFromMenu();
   } else if (id === 'hub') {
     if (host.daemonRunning()) {
       await host.daemonStop();
@@ -1943,6 +1952,11 @@ if (!app.requestSingleInstanceLock()) {
 
   void app.whenReady().then(async () => {
     const trayReady = createTray();
+    // The Dock's own menu (a right-click on the Dock icon) carries New chat
+    // too, the tray's twin on a Mac.
+    if (process.platform === 'darwin') {
+      app.dock?.setMenu(Menu.buildFromTemplate([{ label: 'New chat', click: newChatFromMenu }]));
+    }
     // A login launch (--hidden) starts in the tray alone; without a tray to
     // hide in, the window opens regardless.
     if (!isHiddenLaunch(process.argv) || !trayReady) createWindow();

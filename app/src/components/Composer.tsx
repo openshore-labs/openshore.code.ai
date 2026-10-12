@@ -178,7 +178,7 @@ function FrameRing({ done, total }: { done: number; total: number }) {
 }
 
 export type SlashCommand =
-  'help' | 'clear' | 'compact' | 'model' | 'cost' | 'mode' | 'init' | 'rename';
+  'help' | 'new' | 'clear' | 'compact' | 'model' | 'cost' | 'mode' | 'init' | 'rename';
 
 export const SLASH_COMMANDS: Array<{
   name: SlashCommand;
@@ -189,6 +189,7 @@ export const SLASH_COMMANDS: Array<{
   agentOnly?: boolean;
 }> = [
   { name: 'help', hint: 'What the composer can do' },
+  { name: 'new', hint: 'Start a new chat' },
   { name: 'clear', hint: 'Start a fresh chat' },
   { name: 'compact', hint: 'Fold the history to save context', arg: 'focus', agentOnly: true },
   { name: 'model', hint: 'Switch the model' },

@@ -156,6 +156,7 @@ contextBridge.exposeInMainWorld('oscode', {
   gdriveOAuthCancel: invoke('osc:gdriveOAuthCancel'),
 
   onDeepLink: listen('osc:deep-link'),
+  onNewChat: listen('osc:new-chat'),
 
   onUpdateStatus: listen('osc:update-status'),
   installUpdate: invoke('osc:installUpdate'),

@@ -27,6 +27,7 @@ import { useScrollMemory } from './hooks/useScrollMemory.js';
 import { useDrawerGesture } from './hooks/useDrawerGesture.js';
 import { useKeyboardInset } from './hooks/useKeyboardInset.js';
 import { revealActionOf, revealPlan, scrollParentOf, viewTopOf } from './lib/revealField.js';
+import { useNewChatDoors } from './hooks/useNewChatDoors.js';
 import { drawerExitMs, drawerWidth } from './lib/motion.js';
 
 // Every room but the chat is its own chunk (review 9: the whole app used to
@@ -133,6 +134,8 @@ export function App() {
   // The keyboard inset listener lives here, from boot, so no screen can
   // mount after the keyboard has already started to rise and miss it.
   useKeyboardInset();
+  // Cmd+N and the tray's and Dock's New chat (lib/newChat.ts).
+  useNewChatDoors();
   // The drawer and the toast stay mounted through their exits (motion standard:
   // everything that animates in animates out). The toast keeps its last text so
   // the fade-out does not empty the pill mid-flight. The drawer's hold is the

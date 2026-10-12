@@ -806,9 +806,34 @@ textarea {
 
 /* Settings and the sign-in card, pinned under every room in both layouts. */
 .sidebar-foot {
+  position: relative;
   border-top: 1px solid var(--border);
   padding: 8px;
   padding-bottom: calc(8px + var(--safe-bottom));
+}
+
+/* The drawer's New chat (Creative Studio, 2026-10-12): a round accent button
+   floating over the drawer's bottom right, 12px above the foot's hairline so
+   it never covers Settings or the sign-in card. It rides the door's row
+   entrance (below) and leaves with the door. */
+.sidebar-fab {
+  position: absolute;
+  right: var(--gutter);
+  bottom: calc(100% + 12px);
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-ink);
+  box-shadow: var(--elev-2);
+}
+/* The desktop sidebar's compose icon, at the head's far end. */
+.sidebar-compose {
+  margin-left: auto;
 }
 
 /* The signed-out prompt: the last thing in the drawer, under Settings, so it
@@ -1085,7 +1110,8 @@ textarea {
 .sidebar.drawer .sidebar-head,
 .sidebar.drawer .nav-item,
 .sidebar.drawer .sidebar-recents,
-.sidebar.drawer .sidebar-signin {
+.sidebar.drawer .sidebar-signin,
+.sidebar.drawer .sidebar-fab {
   animation: drawer-row-in var(--dur-5) var(--ease-glide) backwards;
   animation-delay: calc(var(--dur-2) + var(--i, 0) * var(--stagger));
 }
@@ -1093,12 +1119,14 @@ textarea {
 .sidebar.drawer.via-gesture .nav-item,
 .sidebar.drawer.via-gesture .sidebar-recents,
 .sidebar.drawer.via-gesture .sidebar-signin,
+.sidebar.drawer.via-gesture .sidebar-fab,
 /* Arrived (Sidebar sets it once the stagger has run, or at a lift): a row
    that remounts after a reorder must not replay the entrance. */
 .sidebar.drawer.entered .sidebar-head,
 .sidebar.drawer.entered .nav-item,
 .sidebar.drawer.entered .sidebar-recents,
-.sidebar.drawer.entered .sidebar-signin {
+.sidebar.drawer.entered .sidebar-signin,
+.sidebar.drawer.entered .sidebar-fab {
   animation: none;
 }
 @keyframes drawer-row-in {

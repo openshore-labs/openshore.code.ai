@@ -118,7 +118,8 @@ let dom: TestDom | undefined;
 async function texts(): Promise<string[]> {
   dom ??= await mountDom();
   await dom.render(<Sidebar />);
-  return [...dom.container.querySelectorAll('button')].map((b) =>
+  // The desktop sidebar's compose icon is an action with no text, not a room.
+  return [...dom.container.querySelectorAll('button:not(.sidebar-compose)')].map((b) =>
     (b.textContent ?? '').replace(/\s+/g, ' ').trim(),
   );
 }

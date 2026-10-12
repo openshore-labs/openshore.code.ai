@@ -482,6 +482,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
         else showToast('Open a chat, then /help lists what the composer can do.');
         return;
       }
+      case 'new':
       case 'clear':
         startNewChat();
         return;

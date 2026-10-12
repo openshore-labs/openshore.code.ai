@@ -2,8 +2,10 @@
 // in one group at the top (founder, 2026-10-01), the day-one rooms first and
 // Crew, Cloud Connections and Pairing under them, in navRooms' order for this
 // device (D10, founder 2026-10-07), so a phone with no computer keeps Terminal
-// after the Vault. New chat and the project switcher live in the Chats and
-// Projects rooms. Persistent on desktop, a slide-over drawer on the phone.
+// after the Vault. The project switcher lives in the Projects room. New chat
+// is an action, not a room (Creative Studio, 2026-10-12): the phone's drawer
+// carries it as a floating button over its bottom right, the desktop's
+// sidebar as a compose icon in its head, never as a nav row. Persistent on desktop, a slide-over drawer on the phone.
 //
 // The person's own order (founder, 2026-10-01): every room can be dragged to
 // a new place, in its group or across to the other (hooks/useNavReorder.ts,
@@ -12,7 +14,9 @@
 // are pinned to the bottom and never move.
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { roomOpen } from '../lib/focus.js';
-import { isDesktop } from '../lib/platform.js';
+import { isDesktop, platform } from '../lib/platform.js';
+import { isMacLike, newChatShortcutLabel } from '../lib/newChat.js';
+import { ComposeGlyph } from './SheetGlyphs.js';
 import { ACCOUNT_SIGN_IN_SUB } from '../lib/accountGate.js';
 import { accountInitial, useProfileSheet } from '../lib/profile.js';
 import { isOrgAdmin, useApp, type ViewName } from '../state/store.js';
@@ -246,7 +250,7 @@ export function Sidebar({
   progress?: number | null;
   dragProps?: GestureProps;
 }) {
-  const { view, viewTrail, setView, setDrawer, settings, saveSettings } = useApp();
+  const { view, viewTrail, setView, setDrawer, settings, saveSettings, startNewChat } = useApp();
   const { configured: authConfigured, signedIn, email } = useAuth();
   const showProfile = useProfileSheet((st) => st.show);
   // An order saved under the old two-group default is set aside once, so
@@ -282,6 +286,7 @@ export function Sidebar({
   // drawer-row-in): the wordmark is 0, the top rooms follow, and the rest
   // carry on counting so the whole door fills top to bottom.
   const stagger = (i: number) => ({ '--i': i }) as CSSProperties;
+  const shortcut = newChatShortcutLabel(platform(), isMacLike());
   // The project notes open from a project or from the Vault; light the one they came from.
   const lit =
     view === 'projectmemory'
@@ -352,6 +357,19 @@ export function Sidebar({
             Open<span className="accent">Shore</span>
           </span>
         </span>
+        {/* The desktop's door to a new chat, where Claude's desktop keeps it;
+            the phone's drawer has the floating button instead. */}
+        {!drawer ? (
+          <button
+            type="button"
+            className="icon-btn sidebar-compose press-fb"
+            onClick={() => startNewChat()}
+            aria-label="New chat"
+            title={shortcut ? `New chat (${shortcut})` : 'New chat'}
+          >
+            <ComposeGlyph size={20} />
+          </button>
+        ) : null}
       </div>
 
       {/* The top group, where the hand lands first, the person's to reorder. */}
@@ -359,7 +377,7 @@ export function Sidebar({
         {top.map((entry, i) => item(entry, i, { movable: true }))}
       </nav>
 
-      <RecentChats divider={reorder.dividerRef} i={1 + afterTop} />
+      <RecentChats divider={reorder.dividerRef} i={1 + afterTop} drawer={drawer} />
 
       {/* The second-session rooms, the person's to reorder. Admin, when the
           account carries it, leads the group. */}
@@ -375,6 +393,20 @@ export function Sidebar({
           once signed in the same card names the account and opens the
           profile (founder, 2026-10-02). */}
       <div className="sidebar-foot">
+        {/* The drawer's New chat floats over its bottom right, above the foot,
+            where the thumb already is; it arrives with the door and leaves
+            with it. Always a plain chat: the drawer is global. */}
+        {drawer ? (
+          <button
+            type="button"
+            className="sidebar-fab press-fb"
+            style={stagger(3 + afterBottom)}
+            onClick={() => startNewChat()}
+            aria-label="New chat"
+          >
+            <ComposeGlyph size={22} />
+          </button>
+        ) : null}
         {item(SETTINGS, afterBottom)}
         {authConfigured && !signedIn ? (
           <button
@@ -452,6 +484,8 @@ export function Sidebar({
 const RECENT_ROW = 34;
 const RECENT_HEAD = 30;
 const RECENT_FOOT = 36;
+/** In the drawer the last rows keep clear of the floating New chat. */
+const RECENT_FAB = 16;
 /** With no way to measure (no ResizeObserver), a short list rather than none. */
 const RECENT_UNMEASURED = 5;
 
@@ -472,7 +506,15 @@ export function recentChats(
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 }
 
-function RecentChats({ divider, i }: { divider?: (el: HTMLElement | null) => void; i: number }) {
+function RecentChats({
+  divider,
+  i,
+  drawer,
+}: {
+  divider?: (el: HTMLElement | null) => void;
+  i: number;
+  drawer?: boolean;
+}) {
   const { order, conversations, activeId, view, openConversation, setView, settings } = useApp();
   const projects = settings.projects ?? [];
   const project = projects.find((p) => p.id === settings.activeProjectId) ?? projects[0];
@@ -492,7 +534,12 @@ function RecentChats({ divider, i }: { divider?: (el: HTMLElement | null) => voi
   const fit =
     height === null
       ? Math.min(chats.length, RECENT_UNMEASURED)
-      : recentFit(height, RECENT_ROW, RECENT_HEAD + RECENT_FOOT, chats.length);
+      : recentFit(
+          height,
+          RECENT_ROW,
+          RECENT_HEAD + RECENT_FOOT + (drawer ? RECENT_FAB : 0),
+          chats.length,
+        );
   const shown = chats.slice(0, fit);
 
   return (

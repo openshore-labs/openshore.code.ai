@@ -2,7 +2,13 @@
 
 Founder brief: more New chat buttons. One that overlays the left panel at the
 bottom right when it opens, and others in convenient places so a new chat is
-never more than a tap or two away. Proposal only; nothing here is built yet.
+never more than a tap or two away.
+
+Status (2026-10-12): the founder took it whole ("I agree with creative. Build").
+Built: the drawer's floating button, the desktop sidebar's compose icon, the
+shortcut and `/new`, and the tray and Dock item. The Chats empty state already
+ended in Start a chat. Held: the Projects row swipe and the iOS Home Screen
+quick action.
 
 A plain chat now works like claude.ai (no repositories). A New chat button
 therefore starts a plain chat, except inside a project, where it starts a

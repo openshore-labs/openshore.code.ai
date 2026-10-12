@@ -5,7 +5,7 @@ import { existsSync, rmSync, writeFileSync } from 'node:fs';
 import { join, posix } from 'node:path';
 
 export interface TrayMenuItem {
-  id: 'open' | 'hub' | 'quit';
+  id: 'open' | 'new' | 'hub' | 'quit';
   label: string;
 }
 
@@ -13,6 +13,7 @@ export interface TrayMenuItem {
 export function trayMenuTemplate(state: { hubRunning: boolean }): TrayMenuItem[] {
   return [
     { id: 'open', label: 'Open OpenShore' },
+    { id: 'new', label: 'New chat' },
     { id: 'hub', label: state.hubRunning ? 'Pause phone access' : 'Resume phone access' },
     { id: 'quit', label: 'Quit OpenShore' },
   ];

@@ -24,16 +24,17 @@ import {
 } from '../electron/lifecycle.js';
 
 describe('tray menu', () => {
-  it('offers Open, Pause phone access, and Quit, in that order', () => {
+  it('offers Open, New chat, Pause phone access, and Quit, in that order', () => {
     const items = trayMenuTemplate({ hubRunning: true });
-    expect(items.map((i) => i.id)).toEqual(['open', 'hub', 'quit']);
+    expect(items.map((i) => i.id)).toEqual(['open', 'new', 'hub', 'quit']);
     expect(items[0]!.label).toBe('Open OpenShore');
-    expect(items[1]!.label).toBe('Pause phone access');
-    expect(items[2]!.label).toBe('Quit OpenShore');
+    expect(items[1]!.label).toBe('New chat');
+    expect(items[2]!.label).toBe('Pause phone access');
+    expect(items[3]!.label).toBe('Quit OpenShore');
   });
 
   it('reads Resume phone access while it is paused', () => {
-    expect(trayMenuTemplate({ hubRunning: false })[1]!.label).toBe('Resume phone access');
+    expect(trayMenuTemplate({ hubRunning: false })[2]!.label).toBe('Resume phone access');
   });
 });
 
