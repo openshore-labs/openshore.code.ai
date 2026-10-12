@@ -25,6 +25,10 @@ import {
 } from './registry.js';
 import { machineOffline, type MachineOffline } from './offline.js';
 import { isLocalUrl } from '../security/egress.js';
+import { MediaHost } from '../../media/host.js';
+import { oscHome } from '../../config/load.js';
+import type { MediaToolName } from '../../media/jobs.js';
+import { mediaOutRoot } from '../tools/media.js';
 import { createVaultContextSource, currentStateReader } from '../vault/contextSource.js';
 import { AgentSession } from './loop.js';
 import { seedHistoryFromEvents, unresolvedApprovalIds } from './seed.js';
@@ -371,10 +375,34 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     processesOn(config) && options.profile !== 'headless' && options.processes !== false;
   let modeNow = (): PermissionMode => options.permissionMode ?? 'default';
 
+  // The media jobs placed in this Stack (the model library, 2026-10-12), behind
+  // one host that gets its ethics guard from the provider registry. None
+  // placed, no host and no media tool.
+  const media =
+    Object.keys(config.stack.media).length > 0
+      ? new MediaHost({
+          config,
+          guard: providers.mediaGuard(),
+          outRoot: mediaOutRoot(oscHome()),
+          ...(config.media.speech?.apiKeyEnv && process.env[config.media.speech.apiKeyEnv]
+            ? { speechKey: process.env[config.media.speech.apiKeyEnv] }
+            : {}),
+        })
+      : undefined;
+
   const registryOptions: ToolRegistryOptions = {
     stackHasVision:
       Boolean(stack.specialists.vision) || stack.orchestrator.provider.kind === 'cloud',
-    stackHasImageGen: stack.imageGen,
+    stackHasImageGen: stack.imageGen || Boolean(media?.placement('create')),
+    ...(media
+      ? {
+          media: {
+            tools: media.tools(),
+            leaves: (tool: MediaToolName) => media.anyLeaves(tool),
+            home: oscHome(),
+          },
+        }
+      : {}),
     stackHasSpecialists: Boolean(stack.specialists.coding || stack.specialists.fast),
     egressLockdown,
     hasCodemagic: Boolean(options.codemagicToken),
@@ -399,13 +427,16 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
   // tools, and making an image when the image server is off this network.
   const cutWhenOffline = offlineCut({
     ...registryOptions,
-    imageServerLeaves: Boolean(config.imageGen && !isLocalUrl(config.imageGen.baseUrl)),
+    imageServerLeaves:
+      Boolean(config.imageGen && !isLocalUrl(config.imageGen.baseUrl)) ||
+      Boolean(media?.placement('create') && media.leaves('comfyui')),
   });
   const toolContext = buildToolContext({
     cwd: options.cwd,
     config,
     router,
     providers,
+    ...(media ? { media } : {}),
     projectName,
     egressLockdown,
     vault: vaultRoot !== null,

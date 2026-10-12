@@ -8,10 +8,13 @@
 # OpenShore.ai-marketing-site repo (formerly a subpage of
 # Open-Shore-LLC-Homepage; that repo now serves openshorellc.com instead),
 # whose Eleventy build passes src/static through to the site root. So a file
-# committed to that repo at src/static/os-code/catalog.json is served at
-# openshore.ai/os-code/catalog.json, which is exactly what config.catalog.url
-# defaults to. This job builds the catalog here (where the os-code toolchain
-# lives) and commits it there; the Cloudflare Pages deploy then ships it. On
+# committed to that repo at src/static/os-code/catalog.v2.json is served at
+# openshore.ai/os-code/catalog.v2.json, which is what config.catalog.url
+# defaults to since the model library (2026-10-12). catalog.json beside it is
+# the same catalog narrowed for apps released before the library
+# (scripts/build-catalog/v1.ts), which still fetch that address. This job
+# builds both here (where the os-code toolchain lives) and commits them
+# there; the Cloudflare Pages deploy then ships them. On
 # any gate breach the job writes and publishes NOTHING, and the previously
 # published catalog keeps serving.
 #
@@ -43,6 +46,8 @@ on:
       - "os-code/catalog.sample.json"
       - "os-code/scripts/build-catalog/**"
       - "os-code/src/market/schema.ts"
+      - "os-code/src/market/library.ts"
+      - "os-code/src/market/sources.ts"
       - ".github/workflows/catalog.yml"
   workflow_dispatch:
     inputs:
@@ -115,6 +120,20 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p os-code/build
+          # The library file is the baseline once it is live; before the first
+          # library publish it is a 404, and the file before it seeds instead
+          # (the builder reads catalog.v2.json first, then catalog.json).
+          v2tmp=os-code/build/catalog.v2.json.tmp
+          v2code="$(curl --retry 3 --retry-delay 2 -sSL -H 'Cache-Control: no-cache' \
+            -o "$v2tmp" -w '%{http_code}' \
+            "https://openshore.ai/os-code/catalog.v2.json?baseline=$(date +%s)")" || v2code=none
+          if [ "$v2code" = "200" ]; then
+            mv "$v2tmp" os-code/build/catalog.v2.json
+            echo 'Seeded the regression baseline from the live library catalog.'
+          else
+            rm -f "$v2tmp"
+            echo "No live library catalog (HTTP ${v2code}); seeding from catalog.json."
+          fi
           tmp=os-code/build/catalog.json.tmp
           rm -f "$tmp"
           # --fail: treat a 4xx/5xx as a curl error, not a 200 whose HTML error
@@ -175,8 +194,9 @@ jobs:
             "https://x-access-token:${MARKETING_DEPLOY_TOKEN}@github.com/openshore-labs/OpenShore.ai-marketing-site.git" \
             marketing
           install -D os-code/build/catalog.json marketing/src/static/os-code/catalog.json
+          install -D os-code/build/catalog.v2.json marketing/src/static/os-code/catalog.v2.json
           cd marketing
-          git add src/static/os-code/catalog.json
+          git add src/static/os-code/catalog.json src/static/os-code/catalog.v2.json
           # --cached so a brand-new (untracked) catalog file also counts as a
           # change; a plain git diff would miss it and skip the first publish.
           if git diff --cached --quiet; then

@@ -3,7 +3,7 @@
 // no artwork, so the tile is generated from the brand: a rounded square, water
 // teal for anything that runs on the phone, deep ink otherwise, with a Fraunces
 // two-letter monogram. Distinct enough to scan a shelf by, on-brand on any card.
-import type { CapabilityCategory } from 'os-code/protocol';
+import type { CapabilityCategory, CategoryId } from 'os-code/protocol';
 import { modelMonogram } from './marketplace.js';
 import { Icon } from './Icon.js';
 
@@ -34,11 +34,68 @@ const CAP_PATHS: Record<CapabilityCategory, JSX.Element> = {
     </>
   ),
   fast: <path d="M13 3L5 13h5l-1 8 8-11h-5z" fill="currentColor" />,
+  // The media specialists (the model library, 2026-10-12).
+  'image-edit': (
+    <>
+      <path d="M4 20L15 9M13 7l4 4" />
+      <path d="M18 3v3M16.5 4.5h3M20 9v2M19 10h2" />
+    </>
+  ),
+  video: (
+    <>
+      <path d="M3 7h12v10H3z" />
+      <path d="M15 10.5l6-3.5v10l-6-3.5" />
+    </>
+  ),
+  listen: (
+    <>
+      <path d="M12 3a3 3 0 0 1 3 3v5a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3z" />
+      <path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" />
+    </>
+  ),
+  voice: (
+    <>
+      <path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z" />
+      <path d="M15.5 9.5a3.5 3.5 0 0 1 0 5M18 7a7 7 0 0 1 0 10" />
+    </>
+  ),
+  audio: (
+    <>
+      <path d="M9 18V6l10-2v12" />
+      <circle cx="6.5" cy="18" r="2.5" />
+      <circle cx="16.5" cy="16" r="2.5" />
+    </>
+  ),
+};
+
+// A category's own glyph where it differs from its capability's: Overall and
+// Reasoning share the capability that runs the show, so Overall draws a
+// compass. Every other category draws its capability.
+const CATEGORY_PATHS: Partial<Record<CategoryId, JSX.Element>> = {
+  overall: (
+    <>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M14.8 9.2l-1.9 4.7-4.7 1.9 1.9-4.7z" />
+    </>
+  ),
 };
 
 /** A line glyph for a capability. Strokes/fills follow currentColor. */
 export function CapIcon({ cap, size = 16 }: { cap: CapabilityCategory; size?: number }) {
   return <Icon size={size}>{CAP_PATHS[cap]}</Icon>;
+}
+
+/** A line glyph for a library category (os-code/protocol's LIBRARY_CATEGORIES). */
+export function CategoryIcon({
+  id,
+  cap,
+  size = 22,
+}: {
+  id: CategoryId;
+  cap: CapabilityCategory;
+  size?: number;
+}) {
+  return <Icon size={size}>{CATEGORY_PATHS[id] ?? CAP_PATHS[cap]}</Icon>;
 }
 
 /** The generated "app icon" tile for a model. Teal for on-device (local and

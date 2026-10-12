@@ -3,6 +3,7 @@
 // anything downloads.
 import { spawn } from 'node:child_process';
 import type { CatalogModel } from './schema.js';
+import { SOURCE_NAMES } from './sources.js';
 import { machineOffline } from '../core/agent/offline.js';
 import { pullFailedLine, pullFailure, type PullResult } from './pullLine.js';
 import { isOllamaCloudTag } from '../harness/locality.js';
@@ -39,8 +40,9 @@ export function licenseNotice(model: CatalogModel): string {
   const lines = [`${model.name} is licensed under ${model.license.name} (${model.license.id}).`];
   if (model.license.note) lines.push(model.license.note);
   if (model.license.url) lines.push(`Full text: ${model.license.url}`);
+  if (model.license.conditions) lines.push(model.license.conditions);
   lines.push(
-    `Weights come straight from ${model.source.kind === 'ollama' ? 'the Ollama library' : 'Hugging Face'}, never from OpenShore.`,
+    `Weights come straight from ${SOURCE_NAMES[model.source.kind]}, never from OpenShore.`,
   );
   return lines.join('\n');
 }
@@ -61,7 +63,7 @@ export async function installModel(
   if (model.source.kind !== 'ollama') {
     return {
       ok: false,
-      detail: `This model comes from Hugging Face. Fetch it with:\n  ${model.source.pullCommand}\nthen point your stack at wherever your server loads it.`,
+      detail: `This model comes from ${SOURCE_NAMES[model.source.kind]}. Fetch it with:\n  ${model.source.pullCommand}\nthen point your stack at wherever your server loads it.`,
     };
   }
   return installOllamaRef(model.source.ref, onProgress, options);

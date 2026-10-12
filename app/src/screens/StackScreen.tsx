@@ -17,6 +17,7 @@ import type { Catalog } from 'os-code/protocol';
 import { Sheet } from '../components/Sheet.js';
 import { SheetHead } from '../components/SheetHead.js';
 import { SettingsGroup, SettingsRow } from '../components/SettingsRow.js';
+import { StackMedia } from '../components/StackMedia.js';
 import { STACK_CATEGORIES, STACK_LEAD, categoryLabel, type StackCategory } from '../lib/stack.js';
 import { thisDeviceNoun } from '../lib/deviceNoun.js';
 import { claudeModel, claudeModelLabel } from '../lib/claudeModels.js';
@@ -360,6 +361,16 @@ export function StackScreen() {
             );
           })}
         </SettingsGroup>
+
+        {isDesktop() && status && !reading && !unanswered ? (
+          <StackMedia
+            status={status}
+            canEdit={canEdit}
+            index={3}
+            onChanged={() => void refresh()}
+            onOpenMarketplace={() => setView('marketplace')}
+          />
+        ) : null}
 
         {orchestrator ? prefabs : null}
 

@@ -7,6 +7,7 @@ import type { Jail } from '../security/jail.js';
 import type { ToolRisk } from '../permissions/index.js';
 import type { OscConfig } from '../../config/schema.js';
 import type { ImageProvider } from '../../providers/types.js';
+import type { MediaHost } from '../../media/host.js';
 import type { ToolSpec } from '../../providers/types.js';
 import type { DelegatedUsage, DelegateOptions } from '../../router/router.js';
 import type { CurrentsHandles } from '../../currents/model.js';
@@ -112,6 +113,10 @@ export interface ToolContext {
   egress: EgressPolicy;
   config: OscConfig;
   imageProvider?: ImageProvider;
+  /** The media jobs placed in this Stack (the model library, 2026-10-12):
+   *  photo editing, video, transcription, voices, music and sound, and
+   *  pictures through ComfyUI. Unset when none is placed. */
+  media?: MediaHost;
   /** One-shot delegation to a specialist chat model, provided by the router. */
   delegate?: (
     role: 'coding' | 'writing' | 'analysis' | 'fast' | 'vision',

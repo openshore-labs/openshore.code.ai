@@ -17,7 +17,7 @@ import {
   Tray,
   type IpcMainInvokeEvent,
 } from 'electron';
-import { dirname, join } from 'node:path';
+import { dirname, isAbsolute, join } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
@@ -33,6 +33,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { Jail } from 'os-code/dist/src/core/security/jail.js';
+import { MEDIA_JOBS } from 'os-code/dist/src/media/jobs.js';
 import {
   parseCurrentsHandles,
   parseHarnessCurrentsHandle,
@@ -1218,13 +1219,37 @@ guarded('osc:catalog', () => host.catalog());
 guarded('osc:stackHealth', (range: unknown) =>
   host.stackHealth(optStr(range, 'range') as Parameters<typeof host.stackHealth>[0]),
 );
-guarded('osc:installModel', (modelId: unknown) => host.installModel(str(modelId, 'modelId')));
+guarded('osc:installModel', (modelId: unknown, shelfId: unknown) =>
+  host.installModel(str(modelId, 'modelId'), optStr(shelfId, 'shelfId')),
+);
 guarded('osc:installOllamaRef', (ref: unknown) => host.installOllamaRef(str(ref, 'ref')));
 guarded('osc:setOrchestrator', (model: unknown) => host.setOrchestrator(str(model, 'model')));
 guarded('osc:enableSpecialist', (role: unknown, model: unknown) =>
   host.enableSpecialist(str(role, 'role'), str(model, 'model')),
 );
 guarded('osc:disableSpecialist', (role: unknown) => host.disableSpecialist(str(role, 'role')));
+// The media jobs (the model library, 2026-10-12). Addresses are http(s), a
+// models folder is an absolute path, and a job is one the engine knows.
+guarded('osc:mediaServers', () => host.mediaServers());
+guarded('osc:setMediaServer', (runtime: unknown, baseUrl: unknown, modelsDir: unknown) => {
+  const which = str(runtime, 'runtime');
+  if (which !== 'comfyui' && which !== 'speech') throw new Error('Unknown media server.');
+  const url = optStr(baseUrl, 'baseUrl');
+  if (url !== undefined && !/^https?:\/\/[^\s]+$/.test(url))
+    throw new Error('An address starts with http:// or https://.');
+  const dir = optStr(modelsDir, 'modelsDir');
+  if (dir !== undefined && !isAbsolute(dir))
+    throw new Error('Give the full path of the models folder.');
+  return host.setMediaServer(which, {
+    ...(url !== undefined ? { baseUrl: url } : {}),
+    ...(dir !== undefined && which === 'comfyui' ? { modelsDir: dir } : {}),
+  });
+});
+guarded('osc:removeMedia', (job: unknown) => {
+  const name = str(job, 'job');
+  if (!(MEDIA_JOBS as readonly string[]).includes(name)) throw new Error('Unknown media job.');
+  return host.removeMedia(name);
+});
 
 guarded('osc:setAnthropicKey', (key: unknown, workspaceId: unknown) =>
   host.setAnthropicKey(str(key, 'key'), optStr(workspaceId, 'workspaceId')),

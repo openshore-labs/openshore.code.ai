@@ -3,6 +3,7 @@
 // Complexity is opt-in, which is the accessibility promise in schema form.
 import { z } from 'zod';
 import { PROVIDER_KEY_REF_PATTERN } from './providerKeyRef.js';
+import { MEDIA_JOBS, MEDIA_RUNTIMES } from '../media/jobs.js';
 
 // ---------------------------------------------------------------------------
 // Providers
@@ -84,6 +85,57 @@ export const ImageGenEndpointSchema = z.object({
   label: z.string().optional(),
 });
 
+// The media servers (the model library, founder 2026-10-12): the local
+// programs the media jobs run in, each called as a tool. Machine config: a
+// repo never names where they are, what program runs, or where models go.
+export const MediaServersSchema = z.object({
+  /** ComfyUI: pictures, photo editing, video, music and sound effects. */
+  comfyui: z
+    .object({
+      baseUrl: z.string().default('http://127.0.0.1:8188'),
+      /** ComfyUI's own models folder, where a model's files are put on Get. */
+      modelsDir: z.string().optional(),
+    })
+    .optional(),
+  /** A speech server in the OpenAI format (LocalAI, by default on 8080):
+   *  transcription, who said what, and voices. */
+  speech: z
+    .object({
+      baseUrl: z.string().default('http://127.0.0.1:8080'),
+      /** Name of an environment variable holding the server's key, if any. */
+      apiKeyEnv: z.string().optional(),
+    })
+    .optional(),
+  /** audio-separator, run as a program: separating a song into stems. */
+  separator: z
+    .object({
+      command: z.string().default('audio-separator'),
+      /** Where it keeps its model files (its --model_file_dir). */
+      modelDir: z.string().optional(),
+    })
+    .optional(),
+  /** DeepFilterNet's deepFilter, run as a program: cleaning up a voice. */
+  denoiser: z.object({ command: z.string().default('deepFilter') }).optional(),
+});
+
+/** One media job's placement: the model, and what its runtime is told. A
+ *  name the runtime reads (a model file, a voice) is a plain name, never a
+ *  flag or a path, since it reaches a program's command line. */
+const RUNTIME_NAME = /^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,199}$/;
+export const MediaPlacementSchema = z.object({
+  runtime: z.enum(MEDIA_RUNTIMES),
+  /** The library entry it was placed from, when it came from the Marketplace. */
+  catalogId: z.string().optional(),
+  /** A ComfyUI workflow family OpenShore ships (media/graphs.ts). */
+  graph: z.string().regex(RUNTIME_NAME).optional(),
+  /** The files that workflow names, by role (`unet`, `clip`, `vae`). */
+  files: z.record(z.string().regex(/^[a-z]+[0-9]?$/), z.string().regex(RUNTIME_NAME)).optional(),
+  model: z.string().regex(RUNTIME_NAME).optional(),
+  voice: z.string().regex(RUNTIME_NAME).optional(),
+  /** The model watermarks every output (a voice clone requires it). */
+  watermark: z.boolean().optional(),
+});
+
 export const ProviderEndpointSchema = z.discriminatedUnion('kind', [
   OpenAICompatibleEndpointSchema,
   AnthropicEndpointSchema,
@@ -117,6 +169,9 @@ export const StackSchema = z.object({
   /** The one required role. When it is the only model, it does everything. */
   orchestrator: ModelRefSchema.optional(),
   specialists: SpecialistsSchema.prefault({}),
+  /** The media jobs placed (media/jobs.ts), one model per job. A job with no
+   *  placement has no tool, and the agent does without it. */
+  media: z.partialRecord(z.enum(MEDIA_JOBS), MediaPlacementSchema).prefault({}),
 });
 
 // ---------------------------------------------------------------------------
@@ -252,8 +307,14 @@ export const DaemonSchema = z.object({
   pushHost: z.string().optional(),
 });
 
+/** The published catalog: the library file since 2026-10-12. The file before
+ *  it (`catalog.json`, still published, narrowed for older apps) is read as
+ *  this one when a config names it, since that was only ever the default. */
+export const CATALOG_URL = 'https://openshore.ai/os-code/catalog.v2.json';
+export const CATALOG_URL_BEFORE_LIBRARY = 'https://openshore.ai/os-code/catalog.json';
+
 export const CatalogSchema = z.object({
-  url: z.string().default('https://openshore.ai/os-code/catalog.json'),
+  url: z.string().default(CATALOG_URL),
   refreshHours: z.number().min(1).default(24),
 });
 
@@ -480,6 +541,7 @@ export const ConfigSchema = z.object({
     .record(z.string(), ProviderEndpointSchema)
     .default({ ollama: { kind: 'openai-compatible', baseUrl: 'http://localhost:11434' } }),
   imageGen: ImageGenEndpointSchema.optional(),
+  media: MediaServersSchema.prefault({}),
   stack: StackSchema.prefault({}),
   routing: RoutingSchema.prefault({}),
   resourceBudget: ResourceBudgetSchema.prefault({}),
@@ -507,5 +569,7 @@ export type ProviderEndpoint = z.infer<typeof ProviderEndpointSchema>;
 export type AnthropicEndpoint = z.infer<typeof AnthropicEndpointSchema>;
 export type OpenAICompatibleEndpoint = z.infer<typeof OpenAICompatibleEndpointSchema>;
 export type ImageGenEndpoint = z.infer<typeof ImageGenEndpointSchema>;
+export type MediaServers = z.infer<typeof MediaServersSchema>;
+export type MediaPlacement = z.infer<typeof MediaPlacementSchema>;
 export type StackConfig = z.infer<typeof StackSchema>;
 export type SpecialistsConfig = z.infer<typeof SpecialistsSchema>;

@@ -4,6 +4,8 @@
 // stops a bad metadata day (a source outage that drops half the models, a
 // blessed model vanishing) from shipping a broken storefront.
 import { CatalogSchema, type Catalog } from '../../src/market/schema.js';
+import { libraryProblems } from '../../src/market/library.js';
+import { fileHostAllowed } from '../../src/market/sources.js';
 import type { GateBreach } from './types.js';
 
 export interface RegressionResult {
@@ -61,6 +63,28 @@ export function regressionGate(
     }
   }
 
+  // The model library (2026-10-12): every pick names a model in the catalog,
+  // on a known shelf, with a license that allows commercial use, a runtime its
+  // category takes, and a download that fits its size class (library.ts).
+  for (const problem of libraryProblems(next)) {
+    breaches.push({ check: 'library picks are sound', detail: problem });
+  }
+
+  // Every file a model downloads starts at a host its source kind allows
+  // (sources.ts), over https, so whoever can write the published catalog
+  // cannot point a download anywhere the What leaves this device list does
+  // not name.
+  for (const model of next.models) {
+    for (const file of model.source.files ?? []) {
+      if (!fileHostAllowed(file.url, model.source.kind)) {
+        breaches.push({
+          check: 'file hosts are allowed',
+          detail: `model "${model.id}" file ${file.url} does not start at a ${model.source.kind} host`,
+        });
+      }
+    }
+  }
+
   // Invariant: every preset orchestrator and specialist id resolves to a model.
   const ids = new Set(next.models.map((m) => m.id));
   for (const preset of next.presets) {
@@ -103,13 +127,18 @@ export function regressionGate(
         }
       }
       // The model count must not collapse: a fall of more than 25 percent reads
-      // as a source failure, not an editorial choice.
-      if (prev.models.length > 0 && !allowLargeDrop) {
-        const dropFraction = (prev.models.length - next.models.length) / prev.models.length;
+      // as a source failure, not an editorial choice. Live discovery's entries
+      // are not counted on either side: since the library (2026-10-12) they are
+      // candidates for the curators, never published, so their going is by
+      // design.
+      const prevCurated = prev.models.filter((m) => !m.discovery);
+      const nextCurated = next.models.filter((m) => !m.discovery);
+      if (prevCurated.length > 0 && !allowLargeDrop) {
+        const dropFraction = (prevCurated.length - nextCurated.length) / prevCurated.length;
         if (dropFraction > 0.25) {
           breaches.push({
             check: 'model count not down more than 25 percent',
-            detail: `model count fell ${(dropFraction * 100).toFixed(0)} percent (${prev.models.length} to ${next.models.length})`,
+            detail: `model count fell ${(dropFraction * 100).toFixed(0)} percent (${prevCurated.length} to ${nextCurated.length})`,
           });
         }
       }
@@ -128,8 +157,8 @@ export function regressionGate(
       // its coverage). Offline runs legitimately carry no popularity, so this
       // check is online-only. "More than half lost" means next < prev / 2.
       if (online) {
-        const prevWithPop = prev.models.filter((m) => m.popularity).length;
-        const nextWithPop = next.models.filter((m) => m.popularity).length;
+        const prevWithPop = prevCurated.filter((m) => m.popularity).length;
+        const nextWithPop = nextCurated.filter((m) => m.popularity).length;
         if (prevWithPop > 0 && nextWithPop < prevWithPop / 2) {
           breaches.push({
             check: 'popularity coverage not halved',

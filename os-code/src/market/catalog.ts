@@ -5,10 +5,11 @@
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { OscConfig } from '../config/schema.js';
+import { CATALOG_URL, CATALOG_URL_BEFORE_LIBRARY, type OscConfig } from '../config/schema.js';
 import type { EgressPolicy } from '../core/security/egress.js';
 import { oscHome } from '../config/load.js';
 import { CatalogSchema, type Catalog, type CatalogModel } from './schema.js';
+import { withLibrary } from './library.js';
 import { fitsBudget, type ResourceBudget } from '../router/resourceBudget.js';
 import { logger } from '../util/log.js';
 
@@ -36,7 +37,27 @@ export interface LoadedCatalog {
   note?: string;
 }
 
+/** The bundled sample, parsed once: the last resort, and the library a
+ *  catalog from before the library borrows (withLibrary). */
+let bundledCatalog: Catalog | undefined;
+function bundled(): Catalog {
+  bundledCatalog ??= CatalogSchema.parse(JSON.parse(readFileSync(bundledCatalogPath(), 'utf8')));
+  return bundledCatalog;
+}
+
+/** Where the catalog is fetched from: the config's address, with the old
+ *  default read as the new one (a config written before the library named
+ *  it only because it was the default). */
+export function catalogUrl(config: OscConfig): string {
+  return config.catalog.url === CATALOG_URL_BEFORE_LIBRARY ? CATALOG_URL : config.catalog.url;
+}
+
 export async function loadCatalog(config: OscConfig, egress: EgressPolicy): Promise<LoadedCatalog> {
+  const loaded = await loadCatalogFile(config, egress);
+  return { ...loaded, catalog: withLibrary(loaded.catalog, bundled()) };
+}
+
+async function loadCatalogFile(config: OscConfig, egress: EgressPolicy): Promise<LoadedCatalog> {
   // Fresh cache wins: no network chatter on every browse.
   try {
     const stat = statSync(cachePath());
@@ -49,7 +70,7 @@ export async function loadCatalog(config: OscConfig, egress: EgressPolicy): Prom
 
   // Remote refresh.
   try {
-    const res = await egress.fetch(config.catalog.url, 'catalog', {
+    const res = await egress.fetch(catalogUrl(config), 'catalog', {
       signal: AbortSignal.timeout(8000),
       headers: { accept: 'application/json' },
     });
@@ -73,9 +94,8 @@ export async function loadCatalog(config: OscConfig, egress: EgressPolicy): Prom
       note: 'Could not refresh the catalog; showing the cached copy.',
     };
   } catch {}
-  const catalog = CatalogSchema.parse(JSON.parse(readFileSync(bundledCatalogPath(), 'utf8')));
   return {
-    catalog,
+    catalog: bundled(),
     source: 'bundled',
     note: 'Showing the built-in starter catalog (offline or feed unreachable).',
   };

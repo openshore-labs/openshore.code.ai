@@ -35,6 +35,7 @@ behind a choice; the code is the source of truth for what ships.
 
 | Doc | What it covers |
 | --- | --- |
+| [`design/model-library-plan.md`](design/model-library-plan.md) | The Marketplace as a library: one pick per size for each job, media jobs, sources and licenses. |
 | [`design/connect-anywhere-proposal.md`](design/connect-anywhere-proposal.md) | Docking a phone to a computer or a rented server. |
 | [`design/byok-any-provider-plan.md`](design/byok-any-provider-plan.md) | Bring your own keys, any provider, and keys on your server. |
 | [`design/pairing-review.md`](design/pairing-review.md) | The pairing flow, reviewed and rebuilt. |

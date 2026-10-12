@@ -4,7 +4,7 @@
 // sample as the last resort. Always something to show, and on a standalone
 // phone the storefront now carries the real ratings, popularity, and staff
 // picks the published catalog holds (the bundled sample has none of those).
-import { CatalogSchema, type Catalog } from 'os-code/protocol';
+import { CatalogSchema, withLibrary, type Catalog } from 'os-code/protocol';
 import bundled from 'os-code/catalog.sample.json';
 import { bridge } from './electronBridge.js';
 import { isDesktop, storeGetJson, storeSetJson } from './platform.js';
@@ -16,11 +16,13 @@ export interface LoadedCatalog {
   note?: string;
 }
 
-// The same feed the desktop engine defaults to (config.catalog.url). Cloudflare
-// Pages serves it with no CORS headers, so the fetch goes through nativeFetch
-// (native URLSession on iOS) rather than a WebView fetch the origin would block.
-const PUBLISHED_CATALOG_URL = 'https://openshore.ai/os-code/catalog.json';
-const CATALOG_CACHE_KEY = 'oscode.cache.catalog.v1';
+// The same feed the desktop engine defaults to (config.catalog.url): the
+// library file since 2026-10-12. Cloudflare Pages serves it with no CORS
+// headers, so the fetch goes through nativeFetch (native URLSession on iOS)
+// rather than a WebView fetch the origin would block. The cache key moved with
+// it, so a cache from before the library is not read as fresh.
+const PUBLISHED_CATALOG_URL = 'https://openshore.ai/os-code/catalog.v2.json';
+const CATALOG_CACHE_KEY = 'oscode.cache.catalog.v2';
 // Mirrors the engine's config.catalog.refreshHours default (24h).
 const REFRESH_MS = 24 * 60 * 60 * 1000;
 
@@ -29,7 +31,14 @@ interface CachedCatalog {
   fetchedAt: number;
 }
 
+/** Every catalog the store shows carries the library: one from an older
+ *  computer or an older cache borrows the library bundled with this app. */
 export async function loadAppCatalog(daemon?: DaemonTarget): Promise<LoadedCatalog> {
+  const loaded = await loadFromSource(daemon);
+  return { ...loaded, catalog: withLibrary(loaded.catalog, CatalogSchema.parse(bundled)) };
+}
+
+async function loadFromSource(daemon?: DaemonTarget): Promise<LoadedCatalog> {
   if (isDesktop() && bridge()) {
     try {
       return await bridge()!.catalog();

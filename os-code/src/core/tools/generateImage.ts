@@ -13,6 +13,7 @@ import { z } from 'zod';
 import type { ToolDef } from './index.js';
 import { oscHome } from '../../config/load.js';
 import { EthicsBlocked } from '../ethics/guardedProvider.js';
+import { mediaFailure } from '../../media/host.js';
 
 const schema = z.object({
   prompt: z.string().min(1).describe('What to draw'),
@@ -27,6 +28,21 @@ export const generateImageTool: ToolDef<typeof schema> = {
   schema,
   risk: 'read', // local compute, no egress, no workspace writes
   async execute(args, ctx) {
+    // A picture model placed from the library runs in ComfyUI through the
+    // media host, which screens the prompt and labels the picture the same
+    // way (the model library, 2026-10-12).
+    if (ctx.media?.placement('create')) {
+      try {
+        const files = await ctx.media.createImage(args.prompt, ctx.signal);
+        return {
+          ok: true,
+          content: `Image generated and saved to ${files.join(', ')}. It carries provenance metadata marking it as AI-generated.`,
+        };
+      } catch (err) {
+        if (err instanceof EthicsBlocked) return { ok: false, content: err.message };
+        return { ok: false, content: `Image generation failed: ${mediaFailure(err)}` };
+      }
+    }
     if (!ctx.imageProvider) {
       return {
         ok: false,

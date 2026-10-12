@@ -42,7 +42,7 @@ describe('loadAppCatalog standalone (MP-F1)', () => {
     nativeFetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => published });
     const { catalog, note } = await loadAppCatalog();
     expect(nativeFetchMock).toHaveBeenCalledWith(
-      'https://openshore.ai/os-code/catalog.json',
+      'https://openshore.ai/os-code/catalog.v2.json',
       expect.objectContaining({ responseType: 'json' }),
     );
     expect(catalog.updated).toBe('2099-01-01');
@@ -50,7 +50,7 @@ describe('loadAppCatalog standalone (MP-F1)', () => {
     // The freshly fetched catalog was written to the Preferences cache.
     expect(storeSetJsonMock).toHaveBeenCalledTimes(1);
     const [key, value] = storeSetJsonMock.mock.calls[0];
-    expect(key).toBe('oscode.cache.catalog.v1');
+    expect(key).toBe('oscode.cache.catalog.v2');
     expect((value as { catalog: { updated: string } }).catalog.updated).toBe('2099-01-01');
   });
 
@@ -70,6 +70,22 @@ describe('loadAppCatalog standalone (MP-F1)', () => {
     const { catalog, note } = await loadAppCatalog();
     expect(catalog.updated).toBe('2099-01-01');
     expect(note).toMatch(/last saved catalog/i);
+  });
+
+  it('gives a catalog from before the library the library bundled with the app', async () => {
+    // A catalog as published before the library: no library block, and only
+    // the models it had then.
+    const { library: _library, ...rest } = published as { library?: unknown; models: unknown[] };
+    const older = { ...rest, models: rest.models.slice(0, 5) };
+    nativeFetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => older });
+    const { catalog } = await loadAppCatalog();
+    expect(catalog.library).toEqual((bundled as { library: unknown }).library);
+    // Its own entries win, and every pick's model is there to show.
+    expect(catalog.updated).toBe('2099-01-01');
+    const ids = new Set(catalog.models.map((m) => m.id));
+    for (const row of Object.values(catalog.library!.picks)) {
+      for (const pick of Object.values(row ?? {})) expect(ids.has(pick!.model)).toBe(true);
+    }
   });
 
   it('falls back to the bundled starter when there is no cache and no network', async () => {

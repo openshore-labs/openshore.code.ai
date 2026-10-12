@@ -9,7 +9,17 @@ import type { OscConfig } from '../config/schema.js';
 import { EgressPolicy } from '../core/security/egress.js';
 import { budgetFor, detectHardware } from '../router/resourceBudget.js';
 import { findModel, loadCatalog, rateModels } from '../market/catalog.js';
-import { installModel, licenseNotice } from '../market/install.js';
+import { licenseNotice } from '../market/install.js';
+import { getModel } from '../media/install.js';
+import {
+  SIZE_CLASS_INFO,
+  filledCategories,
+  filledShelves,
+  libraryModelIds,
+  runtimeOf,
+  shelfPicks,
+  RUNTIME_INFO,
+} from '../market/library.js';
 import { CAPABILITIES } from '../router/roles.js';
 import { confirm, fmtBytes, header, okLine, out, progressBar, warnLine } from './util.js';
 
@@ -27,22 +37,32 @@ export async function marketBrowseCommand(): Promise<void> {
   const budget = budgetFor(detectHardware());
   if (note) out(t.muted(note));
 
-  header(`The catalog (${catalog.models.length} models, ${source})`);
+  // The library (founder, 2026-10-12): the categories the Stack fills, each
+  // shelf one job, at most one pick per size of machine.
+  const picked = libraryModelIds(catalog);
+  header(`The library (${picked.size} models, ${source})`);
   out(t.muted(`  Your machine: ${budget.summary}`));
-  out();
-  for (const { model, fit } of rateModels(catalog, budget)) {
-    const fitMark =
-      fit === 'fits'
-        ? t.ok('fits')
-        : fit === 'tight'
-          ? t.warn('tight fit')
-          : t.danger(`needs more VRAM`);
-    const blessed = model.blessed ? t.local(` ${GLYPHS.ok} blessed`) : '';
-    const plain = model.categories.map((c) => CAPABILITIES[c].plain).join(', ');
-    out(`  ${t.bold(model.id.padEnd(20))} ${t.text(model.tagline)}`);
-    out(
-      `  ${''.padEnd(20)} ${t.muted(`${plain} ${GLYPHS.bullet} ${model.sizeGB} GB ${GLYPHS.bullet} ${model.license.id} ${GLYPHS.bullet}`)} ${fitMark}${blessed}`,
-    );
+  const fitOf = new Map(rateModels(catalog, budget).map((r) => [r.model.id, r.fit]));
+  for (const category of filledCategories(catalog)) {
+    out();
+    out(`  ${t.bold(category.name)}  ${t.muted(category.blurb)}`);
+    for (const shelf of filledShelves(catalog, category.id)) {
+      out(`    ${t.text(shelf.name)}`);
+      for (const pick of shelfPicks(catalog, shelf.id)) {
+        const fit = fitOf.get(pick.model.id);
+        const fitMark =
+          runtimeOf(pick.model) !== 'ollama'
+            ? t.muted(`runs in ${RUNTIME_INFO[runtimeOf(pick.model)].name}`)
+            : fit === 'fits'
+              ? t.ok('fits')
+              : fit === 'tight'
+                ? t.warn('tight fit')
+                : t.danger('needs more memory');
+        out(
+          `      ${t.muted(SIZE_CLASS_INFO[pick.size].name.padEnd(12))}${t.bold(pick.model.id.padEnd(26))} ${t.muted(`${pick.model.sizeGB} GB ${GLYPHS.bullet} ${pick.model.license.id} ${GLYPHS.bullet}`)} ${fitMark}`,
+        );
+      }
+    }
   }
   out();
   out(
@@ -110,8 +130,10 @@ export async function marketInstallCommand(id: string): Promise<void> {
     out(t.muted('Nothing downloaded.'));
     return;
   }
-  const result = await installModel(
+  const result = await getModel(
     model,
+    catalog,
+    config,
     (p) => {
       if (p.percent !== undefined) {
         const size =
@@ -125,16 +147,19 @@ export async function marketInstallCommand(id: string): Promise<void> {
         process.stdout.write(`\r  ${t.muted(p.line.slice(0, 54).padEnd(54))}`);
       }
     },
-    { baseUrl: ollamaBaseUrl(config) },
+    { ollamaBaseUrl: ollamaBaseUrl(config) },
   );
   process.stdout.write('\n');
   if (result.ok) {
     okLine(result.detail);
-    out(
-      t.muted(
-        `  Wire it in: osc stack use ${model.source.ref} (orchestrator) or osc stack enable <role> ${model.source.ref}`,
-      ),
-    );
+    // A media model is placed by Get; a chat model is wired in by hand.
+    if (runtimeOf(model) === 'ollama') {
+      out(
+        t.muted(
+          `  Wire it in: osc stack use ${model.source.ref} (orchestrator) or osc stack enable <role> ${model.source.ref}`,
+        ),
+      );
+    }
   } else {
     warnLine(result.detail);
     process.exitCode = 1;
