@@ -24,6 +24,12 @@ import { thisDeviceNoun } from '../lib/deviceNoun.js';
 import { PRIVACY_URL, TERMS_URL } from '../lib/legalLinks.js';
 import { Sheet } from './Sheet.js';
 import {
+  SIGN_IN_WITH_EMAIL,
+  SIGN_IN_WITH_PASSKEY,
+  passkeyProblem,
+  passkeysAvailable,
+} from '../lib/passkeys.js';
+import {
   SIGNING_OUT_EVERYWHERE,
   SIGN_OUT_EVERYWHERE_BODY,
   SIGN_OUT_EVERYWHERE_LINK,
@@ -79,6 +85,13 @@ export function SignInCard({ variant }: { variant?: 'profile' | 'sheet' } = {}) 
   const [code, setCode] = useState('');
   const [problem, setProblem] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
+  // Passkeys, where this device can make and use one (lib/passkeys.ts). A
+  // device that has used one leads with it; email is a link under it then.
+  const [passkeyOk, setPasskeyOk] = useState(false);
+  const [emailChosen, setEmailChosen] = useState(false);
+  useEffect(() => {
+    if (!signedIn) void passkeysAvailable().then(setPasskeyOk);
+  }, [signedIn]);
   // A clock for the resend countdown, ticking only while it counts.
   const [now, setNow] = useState(() => Date.now());
   const waitLeft = sentTo ? Math.max(0, RESEND_WAIT_S - Math.floor((now - sentAt) / 1000)) : 0;
@@ -264,6 +277,20 @@ export function SignInCard({ variant }: { variant?: 'profile' | 'sheet' } = {}) 
     }
   };
 
+  const withPasskey = async () => {
+    setBusy(true);
+    setProblem(undefined);
+    try {
+      await useApp.getState().signInWithPasskey();
+      showToast(SIGNED_IN);
+    } catch (err) {
+      setProblem(passkeyProblem(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const passkeyFirst = passkeyOk && settings.passkeyUsedHere === true && !emailChosen;
+
   // The one line under the email button: making an account is now a side
   // effect of the first email, so the notice says what continuing accepts.
   const consent = (
@@ -388,29 +415,67 @@ export function SignInCard({ variant }: { variant?: 'profile' | 'sheet' } = {}) 
             </div>
           </>
         )}
-        <div className="field">
-          <label htmlFor={`${fieldId}-email`}>Email</label>
-          <input
-            id={`${fieldId}-email`}
-            type="email"
-            placeholder="you@example.com"
-            autoCapitalize="none"
-            autoCorrect="off"
-            autoComplete="email"
-            value={addr}
-            onChange={(e) => setAddr(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && void send(false)}
-          />
-        </div>
-        {problemLine}
-        <button
-          type="button"
-          className="btn primary block"
-          disabled={busy}
-          onClick={() => void send(false)}
-        >
-          {busy ? SENDING : SEND_CODE}
-        </button>
+        {passkeyFirst ? (
+          <>
+            {problemLine}
+            <button
+              type="button"
+              className="btn primary block"
+              disabled={busy}
+              onClick={() => void withPasskey()}
+            >
+              {SIGN_IN_WITH_PASSKEY}
+            </button>
+            <div className="sub sign-in-doors">
+              <button
+                type="button"
+                className="linklike"
+                disabled={busy}
+                onClick={() => setEmailChosen(true)}
+              >
+                {SIGN_IN_WITH_EMAIL}
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="field">
+              <label htmlFor={`${fieldId}-email`}>Email</label>
+              <input
+                id={`${fieldId}-email`}
+                type="email"
+                placeholder="you@example.com"
+                autoCapitalize="none"
+                autoCorrect="off"
+                autoComplete="email"
+                value={addr}
+                onChange={(e) => setAddr(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && void send(false)}
+              />
+            </div>
+            {problemLine}
+            <button
+              type="button"
+              className="btn primary block"
+              disabled={busy}
+              onClick={() => void send(false)}
+            >
+              {busy ? SENDING : SEND_CODE}
+            </button>
+            {passkeyOk ? (
+              <div className="sub sign-in-doors">
+                <button
+                  type="button"
+                  className="linklike"
+                  disabled={busy}
+                  onClick={() => void withPasskey()}
+                >
+                  {SIGN_IN_WITH_PASSKEY}
+                </button>
+              </div>
+            ) : null}
+          </>
+        )}
         {consent}
       </div>
       {signOutAsk}

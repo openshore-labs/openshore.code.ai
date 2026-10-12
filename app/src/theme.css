@@ -15671,3 +15671,23 @@ button.settings-row:active {
 .live-model-name {
   font-weight: var(--weight-semibold);
 }
+
+/* App Lock's screen (components/AppLockScreen.tsx): the mark, one line, one
+   button, one hint, centred, arriving on the standard fade. Nothing behind it:
+   the rooms unmount while the app is locked. */
+.app-lock {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 24px;
+  text-align: center;
+  animation: fade-rise var(--dur-3) var(--ease-standard) backwards;
+}
+
+.app-lock-title {
+  font-size: var(--text-7);
+  margin: 0;
+}

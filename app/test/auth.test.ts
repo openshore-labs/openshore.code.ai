@@ -72,6 +72,17 @@ vi.mock('../src/lib/supabase.js', async (importOriginal) => {
   return { ...real, isConfigured: () => true, ...sb };
 });
 
+const pk = {
+  addPasskey: vi.fn(),
+  signInWithPasskey: vi.fn(),
+  listPasskeys: vi.fn(),
+  removePasskey: vi.fn(),
+};
+vi.mock('../src/lib/passkeys.js', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../src/lib/passkeys.js')>();
+  return { ...real, ...pk };
+});
+
 const { SupabaseRequestError } = await import('../src/lib/supabase.js');
 const { clearSession } = await import('../src/lib/authSession.js');
 const { recordEthicsEvent } = await import('../src/lib/ethics.js');
@@ -555,5 +566,55 @@ describe('the guardrail record rides the store session (the refresh race)', () =
     useApp.setState({ authSession: undefined });
     await recordEthicsEvent(blocked);
     expect(sb.insert).not.toHaveBeenCalled();
+  });
+});
+
+describe('passkeys in the store', () => {
+  beforeEach(async () => {
+    await resetAll();
+    for (const fn of Object.values(pk)) fn.mockReset();
+  });
+
+  const token = (amr: object[]) => `h.${btoa(JSON.stringify({ amr })).replace(/=+$/, '')}.s`;
+  const withToken = (amr: object[]): Session => ({ ...live(), accessToken: token(amr) });
+
+  it('asks for a fresh code before adding a passkey to an old sign-in', async () => {
+    const old = Math.floor(Date.now() / 1000) - 20 * 60;
+    useApp.setState({ authSession: withToken([{ method: 'otp', timestamp: old }]) });
+    expect(await useApp.getState().addPasskey()).toBe('confirm');
+    expect(pk.addPasskey).not.toHaveBeenCalled();
+  });
+
+  it('adds one straight after an email sign-in, and remembers this device used one', async () => {
+    const fresh = Math.floor(Date.now() / 1000) - 60;
+    useApp.setState({ authSession: withToken([{ method: 'otp', timestamp: fresh }]) });
+    pk.addPasskey.mockResolvedValue(undefined);
+    expect(await useApp.getState().addPasskey()).toBe('added');
+    expect(pk.addPasskey).toHaveBeenCalledTimes(1);
+    expect(useApp.getState().settings.passkeyUsedHere).toBe(true);
+  });
+
+  it('a code renews this session only, never another account', async () => {
+    useApp.setState({ authSession: live() });
+    sb.verifyEmailCode.mockResolvedValue({ ...live(), accessToken: 'renewed' });
+    await useApp.getState().confirmByCode('123456');
+    expect(sb.verifyEmailCode).toHaveBeenCalledWith('a@b.c', '123456');
+    expect(useApp.getState().authSession?.accessToken).toBe('renewed');
+
+    sb.verifyEmailCode.mockResolvedValue({ ...live(), user: { id: 'u2', email: 'a@b.c' } });
+    await expect(useApp.getState().confirmByCode('123456')).rejects.toThrow(CODE_REFUSED);
+    expect(useApp.getState().authSession?.accessToken).toBe('renewed');
+  });
+
+  it('signs in with a passkey and leads with it here next time', async () => {
+    pk.signInWithPasskey.mockResolvedValue({
+      access_token: 'pk-token',
+      refresh_token: 'pk-refresh',
+      expires_in: 3600,
+      user,
+    });
+    await useApp.getState().signInWithPasskey();
+    expect(useApp.getState().authSession?.accessToken).toBe('pk-token');
+    expect(useApp.getState().settings.passkeyUsedHere).toBe(true);
   });
 });

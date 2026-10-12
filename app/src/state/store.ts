@@ -32,6 +32,21 @@ import {
   VAULT_PRIVACY_DEFAULTS,
 } from './types.js';
 import { plainError } from '../lib/plainError.js';
+import {
+  APP_LOCK_OFF,
+  APP_LOCK_ON,
+  askUnlock,
+  setAppSwitcherCover,
+  type AppLockSetting,
+} from '../lib/appLock.js';
+import {
+  addPasskey as passkeyAdd,
+  listPasskeys as passkeyList,
+  recentEmailProof,
+  removePasskey as passkeyRemove,
+  signInWithPasskey as passkeySignIn,
+  type Passkey,
+} from '../lib/passkeys.js';
 import { tierForSeats, type AccountType } from '../lib/plans.js';
 import {
   CODEMAGIC_SECRET_KEY,
@@ -90,7 +105,6 @@ import {
 } from '../lib/repoSync.js';
 import {
   del as supabaseDelete,
-  getUser,
   insert as supabaseInsert,
   invokeFunction as supabaseInvoke,
   isConfigured as authConfigured,
@@ -947,6 +961,16 @@ export interface AppSettings {
    *  email since, so the sign-in sheet's one line about it is done (CX Q4,
    *  2026-10-12). Device local. */
   passwordsGoneSeen?: boolean;
+  /** App Lock (lib/appLock.ts): the device's own unlock before the app opens,
+   *  and how long it may sit in the background first. Off by default. Device
+   *  local. */
+  appLock?: AppLockSetting;
+  /** "Not now" on the Your account sheet's offer to create a passkey: final
+   *  on this device (CX Q2). Device local. */
+  passkeyOfferDismissed?: boolean;
+  /** This device has made or used a passkey, so the sign-in sheet leads with
+   *  it (CX Q2). A hint, never a credential. Device local. */
+  passkeyUsedHere?: boolean;
   /** The one-time line to someone who used OpenShore before the account gate,
    *  signed out, has been shown. Device local. */
   accountNoticeSeen?: boolean;
@@ -1527,6 +1551,9 @@ interface AppState {
   authSession?: Session;
   /** Whether this build has sign-in configured at all. */
   authConfigured: boolean;
+  /** App Lock is closed: the app shows only the lock screen until the
+   *  device's own unlock (lib/appLock.ts). No room renders meanwhile. */
+  appLocked?: boolean;
   /** The server-verified org role for the signed-in user, when known. */
   serverRole?: 'admin' | 'member';
   /** A company org someone else added the signed-in person to, waiting for an
@@ -1889,6 +1916,23 @@ interface AppState {
   /** Finish a sign-in from the link the app was opened with. Returns true once
    *  signed in; false when the link was refused, or holds nothing to trade. */
   completeAuthCallback(url: string): Promise<boolean>;
+  /** Prove the inbox again while signed in (the step before adding a
+   *  passkey): the code from a fresh email renews this session only, for the
+   *  same account. Throws when refused. */
+  confirmByCode(code: string): Promise<void>;
+  /** Sign in with a passkey the keychain holds (lib/passkeys.ts). */
+  signInWithPasskey(): Promise<void>;
+  /** Add a passkey to the signed-in account. 'confirm' when the last email
+   *  sign-in is older than 10 minutes: the caller asks for a code first. */
+  addPasskey(): Promise<'added' | 'confirm'>;
+  listPasskeys(): Promise<Passkey[]>;
+  removePasskey(id: string): Promise<void>;
+  /** Turn App Lock on or off, or change its time; each takes one unlock. */
+  setAppLock(next: AppLockSetting): Promise<boolean>;
+  /** Close the app behind the lock (launch, or a return past the time). */
+  lockApp(): void;
+  /** Ask for the device's unlock and open the app on a yes. */
+  unlockApp(): Promise<void>;
   /** Adopt the server org waiting in orgJoin on this device. */
   joinOrg(): Promise<void>;
   /** Decline it on this device (remembered until sign-out). */
@@ -8746,6 +8790,8 @@ export const useApp = create<AppState>((set, get, api) => {
         searchKeyConfigured,
         connectedRepoPlatforms,
         ready: true,
+        // App Lock closes the app at launch until the device's own unlock.
+        appLocked: platform() === 'ios' && settings.appLock?.on === true ? true : undefined,
         authSession: stored ?? get().authSession,
         hubRole: activeHubRole(settings),
         dataLocked: locked || undefined,
@@ -10352,6 +10398,86 @@ export const useApp = create<AppState>((set, get, api) => {
       await clearPendingSignIn();
       await signedInByEmail(session);
       return true;
+    },
+
+    async confirmByCode(code) {
+      const current = get().authSession;
+      const email = current?.user.email;
+      if (!current || !email) throw new Error('Sign in first.');
+      const digits = codeDigits(code);
+      if (!digits) throw new Error(CODE_REFUSED);
+      let session: Session;
+      try {
+        session = await verifyEmailCode(addressKey(email), digits);
+      } catch (err) {
+        if (/expired|invalid|otp/i.test(err instanceof Error ? err.message : '')) {
+          throw new Error(CODE_REFUSED);
+        }
+        throw err;
+      }
+      // Only ever this account: a renewal, never a switch.
+      if (session.user.id !== current.user.id) throw new Error(CODE_REFUSED);
+      await clearPendingSignIn();
+      await saveSession(session);
+      set({ authSession: session });
+    },
+
+    async signInWithPasskey() {
+      const got = await passkeySignIn();
+      const session: Session = {
+        accessToken: got.access_token,
+        refreshToken: got.refresh_token,
+        expiresAt: Date.now() + got.expires_in * 1000,
+        user: { id: got.user.id, email: got.user.email },
+      };
+      const current = get().authSession;
+      if (switchesAccount(current, session)) {
+        throw new Error(signedInAsSomeoneElse(current!.user.email!, session.user.email!));
+      }
+      await onSignedIn(session);
+      if (!get().settings.passkeyUsedHere) await get().saveSettings({ passkeyUsedHere: true });
+    },
+
+    async addPasskey() {
+      const token = await accessToken();
+      if (!token) throw new Error('Sign in first.');
+      // 0028's trigger refuses a passkey without a fresh email sign-in; ask
+      // for the code first rather than meet that refusal.
+      if (!recentEmailProof(token)) return 'confirm';
+      await passkeyAdd(token);
+      await get().saveSettings({ passkeyUsedHere: true, passkeyOfferDismissed: true });
+      return 'added';
+    },
+
+    async listPasskeys() {
+      const token = await accessToken();
+      if (!token) return [];
+      return passkeyList(token);
+    },
+
+    async removePasskey(id) {
+      const token = await accessToken();
+      if (!token) throw new Error('Sign in first.');
+      await passkeyRemove(token, id);
+    },
+
+    async setAppLock(next) {
+      // Turning it on, off, or changing the time each takes one unlock, so
+      // nobody holding the phone unlocked can switch it off.
+      if (!(await askUnlock())) return false;
+      const was = get().settings.appLock?.on === true;
+      await get().saveSettings({ appLock: next.on ? next : undefined });
+      await setAppSwitcherCover(next.on);
+      if (was !== next.on) get().showToast(next.on ? APP_LOCK_ON : APP_LOCK_OFF);
+      return true;
+    },
+
+    lockApp() {
+      if (get().settings.appLock?.on) set({ appLocked: true });
+    },
+
+    async unlockApp() {
+      if (await askUnlock()) set({ appLocked: undefined });
     },
 
     async joinOrg() {

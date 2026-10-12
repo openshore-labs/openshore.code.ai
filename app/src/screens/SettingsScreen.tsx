@@ -46,6 +46,8 @@ import { BrandMark } from '../components/BrandMark.js';
 import { DEFAULT_PERMISSION_MODE, permissionModeLabel } from '../lib/permissionMode.js';
 import { BackBar } from '../components/BackBar.js';
 import { SignInCard } from '../components/SignInCard.js';
+import { AppLockRow } from '../components/AppLockRow.js';
+import { PasskeysSection } from '../components/PasskeysSection.js';
 import { DeleteAccount } from '../components/DeleteAccount.js';
 import { InfoSheet } from '../components/InfoSheet.js';
 import { WhatLeavesSheet } from '../components/WhatLeavesSheet.js';
@@ -480,6 +482,8 @@ export function SettingsScreen() {
             how the rest is kept, and the three limits. First of all on a build
             with no account backend, where Account is left out. */}
         <SettingsGroup title="Privacy" index={group++}>
+          {/* App Lock leads the group (CX Q3, 2026-10-12); iPhone and iPad only. */}
+          <AppLockRow />
           <WhatLeavesSheet />
           <InfoSheet
             title="How your data is kept"
@@ -1345,6 +1349,7 @@ export function SettingsScreen() {
           </p>
         ) : null}
         <SignInCard variant="sheet" />
+        {signedIn ? <PasskeysSection /> : null}
         {SHIPS_ADMIN && signedIn && account?.type === 'commercial' && isOrgAdmin(account) ? (
           <button
             className="btn ghost block"

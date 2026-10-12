@@ -4,6 +4,8 @@ import { applyAppIcon } from './lib/appIconApply.js';
 import { Suspense, lazy, useEffect, useRef, type ComponentType } from 'react';
 import { Keyboard } from '@capacitor/keyboard';
 import { useApp, type ViewName } from './state/store.js';
+import { AppLockScreen } from './components/AppLockScreen.js';
+import { setAppSwitcherCover, shouldLock, unlockPromptRecent } from './lib/appLock.js';
 import { useAuthDeepLink } from './hooks/useAuthDeepLink.js';
 import { useAutoUpdate } from './hooks/useAutoUpdate.js';
 import { useSheetFocusTrap } from './hooks/useSheetFocusTrap.js';
@@ -126,6 +128,8 @@ const ROOMS: Partial<Record<ViewName, ComponentType | null>> = {
 export function App() {
   const { ready, view, drawerOpen, toast, init, reconcileEntitlementOnForeground, accountChoice } =
     useApp();
+  const appLocked = useApp((s) => s.appLocked);
+  const appLockOn = useApp((s) => s.settings.appLock?.on === true);
   const theme = useApp((s) => s.settings.theme);
   const appIcon = useApp((s) => s.settings.appIcon);
   const compact = useCompact();
@@ -343,7 +347,53 @@ export function App() {
     };
   }, [reconcileEntitlementOnForeground]);
 
+  // App Lock (lib/appLock.ts): the cover over the app switcher's snapshot
+  // follows the setting, and a return from the background past the chosen
+  // time closes the app again. iPhone and iPad only.
+  useEffect(() => {
+    if (!ready || platform() !== 'ios') return;
+    void setAppSwitcherCover(appLockOn);
+    if (!appLockOn) return;
+    let backgroundedAt: number | undefined;
+    let remove: (() => void) | undefined;
+    let gone = false;
+    void (async () => {
+      const { App: CapApp } = await import('@capacitor/app');
+      const l = await CapApp.addListener('appStateChange', ({ isActive }) => {
+        const st = useApp.getState();
+        if (unlockPromptRecent()) {
+          backgroundedAt = undefined;
+          return;
+        }
+        if (!isActive) {
+          backgroundedAt = Date.now();
+          if (st.settings.appLock?.after === 0) st.lockApp();
+          return;
+        }
+        if (backgroundedAt !== undefined && shouldLock(st.settings.appLock, backgroundedAt)) {
+          st.lockApp();
+        }
+        backgroundedAt = undefined;
+      });
+      if (gone) void l.remove();
+      else remove = () => void l.remove();
+    })();
+    return () => {
+      gone = true;
+      remove?.();
+    };
+  }, [ready, appLockOn]);
+
   if (!ready) return <div className="shell" />;
+
+  // Locked: only the lock screen renders, so no room sits under it.
+  if (appLocked) {
+    return (
+      <div className="shell">
+        <AppLockScreen />
+      </div>
+    );
+  }
 
   // The setup page (reached from Harbor Lite's greeting) and the Personal or
   // Business choice (asked once, right after a new account is created) are

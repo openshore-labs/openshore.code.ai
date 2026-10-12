@@ -51,6 +51,8 @@ function purposeStrings(): Record<string, string> {
 const PINNED: Record<string, string> = {
   NSLocalNetworkUsageDescription:
     'OpenShore connects to your own computer, and to any model server you connect, over your local network or Tailscale.',
+  // App Lock (lib/appLock.ts, CX 2026-10-12): asked only when the person turns it on.
+  NSFaceIDUsageDescription: 'OpenShore uses Face ID to unlock the app when App Lock is on.',
   NSCameraUsageDescription:
     'OpenShore uses the camera when you scan the pairing QR code shown on your computer, or take a photo or video to attach to a chat.',
   NSMicrophoneUsageDescription:
