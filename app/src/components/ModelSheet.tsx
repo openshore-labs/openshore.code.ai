@@ -17,6 +17,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ConversationSource } from '../state/types.js';
 import { useApp } from '../state/store.js';
 import { dockedNoun, dockedNounLower } from '../lib/docking.js';
+import type { Where } from '../lib/runsOn.js';
 import { dockedModelLine, dockedNoModelLine } from '../lib/serverKeys.js';
 import { useSheetExit } from '../hooks/useSheetExit.js';
 import { isDesktop, isPhone } from '../lib/platform.js';
@@ -187,6 +188,7 @@ export function ModelSheet({
   onClose,
   initialStage = 'root',
   current,
+  machine,
 }: {
   onPick: (source: ConversationSource) => void;
   onClose: () => void;
@@ -194,6 +196,10 @@ export function ModelSheet({
   initialStage?: 'root' | 'effort' | 'cloud' | 'local';
   /** The brain the composer answers with now. Its row wears the check. */
   current?: ConversationSource;
+  /** The machine this chat runs on (lib/runsOn.ts): its models are the ones
+   *  listed. Unset, this device's own: this computer on the desktop, the
+   *  active docked machine on a phone. */
+  machine?: Where;
 }) {
   const {
     settings,
@@ -231,7 +237,17 @@ export function ModelSheet({
   // over your connection. Picking it runs the agent ON the box (the phone is
   // the remote control), so backgrounding never truncates a reply. Fetched
   // when a daemon is paired; 'error' means paired but unreachable right now.
-  const daemon = settings.daemon;
+  const machineWhere: Where =
+    machine ??
+    (isDesktop()
+      ? { kind: 'local' }
+      : settings.daemon
+        ? { kind: 'docked', target: settings.daemon }
+        : { kind: 'none' });
+  const daemon = machineWhere.kind === 'docked' ? machineWhere.target : undefined;
+  // This computer's own rows, or the docked machine's: a desktop chat whose
+  // project runs on a server lists that server, the way a phone does.
+  const localRows = isDesktop() && machineWhere.kind === 'local';
   const [boxStack, setBoxStack] = useState<DaemonStackInfo | 'error' | undefined>(undefined);
   useEffect(() => {
     if (!daemon) return;
@@ -242,7 +258,9 @@ export function ModelSheet({
     return () => {
       live = false;
     };
-  }, [daemon]);
+    // By address, so a machine read fresh each render is not asked again.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [daemon?.baseUrl, daemon?.token]);
   const boxModel =
     boxStack && boxStack !== 'error' ? (boxStack.orchestrator?.model ?? undefined) : undefined;
   // Where that model runs: on the machine, or, for a cloud model, at its
@@ -390,7 +408,7 @@ export function ModelSheet({
         {stage === 'root' ? (
           <>
             <Header title="Select model" />
-            {isDesktop() ? (
+            {localRows ? (
               <div className="ms-group">
                 {desktopStatus === undefined ? (
                   <div className="ms-row ms-row-disabled">
@@ -470,7 +488,7 @@ export function ModelSheet({
                 )}
               </div>
             ) : null}
-            {!isDesktop() ? (
+            {!localRows ? (
               <div className="ms-group">
                 {!daemon ? (
                   <Row

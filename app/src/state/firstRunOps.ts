@@ -81,6 +81,8 @@ export function waitsOnFirstSeat(s: {
   statusKnown: boolean;
   configured: boolean;
   cloudReady: boolean;
+  /** A new chat here runs on a docked machine (lib/runsOn.ts). */
+  runsElsewhere?: boolean;
 }): boolean {
   if (!s.desktop) return false;
   return firstSeatNeeded({
@@ -90,6 +92,7 @@ export function waitsOnFirstSeat(s: {
     stackReady: false,
     cloudReady: s.cloudReady,
     hubPaired: false,
+    runsElsewhere: s.runsElsewhere,
   });
 }
 

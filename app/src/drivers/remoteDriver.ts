@@ -21,7 +21,14 @@ import type {
   VaultOverrides,
 } from 'os-code/protocol';
 import { HANDOFF_MAX_BYTES } from 'os-code/protocol';
-import { dockKindOf, dockedNoun, type DockKind } from '../lib/docking.js';
+import {
+  dockKindOf,
+  dockedNoun,
+  machineFactsOf,
+  type DockKind,
+  type DockPlace,
+  type MachineFacts,
+} from '../lib/docking.js';
 import { isNotePath } from '../lib/gitos/providers.js';
 import { PROJECT_VAULT_PINS_MAX } from '../state/types.js';
 import type {
@@ -74,6 +81,12 @@ export interface DaemonTarget {
   /** What it is, as its /health said when it docked (lib/docking.ts): a
    *  server or the desktop app. Absent on an older daemon. */
   kind?: DockKind;
+  /** Where a server lives, as the person said when docking it: at home or
+   *  rented (lib/docking.ts). Kept on this device; a server cannot tell. */
+  place?: DockPlace;
+  /** Its size, as its /health last said (memory, cores, processor family).
+   *  Absent from an older daemon. */
+  machine?: MachineFacts;
 }
 
 function headers(target: DaemonTarget): Record<string, string> {
@@ -134,6 +147,9 @@ export async function daemonHealth(target: DaemonTarget): Promise<{
   /** It keeps provider keys for its sessions (GET /keys): a server, never
    *  the desktop app. Absent from an older daemon. */
   keysOnServer?: true;
+  /** Its size (memory, cores, processor family). Absent from an older
+   *  daemon. */
+  machine?: MachineFacts;
 }> {
   try {
     const res = await fetch(`${target.baseUrl}/health`, {
@@ -162,6 +178,8 @@ export async function daemonHealth(target: DaemonTarget): Promise<{
     const kind = dockKindOf(body);
     // Keys on your server (2026-10-09): only a server says it keeps them.
     const keysOnServer = (body as { keysOnServer?: unknown } | null)?.keysOnServer === true;
+    // Its size, so several docked machines read apart (2026-10-12).
+    const machine = machineFactsOf(body);
     return {
       ok: true,
       detail: kind === 'server' ? 'Docked to your server.' : 'Connected to your computer.',
@@ -169,6 +187,7 @@ export async function daemonHealth(target: DaemonTarget): Promise<{
       ...(offline ? { offline } : {}),
       ...(kind ? { kind } : {}),
       ...(keysOnServer ? { keysOnServer: true as const } : {}),
+      ...(machine ? { machine } : {}),
     };
   } catch {
     // A rejected credential answers 401 with no CORS headers (DAE-15), which a

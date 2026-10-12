@@ -75,6 +75,10 @@ export interface VaultCopyOpts {
    *  so the notes there sit on a disk its host can reach, and the copy says
    *  so where it says where they live (CTO review 2026-10-08). */
   hubServer?: boolean;
+  /** That server is at home, as the person said when docking it
+   *  (`DaemonTarget.place`, 2026-10-12), so the renting line would be false
+   *  there. A server whose place is unknown keeps it. */
+  hubServerHome?: boolean;
 }
 
 /** A paired phone's line about the agent: its vault is the computer's folder. */
@@ -84,6 +88,9 @@ export const PHONE_AGENT_LINE_SERVER = 'Your agent uses the vault on your server
 /** Where a docked server's notes live, with what renting means said once
  *  here too, since this is where the notes are (lib/docking.ts). */
 export const HUB_SERVER_STORAGE = `Your server, while it is running. Plain .md files in the vault folder there. ${SERVER_RENTED_LINE}`;
+/** The same for a server at home: no company holds its disk. */
+export const HUB_HOME_SERVER_STORAGE =
+  'Your server, while it is running. Plain .md files in the vault folder there.';
 /** An unpaired phone's (or the web's) point in the empty-vault ramp only:
  *  how the chats on this device use these notes (founder, D20, 2026-10-07).
  *  Both halves are the code's: a project's pins ride the pack of every chat
@@ -224,7 +231,9 @@ function hubCopy(copy: VaultCopy, desktop: boolean, opts: VaultCopyOpts): VaultC
   if (opts.hubMember) {
     return { storage: `Your notes on ${opts.hubName?.trim() || 'the computer you paired'}.` };
   }
-  if (opts.hubServer) copy.storage = HUB_SERVER_STORAGE;
+  if (opts.hubServer) {
+    copy.storage = opts.hubServerHome ? HUB_HOME_SERVER_STORAGE : HUB_SERVER_STORAGE;
+  }
   if (desktop) return copy;
   // Unpaired, Your computer cannot be read at all, so no chat starts with
   // its notes and the ramp says nothing about who uses them.

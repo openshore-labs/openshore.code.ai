@@ -525,7 +525,8 @@ describe('the wiring', () => {
     // The daemon path hands the repo context (instructions) over explicitly,
     // NOT the whole sessionOpts, so a device's project secrets never travel to a
     // remote machine. The repo context still reaches it via instructions.
-    expect(store).toMatch(/daemonCreateSession\(settings\.daemon, cwd, \{/);
+    // On the chat's own machine (lib/runsOn.ts), not just the active one.
+    expect(store).toMatch(/daemonCreateSession\(target, cwd, \{/);
     expect(store).toMatch(/instructions: sessionOpts\.instructions/);
     // Repo context reaches every driver. The shared helper carries it for the
     // on-device and cloud drivers (one definition, no duplication), and the
@@ -592,8 +593,9 @@ describe('the wiring', () => {
 
   it('a started session says where it works and offers a new chat in the picked folder', () => {
     // The folder the session started in is kept on the chat...
-    expect(store).toMatch(/bindSessionId\(conv\.id, sessionId, cwd\)/);
-    expect((store.match(/bindSessionId\(conv\.id, sessionId, cwd\)/g) ?? []).length).toBe(2);
+    // ...with the machine it opened on, so it goes back there (lib/runsOn.ts).
+    const binds = /bindSessionId\(conv\.id, sessionId, cwd, (THIS_COMPUTER|target\.baseUrl)\)/g;
+    expect((store.match(binds) ?? []).length).toBe(2);
     // ...and handed to the picker, which offers a new chat when it differs.
     expect(chat).toMatch(/workingIn=\{[\s\S]{0,120}conv\.source\.cwd/);
     expect(chat).toMatch(

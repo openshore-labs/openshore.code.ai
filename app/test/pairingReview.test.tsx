@@ -75,7 +75,10 @@ describe('a pairing link opened from the iPhone Camera', () => {
     // Computer's own forms answer the link, on both paths.
     const screen = read('src', 'screens', 'PairScreen.tsx');
     expect(screen).toContain('<DockForm expect="desktop" offers />');
-    expect(screen).toContain('<DockForm expect="server" offers />');
+    // Both server paths, at home and rented (2026-10-12), answer it too.
+    expect(screen).toContain(
+      '<DockForm key={`dock-${path}`} expect="server" place={path} offers />',
+    );
   });
 
   it("refuses a link for an address off the person's own network", () => {
@@ -96,7 +99,10 @@ describe('the screens, as CX asked', () => {
   const form = read('src', 'components', 'DockForm.tsx');
 
   it('saves the new credential before checking it, and retries the check once', () => {
-    const save = form.indexOf('await saveHub({ baseUrl, token }, { role: claimed.role });');
+    // Where a server lives (at home or rented) is saved with the credential.
+    const save = form.indexOf(
+      'await saveHub({ baseUrl, token, ...placed }, { role: claimed.role });',
+    );
     const check = form.indexOf('let health = await daemonHealth({ baseUrl, token });');
     expect(save).toBeGreaterThan(0);
     expect(check).toBeGreaterThan(save);

@@ -52,6 +52,30 @@ describe('install-server.sh', () => {
     expect(installer).toMatch(/needs OpenSSL 3 or later/);
   });
 
+  it('installs on x64 and on arm64, packed on the processor it is for (2026-10-12)', () => {
+    const pack = readFileSync(join(root, 'os-code', 'scripts', 'pack-server.sh'), 'utf8');
+    for (const script of [installer, pack]) {
+      expect(script).toMatch(/x86_64 \| amd64\) ARCH="?x64"? ;;/);
+      expect(script).toMatch(/aarch64 \| arm64\) ARCH="?arm64"? ;;/);
+    }
+    expect(pack).not.toMatch(/^ARCH=x64$/m);
+    const release = readFileSync(join(root, '.github', 'workflows', 'release.yml'), 'utf8');
+    const arm = release.slice(release.indexOf('  package-server-arm64:'));
+    expect(arm).toMatch(/runs-on: ubuntu-24\.04-arm\n {4}continue-on-error: true/);
+    expect(release).toMatch(
+      /needs: \[version, package-linux, package-windows, package-server-arm64\]/,
+    );
+    expect(release).toContain("needs.package-linux.result == 'success'");
+  });
+
+  it('leaves the yes to a person: no terminal, no code, just the command for later', () => {
+    const tty = installer.indexOf('if ! (: </dev/tty) 2>/dev/null; then');
+    const pair = installer.indexOf('osc pair --server </dev/tty');
+    expect(tty).toBeGreaterThan(0);
+    expect(pair).toBeGreaterThan(tty);
+    expect(installer.slice(tty, pair)).toContain('SSH in and run: $PAIR_LATER');
+  });
+
   it('reads from the public releases repository the desktop updates from', () => {
     expect(installer).toContain(
       'RELEASES="https://github.com/openshore-labs/openshore-releases/releases"',

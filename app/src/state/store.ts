@@ -667,6 +667,19 @@ import {
 } from '../lib/vaultOffer.js';
 import { Llama } from '../lib/llamaPlugin.js';
 import { readResumePoint, saveResumePoint } from '../lib/resumePoint.js';
+import type { DockPlace, MachineFacts } from '../lib/docking.js';
+import {
+  THIS_COMPUTER,
+  deviceWhere,
+  dockedTarget,
+  forgetRunsOn,
+  goneLine,
+  projectWhere,
+  sessionWhere,
+  whereKey,
+  type Where,
+  type WhereContext,
+} from '../lib/runsOn.js';
 import {
   dataUnlockState,
   isDesktop,
@@ -1458,6 +1471,37 @@ export function driverFor(conversationId: string): ChatDriver | undefined {
 export function hubList(settings: AppSettings): DaemonTarget[] {
   if (settings.daemons) return settings.daemons;
   return settings.daemon ? [settings.daemon] : [];
+}
+
+/** Where things can run from this device, for lib/runsOn.ts: this desktop's
+ *  own engine, every docked machine, and the active one. */
+export function whereContextOf(settings: AppSettings): WhereContext {
+  return {
+    desktopLocal: isDesktop() && Boolean(bridge()),
+    preferRemoteHub: settings.preferRemoteHub,
+    hubs: hubList(settings),
+    active: settings.daemon,
+  };
+}
+
+/** Where a conversation's machine work runs (founder, 2026-10-12): an
+ *  engine session goes back to the machine it opened on; anything else, and
+ *  a session not yet opened, runs where its project runs. */
+export function conversationWhere(settings: AppSettings, conv: Conversation): Where {
+  const project = conv.projectId
+    ? settings.projects?.find((p) => p.id === conv.projectId)
+    : undefined;
+  const ctx = whereContextOf(settings);
+  return conv.source.kind === 'desktop'
+    ? sessionWhere(conv.source, project, ctx)
+    : projectWhere(project, ctx);
+}
+
+/** Where a new chat in the active project would run, before it exists. */
+export function newChatWhere(settings: AppSettings): Where {
+  const id = settings.activeProjectId ?? settings.projects?.[0]?.id;
+  const project = id ? settings.projects?.find((p) => p.id === id) : undefined;
+  return projectWhere(project, whereContextOf(settings));
 }
 
 /** Crew routines as this device last saw them: the roster of unattended jobs
@@ -2534,9 +2578,16 @@ interface AppState {
   activeIsAgent(): boolean;
   /** Add a quiet note row to the active transcript (help text, local status). */
   addNote(text: string): void;
-  /** Open a session that lives on the paired desktop but has no chat here yet
-   *  (started from the desktop app, or from another phone). */
-  openDesktopSession(info: { id: string; cwd: string; title?: string }): Promise<void>;
+  /** Open a session that already runs on a docked machine but has no chat
+   *  here yet (started from the desktop app, another phone, or a routine).
+   *  `hub` names the machine it was listed from (lib/runsOn.ts); unset, the
+   *  machine this device runs on now (where Crew's routines run). */
+  openDesktopSession(info: {
+    id: string;
+    cwd: string;
+    title?: string;
+    hub?: string;
+  }): Promise<void>;
   /** Chat-to-terminal bridge: run a command on the connected desktop (only a
    *  desktop-backed conversation has a terminal). Output streams into the
    *  transcript as a command card. */
@@ -2614,6 +2665,16 @@ interface AppState {
   removeHub(baseUrl: string): Promise<HubKeysCleared>;
   /** Give a saved hub a friendly name (blank clears it). */
   renameHub(baseUrl: string, name: string): Promise<void>;
+  /** Say where a docked server lives, at home or rented (lib/docking.ts).
+   *  Only this device keeps it; a server cannot tell. */
+  setHubPlace(baseUrl: string, place: DockPlace): Promise<void>;
+  /** Keep a docked machine's size as its /health last said, when it moved
+   *  (a resized server). */
+  noteMachineFacts(baseUrl: string, machine: MachineFacts): Promise<void>;
+  /** Where a project's coding sessions run (lib/runsOn.ts): a docked
+   *  machine's address, THIS_COMPUTER on a desktop, or undefined to follow
+   *  this device. New chats only: a chat already started stays put. */
+  setProjectRunsOn(projectId: string, runsOn: string | undefined): Promise<void>;
   /** On a desktop, run sessions on the active remote hub instead of this
    *  machine's own engine. Ignored on a phone. */
   setPreferRemoteHub(on: boolean): Promise<void>;
@@ -2934,9 +2995,11 @@ export const useApp = create<AppState>((set, get, api) => {
 
   /** A driver that talks to a paired computer over the network (the daemon
    *  path), as opposed to this machine's own engine or a brain in the app. */
-  function isRemote(driver: ChatDriver): boolean {
+  function isRemote(conversationId: string, driver: ChatDriver): boolean {
     if (driver.kind !== 'desktop') return false;
-    return !(isDesktop() && bridge() && !get().settings.preferRemoteHub);
+    const conv = get().conversations[conversationId];
+    if (!conv) return !(isDesktop() && bridge() && !get().settings.preferRemoteHub);
+    return conversationWhere(get().settings, conv).kind !== 'local';
   }
 
   /** The one way text leaves for a driver (B3). The user bubble is painted
@@ -2977,13 +3040,15 @@ export const useApp = create<AppState>((set, get, api) => {
       });
       return;
     }
-    const paint = isRemote(driver) || driver.kind !== 'desktop';
+    const paint = isRemote(conversationId, driver) || driver.kind !== 'desktop';
     if (paint) {
       set((state) => {
         const c = state.conversations[conversationId];
         if (!c || c.thread.busy) return state;
         const started = reduceEvent(c.thread, { type: 'task-start', input: text });
-        const thread = isRemote(driver) ? { ...started, stepNote: REACHING_COMPUTER } : started;
+        const thread = isRemote(conversationId, driver)
+          ? { ...started, stepNote: REACHING_COMPUTER }
+          : started;
         return {
           conversations: {
             ...state.conversations,
@@ -3268,8 +3333,7 @@ export const useApp = create<AppState>((set, get, api) => {
           }) ??
           decideApproval(event.request, {
             driverKind: driver.kind,
-            desktopLocal: isDesktop() && Boolean(bridge()) && !s.settings.preferRemoteHub,
-            daemon: s.settings.daemon,
+            ...approvalPlace(conversationId),
             control: s.settings.terminalControl,
             canControl: canControlTerminalFor(s.settings.account, isAdmin),
             mode: s.settings.permissionMode ?? DEFAULT_PERMISSION_MODE,
@@ -3403,6 +3467,7 @@ export const useApp = create<AppState>((set, get, api) => {
     conversationId: string,
     sessionId: string,
     cwd?: string,
+    hub?: string,
   ): Promise<void> {
     set((state) => {
       const c = state.conversations[conversationId];
@@ -3410,12 +3475,20 @@ export const useApp = create<AppState>((set, get, api) => {
       // The folder the session started in, kept on the source: the engine
       // cannot move a session, so the picker can say where this chat works.
       const at = c.source.cwd ?? cwd;
+      // And the machine it opened on (lib/runsOn.ts), so the chat goes back
+      // there whatever is active later.
+      const on = c.source.hub ?? hub;
       return {
         conversations: {
           ...state.conversations,
           [conversationId]: {
             ...c,
-            source: { ...c.source, sessionId, ...(at ? { cwd: at } : {}) },
+            source: {
+              ...c.source,
+              sessionId,
+              ...(at ? { cwd: at } : {}),
+              ...(on ? { hub: on } : {}),
+            },
           },
         },
       };
@@ -3927,11 +4000,28 @@ export const useApp = create<AppState>((set, get, api) => {
   function daemonPushes(conversationId: string): boolean {
     const s = get();
     const conv = s.conversations[conversationId];
-    const daemon = s.settings.daemon;
-    return (
-      conv?.source.kind === 'desktop' &&
-      Boolean(daemon && (s.settings.pushRegisteredDaemons ?? []).includes(daemon.baseUrl))
-    );
+    if (conv?.source.kind !== 'desktop') return false;
+    // The machine this chat's session runs on, not the active one.
+    const daemon = dockedTarget(conversationWhere(s.settings, conv));
+    return Boolean(daemon && (s.settings.pushRegisteredDaemons ?? []).includes(daemon.baseUrl));
+  }
+
+  /** Where a chat's shell approvals are judged (Terminal Control is per
+   *  machine): its own machine, which may not be the active one. */
+  function approvalPlace(conversationId: string): {
+    desktopLocal: boolean;
+    daemon: DaemonTarget | undefined;
+  } {
+    const s = get();
+    const conv = s.conversations[conversationId];
+    if (!conv) {
+      return {
+        desktopLocal: isDesktop() && Boolean(bridge()) && !s.settings.preferRemoteHub,
+        daemon: s.settings.daemon,
+      };
+    }
+    const where = conversationWhere(s.settings, conv);
+    return { desktopLocal: where.kind === 'local', daemon: dockedTarget(where) };
   }
 
   // A tapped notice opens the thing it is about: the chat, the guide, the
@@ -4024,9 +4114,9 @@ export const useApp = create<AppState>((set, get, api) => {
   // Register this device for completion push with the connected daemon, once per
   // daemon. iOS-only and best-effort (see registerPushForDaemon); a failure just
   // means no push until the next desktop session opens.
-  async function ensureDesktopPush(): Promise<void> {
+  async function ensureDesktopPush(target?: DaemonTarget): Promise<void> {
     const s = get();
-    const daemon = s.settings.daemon;
+    const daemon = target ?? s.settings.daemon;
     const session = s.authSession;
     if (!isPhone() || !daemon || !session) return;
     if ((s.settings.pushRegisteredDaemons ?? []).includes(daemon.baseUrl)) return;
@@ -4415,11 +4505,19 @@ export const useApp = create<AppState>((set, get, api) => {
             : {}),
         };
         const cwd = conv.source.cwd ?? firstWorkspace(conv.repoIds ?? []);
-        // A desktop is its own engine, unless the person has pointed it at a
-        // remote hub (a laptop that is not the central computer): then it runs
-        // sessions on that hub over the tailnet, the way the phone does, and
-        // falls through to the daemon path below.
-        if (isDesktop() && bridge() && !settings.preferRemoteHub) {
+        // Where this session runs (lib/runsOn.ts, founder 2026-10-12): an open
+        // session goes back to the machine it opened on, and a new one opens
+        // where its project runs, else where this device runs. A desktop is
+        // its own engine unless the project or the person points it at a
+        // docked machine; then it runs there over the tailnet, the way the
+        // phone does.
+        const where = sessionWhere(conv.source, project, whereContextOf(settings));
+        if (where.kind === 'gone') {
+          throw new Error(
+            goneLine(where.key, hubList(settings).find((h) => h.baseUrl === where.key)?.name),
+          );
+        }
+        if (where.kind === 'local') {
           let sessionId = conv.source.sessionId;
           let journal: Array<{ seq: number; event: DriverEvent }> | undefined;
           if (!sessionId) {
@@ -4437,7 +4535,7 @@ export const useApp = create<AppState>((set, get, api) => {
               );
             }
             sessionId = created.id;
-            await bindSessionId(conv.id, sessionId, cwd);
+            await bindSessionId(conv.id, sessionId, cwd, THIS_COMPUTER);
           } else {
             // G1: resume returns the journal so the driver can replay it AFTER
             // it has subscribed (IPC does not buffer a pushed replay).
@@ -4446,9 +4544,10 @@ export const useApp = create<AppState>((set, get, api) => {
           }
           return new ElectronDriver(sessionId, journal);
         }
-        if (!settings.daemon) {
+        if (where.kind !== 'docked') {
           throw new Error('Connect to your computer first (Menu, then Computer).');
         }
+        const target = where.target;
         let sessionId = conv.source.sessionId;
         if (!sessionId) {
           // Never hand secrets to a remote daemon: this is a phone driving
@@ -4456,7 +4555,7 @@ export const useApp = create<AppState>((set, get, api) => {
           // model) must not travel. Pass an explicit opts object without
           // projectSecrets, so a future change to the daemon client cannot leak
           // them even by accident.
-          sessionId = await daemonCreateSession(settings.daemon, cwd, {
+          sessionId = await daemonCreateSession(target, cwd, {
             instructions: sessionOpts.instructions,
             // The project's name too, so the hub files project memory in the
             // same folder a desktop-created session does.
@@ -4474,19 +4573,19 @@ export const useApp = create<AppState>((set, get, api) => {
             vaultPins: sessionOpts.vaultPins,
             ...(sessionOpts.vaultOverrides ? { vaultOverrides: sessionOpts.vaultOverrides } : {}),
           });
-          await bindSessionId(conv.id, sessionId, cwd);
+          await bindSessionId(conv.id, sessionId, cwd, target.baseUrl);
         }
         // Opening a desktop session is the walk-away-able moment: the run
         // continues on the daemon while the phone is closed. Register for
         // completion push now (contextual, not at launch), once per daemon.
-        void ensureDesktopPush();
+        void ensureDesktopPush(target);
         // Refresh what this hub says the credential may do, so the composer's
         // terminal affordance tracks the role the hub enforces (P0-1).
-        void refreshHubRole(settings.daemon);
+        void refreshHubRole(target);
         // Replay from zero so the transcript rebuilds exactly. The link
         // callback feeds the chat banner (B4).
-        const hubUrl = settings.daemon.baseUrl;
-        return new RemoteDriver(sessionId, settings.daemon, 0, {
+        const hubUrl = target.baseUrl;
+        return new RemoteDriver(sessionId, target, 0, {
           onLink: (state) => noteHubLink(hubUrl, state),
         });
       }
@@ -4494,8 +4593,10 @@ export const useApp = create<AppState>((set, get, api) => {
         // Free, read-only chat with the computer's local models. No session is
         // created, so this can never become the paid agent. On the desktop
         // itself it reaches this computer's own engine over IPC (CTO ruling
-        // 8): no tools, no session, and no vault pack.
-        if (isDesktop() && bridge() && !settings.preferRemoteHub) {
+        // 8): no tools, no session, and no vault pack. Which machine is the
+        // project's (lib/runsOn.ts), else this device's.
+        const chatWhere = conversationWhere(settings, conv);
+        if (chatWhere.kind === 'local') {
           return new DesktopChatDriver(
             ipcFreeChat(bridge()!, get().desktopStatus?.stack.orchestrator?.model),
             conv.source.model,
@@ -4505,7 +4606,8 @@ export const useApp = create<AppState>((set, get, api) => {
           );
         }
         // On the phone, the paired desktop's daemon and its stateless /chat.
-        if (!settings.daemon) {
+        const chatTarget = dockedTarget(chatWhere);
+        if (!chatTarget) {
           throw new Error('Connect to your computer first (Menu, then Computer).');
         }
         // The computer builds this chat's pack itself (J6): the phone names
@@ -4518,7 +4620,7 @@ export const useApp = create<AppState>((set, get, api) => {
           (conv.repoIds?.length ? conv.repoIds : chatProject?.repoIds) ?? [],
         );
         return new DesktopChatDriver(
-          settings.daemon,
+          chatTarget,
           conv.source.model,
           seed,
           chatContext(conv),
@@ -4647,8 +4749,10 @@ export const useApp = create<AppState>((set, get, api) => {
             // Docked to a computer with a local workspace connected to this chat:
             // a play's repo/tool step runs on the engine there. Absent (not
             // docked, or a GitHub-only / repo-less chat) means such a step is
-            // described instead of executed.
-            daemon: s.settings.daemon,
+            // described instead of executed. A project that runs on a docked
+            // machine sends its steps there (lib/runsOn.ts); otherwise the
+            // active machine, as before.
+            daemon: dockedTarget(conversationWhere(s.settings, conv)) ?? s.settings.daemon,
             repoCwd: firstWorkspace(conv.repoIds ?? []),
             conversationId: conv.id,
             // Prompt caching on Claude, off by default (J16, J19).
@@ -8957,12 +9061,13 @@ export const useApp = create<AppState>((set, get, api) => {
       if (isPhone()) {
         setInterval(() => {
           const s = get();
-          const daemon = s.settings.daemon;
-          if (!daemon || s.view !== 'chat' || !s.activeId) return;
+          if (s.view !== 'chat' || !s.activeId) return;
           if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
           const conv = s.conversations[s.activeId];
           if (conv?.source.kind === 'desktop' && conv.source.sessionId) {
-            void beatDesktopSession(daemon, conv.source.sessionId);
+            // The machine this session runs on, which may not be the active one.
+            const daemon = dockedTarget(conversationWhere(s.settings, conv));
+            if (daemon) void beatDesktopSession(daemon, conv.source.sessionId);
           }
         }, 12000);
       }
@@ -9164,17 +9269,27 @@ export const useApp = create<AppState>((set, get, api) => {
         case 'cloud':
           return signals.cloudReady(source.provider);
         case 'desktop':
-          // The desktop app's engine refuses to start a session until a model
-          // (orchestrator) is configured, so "ready" here means that, not just
-          // "we are on a desktop". A phone is ready when a computer is paired.
-          if (isDesktop()) return Boolean(s.desktopStatus?.stack.configured);
-          return Boolean(st.daemon);
-        case 'desktop-chat':
-          // The free chat answers from a local model only (the engine refuses
-          // one that leaves this network), so on the desktop a cloud
-          // orchestrator is not ready for it.
-          if (isDesktop()) return engineChatReady(s.desktopStatus);
-          return Boolean(st.daemon);
+        case 'desktop-chat': {
+          // Which machine would answer: the open chat's, else the one a new
+          // chat in the active project runs on (lib/runsOn.ts). A docked
+          // machine is ready once docked; this desktop's own engine refuses
+          // a session until a model (orchestrator) is configured, and its
+          // free chat answers from a local model only (the engine refuses
+          // one that leaves this network). A source made for one machine (a
+          // folder listed there) names it.
+          const open = s.activeId ? s.conversations[s.activeId] : undefined;
+          const where =
+            source.kind === 'desktop' && source.hub
+              ? sessionWhere(source, undefined, whereContextOf(st))
+              : open && open.source.kind === source.kind
+                ? conversationWhere(st, open)
+                : newChatWhere(st);
+          if (where.kind === 'docked') return true;
+          if (where.kind !== 'local') return false;
+          return source.kind === 'desktop'
+            ? Boolean(s.desktopStatus?.stack.configured)
+            : engineChatReady(s.desktopStatus);
+        }
         case 'mock':
           return true;
       }
@@ -9709,6 +9824,7 @@ export const useApp = create<AppState>((set, get, api) => {
         statusKnown: s.desktopStatus !== undefined,
         configured: Boolean(s.desktopStatus?.stack.configured),
         cloudReady: s.cloudKeyPresent,
+        runsElsewhere: newChatWhere(s.settings).kind === 'docked',
       });
     },
 
@@ -14123,7 +14239,9 @@ export const useApp = create<AppState>((set, get, api) => {
         get().openAccountGate('coding');
         return;
       }
-      if (!get().sourceReady({ kind: 'desktop' })) {
+      // The sample is made on this computer and runs on its own engine,
+      // whatever the project or the "run on another computer" switch says.
+      if (!get().desktopStatus?.stack.configured) {
         get().showToast('Pick a model for this computer first, then try the sample.');
         get().setView('stack');
         return;
@@ -14137,7 +14255,7 @@ export const useApp = create<AppState>((set, get, api) => {
       // attaches, so it can never land in whatever chat was open before when
       // no chat opens.
       await get().newConversation(
-        { kind: 'desktop', cwd: made.path, repoName: SAMPLE_REPO_NAME },
+        { kind: 'desktop', cwd: made.path, repoName: SAMPLE_REPO_NAME, hub: THIS_COMPUTER },
         { firstMessage: { text: SAMPLE_PROMPT } },
       );
     },
@@ -14426,8 +14544,11 @@ export const useApp = create<AppState>((set, get, api) => {
         return;
       }
       const repoName = info.cwd.split(/[\\/]/).filter(Boolean).pop();
+      // The machine it runs on, recorded now, so opening it never asks
+      // another machine for a session it has never heard of.
+      const hub = info.hub ?? whereKey(deviceWhere(whereContextOf(get().settings)));
       const opened = await get().newConversation(
-        { kind: 'desktop', sessionId: info.id, cwd: info.cwd, repoName },
+        { kind: 'desktop', sessionId: info.id, cwd: info.cwd, repoName, ...(hub ? { hub } : {}) },
         { title: info.title && !/^Session /.test(info.title) ? info.title : undefined },
       );
       // No chat opened (the sign-in sheet): the room stays as it was, trail
@@ -14712,6 +14833,9 @@ export const useApp = create<AppState>((set, get, api) => {
         ...target,
         name: target.name ?? prior?.name,
         kind: target.kind ?? prior?.kind,
+        // Where it lives and how big it is, kept the same way.
+        place: target.place ?? prior?.place,
+        machine: target.machine ?? prior?.machine,
       };
       const others = list.filter((d) => d.baseUrl !== target.baseUrl);
       // The credential goes to the secret store (APP-11); the settings blob
@@ -14764,7 +14888,14 @@ export const useApp = create<AppState>((set, get, api) => {
       const daemon = s.daemon?.baseUrl === baseUrl ? daemons[0] : s.daemon;
       const hubRoles = { ...(s.hubRoles ?? {}) };
       delete hubRoles[baseUrl];
-      await get().saveSettings({ daemons, daemon, hubRoles });
+      // Every project that ran there follows this device again (lib/runsOn.ts).
+      const projects = s.projects ? forgetRunsOn(s.projects, baseUrl) : undefined;
+      await get().saveSettings({
+        daemons,
+        daemon,
+        hubRoles,
+        ...(projects && projects !== s.projects ? { projects } : {}),
+      });
       // The credential leaves with the hub.
       await secretDelete(hubSecretKey(baseUrl));
       // The vault returns from the computer it pointed at (CTO J9).
@@ -14782,6 +14913,49 @@ export const useApp = create<AppState>((set, get, api) => {
 
     async setPreferRemoteHub(on) {
       await get().saveSettings({ preferRemoteHub: on });
+    },
+
+    async setHubPlace(baseUrl, place) {
+      const s = get().settings;
+      const daemons = hubList(s).map((d) => (d.baseUrl === baseUrl ? { ...d, place } : d));
+      const daemon = s.daemon?.baseUrl === baseUrl ? { ...s.daemon, place } : s.daemon;
+      await get().saveSettings({ daemons, daemon });
+    },
+
+    async noteMachineFacts(baseUrl, machine) {
+      const s = get().settings;
+      const prior = hubList(s).find((d) => d.baseUrl === baseUrl);
+      if (!prior) return;
+      const was = prior.machine;
+      if (
+        was &&
+        was.ramGB === machine.ramGB &&
+        was.cpus === machine.cpus &&
+        was.arch === machine.arch
+      )
+        return;
+      const daemons = hubList(s).map((d) => (d.baseUrl === baseUrl ? { ...d, machine } : d));
+      const daemon = s.daemon?.baseUrl === baseUrl ? { ...s.daemon, machine } : s.daemon;
+      await get().saveSettings({ daemons, daemon });
+    },
+
+    async setProjectRunsOn(projectId, runsOn) {
+      const s = get().settings;
+      // Only a machine this device can reach, or this desktop's own engine.
+      const ok =
+        runsOn === undefined ||
+        (runsOn === THIS_COMPUTER && isDesktop() && Boolean(bridge())) ||
+        hubList(s).some((d) => d.baseUrl === runsOn);
+      if (!ok) return;
+      const projects = (s.projects ?? []).map((p) => {
+        if (p.id !== projectId) return p;
+        if (runsOn === undefined) {
+          const { runsOn: _gone, ...rest } = p;
+          return rest;
+        }
+        return { ...p, runsOn };
+      });
+      await get().saveSettings({ projects });
     },
 
     sendCommandStdin(runId, data) {

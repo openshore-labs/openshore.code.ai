@@ -139,6 +139,23 @@ OpenRouter list no typed model ids: their models load live
 a server is "always on" or private; renting is said plainly once. Plan and
 follow-ups: `docs/connect-anywhere-proposal.md`, `os-code/PROGRESS.md`.
 
+**Many machines, and a project chooses where it runs (founder, 2026-10-12).**
+A device docks to any number of computers and servers (Computer offers your
+computer, a server at home, and a rented server); each project chooses one
+under **Runs on** in its room (`Project.runsOn`, or `THIS_COMPUTER` on a
+desktop; unset follows the device), and each coding chat records the machine
+its session opened on (`source.hub`) and only ever goes back there. The
+chat's session, free chat, approvals, push, model menu, plan steps and
+repositories follow its machine; the device's active machine keeps the Stack,
+the Vault on it and Crew, so choosing a project's machine never moves the
+Vault. One pure rule, `app/src/lib/runsOn.ts`, read through the store's
+`conversationWhere` and `newChatWhere`; never read `settings.daemon` for a
+chat's own work. Copy says Runs on and machine, never "hub"; a server's place
+(home or rented) is the person's answer, and only a rented one (or one of
+unknown place) gets the renting line. `/health` reports memory, cores and
+processor family (`daemon/machineFacts.ts`); the server package and installer
+take arm64; no copy names a provider, ranks one, or promises Arm or a speed.
+
 **Bring your own keys, any provider (founder, 2026-10-09)** is strictly the
 person's keys: OpenShore runs no gateway, resells no model, rents no server
 ("Rent one for me" stays parked). Cloud Connections names eighteen providers,

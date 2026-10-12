@@ -15667,10 +15667,60 @@ button.settings-row:active {
   min-width: 0;
   font-family: var(--font-mono);
   overflow-wrap: anywhere;
+  /* The cloud-init is several lines; a one-line command is unchanged. */
+  white-space: pre-wrap;
   font-size: 0.85em;
 }
 
 .dock-command .btn {
+  flex: none;
+}
+
+/* What each size of rented server can do (many machines, 2026-10-12). */
+.dock-sizes-head {
+  margin: 14px 0 6px;
+  font-size: 0.95em;
+}
+
+.dock-sizes {
+  margin: 0 0 12px;
+}
+
+.dock-size + .dock-size {
+  margin-top: 8px;
+}
+
+.dock-size dd {
+  margin: 2px 0 0;
+}
+
+.dock-several {
+  display: block;
+  margin-top: 10px;
+}
+
+/* Your machines (many machines, 2026-10-12): each docked machine is one
+   row, its kind and size under its name. */
+.machine-row {
+  align-items: center;
+}
+
+.machine-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  text-align: left;
+}
+
+.machine-row-name {
+  font-weight: var(--weight-semibold);
+  overflow-wrap: anywhere;
+}
+
+.machine-row-actions {
+  display: flex;
+  gap: 12px;
   flex: none;
 }
 

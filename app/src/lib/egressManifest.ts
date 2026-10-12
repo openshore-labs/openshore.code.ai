@@ -232,7 +232,7 @@ export const EGRESS: EgressEntry[] = [
   {
     id: 'your-computer',
     recipient: 'Services you connect',
-    what: 'Your chats, sessions, and approvals, to your own computer running OpenShore, over your private Tailscale network. Nothing goes through us.',
+    what: 'Your chats, sessions, and approvals, to your own computer or server running OpenShore, over your private Tailscale network. Opening Computer, or Runs on in a project, asks each machine you docked whether it answers and how much memory and how many cores it has. Nothing goes through us.',
     when: 'Only after you pair this device with your computer.',
     start: 'off',
     hosts: [],
@@ -319,7 +319,8 @@ export const EGRESS: EgressEntry[] = [
  *  own browser, placeholders, or documentation, never fetched by the app. Each
  *  says why, so a new host cannot hide here by accident. */
 export const LINK_ONLY_HOSTS: Record<string, string> = {
-  'tailscale.com': "download and help links; Tailscale's own app talks to its servers, not ours",
+  'tailscale.com':
+    "download and help links, and the install line in a server's cloud-init, which the person pastes into their provider and runs on their server; Tailscale's own app talks to its servers, not ours",
   'play.google.com': 'store link',
   'apps.apple.com': 'store link',
   'platform.openai.com': 'where to get a key',

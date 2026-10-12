@@ -308,7 +308,17 @@ export function emptyThread(): ThreadState {
 
 /** Where a conversation's brain lives. */
 export type ConversationSource =
-  | { kind: 'desktop'; sessionId?: string; cwd?: string; repoName?: string }
+  | {
+      kind: 'desktop';
+      sessionId?: string;
+      cwd?: string;
+      repoName?: string;
+      /** The machine the session opened on (lib/runsOn.ts): a docked
+       *  machine's address, or THIS_COMPUTER for a desktop's own engine.
+       *  Set when the session opens, so the chat always goes back there.
+       *  Absent on a chat from before (it follows the device's default). */
+      hub?: string;
+    }
   // Free, read-only chat with the paired desktop's local models (no repo, no
   // tools, no agent). A distinct kind, not a flag on 'desktop', so it can never
   // reach the session-creating path that opens the full paid agent (CTO ruling).
@@ -382,6 +392,13 @@ export interface Project {
   harnessCurrent?: HarnessCurrentId | null;
   /** Repos attached to this project (shareable across projects). */
   repoIds: string[];
+  /** Where this project's coding sessions run (founder, 2026-10-12; copy
+   *  says Runs on): a docked machine's address, or THIS_COMPUTER on a
+   *  desktop (lib/runsOn.ts). Unset follows the device's own choice. Device
+   *  local: it names an address on the person's own network, so it never
+   *  syncs with a shared project (orgProjects.ts syncs name, instructions
+   *  and repoIds only) and forgetting the machine clears it. */
+  runsOn?: string;
   /** Vault notes pinned to this project's context (Vault M5, CTO J14): note
    *  paths in the personal vault, at most `PROJECT_VAULT_PINS_MAX`, set by
    *  editors only (a local project, or `myLevel === 'edit'`). Device-local:

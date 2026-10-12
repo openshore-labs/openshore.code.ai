@@ -8,13 +8,22 @@
 #   os-code/scripts/pack-server.sh <version> <out-dir> [node-tarball]
 #
 # Without a node tarball it downloads the .nvmrc version from nodejs.org and
-# checks it against that release's SHASUMS256.txt.
+# checks it against that release's SHASUMS256.txt. The package is for the
+# machine that packs it (x64 or arm64): node-pty is built for this machine's
+# processor on install, so an arm64 package is packed on an arm64 runner.
 set -euo pipefail
 
 VERSION=${1:?version, like 0.1.9}
 OUT=${2:?output directory}
 NODE_TARBALL=${3:-}
-ARCH=x64
+case "$(uname -m)" in
+  x86_64 | amd64) ARCH=x64 ;;
+  aarch64 | arm64) ARCH=arm64 ;;
+  *)
+    echo "pack-server.sh: no server package for $(uname -m)" >&2
+    exit 1
+    ;;
+esac
 NAME="openshore-server-$VERSION-linux-$ARCH"
 NODE_VERSION=$(tr -d 'v[:space:]' <.nvmrc)
 NODE_DIST="node-v$NODE_VERSION-linux-$ARCH"

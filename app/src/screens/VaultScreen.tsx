@@ -365,6 +365,7 @@ export function VaultScreen() {
     hubName: settings.daemon?.name,
     paired: Boolean(settings.daemon),
     hubServer: settings.daemon?.kind === 'server',
+    hubServerHome: settings.daemon?.kind === 'server' && settings.daemon.place === 'home',
   };
   // The held text this account may see: every personal entry, and team text
   // only under the account that typed it (R-19). Raw vaultHeld also holds

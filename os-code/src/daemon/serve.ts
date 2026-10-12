@@ -42,6 +42,7 @@ import {
   readHermesNote,
 } from '../currents/host.js';
 import { tailscaleIp } from '../connect/tailscale.js';
+import { machineFacts } from './machineFacts.js';
 import { PERMISSION_MODES, type PermissionMode } from '../core/agent/types.js';
 import { bootstrapSession } from '../core/agent/bootstrap.js';
 import { effectiveMode } from '../core/agent/modes.js';
@@ -594,6 +595,9 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         // This server keeps provider keys for its sessions (GET /keys).
         // Additive: a desktop and an older server send nothing.
         ...(options.pairingConsole ? { keysOnServer: true } : {}),
+        // Its memory, cores and processor family, so a device docked to
+        // several machines can tell them apart (machineFacts.ts). Additive.
+        machine: machineFacts(),
       });
       return;
     }

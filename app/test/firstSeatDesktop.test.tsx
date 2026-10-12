@@ -49,6 +49,8 @@ const app = vi.hoisted(() => {
 });
 vi.mock('../src/state/store.js', () => ({
   useApp: <T,>(select?: (s: typeof app.state) => T) => (select ? select(app.state) : app.state),
+  // A new chat here runs on this computer (lib/runsOn.ts): nothing is docked.
+  newChatWhere: () => ({ kind: 'local' }),
 }));
 
 const machine = vi.hoisted(() => ({ status: undefined as unknown }));

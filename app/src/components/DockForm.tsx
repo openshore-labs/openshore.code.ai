@@ -4,14 +4,14 @@
 // never thrown away), then checks it. The machine says yes first: the desktop
 // in a dialog, a server in the SSH terminal that printed the code. Used by
 // Computer and by Cloud Connections, on the phone and on the desktop (which
-// types the code and then runs its sessions on the machine it docked to).
+// types the code; its projects then choose the machine under Runs on).
 import { useState } from 'react';
 import { useApp } from '../state/store.js';
 import { isDesktop } from '../lib/platform.js';
 import { PAIRING_REJECTED, daemonHealth, redeemPairClaim } from '../drivers/remoteDriver.js';
 import { parsePairingQr } from '../lib/qrDecode.js';
 import { hapticApproval } from '../lib/haptics.js';
-import { dockedNoun, dockedNounLower, type DockKind } from '../lib/docking.js';
+import { dockedNoun, dockedNounLower, type DockKind, type DockPlace } from '../lib/docking.js';
 import { QrScanner } from './QrScanner.js';
 import { Sheet } from './Sheet.js';
 
@@ -40,16 +40,20 @@ export function hostOf(baseUrl: string): string {
 
 export function DockForm({
   expect,
+  place,
   offers = false,
   onDocked,
 }: {
   /** What the person is docking to, for the copy before the machine answers. */
   expect: DockKind;
+  /** Where a server lives, as the path the person took says (at home or
+   *  rented). Kept on this device with the machine (lib/docking.ts). */
+  place?: DockPlace;
   /** Whether this form answers a docking link opened from outside (Computer). */
   offers?: boolean;
   onDocked?: (kind: DockKind | undefined) => void;
 }) {
-  const { settings, saveHub, setPreferRemoteHub, showToast } = useApp();
+  const { settings, saveHub, showToast } = useApp();
   const pairOffer = useApp((s) => s.pairOffer);
   const clearPairOffer = useApp((s) => s.clearPairOffer);
   const desktop = isDesktop();
@@ -103,7 +107,8 @@ export function DockForm({
     const token = claimed.token;
     // Saved before any check: the code is spent and the machine holds this
     // device's credential now, so a slow first check must not lose it.
-    await saveHub({ baseUrl, token }, { role: claimed.role });
+    const placed = expect === 'server' && place ? { place } : {};
+    await saveHub({ baseUrl, token, ...placed }, { role: claimed.role });
     let health = await daemonHealth({ baseUrl, token });
     if (!health.ok && health.detail !== PAIRING_REJECTED) {
       await new Promise((r) => setTimeout(r, HEALTH_RETRY_MS));
@@ -111,17 +116,28 @@ export function DockForm({
     }
     setTesting(false);
     if (health.ok) {
-      if (health.kind) await saveHub({ baseUrl, token, kind: health.kind }, { role: claimed.role });
-      // A desktop that docks runs its sessions on that machine from now on;
-      // Computer's "Run on another computer" turns it back.
-      if (desktop) await setPreferRemoteHub(true);
+      if (health.kind || health.machine) {
+        await saveHub(
+          {
+            baseUrl,
+            token,
+            ...placed,
+            ...(health.kind ? { kind: health.kind } : {}),
+            ...(health.machine ? { machine: health.machine } : {}),
+          },
+          { role: claimed.role },
+        );
+      }
+      // A desktop that docks keeps running its own sessions: a project
+      // chooses the docked machine under Runs on (founder, 2026-10-12), and
+      // Computer's "Run on another computer" sends every session there.
       setState(undefined);
       setDocked(health.kind ?? 'yes');
       setTyping(desktop);
       hapticApproval();
       showToast(
         desktop
-          ? `Docked. This computer now runs its sessions on ${dockedNounLower({ kind: health.kind })}.`
+          ? `Docked. Choose ${dockedNounLower({ kind: health.kind })} under Runs on in a project.`
           : `Docked. ${dockedNoun({ kind: health.kind })} is in the model menu.`,
       );
       onDocked?.(health.kind);
@@ -174,7 +190,7 @@ export function DockForm({
         <p className="hint" role="status" style={{ marginTop: 10, marginBottom: 0 }}>
           <span className="pill ok pill-pop">Docked</span>{' '}
           {desktop
-            ? 'Sessions on this computer now run there.'
+            ? 'Choose it under Runs on in a project.'
             : 'Pick it in the model menu to chat or code.'}
         </p>
       ) : state ? (

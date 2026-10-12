@@ -20,7 +20,9 @@ import { CheckGlyph, ChevronGlyph, CloseGlyph } from './SheetGlyphs.js';
 import { useConnectedRepos } from '../hooks/useConnectedRepos.js';
 import { useApp } from '../state/store.js';
 import { openInAppBrowser } from '../lib/platform.js';
-import { cloneOnComputer } from '../lib/repoClone.js';
+import { cloneOnComputer, cloneTargetFor } from '../lib/repoClone.js';
+import type { Where } from '../lib/runsOn.js';
+import { dockedNounLower } from '../lib/docking.js';
 import { plainError } from '../lib/plainError.js';
 import {
   PLATFORM_NAME,
@@ -59,8 +61,8 @@ function SearchGlyph() {
 
 /** A row's second line: the owner for GitHub (the Claude app's shape), the
  *  owner and the platform for GitLab and Bitbucket, where it lives for a clone. */
-function subtitle(r: RepoOption): string {
-  if (r.kind === 'workspace') return 'On your computer';
+function subtitle(r: RepoOption, place = 'your computer'): string {
+  if (r.kind === 'workspace') return `On ${place}`;
   if (r.kind === 'github') return r.detail ?? 'GitHub';
   return r.detail ? `${r.detail} · ${PLATFORM_NAME[r.kind]}` : PLATFORM_NAME[r.kind];
 }
@@ -73,6 +75,7 @@ export function RepoPicker({
   onOpenRepos,
   workingIn,
   onNewChat,
+  on,
 }: {
   selected: string[];
   onChange: (ids: string[]) => void;
@@ -87,12 +90,20 @@ export function RepoPicker({
   /** Start a new chat with these repositories (offered when `workingIn` is
    *  not the first folder picked). */
   onNewChat?: (ids: string[]) => void;
+  /** The machine this chat runs on (lib/runsOn.ts): its folders are listed
+   *  and clones land there. Unset, this device's machine. */
+  on?: Where;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const repos = useConnectedRepos(open);
-  const daemon = useApp((s) => s.settings.daemon);
-  const preferRemoteHub = useApp((s) => s.settings.preferRemoteHub);
+  const repos = useConnectedRepos(open, on);
+  const activeDaemon = useApp((s) => s.settings.daemon);
+  const activePrefer = useApp((s) => s.settings.preferRemoteHub);
+  const cloneTarget = on
+    ? cloneTargetFor(on)
+    : { daemon: activeDaemon, preferRemoteHub: activePrefer };
+  // How a folder's place reads: this chat's machine, by kind.
+  const place = on?.kind === 'docked' ? dockedNounLower(on.target) : 'your computer';
   const showToast = useApp((s) => s.showToast);
   // The platform repo being cloned right now, and the clones made from this
   // sheet (platform id to folder) before the workspace list catches up.
@@ -160,10 +171,10 @@ export function RepoPicker({
     if (!url) return;
     setCloning(r.id);
     try {
-      const { cwd } = await cloneOnComputer(url, { daemon, preferRemoteHub });
+      const { cwd } = await cloneOnComputer(url, cloneTarget);
       setOpened((m) => ({ ...m, [r.id]: cwd }));
       onChange(withClone(latest.current, r.id, cwd));
-      showToast(`${r.name} is ready on your computer.`);
+      showToast(`${r.name} is ready on ${place}.`);
       repos.refresh();
     } catch (err) {
       showToast(plainError(err));
@@ -182,7 +193,7 @@ export function RepoPicker({
       onClick={() => toggle(r.id)}
     >
       <span className="ms-row-text">
-        <span className="ms-row-sub">{subtitle(r)}</span>
+        <span className="ms-row-sub">{subtitle(r, place)}</span>
         <span className="ms-row-main">
           {r.name}
           {r.private ? <span className="repo-row-lock">private</span> : null}

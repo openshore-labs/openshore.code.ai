@@ -166,6 +166,10 @@ export interface SeatSignals {
   cloudReady: boolean;
   /** A computer is paired to this phone. */
   hubPaired: boolean;
+  /** A new chat here runs on a docked machine (lib/runsOn.ts: the active
+   *  project chose one, or this desktop runs on another computer), so that
+   *  machine answers whatever this desktop's own engine holds. */
+  runsElsewhere?: boolean;
 }
 
 /** The empty chat shows the First Seat only when nothing on this device can
@@ -176,7 +180,7 @@ export function firstSeatNeeded(s: SeatSignals): boolean {
   if (s.cloudReady) return false;
   switch (s.platform) {
     case 'electron':
-      return s.desktopStatusKnown && !s.desktopConfigured;
+      return s.desktopStatusKnown && !s.desktopConfigured && !s.runsElsewhere;
     case 'ios':
       return !s.stackReady && !s.hubPaired;
     default:

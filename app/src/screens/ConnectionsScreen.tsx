@@ -637,7 +637,7 @@ export function ConnectionsScreen() {
           <>
             <SheetHead title="Set up a server" onClose={() => setSettingUpServer(false)} />
             <ServerSetup />
-            <DockForm expect="server" onDocked={() => setSettingUpServer(false)} />
+            <DockForm expect="server" place="rented" onDocked={() => setSettingUpServer(false)} />
           </>
         ) : null}
       </Sheet>

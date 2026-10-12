@@ -259,6 +259,60 @@ jobs:
           path: server-release/*
           if-no-files-found: warn
 
+  # The arm64 server package (many machines, 2026-10-12): the same engine for
+  # an arm64 Linux server, the cheapest shared-vCPU plans at several
+  # providers. node-pty is built for the processor that installs it, so this
+  # packs on GitHub's arm64 runner. A failure here never holds a release back:
+  # the job may fail, and the publish step below takes whatever it packed.
+  package-server-arm64:
+    needs: version
+    runs-on: ubuntu-24.04-arm
+    continue-on-error: true
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        with:
+          version: 10.33.0
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      # No Electron here: the server runs Node's ABI, so node-pty stays as
+      # the install builds it.
+      - name: Install workspace dependencies
+        env:
+          SKIP_NATIVE_REBUILD: "1"
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the engine
+        run: pnpm --filter os-code build
+
+      - name: Pack the arm64 server package
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          os-code/scripts/pack-server.sh "${VERSION:-0.0.0}" server-release-arm64
+          rm -f server-release-arm64/install-server.sh
+          mkdir -p "$RUNNER_TEMP/server"
+          tar -xzf server-release-arm64/openshore-server-*-linux-arm64.tar.gz -C "$RUNNER_TEMP/server" --strip-components=1
+          "$RUNNER_TEMP/server/bin/osc" pair --help | grep -q -- '--server'
+          (cd "$RUNNER_TEMP/server/engine" && ../node/bin/node -e "require('node-pty')")
+
+      - name: Upload the arm64 server package as a build artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: openshore-server-arm64
+          path: server-release-arm64/*
+          if-no-files-found: error
+
   package-windows:
     needs: version
     runs-on: windows-latest
@@ -379,8 +433,10 @@ jobs:
   # The founder limits that environment to main and v* tags, with no required
   # reviewer (docs/release-signing.md), so every push to main still ships.
   publish:
-    needs: [version, package-linux, package-windows]
-    if: needs.version.outputs.tag != ''
+    needs: [version, package-linux, package-windows, package-server-arm64]
+    # The arm64 server job may fail without holding the release (its own
+    # continue-on-error), so the desktop jobs' success is named here.
+    if: needs.version.outputs.tag != '' && !cancelled() && needs.package-linux.result == 'success' && needs.package-windows.result == 'success'
     runs-on: ubuntu-latest
     environment: release
     permissions:
@@ -406,6 +462,13 @@ jobs:
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: openshore-server
+          path: release
+
+      - name: Download the arm64 server package
+        continue-on-error: true
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: openshore-server-arm64
           path: release
 
       - name: Download the Windows packages

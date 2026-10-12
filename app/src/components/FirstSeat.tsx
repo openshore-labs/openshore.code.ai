@@ -19,7 +19,7 @@
 // never stands in the way of the download or the message: while the download
 // runs, one quiet line offers it, and its link opens the plain Sign in sheet.
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { useApp } from '../state/store.js';
+import { newChatWhere, useApp } from '../state/store.js';
 import { FIRST_SEAT_COPY } from '../state/firstRunOps.js';
 import { logEvent } from '../lib/insights.js';
 import { Sheet } from './Sheet.js';
@@ -120,6 +120,8 @@ export function FirstSeat({
     stackReady: sourceReady({ kind: 'stack' }),
     cloudReady: cloudKeyPresent,
     hubPaired: Boolean(settings.daemon),
+    // A project here that runs on a docked machine has a brain already.
+    runsElsewhere: newChatWhere(settings).kind === 'docked',
   });
 
   const { mounted, closing } = useExitPresence(needed, doorExitMs());

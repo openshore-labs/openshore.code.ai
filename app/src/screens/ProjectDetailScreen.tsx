@@ -13,11 +13,13 @@
 // out of their own project. Same posture as the Account/Org model.
 import { featureOn } from '../lib/focus.js';
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { useApp, stackAdmin } from '../state/store.js';
+import { useApp, stackAdmin, whereContextOf } from '../state/store.js';
 import type { Conversation, Project, ProjectAccess, ProjectPermission } from '../state/types.js';
 import { BackBar } from '../components/BackBar.js';
 import { ProjectCurrents } from '../components/ProjectCurrents.js';
 import { ProjectVaultPins } from '../components/ProjectVaultPins.js';
+import { RunsOnPill, RunsOnSheet } from '../components/ProjectRunsOn.js';
+import { projectWhere } from '../lib/runsOn.js';
 import { Sheet } from '../components/Sheet.js';
 import { SheetHead } from '../components/SheetHead.js';
 import { useConnectedRepos } from '../hooks/useConnectedRepos.js';
@@ -86,6 +88,7 @@ export function ProjectDetailScreen() {
   const [showRepos, setShowRepos] = useState(false);
   const [manageRepos, setManageRepos] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [runsOnOpen, setRunsOnOpen] = useState(false);
 
   // The project name flies up from the tapped row into this title.
   const titleRef = useRef<HTMLHeadingElement>(null);
@@ -216,6 +219,10 @@ export function ProjectDetailScreen() {
             <InstructionsGlyph />
             <span>{hasInstructions ? 'Instructions' : 'Add instructions'}</span>
           </button>
+          {/* Where its chats run (founder, 2026-10-12): a choice of this
+              device's, so a reader of a shared project still cannot start
+              one there. */}
+          <RunsOnPill project={project} disabled={!mayWrite} onOpen={() => setRunsOnOpen(true)} />
         </div>
 
         {/* This room's own components, at the top above the chats. Currents
@@ -490,6 +497,8 @@ export function ProjectDetailScreen() {
         }}
       />
 
+      <RunsOnSheet project={project} open={runsOnOpen} onClose={() => setRunsOnOpen(false)} />
+
       <Sheet open={confirmDelete} onClose={() => setConfirmDelete(false)} variant="confirm">
         <h3>Delete this project?</h3>
         <p>
@@ -692,7 +701,10 @@ function ManageReposSheet({
   onSave: (repoIds: string[]) => void | Promise<void>;
   onOpenRepos: () => void;
 }) {
-  const repos = useConnectedRepos(open);
+  // The project's own machine (lib/runsOn.ts): its folders are the ones its
+  // chats can open.
+  const settings = useApp((s) => s.settings);
+  const repos = useConnectedRepos(open, projectWhere(project, whereContextOf(settings)));
   const repoOptions = [...repos.workspaces, ...repos.remote];
   const [draft, setDraft] = useState<string[]>(project.repoIds);
   // Re-seed the draft each time the sheet opens on a project.

@@ -6,8 +6,10 @@
 # Puts the OpenShore engine on a Linux server you rent (any provider) or keep
 # at home, so your phone and desktop can dock to it over your own Tailscale
 # network. What it does, in order:
-#   1. checks this is Linux on x64 and that Tailscale is up (it never installs
-#      network software for you: it prints Tailscale's own line and stops);
+#   1. checks this is Linux on x64 or arm64 (the cheapest shared-vCPU plans
+#      at several providers are arm64) and that Tailscale is up (it never
+#      installs network software for you: it prints Tailscale's own line and
+#      stops);
 #   2. downloads the newest server package and its .sig from the public
 #      release, and refuses it unless the signature checks against the
 #      OpenShore desktop release key pinned below (the same key the desktop
@@ -16,7 +18,9 @@
 #      `openshore` system user, and starts a systemd service running
 #      `osc serve --bind tailscale` that restarts on failure and on boot;
 #   4. runs `osc pair --server`, which prints a QR for your phone and asks you
-#      here whether the phone may dock.
+#      here whether the phone may dock. Run with no terminal (a provider's
+#      cloud-init at first boot), it skips this step and prints the command
+#      to run over SSH later.
 # The daemon never listens on a public address; only your tailnet reaches it.
 # Nothing is sent to OpenShore. Read this file before you run it.
 set -eu
@@ -34,7 +38,8 @@ fail() { printf 'OpenShore: %s\n' "$*" >&2; exit 1; }
 [ "$(uname -s)" = "Linux" ] || fail "this installer is for a Linux server."
 case "$(uname -m)" in
   x86_64 | amd64) ARCH="x64" ;;
-  *) fail "this server is $(uname -m); the server package is x64 only for now." ;;
+  aarch64 | arm64) ARCH="arm64" ;;
+  *) fail "this server is $(uname -m); the server package is for x64 and arm64." ;;
 esac
 
 if [ "$(id -u)" -eq 0 ]; then SUDO=""; else
@@ -150,7 +155,14 @@ say "OpenShore $VERSION is running on this server, and starts again on boot."
 # user so the code comes from the daemon that is running.
 sleep 2
 say ""
-say "Now dock your phone: open OpenShore, Computer, Dock to a server, and scan."
+PAIR_LATER="sudo -u $SERVICE_USER env HOME=/var/lib/$SERVICE_USER osc pair --server"
+# No terminal to answer in (cloud-init at first boot): the yes must be typed
+# by a person on this server, so the code waits for an SSH session.
+if ! (: </dev/tty) 2>/dev/null; then
+  say "To dock a phone, SSH in and run: $PAIR_LATER"
+  exit 0
+fi
+say "Now dock your phone: open OpenShore, then Computer, and scan."
 if [ -n "$SUDO" ]; then AS_SERVICE="sudo -u $SERVICE_USER"; else AS_SERVICE="runuser -u $SERVICE_USER --"; fi
 $AS_SERVICE env HOME="/var/lib/$SERVICE_USER" /usr/local/bin/osc pair --server </dev/tty ||
-  say "Run this later to dock a phone: sudo -u $SERVICE_USER env HOME=/var/lib/$SERVICE_USER osc pair --server"
+  say "Run this later to dock a phone: $PAIR_LATER"

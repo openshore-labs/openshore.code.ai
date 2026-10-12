@@ -9,7 +9,7 @@ import { LANDING_PACE, takeLandingSwell } from '../lib/introWalk.js';
 import { durationMs, easing, prefersReducedMotion } from '../lib/motion.js';
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { INIT_PROMPT } from 'os-code/protocol';
-import { useApp, driverFor } from '../state/store.js';
+import { useApp, driverFor, conversationWhere, newChatWhere } from '../state/store.js';
 import type { HubRole } from '../drivers/types.js';
 import { sourceSupportsVision, type ConversationSource } from '../state/types.js';
 import { MessageList } from '../components/MessageList.js';
@@ -854,6 +854,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
               {showRepoPicker ? (
                 <RepoPicker
                   selected={conv.repoIds ?? []}
+                  on={conversationWhere(settings, conv)}
                   onChange={(ids) => void setConversationRepos(conv.id, ids)}
                   branch={thread?.repo?.branch}
                   dirty={thread?.repo?.dirty}
@@ -893,6 +894,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
             {projectScope ? (
               <RepoPicker
                 selected={pendingRepoIds}
+                on={newChatWhere(settings)}
                 onChange={setPendingRepoIds}
                 onOpenRepos={() => setView('repos')}
               />
@@ -1312,6 +1314,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
         <ModelSheet
           initialStage={sheetStage}
           current={composerSource}
+          machine={conv ? conversationWhere(settings, conv) : newChatWhere(settings)}
           onPick={(source) => {
             setPickedSource(source);
             setSheetOpen(false);
