@@ -309,6 +309,8 @@ export interface InstallProgressPayload {
 
 export interface OscodeBridge {
   platform: 'electron';
+  /** The run before this one ended in Quit: the page opens fresh (lib/resumePoint.ts). */
+  afterQuit?: boolean;
 
   // Sessions (conversations backed by the engine).
   createSession(

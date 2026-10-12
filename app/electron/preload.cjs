@@ -16,6 +16,8 @@ const listen = (channel) => (cb) => {
 
 contextBridge.exposeInMainWorld('oscode', {
   platform: 'electron',
+  // The run before this one ended in Quit (main.ts): open fresh.
+  afterQuit: process.argv.includes('--oscode-after-quit'),
 
   createSession: invoke('osc:createSession'),
   resumeSession: invoke('osc:resumeSession'),
