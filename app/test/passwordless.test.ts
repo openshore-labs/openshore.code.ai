@@ -94,6 +94,20 @@ describe('the sign-in email', () => {
   });
 });
 
+describe('the reset-password email', () => {
+  it('says there are no passwords, with no link and no code', () => {
+    expect(tomlValue('auth.email.template.recovery', 'content_path')).toBe(
+      '"./supabase/templates/no-password.html"',
+    );
+    const body = readFileSync(join(ROOT, 'supabase/templates/no-password.html'), 'utf8').replace(
+      /<!--[\s\S]*?-->/g,
+      '',
+    );
+    expect(body).toContain('no passwords');
+    expect(body).not.toMatch(/\{\{|href=/);
+  });
+});
+
 describe('passkeys wait for the founder gate', () => {
   it('the relying party is openshore.ai, and the server switch is off', () => {
     expect(tomlValue('auth.webauthn', 'rp_id')).toBe('"openshore.ai"');

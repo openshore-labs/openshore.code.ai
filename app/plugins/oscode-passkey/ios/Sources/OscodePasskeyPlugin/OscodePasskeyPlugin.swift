@@ -28,6 +28,7 @@ public class OscodePasskeyPlugin: CAPPlugin, CAPBridgedPlugin,
     ]
 
     // One ceremony at a time, held for its life so ARC keeps the controller.
+    // Main queue only (see run).
     private var pending: CAPPluginCall?
     private var controller: ASAuthorizationController?
 
@@ -69,13 +70,15 @@ public class OscodePasskeyPlugin: CAPPlugin, CAPBridgedPlugin,
         run(request, for: call)
     }
 
+    // `pending` and `controller` are read and written on the main queue only:
+    // the bridge calls in on its own queue, and the delegate answers on main.
     private func run(_ request: ASAuthorizationRequest, for call: CAPPluginCall) {
-        if pending != nil {
-            call.reject("A passkey request is already open.", "busy")
-            return
-        }
-        pending = call
         DispatchQueue.main.async {
+            if self.pending != nil {
+                call.reject("A passkey request is already open.", "busy")
+                return
+            }
+            self.pending = call
             let controller = ASAuthorizationController(authorizationRequests: [request])
             controller.delegate = self
             controller.presentationContextProvider = self
@@ -84,6 +87,7 @@ public class OscodePasskeyPlugin: CAPPlugin, CAPBridgedPlugin,
         }
     }
 
+    // Called from the delegate, on main.
     private func finish() -> CAPPluginCall? {
         let call = pending
         pending = nil

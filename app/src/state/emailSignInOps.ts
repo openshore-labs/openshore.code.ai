@@ -78,9 +78,13 @@ export function codeDigits(typed: string): string | undefined {
 export const CODE_LENGTH = 6;
 
 /** Whether a session is for someone other than the person signed in here, in
- *  which case a sign-in must never switch accounts underneath them. */
+ *  which case a sign-in must never switch accounts underneath them. The
+ *  account id decides when both sides carry one (an email can change on the
+ *  same account); the address only when an id is missing. */
 export function switchesAccount(current: Session | undefined, next: Session): boolean {
-  const a = current?.user.email;
+  if (!current) return false;
+  if (current.user.id && next.user.id) return current.user.id !== next.user.id;
+  const a = current.user.email;
   const b = next.user.email;
   return Boolean(a && b && addressKey(a) !== addressKey(b));
 }
@@ -99,7 +103,7 @@ export const CHECK_TITLE = 'Check your email';
 /** The check step's body. `device` is "this computer" on the desktop, or the
  *  phone's own noun (lib/deviceNoun.ts). */
 export function checkBody(email: string, device: string): string {
-  return `We sent a 6-digit code and a link to ${email}. Type the code here, or open the link on ${device}. Both work for 10 minutes.`;
+  return `We sent a 6-digit code and a link to ${email}. Type the code here, or open the link on ${device}. The code works for 10 minutes.`;
 }
 export const CODE_LABEL = '6-digit code';
 export const SIGN_IN = 'Sign in';

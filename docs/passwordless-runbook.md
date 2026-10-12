@@ -11,8 +11,8 @@ What is on `main` already, and safe as it stands:
 - The app asks for no password anywhere. The link is PKCE, so it signs in
   only on the device that asked; the code works on any device.
 - Migration `0028_passwordless.sql`, **unapplied**.
-- `supabase/config.toml` and `supabase/templates/sign-in.html`, **not pushed**
-  to the hosted project (that is `config push`, step 3).
+- `supabase/config.toml` and the two templates in `supabase/templates/`,
+  **not set** on the hosted project yet (step 3, in the dashboard).
 - Passkeys and App Lock, built. Passkeys stay hidden until step 6; App Lock is
   a Settings switch on iPhone and iPad, off by default.
 - On openshore.ai (`OpenShore.ai-marketing-site`): the scanner-safe page
@@ -44,18 +44,23 @@ Deploy `OpenShore.ai-marketing-site` from `main` so
 email's link goes through that page; until it is live, the link would 404
 (the code would still work).
 
-### 3. Push the auth config (Terminal, from `main`)
+### 3. Set the codes and the emails (Supabase dashboard, not `config push`)
 
-```
-supabase link --project-ref lzlrlfdffwiypzreoldb
-supabase config push
-```
+Do this in the dashboard, not with `supabase config push`: `config.toml` also
+holds local values (`site_url` is `http://localhost:5173`), and a push would
+write them over production's (CTO review, 2026-10-12). The values below are
+the ones `supabase/config.toml` records.
 
-It shows a diff first. Expect: `otp_length 6`, `otp_expiry 600`,
-`max_frequency 60s`, the two templates (subject "Your OpenShore sign-in code"),
-`passkey enabled false`, and the WebAuthn relying party `openshore.ai`.
-Nothing else should change; if anything else does, stop and hand the output
-to Claude.
+1. Authentication, Providers, Email: **Email OTP length 6**, **Email OTP
+   expiration 600** seconds. Leave Confirm email on.
+2. Authentication, Rate Limits: emails sent no more than **once every 60
+   seconds** per address (leave the verify limit as it is).
+3. Authentication, Emails, Templates:
+   - **Magic Link** and **Confirm signup**: subject `Your OpenShore sign-in
+     code`, body the whole of `supabase/templates/sign-in.html`.
+   - **Reset Password**: subject `OpenShore has no passwords`, body the whole
+     of `supabase/templates/no-password.html`.
+4. Leave passkeys off for now (step 6).
 
 Then send yourself a sign-in from the app: the email should show the code
 first, and its link should open `openshore.ai/sign-in/continue/` and, after
@@ -103,8 +108,10 @@ Only after step 4 showed the step-up trigger.
    `{"webcredentials":{"apps":["<TeamID>.ai.openshore.oscode"]}}` (served as
    JSON, no redirect). These wait for the Team ID because an entitlement the
    App ID lacks fails signing, and a wrong Team ID silently breaks passkeys.
-3. Deploy the site, then set `[auth.passkey] enabled = true` in
-   `supabase/config.toml` and `supabase config push`.
+3. Deploy the site, then in the dashboard turn on passkeys with the relying
+   party `openshore.ai`, display name `OpenShore`, origin
+   `https://openshore.ai`, and set `[auth.passkey] enabled = true` in
+   `supabase/config.toml` so the record matches.
 4. Set `VITE_PASSKEYS=1` in the iOS build's environment (Codemagic), build,
    and on a device: Settings, Your account, Create a passkey; sign out; Sign
    in with a passkey.

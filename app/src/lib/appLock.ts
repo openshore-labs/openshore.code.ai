@@ -12,8 +12,14 @@
 //
 // iPhone and iPad only for now (CX): Electron's Touch ID prompt has no
 // password fallback, so a few failed touches would lock a person out, and
-// Windows and Linux have no system prompt to ask. The rules are pure so the
-// tests pin them; the plugin calls at the bottom are thin.
+// Windows and Linux have no system prompt to ask.
+//
+// When a return locks is decided natively (oscode-applock, CTO review
+// 2026-10-12): time away runs on the system uptime clock, which changing the
+// date cannot move; only a real trip to the background counts, never our own
+// Face ID or passkey sheet; and the cover over the app stays up until this
+// side has drawn the lock screen and calls reveal(). The words and the
+// setting are here; the plugin calls at the bottom are thin.
 import { registerPlugin } from '@capacitor/core';
 import { platform } from './platform.js';
 
@@ -26,19 +32,6 @@ export const DEFAULT_LOCK_AFTER: LockAfter = 60;
 export interface AppLockSetting {
   on: boolean;
   after?: LockAfter;
-}
-
-/** Whether returning now should lock, given when the app went to the
- *  background. A launch (no time on record) locks whenever the lock is on. */
-export function shouldLock(
-  setting: AppLockSetting | undefined,
-  backgroundedAt: number | undefined,
-  now: number = Date.now(),
-): boolean {
-  if (!setting?.on) return false;
-  if (backgroundedAt === undefined) return true;
-  const after = setting.after ?? DEFAULT_LOCK_AFTER;
-  return now - backgroundedAt >= after * 1000;
 }
 
 export function lockAfterLabel(after: LockAfter): string {
@@ -87,8 +80,13 @@ export interface OscodeAppLockContract {
   status(): Promise<{ available: boolean; biometry: Biometry }>;
   /** Ask for the device's own unlock. Rejects with "canceled" on a back-out. */
   unlock(options: { reason: string }): Promise<{ ok: boolean }>;
-  /** Cover the app switcher's snapshot while the lock is on. */
-  setCover(options: { on: boolean }): Promise<void>;
+  /** Hand the setting to the native side, which times the trips away and
+   *  covers the app switcher's snapshot while the lock is on. */
+  configure(options: { on: boolean; after: LockAfter }): Promise<void>;
+  /** The lock screen is drawn: the cover held over the app can come down. */
+  reveal(): Promise<void>;
+  /** A return from the background that must lock. */
+  addListener(event: 'lockRequired', fn: () => void): Promise<{ remove: () => Promise<void> }>;
 }
 
 class AppLockWeb implements OscodeAppLockContract {
@@ -98,7 +96,11 @@ class AppLockWeb implements OscodeAppLockContract {
   async unlock(): Promise<{ ok: boolean }> {
     throw new Error('App Lock is not available here.');
   }
-  async setCover() {}
+  async configure() {}
+  async reveal() {}
+  async addListener() {
+    return { remove: async () => {} };
+  }
 }
 
 export const OscodeAppLock = registerPlugin<OscodeAppLockContract>('OscodeAppLock', {
@@ -115,31 +117,33 @@ export async function appLockStatus(): Promise<{ available: boolean; biometry: B
   }
 }
 
-// The system's unlock sheet makes iOS report the app inactive and then active
-// again, which would read as a trip to the background: with "Immediately" the
-// app would lock again the moment it opened. Changes while our own prompt is
-// up, and for a moment after, are not a trip anywhere.
-const PROMPT_SETTLE_MS = 1500;
-let promptUntil = 0;
-
-/** Whether an app state change now comes from our own unlock prompt. */
-export function unlockPromptRecent(now: number = Date.now()): boolean {
-  return now < promptUntil;
-}
-
 /** Ask for the device's unlock. True once the person proved it is them. */
 export async function askUnlock(): Promise<boolean> {
-  promptUntil = Number.POSITIVE_INFINITY;
   try {
     return (await OscodeAppLock.unlock({ reason: 'Unlock OpenShore' })).ok;
   } catch {
     return false;
-  } finally {
-    promptUntil = Date.now() + PROMPT_SETTLE_MS;
   }
 }
 
-export async function setAppSwitcherCover(on: boolean): Promise<void> {
+/** Hand the setting to the native side. */
+export async function configureAppLock(setting: AppLockSetting | undefined): Promise<void> {
   if (platform() !== 'ios') return;
-  await OscodeAppLock.setCover({ on }).catch(() => {});
+  await OscodeAppLock.configure({
+    on: setting?.on === true,
+    after: setting?.after ?? DEFAULT_LOCK_AFTER,
+  }).catch(() => {});
+}
+
+/** Take the held cover down once the lock screen is on screen. */
+export async function revealLockScreen(): Promise<void> {
+  if (platform() !== 'ios') return;
+  await OscodeAppLock.reveal().catch(() => {});
+}
+
+/** Call `onLock` whenever a return from the background must lock. */
+export async function onLockRequired(onLock: () => void): Promise<() => void> {
+  if (platform() !== 'ios') return () => {};
+  const handle = await OscodeAppLock.addListener('lockRequired', onLock);
+  return () => void handle.remove();
 }

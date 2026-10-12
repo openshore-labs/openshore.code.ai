@@ -32,13 +32,7 @@ import {
   VAULT_PRIVACY_DEFAULTS,
 } from './types.js';
 import { plainError } from '../lib/plainError.js';
-import {
-  APP_LOCK_OFF,
-  APP_LOCK_ON,
-  askUnlock,
-  setAppSwitcherCover,
-  type AppLockSetting,
-} from '../lib/appLock.js';
+import { APP_LOCK_OFF, APP_LOCK_ON, askUnlock, type AppLockSetting } from '../lib/appLock.js';
 import {
   addPasskey as passkeyAdd,
   listPasskeys as passkeyList,
@@ -8341,6 +8335,14 @@ export const useApp = create<AppState>((set, get, api) => {
   // address is also how an account is made, so a device that never answered
   // Personal or Business asks now, once signed in; a Personal build makes it
   // a Personal account with no question (Business is v4).
+  // A session the auth server made that this device then refused (another
+  // account while someone is signed in, or a renewal that came back as
+  // someone else): end it there at once, so it is never left live (CTO review
+  // 2026-10-12). Best effort; nothing here waits on it.
+  function dropRefused(session: Session): void {
+    void supabaseSignOut(session.accessToken, 'local').catch(() => {});
+  }
+
   async function signedInByEmail(session: Session): Promise<void> {
     await onSignedIn(session);
     if (!get().settings.passwordsGoneSeen) await get().saveSettings({ passwordsGoneSeen: true });
@@ -10356,7 +10358,8 @@ export const useApp = create<AppState>((set, get, api) => {
       }
       const current = get().authSession;
       if (switchesAccount(current, session)) {
-        throw new Error(signedInAsSomeoneElse(current!.user.email!, session.user.email!));
+        dropRefused(session);
+        throw new Error(signedInAsSomeoneElse(current!.user.email ?? '', session.user.email ?? ''));
       }
       await clearPendingSignIn();
       await signedInByEmail(session);
@@ -10392,7 +10395,8 @@ export const useApp = create<AppState>((set, get, api) => {
       }
       const current = get().authSession;
       if (switchesAccount(current, session)) {
-        get().showToast(signedInAsSomeoneElse(current!.user.email!, session.user.email!));
+        dropRefused(session);
+        get().showToast(signedInAsSomeoneElse(current!.user.email ?? '', session.user.email ?? ''));
         return false;
       }
       await clearPendingSignIn();
@@ -10416,10 +10420,15 @@ export const useApp = create<AppState>((set, get, api) => {
         throw err;
       }
       // Only ever this account: a renewal, never a switch.
-      if (session.user.id !== current.user.id) throw new Error(CODE_REFUSED);
+      if (session.user.id !== current.user.id) {
+        dropRefused(session);
+        throw new Error(CODE_REFUSED);
+      }
       await clearPendingSignIn();
       await saveSession(session);
       set({ authSession: session });
+      // The session it renews ends, so one sign-in is live here, not two.
+      dropRefused(current);
     },
 
     async signInWithPasskey() {
@@ -10432,7 +10441,8 @@ export const useApp = create<AppState>((set, get, api) => {
       };
       const current = get().authSession;
       if (switchesAccount(current, session)) {
-        throw new Error(signedInAsSomeoneElse(current!.user.email!, session.user.email!));
+        dropRefused(session);
+        throw new Error(signedInAsSomeoneElse(current!.user.email ?? '', session.user.email ?? ''));
       }
       await onSignedIn(session);
       if (!get().settings.passkeyUsedHere) await get().saveSettings({ passkeyUsedHere: true });
@@ -10467,7 +10477,6 @@ export const useApp = create<AppState>((set, get, api) => {
       if (!(await askUnlock())) return false;
       const was = get().settings.appLock?.on === true;
       await get().saveSettings({ appLock: next.on ? next : undefined });
-      await setAppSwitcherCover(next.on);
       if (was !== next.on) get().showToast(next.on ? APP_LOCK_ON : APP_LOCK_OFF);
       return true;
     },

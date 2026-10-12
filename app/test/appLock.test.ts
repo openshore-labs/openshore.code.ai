@@ -1,6 +1,6 @@
-// App Lock (founder 2026-10-12, CX ruling Q3): when it locks, what a notice
-// says while it is on, that our own unlock prompt never reads as a trip to
-// the background, and that no room renders while the app is locked.
+// App Lock (founder 2026-10-12, CX ruling Q3, CTO review): the native side
+// decides when a return locks, a notice names nothing while it is on, and no
+// room renders while the app is locked.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -11,34 +11,40 @@ import {
   LOCKED_REPLY_BODY,
   appLockSub,
   lockAfterLabel,
-  shouldLock,
-  unlockPromptRecent,
 } from '../src/lib/appLock.js';
 import { approvalNotice, lockedNotice, replyNotice } from '../src/lib/notices.js';
 
-describe('when the app locks', () => {
-  it('never while the lock is off', () => {
-    expect(shouldLock(undefined, undefined)).toBe(false);
-    expect(shouldLock({ on: false }, 0, 10_000_000)).toBe(false);
+describe('when the app locks (native, CTO review 2026-10-12)', () => {
+  const swift = readFileSync(
+    join(
+      process.cwd(),
+      'plugins/oscode-applock/ios/Sources/OscodeApplockPlugin/OscodeApplockPlugin.swift',
+    ),
+    'utf8',
+  );
+  const app = readFileSync(join(process.cwd(), 'src/App.tsx'), 'utf8');
+
+  it('times the trip away on the uptime clock, which a date change cannot move', () => {
+    expect(swift).toContain('ProcessInfo.processInfo.systemUptime');
+    expect(swift).not.toMatch(/Date\(\)|timeIntervalSince1970/);
   });
 
-  it('always at launch while it is on', () => {
-    expect(shouldLock({ on: true }, undefined)).toBe(true);
+  it('counts only a real trip to the background, never our own prompts', () => {
+    expect(swift).toContain('didEnterBackgroundNotification');
+    expect(swift).toMatch(/guard self\.lockOn, let left = self\.backgroundedAt/);
+    // The JS side locks only when the native side says so.
+    expect(app.match(/lockApp\(\)/g)).toHaveLength(1);
+    expect(app).toMatch(/onLockRequired\(\(\) => useApp\.getState\(\)\.lockApp\(\)\)/);
   });
 
-  it('after the chosen time in the background, a minute by default', () => {
+  it('holds the cover over the app until the lock screen is drawn', () => {
+    expect(swift).toMatch(/holdCover = true[\s\S]*notifyListeners\("lockRequired"/);
+    const screen = readFileSync(join(process.cwd(), 'src/components/AppLockScreen.tsx'), 'utf8');
+    expect(screen).toContain('revealLockScreen()');
+  });
+
+  it('a default of one minute, and the choices in plain words', () => {
     expect(DEFAULT_LOCK_AFTER).toBe(60);
-    expect(shouldLock({ on: true }, 0, 59_000)).toBe(false);
-    expect(shouldLock({ on: true }, 0, 60_000)).toBe(true);
-    expect(shouldLock({ on: true, after: 0 }, 0, 0)).toBe(true);
-    expect(shouldLock({ on: true, after: 900 }, 0, 899_000)).toBe(false);
-  });
-
-  it('its own prompt is not a trip to the background', () => {
-    expect(unlockPromptRecent()).toBe(false);
-  });
-
-  it('says the choices and the row in plain words', () => {
     expect([0, 60, 900].map((a) => lockAfterLabel(a as 0 | 60 | 900))).toEqual([
       'Immediately',
       'After 1 minute',

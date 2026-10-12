@@ -119,7 +119,7 @@ describe('the check step', () => {
     expect(auth.sent).toEqual(['sam@example.com']);
     expect(dom.text()).toContain(ops.CHECK_TITLE);
     expect(dom.text()).toContain('We sent a 6-digit code and a link to sam@example.com.');
-    expect(dom.text()).toContain('Both work for 10 minutes.');
+    expect(dom.text()).toContain('The code works for 10 minutes.');
     expect(dom.text()).toContain(ops.resendIn(ops.RESEND_WAIT_S));
     expect(dom.buttons()).not.toContain(ops.SEND_NEW_CODE);
     expect(dom.buttons()).toContain(ops.DIFFERENT_EMAIL);

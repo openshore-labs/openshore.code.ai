@@ -46,8 +46,10 @@ enable_signup = true
 # Never set this to false, even locally: see the header note (P0-4).
 enable_confirmations = true
 # Sign-in without passwords (founder, CTO 2026-10-12): one email carries a
-# 6-digit code and a PKCE link. Ten minutes with the per-address resend limit
-# and GoTrue's verify rate limit keeps a guess out of reach. The app reads the
+# 6-digit code and a PKCE link, the code living 10 minutes and one email a
+# minute. The verify limit is per IP only, so a guesser spread over many
+# addresses is not stopped by it; the CTO accepted that residual risk for now
+# (DECISIONS 2026-10-12) rather than move to 8 digits. The app reads the
 # same numbers (app/src/state/emailSignInOps.ts: PENDING_AUTH_TTL_MS,
 # RESEND_WAIT_S, CODE_LENGTH), and app/test/passwordless.test.ts holds them
 # equal.
@@ -67,9 +69,15 @@ content_path = "./supabase/templates/sign-in.html"
 subject = "Your OpenShore sign-in code"
 content_path = "./supabase/templates/sign-in.html"
 
+# There are no passwords, but GoTrue's /recover still answers any caller: its
+# email says so and carries no link or code (CTO review, 2026-10-12).
+[auth.email.template.recovery]
+subject = "OpenShore has no passwords"
+content_path = "./supabase/templates/no-password.html"
+
 # Passkeys (GoTrue's own, CTO 2026-10-12): the relying party is openshore.ai,
 # and only a native iOS ceremony (or a real browser on openshore.ai) can match
-# it. Production values, because `config push` mirrors this file. Off until
+# it. Production values. Off until
 # the founder's gate in docs/passwordless-runbook.md holds (0028's step-up
 # trigger is on auth.webauthn_credentials, the Apple association file is
 # served); the app's own switch is VITE_PASSKEYS.

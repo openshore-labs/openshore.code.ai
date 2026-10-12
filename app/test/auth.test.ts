@@ -383,8 +383,14 @@ describe('a sign-in link is PKCE, bound to the device that asked (APP-6)', () =>
   it('refuses a link for another account while someone is signed in', async () => {
     useApp.setState({ authSession: live() });
     await useApp.getState().sendSignInEmail('c@d.e');
-    sb.exchangeAuthCode.mockResolvedValue({ ...live(), user: { id: 'u2', email: 'c@d.e' } });
+    sb.exchangeAuthCode.mockResolvedValue({
+      ...live(),
+      accessToken: 'refused-token',
+      user: { id: 'u2', email: 'c@d.e' },
+    });
     expect(await useApp.getState().completeAuthCallback(CALLBACK)).toBe(false);
+    // The session the server made for the other account is ended there.
+    expect(sb.signOut).toHaveBeenCalledWith('refused-token', 'local');
     expect(useApp.getState().toast).toBe(
       'You are signed in as a@b.c. Sign out first to sign in as c@d.e.',
     );
@@ -600,6 +606,8 @@ describe('passkeys in the store', () => {
     await useApp.getState().confirmByCode('123456');
     expect(sb.verifyEmailCode).toHaveBeenCalledWith('a@b.c', '123456');
     expect(useApp.getState().authSession?.accessToken).toBe('renewed');
+    // The renewed session's predecessor is ended, so one sign-in is live.
+    expect(sb.signOut).toHaveBeenCalledWith('fresh-token', 'local');
 
     sb.verifyEmailCode.mockResolvedValue({ ...live(), user: { id: 'u2', email: 'a@b.c' } });
     await expect(useApp.getState().confirmByCode('123456')).rejects.toThrow(CODE_REFUSED);
