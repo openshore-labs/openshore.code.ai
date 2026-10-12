@@ -600,8 +600,10 @@ The app treats EITHER an active individual OR org entitlement as unlocking
    stops without it), then apply the schema from main:
    `supabase db push --linked --skip-vault` (or run `migrations/0001_orgs.sql`,
    `0002_rls.sql`, `0003_claim.sql` in the SQL editor, in order).
-3. Auth settings: enable Email (magic link and/or password). Add the app's
-   redirect URLs so the magic-link callback lands on the app's own origin:
+3. Auth settings: enable Email. There are no passwords (2026-10-12): sign-in
+   is a 6-digit code and a PKCE link in one email, set by `[auth.email]` in
+   `config.toml` and `templates/sign-in.html` (docs/passwordless-runbook.md).
+   Add the app's redirect URLs so the link lands on the app's own origin:
    - iOS: `oscode://auth-callback` (register the scheme in the app; wire the
      Capacitor App `appUrlOpen` listener to `completeAuthCallback(url)`).
    - Electron: `http://127.0.0.1:4817/auth-callback`.

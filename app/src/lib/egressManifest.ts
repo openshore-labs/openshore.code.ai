@@ -71,7 +71,7 @@ export const EGRESS: EgressEntry[] = [
   {
     id: 'account',
     recipient: 'OpenShore (us)',
-    what: 'Your email address to send you a sign-in code and link, then the code or link itself, or with a passkey a signature from it (the passkey itself stays on your device and in your iCloud Keychain). Then what your account needs to work: its sign-in renewed, and, for a team account, its plan.',
+    what: 'Your email address to send you a sign-in code and link, then the code or link itself, or, if you add a passkey, a signature from it (the passkey itself stays on your device and in your keychain or password manager). Then what your account needs to work: its sign-in renewed, and, for a team account, its plan.',
     when: 'Only once you sign in, and then each time the app opens while you are signed in. Chatting needs no account; building, Projects, Vault, Crew, Terminal, and pairing do.',
     start: 'off',
     hosts: ['env:VITE_SUPABASE_URL'],

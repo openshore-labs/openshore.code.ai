@@ -108,3 +108,31 @@ describe('passkeys wait for the founder gate', () => {
     expect(migration).toContain("interval '10 minutes'");
   });
 });
+
+describe("no way in but a person's own email or passkey (CTO, App Review ruling)", () => {
+  const FUNCTIONS = join(ROOT, 'supabase/functions');
+  const functionFiles = (dir: string): string[] =>
+    readdirSync(dir).flatMap((name) => {
+      const p = join(dir, name);
+      return statSync(p).isDirectory() ? functionFiles(p) : /\.(ts|js)$/.test(name) ? [p] : [];
+    });
+
+  it('no edge function can mint a session', () => {
+    for (const file of functionFiles(FUNCTIONS)) {
+      const text = readFileSync(file, 'utf8');
+      for (const banned of [
+        /generateLink/,
+        /verifyOtp/,
+        /signInWith\w+/,
+        /\/auth\/v1\/verify/,
+        /grant_type=/,
+      ]) {
+        expect(banned.test(text), `${file} matches ${banned}`).toBe(false);
+      }
+    }
+  });
+
+  it("0028's triggers exempt no address", () => {
+    expect(migration).not.toMatch(/new\.email|\bemail\s*(=|<>|in\b|like\b)/i);
+  });
+});
