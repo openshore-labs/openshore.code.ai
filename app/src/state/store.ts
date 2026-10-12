@@ -666,6 +666,7 @@ import {
   type VaultMoveOfferState,
 } from '../lib/vaultOffer.js';
 import { Llama } from '../lib/llamaPlugin.js';
+import { readResumePoint, saveResumePoint } from '../lib/resumePoint.js';
 import {
   dataUnlockState,
   isDesktop,
@@ -1765,8 +1766,12 @@ interface AppState {
        *  immediately and seed the model's history, so it knows what was said. */
       seedItems?: ThreadItem[];
       title?: string;
-      /** The repositories the chat starts with; the project's when omitted. */
+      /** The repositories the chat starts with; the project's when omitted
+       *  (a project chat only: a plain chat has none). */
       repoIds?: string[];
+      /** A project chat, the Claude Code side. A coding session on a computer
+       *  is one too. Omitted, the chat is plain, like claude.ai. */
+      projectChat?: boolean;
       /** The first message, parked on the chat before the driver exists so
        *  the bubble is on screen at once and nothing waits on the hub. */
       firstMessage?: { text: string; attachments?: Attachment[] };
@@ -6378,6 +6383,8 @@ export const useApp = create<AppState>((set, get, api) => {
   }
   api.subscribe((state, prev) => {
     if (prev.activeId && prev.activeId !== state.activeId) writeLeftHandoff(prev.activeId);
+    // Remember the open chat so a cold start returns to it (lib/resumePoint.ts).
+    if (state.ready && prev.activeId !== state.activeId) saveResumePoint(state.activeId);
   });
 
   /** Whether any stashed or held text belongs to the vault on `providerId`. */
@@ -8756,6 +8763,8 @@ export const useApp = create<AppState>((set, get, api) => {
       // purchase stays on the device.
       void storeDelete(RETIRED_ENTITLEMENT_CACHE_KEY).catch(() => {});
       void storeDelete(RETIRED_APPLE_LINK_KEY).catch(() => {});
+      const resumeId = readResumePoint()?.activeId;
+      const resumeOk = resumeId !== undefined && Boolean(conversations[resumeId]);
       set({
         settings,
         conversations,
@@ -8783,6 +8792,9 @@ export const useApp = create<AppState>((set, get, api) => {
         // the page is never a wall in front of the first chat.
         view: 'chat',
       });
+      // A cold start soon after the last use (the system reclaimed the app in
+      // the background) returns to the chat that was open.
+      if (resumeOk) get().openConversation(resumeId!);
       logEvent('app_open', { onboarded: settings.onboarded });
       // Signed in: the account's preferences, if newer, arrive now. Someone
       // signed in already knows what the account opens, so the notice below
@@ -9236,7 +9248,8 @@ export const useApp = create<AppState>((set, get, api) => {
       const seedItems = opts?.seedItems ?? [];
       // The chat's repositories: what the caller picked, else the project's.
       const project = get().settings.projects?.find((p) => p.id === projectId);
-      const repoIds = opts?.repoIds ?? project?.repoIds ?? [];
+      const isProjectChat = opts?.projectChat === true || source.kind === 'desktop';
+      const repoIds = isProjectChat ? (opts?.repoIds ?? project?.repoIds ?? []) : [];
       // A first message rides in parked on the chat (B3): its bubble is on
       // screen before the driver exists, the attach delivers it, and a hub
       // that never answers leaves it there with the reason and a Retry. The
@@ -9253,6 +9266,7 @@ export const useApp = create<AppState>((set, get, api) => {
         title: opts?.title ?? 'New chat',
         source,
         ...(projectId ? { projectId } : {}),
+        ...(isProjectChat ? { projectChat: true } : {}),
         repoIds,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),

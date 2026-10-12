@@ -324,6 +324,12 @@ export interface Conversation {
   source: ConversationSource;
   /** The project this chat belongs to, if any. */
   projectId?: string;
+  /** True for a project chat (started from a project, or a coding session on a
+   *  computer): the Claude Code side, with repositories in the header. A plain
+   *  chat leaves it off and works like claude.ai, with no repository to
+   *  connect. A chat that predates the split keeps its picker only if it
+   *  already has repositories. */
+  projectChat?: boolean;
   /** The repositories this chat works with (lib/chatRepos.ts ids: a workspace
    *  path or "github:owner/name"), picked in the header. Seeded from the
    *  project's repoIds when the chat starts; the chat keeps its own list. */

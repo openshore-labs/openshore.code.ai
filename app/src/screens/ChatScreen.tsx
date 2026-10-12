@@ -307,6 +307,9 @@ export function ChatScreen({ compact }: { compact: boolean }) {
   // conversation instead.
   const activeProjectId = settings.activeProjectId ?? settings.projects?.[0]?.id;
   const activeProject = settings.projects?.find((p) => p.id === activeProjectId);
+  // Only a project chat (opened from a project) has repositories. A plain chat
+  // works like claude.ai: nothing to connect, no picker.
+  const projectScope = Boolean(viewProjectId) && viewTrail.includes('project');
   const [pendingRepoIds, setPendingRepoIds] = useState<string[]>(
     () => activeProject?.repoIds ?? [],
   );
@@ -380,6 +383,9 @@ export function ChatScreen({ compact }: { compact: boolean }) {
   useOpeningGlide(bodyRef);
 
   const conv = activeId ? conversations[activeId] : undefined;
+  const showRepoPicker = Boolean(
+    conv && (conv.projectChat || conv.source.kind === 'desktop' || (conv.repoIds?.length ?? 0) > 0),
+  );
   const thread = conv?.thread;
   // Guided setup (lib/guidedSetup.ts): where the walk stands, and the guide's
   // latest message, which carries the current step's buttons.
@@ -761,7 +767,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
     // The first message rides in on the new chat itself, so its bubble is on
     // screen at once, not after the model has loaded.
     const id = await newConversation(source, {
-      repoIds: pendingRepoIds,
+      ...(projectScope ? { repoIds: pendingRepoIds, projectChat: true } : {}),
       ...(hasMessage ? { firstMessage: { text: text ?? '', attachments } } : {}),
     });
     // No new chat opened (the sign-in sheet or a paywall stood in the way):
@@ -842,23 +848,28 @@ export function ChatScreen({ compact }: { compact: boolean }) {
             <div className="topbar-sub">
               {/* The repo picker sits where the model name used to be (the
                   model still lives in the composer pill). A live session's
-                  branch and dirty dot ride on the summary. */}
-              <RepoPicker
-                selected={conv.repoIds ?? []}
-                onChange={(ids) => void setConversationRepos(conv.id, ids)}
-                branch={thread?.repo?.branch}
-                dirty={thread?.repo?.dirty}
-                onOpenRepos={() => setView('repos')}
-                workingIn={
-                  conv.source.kind === 'desktop' && conv.source.sessionId
-                    ? conv.source.cwd
-                    : undefined
-                }
-                onNewChat={(ids) => void newConversation({ kind: 'desktop' }, { repoIds: ids })}
-              />
+                  branch and dirty dot ride on the summary. Project chats and
+                  coding sessions only: a plain chat has no repository. */}
+              {showRepoPicker ? (
+                <RepoPicker
+                  selected={conv.repoIds ?? []}
+                  onChange={(ids) => void setConversationRepos(conv.id, ids)}
+                  branch={thread?.repo?.branch}
+                  dirty={thread?.repo?.dirty}
+                  onOpenRepos={() => setView('repos')}
+                  workingIn={
+                    conv.source.kind === 'desktop' && conv.source.sessionId
+                      ? conv.source.cwd
+                      : undefined
+                  }
+                  onNewChat={(ids) =>
+                    void newConversation({ kind: 'desktop' }, { repoIds: ids, projectChat: true })
+                  }
+                />
+              ) : null}
               {thread && thread.dollars > 0 ? (
                 <>
-                  {' · '}
+                  {showRepoPicker ? ' · ' : null}
                   {/* Cloud spend so far: marked as spend, so it wears amber. */}
                   <span className="chat-spend spend" title="Cloud spend in this chat">
                     ${thread.dollars.toFixed(2)}
@@ -878,11 +889,13 @@ export function ChatScreen({ compact }: { compact: boolean }) {
           </div>
         ) : (
           <div className="topbar-spacer topbar-spacer-repos">
-            <RepoPicker
-              selected={pendingRepoIds}
-              onChange={setPendingRepoIds}
-              onOpenRepos={() => setView('repos')}
-            />
+            {projectScope ? (
+              <RepoPicker
+                selected={pendingRepoIds}
+                onChange={setPendingRepoIds}
+                onOpenRepos={() => setView('repos')}
+              />
+            ) : null}
           </div>
         )}
         {/* Terminal entry, desktop-backed chats only: a real PTY on the desktop,

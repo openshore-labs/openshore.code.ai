@@ -878,6 +878,10 @@ function createWindow(): void {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      // A hidden or covered window keeps running its timers and streams, so a
+      // reply in flight (and the hub's live link) is not slowed when the window
+      // is out of sight.
+      backgroundThrottling: false,
     },
   });
 

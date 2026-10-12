@@ -503,11 +503,16 @@ describe('the wiring', () => {
     expect(chat).not.toMatch(/thread\.model\.name\} · \$\{thread\.model\.kind\}/);
     expect(chat).toMatch(/<RepoPicker[\s\S]*?selected=\{conv\.repoIds \?\? \[\]\}/);
     expect(chat).toMatch(/<RepoPicker[\s\S]*?selected=\{pendingRepoIds\}/);
-    expect(chat).toMatch(/newConversation\(source, \{\s*repoIds: pendingRepoIds,/);
+    // Only a project chat has repositories; a plain chat is like claude.ai.
+    expect(chat).toMatch(/projectScope \? \{ repoIds: pendingRepoIds, projectChat: true \}/);
+    expect(chat).toMatch(/\{showRepoPicker \? \(\s*<RepoPicker/);
+    expect(chat).toMatch(/\{projectScope \? \(\s*<RepoPicker/);
   });
 
   it('seeds a chat from its project and lets the chat keep its own list', () => {
-    expect(store).toMatch(/const repoIds = opts\?\.repoIds \?\? project\?\.repoIds \?\? \[\]/);
+    expect(store).toMatch(
+      /const repoIds = isProjectChat \? \(opts\?\.repoIds \?\? project\?\.repoIds \?\? \[\]\) : \[\]/,
+    );
     expect(store).toMatch(/async setConversationRepos\(id, repoIds\)/);
     expect(read('state/types.ts')).toMatch(/repoIds\?: string\[\];/);
   });
@@ -592,7 +597,7 @@ describe('the wiring', () => {
     // ...and handed to the picker, which offers a new chat when it differs.
     expect(chat).toMatch(/workingIn=\{[\s\S]{0,120}conv\.source\.cwd/);
     expect(chat).toMatch(
-      /onNewChat=\{\(ids\) => void newConversation\(\{ kind: 'desktop' \}, \{ repoIds: ids \}\)\}/,
+      /onNewChat=\{\(ids\) =>\s*void newConversation\(\{ kind: 'desktop' \}, \{ repoIds: ids, projectChat: true \}\)/,
     );
     const picker = read('components/RepoPicker.tsx');
     expect(picker).toMatch(/firstPicked !== workingIn/);
