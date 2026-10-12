@@ -162,7 +162,7 @@ function childWith(body: HTMLElement, cls: string): HTMLElement | undefined {
   return undefined;
 }
 
-/** The desktop opening (D5, founder 2026-10-07, built as recommended, A). On a
+/** The desktop opening (D5, 2026-10-07, built as recommended, A). On a
  *  fine pointer the empty chat's greeting and the composer sit together as one
  *  group (theme.css, `.chat-body:has(> .greeting)`). On a first send the
  *  composer glides from the group to the foot, and when a new chat opens it
@@ -548,7 +548,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
   const [landingSwellId, setLandingSwellId] = useState(() => (takeLandingSwell() ? 0 : -1));
   // Slack Water (components/SlackWater.tsx) lands the person here from the
   // setup walk: the greeting waits unseen a beat while the page surfaces
-  // under the last rings, then lands on the swell (Creative Studio).
+  // under the last rings, then lands on the swell (design review).
   const [heldUnderWater, setHeldUnderWater] = useState(false);
   // One-time discovery nudge, played on the first empty-state paint of the
   // session and never again.
@@ -685,7 +685,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
   // the pending selection for the next new chat.
   const composerSource = conv ? conv.source : selectedSource;
 
-  // The vault behind `[[` (Vault M5, CTO J15): the notes the privacy rules
+  // The vault behind `[[` (Vault M5, tech review J15): the notes the privacy rules
   // let a model see, a body reader, the seat the next send goes to, and a
   // note "Ask about this note" is taking in. With Memory off there is no vault
   // in a chat, so the composer gets none and `[[` is plain text.
@@ -747,7 +747,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
 
   // A Stack chat can read images when a capable model is placed in it, or a
   // connected cloud provider reads them. On a phone or an iPad its composer
-  // takes a picture either way (founder, 2026-10-07): the Stack answers one it
+  // takes a picture either way (2026-10-07): the Stack answers one it
   // cannot read with the two doors below instead of a toast, so the chat
   // itself says what to set up. The desktop keeps the toast: its Stack is the
   // engine's, with no Image reading row for the doors to point at. The offer
@@ -771,7 +771,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
       ...(projectScope ? { repoIds: pendingRepoIds, projectChat: true } : {}),
       ...(hasMessage ? { firstMessage: { text: text ?? '', attachments } } : {}),
     });
-    // No new chat opened (the sign-in sheet or a paywall stood in the way):
+    // No new chat opened (the sign-in sheet stood in the way):
     // the composer already cleared, so hand the message back rather than lose
     // it.
     if (hasMessage && !id) {
@@ -915,7 +915,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
           </button>
         ) : null}
         {/* New chat, one tap from any open chat on phone and desktop (D7,
-            founder 2026-10-07, built as recommended, D): the Chats room's
+            2026-10-07, built as recommended, D): the Chats room's
             compose, beside the status. It starts a chat in the active project
             the same way. Not on the empty new chat itself, which has nothing
             to leave. */}
@@ -1141,7 +1141,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
                 </h1>
               </div>
             }
-            // "Edit" on the saved line (CX cleanup 8): the words go back into
+            // "Edit" on the saved line (UX review cleanup 8): the words go back into
             // the composer through the same restore a dismissed chooser uses,
             // with no toast; the download keeps going, and Send saves again.
             onEditHeld={() => {
@@ -1237,7 +1237,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
               if (!sourceReady(selectedSource)) {
                 // On the desktop with nothing set up, the First Seat is the
                 // one way on: the message waits there, says so, and goes out
-                // once DeepBlue is ready (CX ruling 2).
+                // once DeepBlue is ready (UX review ruling 2).
                 if (sendWaitsOnFirstSeat()) {
                   void holdUntilReady(text, attachments);
                   return;

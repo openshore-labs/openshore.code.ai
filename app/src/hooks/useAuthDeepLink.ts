@@ -59,7 +59,7 @@ export function useAuthDeepLink(): void {
         }
         return;
       }
-      // The computer's pairing QR, read by the iPhone Camera (CX 2026-10-01):
+      // The computer's pairing QR, read by the iPhone Camera (UX review 2026-10-01):
       // Pairing opens and asks first; the phone alone never pairs on a link.
       if (kind === 'pair') {
         offerPairing(url);

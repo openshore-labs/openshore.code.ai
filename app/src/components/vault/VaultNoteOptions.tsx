@@ -1,5 +1,5 @@
 // A note's Options sheet (moved out of VaultScreen in Vault M6 wave 0; stream
-// G, CTO K5, K6 with R2 and CX X5, X8, X16). Prop-driven: the screen owns the
+// G, tech review K5, K6 with R2 and UX review X5, X8, X16). Prop-driven: the screen owns the
 // open and armed state and every action.
 //
 // Delete is ONE tap only where Trash is real (`trashReal`, from
@@ -29,7 +29,7 @@ export interface VaultNoteOptionsProps {
   /** Offer "Rename or move" (`vaultCaps().rename`). */
   canRename?: boolean;
   /** Offer "Outline" first (the note has two or more headings; stream H's
-   *  sheet, CX X16). */
+   *  sheet, UX review X16). */
   canOutline?: boolean;
   /** Trash is real here (`vaultCaps().trash`): delete is one tap. Left out,
    *  a delete is treated as permanent (two taps). */
@@ -45,7 +45,7 @@ export interface VaultNoteOptionsProps {
   onPin: () => void;
   onRename?: () => void;
   onOutline?: () => void;
-  /** Open Vault settings (Vault M7, CX Y4): the row sits after Pin to
+  /** Open Vault settings (Vault M7, UX review Y4): the row sits after Pin to
    *  project context and before Delete; the settings sheet opens once this
    *  one has left. Left out, no row. */
   onSettings?: () => void;
@@ -98,7 +98,7 @@ export function VaultNoteOptions({
                 {VAULT_RENAME_ROW}
               </button>
             ) : null}
-            {/* Take the note to a model (Vault M5, CTO J15): personal
+            {/* Take the note to a model (Vault M5, tech review J15): personal
                 notes only, since the team vault is never in context. */}
             {canAsk ? (
               <button className="btn quiet press-fb" onClick={onAsk}>

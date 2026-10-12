@@ -1,6 +1,6 @@
-// Where the work runs (founder, 2026-10-12): "in your projects, you can choose
+// Where the work runs (2026-10-12): "in your projects, you can choose
 // the Hub to run your project from, either your home computer, home server, or
-// remote server." Copy calls that choice Runs on (CX, 2026-10-01: "hub" stays
+// remote server." Copy calls that choice Runs on (UX review, 2026-10-01: "hub" stays
 // out of copy). A device docks to as many machines as the person likes; each
 // project may name one, and each chat remembers the machine its engine
 // session opened on, so switching the device's active machine, or a project's

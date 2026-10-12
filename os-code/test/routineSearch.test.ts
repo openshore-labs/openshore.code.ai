@@ -1,5 +1,5 @@
 // A Crew routine's web search is held to a short, plain query on a result-only
-// backend, and stops once the run read anything private (CTO review
+// backend, and stops once the run read anything private (tech review
 // 2026-10-01, F1).
 import { describe, expect, it } from 'vitest';
 import { routineSearchRefusal } from '../src/core/security/routineSearch.js';
@@ -76,7 +76,7 @@ describe('the routine search guard', () => {
     expect(session.approvals).toEqual([]);
   });
 
-  // CX and CMO, 2026-10-08 (H): a private note carried in the pack counts as
+  // UX and copy review, 2026-10-08 (H): a private note carried in the pack counts as
   // one read, so the run does not search at all.
   it('a headless run whose pack carried a private note does not search', async () => {
     const provider = new MockProvider('mock', [

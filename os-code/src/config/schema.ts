@@ -21,7 +21,7 @@ export const OpenAICompatibleEndpointSchema = z.object({
   apiKeyEnv: z.string().optional(),
   label: z.string().optional(),
   /**
-   * The context window this server is asked to serve (Vault M4, CTO I1).
+   * The context window this server is asked to serve (Vault M4, tech review I1).
    * 'auto' sends Ollama's `num_ctx` on every request: the lower of the model's
    * own window and a per-class ceiling from this computer's memory
    * (`servedContextTokens` in harness/profile.ts). 'off' (the default while it
@@ -67,7 +67,7 @@ export const AnthropicEndpointSchema = z.object({
   model: z.string().default('claude-sonnet-5'),
   label: z.string().optional(),
   /**
-   * Anthropic prompt caching (Vault M5, CTO J17). 'auto' splits the system
+   * Anthropic prompt caching (Vault M5, tech review J17). 'auto' splits the system
    * prompt at the vault pack (`ChatMessage.cacheAt`), marks the stable head
    * with `cache_control`, and turns on automatic caching for the tool loop.
    * 'off' (the reading while it is unset, like `numCtx`) sends the request
@@ -263,8 +263,8 @@ export const UiSchema = z.object({
 
 export const RoutinesSchema = z.object({
   // Crew routines may search the web, and only search: the person's "Let models
-  // search the web" switch reaches this machine through the daemon (founder,
-  // 2026-10-01, overriding CTO 3's "never"). Machine config: a repo never turns
+  // search the web" switch reaches this machine through the daemon (maintainer,
+  // 2026-10-01, overriding tech review 3's "never"). Machine config: a repo never turns
   // it on. Off unless the person's switch says on.
   webSearch: z.boolean().default(false),
 });
@@ -277,7 +277,7 @@ export const VaultSchema = z.object({
   // must be absolute; unset means ~/OSCode/Vault. The agent reads and writes it
   // through the vault tools; every write asks first.
   dir: z.string().optional(),
-  // Vault M4, CTO I3. Globs (`*`, `**`, `?`, a trailing `/`) matched on the
+  // Vault M4, tech review I3. Globs (`*`, `**`, `?`, a trailing `/`) matched on the
   // folded note path. An excluded note is invisible to every vault tool and to
   // the context pack. Machine config: a repo never names the person's folders.
   exclude: z.array(z.string()).default([]),
@@ -296,12 +296,12 @@ export const VaultSchema = z.object({
   // (eval, or a person on their own machine); 'off' removes the pack. A
   // project may only turn it off (projectPolicy.ts).
   context: z.enum(['auto', 'full', 'off']).default('auto'),
-  // The handoff (Vault M5, CTO J11 to J13). 'auto' writes a short extractive
+  // The handoff (Vault M5, tech review J11 to J13). 'auto' writes a short extractive
   // handoff after a compaction and when a task completes, and a session's
   // first task reads one at most seven days old; 'off' writes and reads
   // none. Memory off stops both as well. A project may only turn it off.
   handoff: z.enum(['auto', 'off']).default('auto'),
-  // Room for notes (Vault M7, CTO L13, L14): a factor on each class's pack
+  // Room for notes (Vault M7, tech review L13, L14): a factor on each class's pack
   // budget (small 0.5, normal 1, large 1.5), always capped by packMaxTokens.
   // The app may only lower it (settings.vaultPackSize). Machine config: a repo
   // and the in-vault file never widen what a model is sent.
@@ -310,7 +310,7 @@ export const VaultSchema = z.object({
   // window (VAULT_PACK_MAX_TOKENS in harness/profile.ts is the default).
   // Machine config.
   packMaxTokens: z.number().int().min(500).max(32000).default(4000),
-  // Provenance on agent-written notes (Vault M7, CTO L9, L10): the flat
+  // Provenance on agent-written notes (Vault M7, tech review L9, L10): the flat
   // `oscode-*` frontmatter lines. 'off' hides who wrote a note, so it is for
   // eval only, and machine config.
   provenance: z.enum(['on', 'off']).default('on'),
@@ -320,7 +320,7 @@ export const VaultSchema = z.object({
 // The whole config
 // ---------------------------------------------------------------------------
 
-// Premium UX out of the box (founder, 2026-09-02): the twenty laws of UX plus
+// Premium UX out of the box (2026-09-02): the twenty laws of UX plus
 // the house bar ride into the coding agent's system prompt by default. A
 // project turns it off here, or adds its own rules in `notes`.
 const UxSchema = z.object({
@@ -328,7 +328,7 @@ const UxSchema = z.object({
   notes: z.string().optional(),
 });
 
-// Humanizer out of the box (founder, 2026-09-04): any written output OpenShore
+// Humanizer out of the box (2026-09-04): any written output OpenShore
 // produces runs to a plain, specific, honest voice that avoids AI writing
 // tells, distilled from Wikipedia's "Signs of AI writing" and injected into the
 // writing agent's system prompt by default. A project turns it off here, or
@@ -338,7 +338,7 @@ const HumanizerSchema = z.object({
   notes: z.string().optional(),
 });
 
-// Chain of Thought (founder, 2026-09-25): off by default. On, every model shows
+// Chain of Thought (2026-09-25): off by default. On, every model shows
 // its reasoning above the answer (native reasoners through their own API, the
 // rest prompted to think in <think> tags); off, no model is asked to think out
 // loud and any reasoning it sends is kept out of the transcript. The app's
@@ -379,15 +379,14 @@ const SyncSchema = z.object({
 const ToolsSchema = z.object({
   processes: z.enum(['on', 'off']).default('on'),
   // Opening a web page (webFetch), the person's own choice on this machine
-  // (founder, 2026-10-02, the CTO review's H3): `ask` before each page (the
+  // (2026-10-02, the tech review's H3): `ask` before each page (the
   // default), `allow` without asking (a blanket yes), or `off` (no webFetch
   // tool). Machine config: a repo never loosens it. A page on this computer's
   // own network asks every time whatever this says (D3).
   webFetch: z.enum(['ask', 'allow', 'off']).default('ask'),
 });
 
-// The premium harness (founder + advisor org, 2026-09-14; see
-// docs/premium-harness-proposal.md and CLAUDE.md "The premium harness"). The
+// The premium harness (2026-09-14; see CLAUDE.md "The premium harness"). The
 // discipline seam that makes the smallest models capable: a model-class profile
 // per seat, and constrained decoding to the tool-or-answer union schema for
 // small local models. On by default, tunable or off per project. An empty
@@ -402,7 +401,7 @@ const HarnessProfileOverrideSchema = z.object({
   compactAtContextFraction: z.number().min(0).max(1).optional(),
   verifyRetries: z.number().int().min(0).max(10).optional(),
   bestOfAttempts: z.number().int().min(1).max(5).optional(),
-  // Vault M4, CTO I2: lean seats get one merged vault tool (vaultLookup) in
+  // Vault M4, tech review I2: lean seats get one merged vault tool (vaultLookup) in
   // place of the separate reads. It only shapes the tool menu, so a project may
   // set it. The pack and read budgets stay out on purpose: a repo raising them
   // would widen how much of the person's notes reaches a seat.
@@ -424,7 +423,7 @@ const HarnessSchema = z.object({
       // the retry on the JSON text bridge is held to the tool-call grammar
       // where the backend supports one. False sends the retry unconstrained.
       constrainForSmallModels: z.boolean().default(true),
-      // Union decoding (CTO 6): 'on' holds every reply of a tiny or small
+      // Union decoding (tech review 6): 'on' holds every reply of a tiny or small
       // seat on the text bridge to the tool-or-answer schema
       // (harness/decoding.ts) through the server's JSON schema (Ollama's
       // `format`), streaming the answer as it arrives. Grammar sampling
@@ -435,7 +434,7 @@ const HarnessSchema = z.object({
     .prefault({}),
   retrieval: z
     .object({
-      // Retrieval before turn one (CTO 6): 'on' searches the workspace for
+      // Retrieval before turn one (tech review 6): 'on' searches the workspace for
       // the task's words and puts the best excerpts, by file and line, at the
       // head of the task, on a seat that stays on this network only, within
       // the lesser of 1,500 tokens and a tenth of the served window. It adds

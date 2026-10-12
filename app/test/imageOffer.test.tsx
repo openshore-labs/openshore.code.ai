@@ -1,4 +1,4 @@
-// Nothing in a Stack chat can read images (founder, 2026-10-07): "respond in
+// Nothing in a Stack chat can read images (2026-10-07): "respond in
 // the chat with what local model you suggest to download and assign to image
 // processing in stack and/or the need for a cloud connection", then the step
 // by step on whichever door the person picks. The words, the event's card, the

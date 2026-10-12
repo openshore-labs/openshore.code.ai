@@ -1,4 +1,4 @@
-// The handoff (Vault M5, CTO J11 to J13): a short, extractive summary of a
+// The handoff (Vault M5, tech review J11 to J13): a short, extractive summary of a
 // chat that lets the next seat pick up where the last one left off, on a model
 // switch, after a compaction, and the next day. Pure, offline, deterministic,
 // no clock (the date is passed in): the engine loop, the app's switch and the

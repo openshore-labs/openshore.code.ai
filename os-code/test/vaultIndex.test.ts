@@ -1,4 +1,4 @@
-// The Vault index, pure core (Vault M3, CTO H3): the tokenizer, reconcile,
+// The Vault index, pure core (Vault M3, tech review H3): the tokenizer, reconcile,
 // incremental resolution by folded basename, BM25, serialize and load, the
 // limits, and the CI trip wire on the seeded 5,000-note corpus.
 //

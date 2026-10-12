@@ -68,7 +68,7 @@ export function parseDecoded(raw: string): DecodedReply | undefined {
 }
 
 /**
- * Streams the answer out of a union-constrained reply as it arrives (CTO 6):
+ * Streams the answer out of a union-constrained reply as it arrives (tech review 6):
  * a reply that opens `{"say": "` has its string decoded chunk by chunk, so
  * the person reads the words as they come instead of waiting for the closing
  * brace; any other reply (a tool call) shows nothing while it streams. The

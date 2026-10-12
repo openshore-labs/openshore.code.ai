@@ -7,7 +7,7 @@
 // sessions and speaks JSON, this one serves HTML, and money-critical code should
 // not drift between the two concerns.
 //
-// CTO ruling (fork 0.4): host the return page here, reuse the oscode:// scheme,
+// tech review ruling (fork 0.4): host the return page here, reuse the oscode:// scheme,
 // and always offer a fallback link that works even with zero deep-link support.
 
 // Where to send a buyer who cannot follow the deep link (no desktop protocol

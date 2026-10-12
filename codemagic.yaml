@@ -7,7 +7,7 @@ workflows:
     max_build_duration: 90
     instance_type: mac_mini_m2
     # No store-release switch: the pay gates are off in every iOS build until
-    # after approval (founder, 2026-10-01). Bring the input back from
+    # after approval (2026-10-01). Bring the input back from
     # the maintainer TestFlight runbook section 7 when Plus is built.
     integrations:
       app_store_connect: os_code_app_store
@@ -51,7 +51,7 @@ workflows:
       # account, hence "No matching profiles found"). The "Set up code
       # signing" step creates the distribution certificate FROM a supplied
       # private key, which is the piece the earlier attempts were missing.
-    # No `triggering:` block on purpose (founder, 2026-10-01): a push to main
+    # No `triggering:` block on purpose (2026-10-01): a push to main
     # starts nothing here. Every iOS build is started by hand from the
     # Codemagic UI (Start new build) or its Builds API, the way mac-desktop
     # below already runs.
@@ -108,7 +108,7 @@ workflows:
           URL=$(grep -o "https://huggingface.co/[^']*\.gguf" app/src/lib/harborMini.ts | head -1 || true)
           # A build without the weights would download ~105 MB from Hugging Face
           # on first open with no tap, which the privacy list does not allow
-          # (CTO security and privacy review, 2026-10-01). So a failed fetch, or
+          # (tech review security and privacy review, 2026-10-01). So a failed fetch, or
           # a file too small to be the model, fails the build instead.
           if [ -n "$URL" ] && curl -fsSL --retry 5 --retry-all-errors -o "$DEST/harbor-mini.gguf" "$URL"; then
             SIZE=$(wc -c < "$DEST/harbor-mini.gguf")
@@ -237,10 +237,10 @@ workflows:
         # simply unused here. This group already exists, so this workflow needs
         # no new Codemagic setup at all.
         - Harbor-os-code
-        # The Mac release signing key, alone in a group of its own (CTO
+        # The Mac release signing key, alone in a group of its own (tech review
         # ruling 1, 2026-09-29), so nothing else that imports a group can
         # read it: OPENSHORE_MAC_SIGNING_KEY, the private half from
-        # app/scripts/release-keygen.mjs, marked Secure. Until the founder
+        # app/scripts/release-keygen.mjs, marked Secure. Until a maintainer
         # adds it, the signing step below says so and skips
         # (the maintainer release-signing runbook).
         - openshore-mac-signing
@@ -344,7 +344,7 @@ workflows:
       - name: Package the macOS app
         script: |
           set -euo pipefail
-          # Unsigned by default (the founder's call): with no Developer ID
+          # Unsigned by default (a maintainer's call): with no Developer ID
           # secrets, electron-builder signs ad-hoc on its own (the identity
           # Apple Silicon requires just to launch a binary at all) and there is
           # no notarization, hence the one-time Gatekeeper right-click the
@@ -352,7 +352,7 @@ workflows:
           # electron-builder from touching GitHub; the artifacts are collected
           # below.
           #
-          # Signed and notarized only when the founder adds the secrets (v1
+          # Signed and notarized only when a maintainer adds the secrets (v1
           # Phase 1, the maintainer Mac desktop runbook "Signing, when it is time"): CSC_LINK
           # and CSC_KEY_PASSWORD (the Developer ID Application certificate),
           # plus either APPLE_API_KEY, APPLE_API_KEY_ID and APPLE_API_ISSUER, or
@@ -375,7 +375,7 @@ workflows:
       - name: Sign the macOS files
         script: |
           set -euo pipefail
-          # CTO ruling 1 (2026-09-29): an installed Mac swaps in a new version
+          # tech review ruling 1 (2026-09-29): an installed Mac swaps in a new version
           # only when the zip or dmg matches its .sig under the key pinned in
           # the app (app/electron/releaseVerify.ts), so a leaked release token
           # cannot put its own build on every Mac. The private key comes from

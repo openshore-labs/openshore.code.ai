@@ -24,7 +24,7 @@ describe('motion readers', () => {
   });
 
   it('slides the drawer on the glide over the door clock, scrim and shadow in step', () => {
-    // Founder, 2026-09-03, with a recording: the drawer jumped in and out. On
+    // Maintainer, 2026-09-03, with a recording: the drawer jumped in and out. On
     // the standard curve a 310px door's visible travel was about 110ms of a
     // 320ms clock. The entrance, the scrim, and the shadow now share --dur-7
     // on --ease-glide, so nothing lands ahead of the door.

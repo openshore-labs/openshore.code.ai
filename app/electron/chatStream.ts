@@ -1,5 +1,5 @@
 // The main-process streaming channel for a model seat's chat request (build
-// 2026-09-29, CTO ruling 7). An OpenAI-compatible provider or a model server on
+// 2026-09-29, tech review ruling 7). An OpenAI-compatible provider or a model server on
 // your own network (Ollama, llama.cpp, vLLM) sends no CORS headers, and the
 // guarded httpFetch neither streams nor reaches a local server by design, so a
 // streamed reply rides this narrow channel instead. The renderer is untrusted

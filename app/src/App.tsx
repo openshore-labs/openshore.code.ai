@@ -264,10 +264,10 @@ export function App() {
       const inset = root.classList.contains('kb-open')
         ? parseFloat(getComputedStyle(root).getPropertyValue('--kb-inset')) || keyboardHeight
         : keyboardHeight;
-      // Rest the field just above the keyboard (founder, 2026-10-02), not
+      // Rest the field just above the keyboard (2026-10-02), not
       // centred: its own scroller moves, and the kb-open padding gives a field
       // near the foot of a room the room to rise.
-      // A field marked with its commit button rises with it (CX, 2026-10-02).
+      // A field marked with its commit button rises with it (UX review, 2026-10-02).
       const scroller = scrollParentOf(el);
       const box = el.getBoundingClientRect();
       const delta = revealPlan({

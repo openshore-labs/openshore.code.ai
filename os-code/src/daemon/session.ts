@@ -65,7 +65,7 @@ export interface SessionDriver {
   readonly cwd: string;
   /** Queue a user message; tasks run one at a time in arrival order.
    *  `options.localOnly` marks the message as carrying a private note's text
-   *  (a private plan's step, CX and CMO 2026-10-08, J). */
+   *  (a private plan's step, UX and copy review 2026-10-08, J). */
   send(
     text: string,
     images?: Array<{ base64: string; mediaType: string }>,
@@ -725,7 +725,7 @@ export class LocalDriver implements SessionDriver {
   // Set once the first completed exchange has been titled, so the cheap title
   // call runs once per session, never per turn.
   private titled = false;
-  // A handoff from the chat this session continues (Vault M5, CTO J12): it
+  // A handoff from the chat this session continues (Vault M5, tech review J12): it
   // rides the first task's preamble, then it is gone.
   private handoff?: string;
   // Undo (v1 Phase 1): a snapshot before and after each task in a shadow git
@@ -1032,7 +1032,7 @@ export class LocalDriver implements SessionDriver {
   }
 
   /** Whether this session has held a private note's text at any point (a
-   *  Crew run's note is then judged private, CX and CMO 2026-10-08, A). */
+   *  Crew run's note is then judged private, UX and copy review 2026-10-08, A). */
   heldLocalOnly(): boolean {
     return this.agent?.heldLocalOnly() ?? false;
   }

@@ -1,4 +1,4 @@
-// Nothing in a Stack chat can read images (founder, 2026-10-07): instead of
+// Nothing in a Stack chat can read images (2026-10-07): instead of
 // an error, a calm card says what is missing and offers two doors, a local
 // model to source and a cloud model to connect, each opening its
 // step-by-step guide chat (setupGuides.ts), the way every Walk me through it

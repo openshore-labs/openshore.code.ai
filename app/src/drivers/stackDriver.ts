@@ -211,7 +211,7 @@ export interface StackContext {
    *  memory off. Undefined leaves the project's config in charge. App-side
    *  chats keep no project memory, so nothing else here reads it. */
   memory?: false;
-  /** The device's vault switches (Vault M7, CTO L13): Notes in chats and
+  /** The device's vault switches (Vault M7, tech review L13): Notes in chats and
    *  Handoff off, and Room for notes, off-only and lower-only
    *  (`appVaultOverrides`). A play's engine step carries them the way a chat's
    *  session does; empty or undefined leaves the computer's config in charge.
@@ -244,7 +244,7 @@ export interface StackContext {
    *  (the classifier), in one cloud call. Absent leaves routing exactly as it
    *  was. Scoped to a paid seat, so a free local turn never spends on Jev. */
   harnessCurrents?: HarnessCurrentsHandle;
-  /** Prompt caching on Claude (`settings.promptCache`, default off, CTO J16,
+  /** Prompt caching on Claude (`settings.promptCache`, default off, tech review J16,
    *  J17): on, the stable head of the system prompt goes as its own block
    *  marked for caching and the request asks for automatic caching of the
    *  growing history. Off sends the same blocks with no marker. Unset reads
@@ -253,7 +253,7 @@ export interface StackContext {
 }
 
 /** The app vault seam the Stack's vault tools read and write through (Vault
- *  M5, CTO J10). The personal vault only: the store passes `teamVault` true
+ *  M5, tech review J10). The personal vault only: the store passes `teamVault` true
  *  while the team vault is the one on screen, and no tool is offered then. */
 export interface StackVaultTools {
   /** The compiled privacy rules (`appVaultPrivacy`). A rejection offers no
@@ -273,15 +273,15 @@ export interface StackVaultTools {
   teamVault?: () => boolean;
   /** The paths an approved card wrote, for "Recently from your agent". */
   onWritten?: (paths: string[]) => void;
-  /** The personal vault's `agent.folder` (Vault M7, CTO L2), read at each
+  /** The personal vault's `agent.folder` (Vault M7, tech review L2), read at each
    *  offer and again at approve; undefined is anywhere in the vault. */
   agentFolder?: () => string | undefined;
-  /** Whether a note a model writes carries its provenance lines (CTO L9).
+  /** Whether a note a model writes carries its provenance lines (tech review L9).
    *  Absent is on. */
   provenance?: () => boolean;
 }
 
-/** The Stack driver's trailing options (CTO J1, J5, J10). */
+/** The Stack driver's trailing options (tech review J1, J5, J10). */
 export interface StackDriverOptions extends DriverVaultOptions {
   /** The seat a ref answers as (`packSeatFor(ref, ctx)`), or null for no pack
    *  and no vault tools. Absent: no seat is known, so no pack, no vault tools,
@@ -291,7 +291,7 @@ export interface StackDriverOptions extends DriverVaultOptions {
   vaultTools?: StackVaultTools;
 }
 
-/** A seed turn, carrying the local-only mark (CTO I5) when the transcript
+/** A seed turn, carrying the local-only mark (tech review I5) when the transcript
  *  kept it. */
 export type StackSeedTurn = SeedTurn & { localOnly?: true };
 
@@ -385,7 +385,7 @@ export function classifyTask(text: string): StackCategory | 'reasoning' {
 }
 
 /** One history entry. `localOnly` marks a reply written after a local-only
- *  vault read (CTO I5, mirroring the engine's `ChatMessage.localOnly`): a
+ *  vault read (tech review I5, mirroring the engine's `ChatMessage.localOnly`): a
  *  later turn on a seat that leaves this network gets `LOCAL_ONLY_STUB` in
  *  its place, while a local seat still sees it. */
 type Msg = { role: 'user' | 'assistant'; content: string; localOnly?: true };
@@ -423,7 +423,7 @@ export function resultsForSeat<R extends StepResult & { localOnly?: true }>(
     : results.slice();
 }
 
-/** A system prompt in two parts (CTO J16): the stable head (static, then per
+/** A system prompt in two parts (tech review J16): the stable head (static, then per
  *  chat) and the volatile tail (per task), so the head can be cached. With
  *  prompt caching off, every seat gets `legacy` instead: the same pieces in
  *  the order the app sent before M5, byte for byte, the pack appended last. */
@@ -505,7 +505,7 @@ function appendedText(current: string, addition: string): string {
   return head ? `${head}\n\n${body}` : body;
 }
 
-/** The seat's provenance lines for a note a model writes (Vault M7, CTO L9):
+/** The seat's provenance lines for a note a model writes (Vault M7, tech review L9):
  *  its model, where it ran (judged by address, the pack seat's
  *  `leavesNetwork`), its class and, off this network, its provider. */
 export function seatProvenance(ref: StackModelRef, seat: PackSeat): ProvenanceFields {
@@ -658,14 +658,14 @@ export class StackDriver implements ChatDriver {
   // A card this driver put in front of the person (an image bound for a model
   // not placed for Image reading), waiting on their tap.
   private pendingAsk?: { id: string; settle: (approved: boolean) => void };
-  // The vault pack for this send (CTO J1, J5): prepared once after task-start,
+  // The vault pack for this send (tech review J1, J5): prepared once after task-start,
   // rendered for each seat that answers once the seat is known. `turnPack` is
   // the rendered text for the single-turn seat in flight.
   private packPrepared: Promise<void> = Promise.resolve();
   private turnPack?: { ref: StackModelRef; text?: string };
   // Effort, read once per send so a flip mid-reply cannot move the prompt.
   private sendEffort = effortDirective();
-  // CTO I5: this send read a local-only note, so its reply is marked.
+  // tech review I5: this send read a local-only note, so its reply is marked.
   private sendLocalOnly = false;
   // This send's text already went to a model that leaves this network (the
   // framing call on such a Reasoning model), so the chat's reach for the
@@ -887,7 +887,7 @@ export class StackDriver implements ChatDriver {
     return this.seatFor(ref)?.modelClass;
   }
 
-  /** The system prompt, stable to volatile (CTO J16): the base or guide, the
+  /** The system prompt, stable to volatile (tech review J16): the base or guide, the
    *  search note, the UX standard, the humanizer and the Codemagic note (all
    *  static), then the project, crew and persona (per chat), and last the
    *  effort directive, the walk line and the vault pack (per task). */
@@ -991,7 +991,7 @@ export class StackDriver implements ChatDriver {
     return this.turnPack?.ref === ref ? this.turnPack.text : undefined;
   }
 
-  // ---- vault seat, pack and privacy (CTO J1, J2, J5, I5) ------------------
+  // ---- vault seat, pack and privacy (tech review J1, J2, J5, I5) ------------------
 
   /** The seat `ref` answers as, or null: an Agentic Current bench ref never
    *  gets one (no pack, no vault tools), and a seat the store cannot judge
@@ -1023,7 +1023,7 @@ export class StackDriver implements ChatDriver {
     return this.seatFor(ref)?.leavesNetwork ?? true;
   }
 
-  /** The history as `ref` receives it (CTO I5), saying so the first time a
+  /** The history as `ref` receives it (tech review I5), saying so the first time a
    *  model off this network is sent the placeholder for a marked reply (F). */
   private historyFor(ref: StackModelRef): Msg[] {
     const leaves = this.leaves(ref);
@@ -1072,7 +1072,7 @@ export class StackDriver implements ChatDriver {
     return { text, localOnly };
   }
 
-  /** The vault tools `ref` is offered on the single-turn path (CTO J10). */
+  /** The vault tools `ref` is offered on the single-turn path (tech review J10). */
   private vaultSliceFor(ref: StackModelRef): AppVaultToolName[] {
     if (!this.opts.vaultTools || ref.kind === 'device') return [];
     const seat = this.seatFor(ref);
@@ -1137,7 +1137,7 @@ export class StackDriver implements ChatDriver {
     }
   }
 
-  /** The provenance a proposal carries (Vault M7, CTO L9, L10), merged NOW,
+  /** The provenance a proposal carries (Vault M7, tech review L9, L10), merged NOW,
    *  before the card, so the person approves the exact bytes that land: a
    *  new note's text carries its lines; an addition's final text (the note as
    *  the model read it, the addition, and the property change) is computed
@@ -1287,7 +1287,7 @@ export class StackDriver implements ChatDriver {
     const notSaved: string[] = [];
     const refused: string[] = [];
     for (const p of queued) {
-      // Checked again right before the write (CTO L8): the settings folder,
+      // Checked again right before the write (tech review L8): the settings folder,
       // and the vault's agent folder as it is now.
       const refusal = vaultApproveRefusal(p, { agentFolder: this.agentFolder(tools) });
       if (refusal) {
@@ -1336,7 +1336,7 @@ export class StackDriver implements ChatDriver {
     return (await tools.write(p.path, appendedText(cur.text, p.text), { ifMatch: cur.version })).ok;
   }
 
-  /** Claude's `system` for these parts (CTO J16): the one app builder,
+  /** Claude's `system` for these parts (tech review J16): the one app builder,
    *  `claudeSystem`, so the Stack and the Claude driver send the same shape. */
   private claudeSystem(
     parts: SystemParts,
@@ -1402,7 +1402,7 @@ export class StackDriver implements ChatDriver {
     this.history.push({ role: 'user', content: text });
     this.turnClosed = false;
     this.emit({ type: 'task-start', input: text });
-    // The vault pack for this send, gathered while routing runs (CTO J5); it
+    // The vault pack for this send, gathered while routing runs (tech review J5); it
     // is rendered for each seat once that seat is known.
     const pack = this.opts.vaultPack;
     this.packPrepared = pack
@@ -1455,7 +1455,7 @@ export class StackDriver implements ChatDriver {
     // An image-bearing turn routes by capability, not by the text classifier:
     // the model placed for image reading if it can see and is reachable, else a
     // vision-capable model already in the stack, else a connected cloud
-    // provider (the founder's "if there isn't one available and capable it can
+    // provider (a maintainer's "if there isn't one available and capable it can
     // go to a cloud provider"). A device model cannot read images on this
     // build, so a local model placed for vision falls back to the cloud here.
     const images = (attachments ?? []).filter((a) => a.isImage);
@@ -1467,7 +1467,7 @@ export class StackDriver implements ChatDriver {
     if (images.length) {
       const vision = await this.routeVision();
       if (!vision) {
-        // Nothing here can read it (founder, 2026-10-07): not an error, a
+        // Nothing here can read it (2026-10-07): not an error, a
         // reply with two doors, a local model to source and a cloud model to
         // connect. The picture goes nowhere; the turn ends complete.
         this.pendingOffer = await this.imageGap('image');
@@ -1475,7 +1475,7 @@ export class StackDriver implements ChatDriver {
         return;
       }
       // Only a model placed for Image reading takes an image without a word
-      // (founder, 2026-09-25). Any other reader, the anchor or a connected cloud
+      // (2026-09-25). Any other reader, the anchor or a connected cloud
       // model filling the gap, waits on a card the person taps (tenet 4).
       if (!vision.dedicated && !(await this.askToReadImage(vision.ref, images.length))) {
         if (this.aborted) this.finish('aborted');
@@ -1503,7 +1503,7 @@ export class StackDriver implements ChatDriver {
 
     this.turnStart(refName(target.ref), target.ref.kind === 'device' ? 'local' : 'cloud');
     // Rendered only now, after routing and any Jev steer, so the pack fits
-    // the seat that actually answers (CTO J5).
+    // the seat that actually answers (tech review J5).
     this.turnPack = { ref: target.ref, text: await this.packFor(target.ref) };
     this.markIfReadsPrivateTurn(target.ref);
     if (images.length) {
@@ -1533,7 +1533,7 @@ export class StackDriver implements ChatDriver {
       // The Local model failed on a picture before writing a word, and the
       // Cloud slot holds a model that reads images and is in reach: a card
       // asks before the picture goes to it, once, with no second fallback
-      // (CX and CMO, 2026-10-08, K).
+      // (UX and copy review, 2026-10-08, K).
       if (images.length) {
         const cloud = this.cloudAfterLocal(target.ref);
         if (cloud) {
@@ -1973,7 +1973,7 @@ export class StackDriver implements ChatDriver {
         // reasoning anchor covers the step instead. stepRunner is the one
         // rule, the same one the task list names its owner by.
         const { ref, placement } = stepRunner(step, roster);
-        // Tenet 4 holds whole (CX and CMO, 2026-10-08, E): a plan never
+        // Tenet 4 holds whole (UX and copy review, 2026-10-08, E): a plan never
         // carries a picture, so an image step with nothing set for Image
         // reading runs on the Reasoning model from the text, never on a
         // second model the person did not pick for it, and the note says so.
@@ -1995,7 +1995,7 @@ export class StackDriver implements ChatDriver {
           // A plan that draws on a private note goes there only when the
           // computer, asked now, says its Reasoning model stays on its network
           // and it takes a local-only turn: the step then goes marked, so the
-          // engine's own D5 rules hold for it (CX and CMO, 2026-10-08, J).
+          // engine's own D5 rules hold for it (UX and copy review, 2026-10-08, J).
           // Otherwise the step is described here, and the note says why.
           let onEngine: string | null = null;
           let privateEngine = false;
@@ -2489,7 +2489,7 @@ export class StackDriver implements ChatDriver {
     this.emit({ type: 'task-done', reason, message });
   }
 
-  // ---- the wait before the first word (CX ruling 5) -------------------------
+  // ---- the wait before the first word (UX review ruling 5) -------------------------
 
   private slowStart?: { word(): void; stop(): void };
   /** Local seats this chat has already asked, so "Warming up" is said on the
@@ -2712,7 +2712,7 @@ export class StackDriver implements ChatDriver {
   /** A search the seat `ref` wrote, once this chat holds a private note's
    *  text on a seat that stays on this network (a read, a marked turn, or a
    *  private pin): it asks every time, and one bound for Perplexity does not
-   *  run (CX and CMO, 2026-10-08, H). Undefined for a clean chat, and for a
+   *  run (UX and copy review, 2026-10-08, H). Undefined for a clean chat, and for a
    *  seat that leaves, which was never sent a private note's text. */
   private searchAfterPrivate(ref: StackModelRef): AfterPrivate | undefined {
     if (this.leaves(ref)) return undefined;
@@ -2905,7 +2905,7 @@ export class StackDriver implements ChatDriver {
   }
 
   // Claude, with or without tools. The turn's tools (Codemagic when its access
-  // is on, and the vault slice, CTO J10) are offered; each tool_use runs
+  // is on, and the vault slice, tech review J10) are offered; each tool_use runs
   // on-device (the Codemagic token in the Keychain, never sent to the model; a
   // vault read judged by the privacy rules), the observation is fed back, and
   // the loop continues until the model answers with no tool call. Bounded so
@@ -3191,7 +3191,7 @@ export class StackDriver implements ChatDriver {
     // settle the awaited turn so the play does not hang on a stopped run.
     this.engineDriver?.abort();
     this.engineTurnSettle?.();
-    // Stop answers at once on every seat (CTO ruling 7): the turn closes now
+    // Stop answers at once on every seat (tech review ruling 7): the turn closes now
     // with whatever streamed so far, kept in the chat and in history. A model
     // load cannot be stopped, but the turn can; the run drops out when the
     // load, the shim, or the search it is waiting on comes back.

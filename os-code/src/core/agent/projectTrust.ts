@@ -24,7 +24,7 @@ export function trustSessionFolder(driver: {
  * What trusting this folder turns on, one plain phrase each, the same phrases
  * the trust card lists ("uses its own check command"). Read from the folder
  * as it stands now, since trust vouches for the file as it is at the tap. The
- * desktop's native trust dialog shows these (CX cleanup 2): it is the one
+ * desktop's native trust dialog shows these (UX review cleanup 2): it is the one
  * check the page cannot fake, so it says what trusting does. An unreadable
  * config gives an empty list; trusting it then fails on its own.
  */

@@ -12,6 +12,11 @@ app/ios/App/App/public/
 *.log
 .DS_Store
 
+# Secrets and local env files (the examples are committed on purpose)
+.env
+.env.*
+!.env.example
+
 # Supabase CLI working folders (supabase db start / test db)
 supabase/.temp/
 supabase/.branches/

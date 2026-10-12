@@ -1,4 +1,4 @@
-// The chat's directions from the 2026-10-07 UI/UX review, as the founder
+// The chat's directions from the 2026-10-07 UI/UX review, as a maintainer
 // ruled them ("Do the remaining recommendations"), mounted in a real (small)
 // DOM: the reach pill shows once it can mean something (D1), the round button
 // is voice mode until there is something to send (D6), and an open chat has

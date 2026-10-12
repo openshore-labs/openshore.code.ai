@@ -1,4 +1,4 @@
-// The premium harness, CTO 6: retrieval before turn one, off until the eval.
+// The premium harness, tech review 6: retrieval before turn one, off until the eval.
 //
 // A small seat spends its first turns finding the code: a grep, a glob, a
 // read of the wrong file. With `harness.retrieval.firstTurn: 'on'` the

@@ -6,8 +6,8 @@
 // and nothing here will ever claim a report was filed when it was not.
 //
 // There is no IP-ban machinery here. An earlier version proposed banning the
-// address a violation came from; the founder cut it (2026-09-05, after CTO and
-// CMO review), because addresses are shared and an automatic or human-reviewed
+// address a violation came from; a maintainer cut it (2026-09-05, after tech review and
+// copy review review), because addresses are shared and an automatic or human-reviewed
 // ban both punish bystanders. Enforcement is account termination plus this
 // report queue, and nothing else.
 

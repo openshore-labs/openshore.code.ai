@@ -1,4 +1,4 @@
-// What a commit would record, on its approval card (D3, CX 7): every file it
+// What a commit would record, on its approval card (D3, UX review 7): every file it
 // would stage, each with a tick. A file that may hold a secret wears the
 // "May hold a secret" pill with its reason and starts unticked, since a key
 // that gets pushed cannot be taken back while a file skipped by mistake costs

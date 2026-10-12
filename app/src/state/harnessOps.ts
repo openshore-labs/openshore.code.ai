@@ -1,4 +1,4 @@
-// The harness package's transcript logic (CTO 9: a sibling module; the
+// The harness package's transcript logic (tech review 9: a sibling module; the
 // reducer and the list only call it): the little-room card and the retrieval
 // card an event becomes, and the verdict the task-done card shows.
 import type { DriverEvent } from 'os-code/protocol';

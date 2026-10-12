@@ -1,4 +1,4 @@
-// The Vault M7 components (stream G; CTO L9, L11, L12, L15, L16; CX Y1 to
+// The Vault M7 components (stream G; tech review L9, L11, L12, L15, L16; UX review Y1 to
 // Y13, Y16, Y17), mounted in a small real DOM:
 // - Vault settings: seven sections in Y1's order; Team hides sections 2 and
 //   3; the phone drops Link paths and every "From your computer's config"
@@ -85,7 +85,7 @@ const $$ = (sel: string) => [...dom.container.querySelectorAll(sel)];
 
 // ---------------------------------------------------------------- fixtures
 
-/** CX Y1 to Y10's lines, verbatim where the memo gives them. */
+/** UX review Y1 to Y10's lines, verbatim where the memo gives them. */
 const COPY: VaultSettingsSheetCopy = {
   title: 'Vault settings',
   sections: {
@@ -277,7 +277,7 @@ const rowWith = (label: string) =>
 
 // ---------------------------------------------------------------- settings
 
-describe('Vault settings: the seven sections (CX Y1)', () => {
+describe('Vault settings: the seven sections (UX review Y1)', () => {
   it('shows them in order, as real headings, with the save status as a status line', async () => {
     await sheet();
     expect(heads()).toEqual([
@@ -756,7 +756,7 @@ async function chip(p: NoteProvenance | undefined) {
   return () => opened;
 }
 
-describe('the provenance chip (CX Y11, Y16, R4)', () => {
+describe('the provenance chip (UX review Y11, Y16, R4)', () => {
   it('is teal and says Local for a seat on this computer, and opens details', async () => {
     const opened = await chip({ source: 'agent', model: 'qwen2.5-coder 7B', where: 'local' });
     const el = $('.vault-prov-chip')!;
@@ -832,7 +832,7 @@ async function about(
   return { marks, closed: () => closed };
 }
 
-describe('About this note (CX Y12)', () => {
+describe('About this note (UX review Y12)', () => {
   it('reads each row, tints only the Ran row, and is honest about trust', async () => {
     await about({
       source: 'crew',
@@ -936,7 +936,7 @@ async function starter(result: { added: number; total: number }, writesSettings 
   return { adds: () => adds, closed: () => closed };
 }
 
-describe('the starter layout sheet (CX Y13)', () => {
+describe('the starter layout sheet (UX review Y13)', () => {
   it('shows everything it would add before writing anything', async () => {
     const s = await starter({ added: 4, total: 4 });
     const text = dom.text();

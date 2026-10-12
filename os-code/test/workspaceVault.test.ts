@@ -738,7 +738,7 @@ describe('sign-off: the paths the first pass left open', () => {
     expect(listed).not.toContain('gone.md');
   });
 
-  // CX and CMO, 2026-10-08 (A): a file in any of the vault's dot folders
+  // UX and copy review, 2026-10-08 (A): a file in any of the vault's dot folders
   // (an Obsidian plugin's cache of notes, .oscode, .git) stays on this
   // computer at the least, whatever its name says.
   it("a file in the vault's dot folders is private at the least: readFile and grep withhold it", async () => {

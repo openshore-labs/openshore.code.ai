@@ -3,10 +3,10 @@
 // reachable) and the desktop shell (engine in-process), so a routine fires
 // exactly once whichever surface is up.
 //
-// The contract, ruled by the CTO before the build:
+// The contract, ruled by the tech review before the build:
 //   - A run is a normal journaled session on the HEADLESS profile: shell,
 //     push, and cloud spend can never resolve to allow, and the step ceiling
-//     is the profile's 40. It works offline (CTO 3, 2026-09-29): no tool that
+//     is the profile's 40. It works offline (tech review 3, 2026-09-29): no tool that
 //     reaches the network is registered, and a network step is denied, never
 //     asked. The routine's own access level maps to plan mode
 //     (read-only) or acceptEdits (edits inside the jail flow, shell asks).
@@ -88,7 +88,7 @@ export interface RoutineDriver {
   answerApproval(id: string, answer: { approve: boolean; reason?: string }): void;
   setOwner?(userId: string): void;
   /** Whether the run's session held a private note's text at any point, so
-   *  its note is marked private (CX and CMO, 2026-10-08, A). A LocalDriver
+   *  its note is marked private (UX and copy review, 2026-10-08, A). A LocalDriver
    *  answers from its session; absent reads as no. */
   heldLocalOnly?(): boolean;
 }
@@ -99,11 +99,11 @@ export interface OpenedSession {
   /** The orchestrator's model name, for the run note's frontmatter. */
   model?: string;
   /** Where the orchestrator runs, judged by address, for the note's
-   *  `oscode-where` line (Vault M7, CTO L9). Left out when unknown. */
+   *  `oscode-where` line (Vault M7, tech review L9). Left out when unknown. */
   where?: 'local' | 'cloud';
   /** The orchestrator's provider, for a cloud seat's `oscode-provider`. */
   provider?: string;
-  /** The tools the run left out because it works offline (CTO 3), by name,
+  /** The tools the run left out because it works offline (tech review 3), by name,
    *  so its note can say what it could not do. */
   offline?: string[];
 }
@@ -137,7 +137,7 @@ export function offlineLine(leftOut: readonly string[] | undefined): string {
 /** The run note's one Note line when a search did not run: where it worked
  *  from instead. The query itself is never copied into the note, since the
  *  note sits in the vault and the query may be what an injected line wanted
- *  written down (CTO review 2026-10-01, F1). */
+ *  written down (tech review 2026-10-01, F1). */
 export function triedToSearchLine(workspace: string): string {
   return `A web search did not run, so it used only the files in ${workspace}.`;
 }
@@ -176,7 +176,7 @@ export const RUN_WAITED_FOR_YOU =
   'You were working in this folder, so this run did not start. Run it again once that chat is done.';
 
 /** A run whose process closed before it finished (the orphan sweep): what
- *  closed, not why, and what it left behind (CX cleanup 3). */
+ *  closed, not why, and what it left behind (UX review cleanup 3). */
 export const RUN_ORPHANED =
   'OpenShore closed before this run finished. Any changes it made before then are still in the folder.';
 
@@ -190,7 +190,7 @@ export interface SchedulerDeps {
   /** Open the session a run lives in. Defaults to a real headless bootstrap. */
   openSession?: (routine: Routine, permissionMode: PermissionMode) => OpenedSession;
   /** Where a routine's result notes go, by the routine's owner (Vault M5,
-   *  CTO J8). Defaults to `vaultRootForOwner`: the machine's vault for an
+   *  tech review J8). Defaults to `vaultRootForOwner`: the machine's vault for an
    *  admin, a member's own root for a member, so Crew notes land in the
    *  routine owner's vault. */
   vaultRoot?: (ownerUserId?: string) => string;
@@ -205,7 +205,7 @@ export interface SchedulerDeps {
    *  daemon.outboxAllowedRoots; a test hands in its own. */
   persistAllowedRoot?: (cwd: string) => void;
   /** Whether a run note carries the provenance lines (`vault.provenance`,
-   *  machine config, Vault M7, CTO L9). Defaults to the config the run's
+   *  machine config, Vault M7, tech review L9). Defaults to the config the run's
    *  workspace loads (the key is machine-only, so a project cannot move it). */
   provenance?: (routine: Routine) => boolean;
   /** Whether a person's own session is working in this folder right now
@@ -261,7 +261,7 @@ interface ActiveRun {
   finalText: string;
   steps: string[];
   /** The agent's own plan (its latest todoWrite), written into the note so the
-   *  founder sees what the routine set out to do, not just what it touched. */
+   *  maintainer sees what the routine set out to do, not just what it touched. */
   plan: string[];
   /** Why the scheduler itself ended the run (the wall-clock cap), if it did. */
   endNote?: string;
@@ -370,7 +370,7 @@ export class RoutineScheduler {
    *  passive, so a slot fires once per box, never once per process. Run now
    *  and the roster still work here. A passive instance tries again every
    *  `takeoverMs` and takes the clock once the holder is gone, so closing the
-   *  terminal that held it never leaves the routines without a clock (CX
+   *  terminal that held it never leaves the routines without a clock (UX review
    *  cleanup 6). */
   start(): void {
     if (this.timer || this.takeover) return;
@@ -774,7 +774,7 @@ export class RoutineScheduler {
       }
       case 'todos': {
         // The agent's own plan, replaced whole each todoWrite. The latest one is
-        // written into the note as a Plan section, so the founder sees what the
+        // written into the note as a Plan section, so a maintainer sees what the
         // routine set out to do. No extra model call; this is the loop's own plan.
         if (event.items.length) active.plan = event.items.map((i) => i.content);
         break;
@@ -808,7 +808,7 @@ export class RoutineScheduler {
           break;
         }
         // A search the model reached for although the run works offline: the
-        // first one is named in the note (CTO 3). The refused call never ran,
+        // first one is named in the note (tech review 3). The refused call never ran,
         // so it adds no step of its own.
         if (event.call.name === 'webSearch') {
           const query = event.call.args?.query;
@@ -877,7 +877,7 @@ export class RoutineScheduler {
   }
 
   /** Read the vault's daily-notes settings while the run works, so its note
-   *  can link to the day's note (Vault M6, 6.4, CTO K7). The note is never
+   *  can link to the day's note (Vault M6, 6.4, tech review K7). The note is never
    *  created or appended to from here. */
   private async loadDayPath(active: ActiveRun): Promise<void> {
     const root = this.vaultRoot(active.routine.ownerUserId);
@@ -891,7 +891,7 @@ export class RoutineScheduler {
         active.dayPath = undefined;
         return;
       }
-      // The vault's resolved settings (Vault M7, CTO L5): Obsidian's daily
+      // The vault's resolved settings (Vault M7, tech review L5): Obsidian's daily
       // notes where it sets them, else the vault's own file, else the default.
       const settings = await vaultSettingsFor(root, { force: true });
       const path = dailyNotePath(datePartsOf(started), settings.daily);
@@ -910,7 +910,7 @@ export class RoutineScheduler {
     }
   }
 
-  /** What the run note's provenance lines carry (Vault M7, CTO L9), or
+  /** What the run note's provenance lines carry (Vault M7, tech review L9), or
    *  'off' when `vault.provenance` is off. `runNoteFrontmatter` merges them
    *  byte for byte (L10) through the one `mergeProvenance`; a merge that
    *  skips leaves the block as built, so the run is recorded either way. */
@@ -983,7 +983,7 @@ export class RoutineScheduler {
       '',
       `Crew: ${active.routine.agentName} · Workspace: ${basename(active.routine.cwd)} · ${stateWord(state)} · ${minutes} min · session ${active.driver.id}`,
       '',
-      // Headless means offline (CTO 3): every note says so, and what that
+      // Headless means offline (tech review 3): every note says so, and what that
       // left out.
       offlineLine(active.offline),
       '',
@@ -1018,7 +1018,7 @@ export class RoutineScheduler {
       const name = `${date} ${hh}-${mm}${n === 1 ? '' : ` (${n})`}.md`;
       const rel = join(folder, name).split('\\').join('/');
       const abs = join(root, rel);
-      // Never into a settings folder (Vault M7, CTO L8), judged on where the
+      // Never into a settings folder (Vault M7, tech review L8), judged on where the
       // path resolves: a Crew folder linked into .oscode/ is refused.
       if (!resolvedAgentWritable(root, abs)) {
         throw new Error(
@@ -1130,7 +1130,7 @@ export function defaultOpenSession(
     projectName: routine.projectName,
     permissionMode,
     caps: routineCaps(routine),
-    // The run reads its earlier notes in its owner's vault (CTO J8).
+    // The run reads its earlier notes in its owner's vault (tech review J8).
     vaultRoot: vaultRootForOwner(routine.ownerUserId),
     // The person's web search switch, as this computer holds it (machine config).
     routineSearch: routineSearchOn(routine),

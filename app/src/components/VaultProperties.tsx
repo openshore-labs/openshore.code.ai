@@ -1,5 +1,5 @@
 // A note's properties (its YAML frontmatter), shown as a quiet strip above the
-// body in reading mode (Vault M3, CTO H2). Closed by default, and absent when
+// body in reading mode (Vault M3, tech review H2). Closed by default, and absent when
 // the note has none. Read-only: the editor keeps editing the whole raw text,
 // so nothing here ever writes YAML back, and the bytes stay as written.
 //

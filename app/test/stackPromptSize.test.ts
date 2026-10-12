@@ -134,7 +134,7 @@ describe('a small seat carries a small prompt', () => {
       SMALL_SEAT_PROMPT_BUDGET_BYTES * 5,
     );
     // Nothing configures num_ctx on the app side, so Ollama is sent none
-    // (CTO ruling 5: the served window's default flips only on an eval).
+    // (tech review ruling 5: the served window's default flips only on an eval).
     expect(sent(0).options).toBeUndefined();
     driver.dispose();
   });

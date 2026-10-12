@@ -1,4 +1,4 @@
-// Opening a web page is the person's choice on this machine (founder,
+// Opening a web page is the person's choice on this machine (maintainer,
 // 2026-10-02): ask before each page (the default), always allow (a blanket
 // yes), or never (no webFetch tool). A permission rule still wins, and a
 // repository's config can never loosen it.

@@ -5,7 +5,7 @@
 // and never ask. A plain browser is the dev shell (lib/platform.ts: the web
 // build serves Electron and iOS, and a browser only in development), so it
 // takes the phone's words; a web build that ships to people would need its
-// own answer, "this device", before it does (CMO-17, 2026-10-07). No imports
+// own answer, "this device", before it does (copy review-17, 2026-10-07). No imports
 // on purpose: copy modules build their strings when they load, and a module
 // that pulled in the platform layer would make every test that mocks it name
 // this helper too.

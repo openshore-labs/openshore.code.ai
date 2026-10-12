@@ -1,5 +1,5 @@
 // A static guard over the native plugins' Swift, since no Mac runs in CI
-// (Vault M2, CTO G2 and G7 wave 0). It reads the Swift as text and holds the
+// (Vault M2, tech review G2 and G7 wave 0). It reads the Swift as text and holds the
 // two halves of each plugin together:
 //
 // 1. In every plugin's Swift sources, the plugin file (named after its SPM

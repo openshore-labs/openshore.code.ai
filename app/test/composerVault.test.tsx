@@ -1,4 +1,4 @@
-// Take a note to a model (Vault M5, CTO J15). Typing `[[` in the composer
+// Take a note to a model (Vault M5, tech review J15). Typing `[[` in the composer
 // opens the note picker, a presence-aware sheet of the person's notes searched
 // by title; a pick folds a budgeted excerpt into a chip with its cost line; a
 // hidden note never lists; a private note is refused while the seat leaves

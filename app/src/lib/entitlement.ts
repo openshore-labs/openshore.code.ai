@@ -1,5 +1,5 @@
 // Whether a billing entitlement is live. OpenShore has no paid gate for a
-// person (open source, founder 2026-10-11); this reads only a commercial
+// person (open source, 2026-10-11); this reads only a commercial
 // org's team-seat billing (a later tier, docs/release-tiers.md), which the
 // Stripe webhook writes and the store's growthGatedByBilling checks.
 

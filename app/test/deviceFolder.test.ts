@@ -107,7 +107,7 @@ describe('device folder provider', () => {
     expect(paths).toEqual(['a.md', 'x/b.md']);
   });
 
-  it('stats one note through vaultStat, never by listing the vault (CTO F1)', async () => {
+  it('stats one note through vaultStat, never by listing the vault (tech review F1)', async () => {
     h.b.vaultStat.mockResolvedValue({ path: 'x/b.md', updatedAt: 't', size: 1, version: 'v' });
     expect(await deviceFolderProvider.stat('vault.personal', 'x/b.md')).toMatchObject({
       path: 'x/b.md',
@@ -193,7 +193,7 @@ describe('device folder provider', () => {
 
 // Main's handlers, called directly against a temp folder, the way
 // osc:vaultList, osc:vaultStat, osc:vaultRead, and osc:vaultWrite run them.
-describe("main's vault handlers on a real folder (CTO F1, F7.4)", () => {
+describe("main's vault handlers on a real folder (tech review F1, F7.4)", () => {
   let root: string;
   beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), 'osc-vaultfs-'));
@@ -299,11 +299,11 @@ describe("main's vault handlers on a real folder (CTO F1, F7.4)", () => {
       '/etc/a.md',
     ]) {
       expect(isVaultNotePath(p)).toBe(isNotePath(p));
-      // Main's rule is the vault core's own (Vault M3, CTO H4), on every OS.
+      // Main's rule is the vault core's own (Vault M3, tech review H4), on every OS.
       expect(isVaultNotePath(p, 'linux'), p).toBe(coreIsNotePath(p));
       expect(isVaultNotePath(p, 'win32'), p).toBe(coreIsNotePath(p, { windows: true }));
     }
-    // The walker moved into the engine (Vault M5, CTO J7); main re-exports it.
+    // The walker moved into the engine (Vault M5, tech review J7); main re-exports it.
     const shim = readFileSync(join(process.cwd(), 'electron', 'vaultFs.ts'), 'utf8');
     expect(shim).toMatch(/export \* from 'os-code\/dist\/src\/core\/vault\/folderFs\.js'/);
     const src = readFileSync(
@@ -392,7 +392,7 @@ describe("main's vault handlers on a real folder (CTO F1, F7.4)", () => {
   });
 });
 
-// Vault M6 (CTO K3, K6, K13) through main's own import (electron/vaultFs.ts
+// Vault M6 (tech review K3, K6, K13) through main's own import (electron/vaultFs.ts
 // re-exports the engine's folderFs), so osc:vaultRename, osc:vaultTrash and
 // the rest run the code the daemon runs. The full matrix is
 // os-code/test/vaultFolderOps.test.ts.
@@ -443,7 +443,7 @@ describe("main's M6 vault handlers on a real folder", () => {
 });
 
 // The folder picker as main runs it (osc:vaultChooseDir, osc:vaultRefineDir;
-// CTO F7, CX 1.4): a temp home stands in for the person's, the dialog's
+// tech review F7, UX review 1.4): a temp home stands in for the person's, the dialog's
 // answer is passed straight in, and vault.dir is written through the
 // engine's real config writer into a temp OSC_HOME.
 describe('picking the vault folder (Vault M1 1.4)', () => {
@@ -622,7 +622,7 @@ describe('picking the vault folder (Vault M1 1.4)', () => {
     expect(await listVaultFolder(notes)).toEqual([]);
   });
 
-  // ---- Bring N notes from the previous folder (CTO ruling on Bring) -------
+  // ---- Bring N notes from the previous folder (tech review ruling on Bring) -------
   // One argument-free call that copies the folder the vault used before the
   // last pick into the one it uses now, with ifAbsent only: never a
   // replacement, never a removal, never a write into the previous folder.

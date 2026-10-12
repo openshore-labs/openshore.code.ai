@@ -1,5 +1,5 @@
 // The repository step's one choice (lib/guidedSetup.ts EDIT_CHOICES): how
-// edits are handled, asked once there is code to edit (CX, 2026-09-24). Two
+// edits are handled, asked once there is code to edit (UX review, 2026-09-24). Two
 // equal buttons, neither preselected, and a quiet "Decide later" that keeps the
 // starting mode. The same choice lives on in Settings, under Approvals.
 import { useApp } from '../state/store.js';

@@ -298,7 +298,7 @@ describe('the measured seal in Stack Health', () => {
   });
 });
 
-describe('CTO must-fix hardening', () => {
+describe('tech review must-fix hardening', () => {
   it('breaks a stale first-run create lock and still creates a key', () => {
     const lock = join(home, 'data-key.lock');
     mkdirSync(lock, { recursive: true });

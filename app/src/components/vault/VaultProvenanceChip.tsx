@@ -1,4 +1,4 @@
-// The provenance chip on a note's meta line (Vault M7 7.2; CTO L9; CX Y11,
+// The provenance chip on a note's meta line (Vault M7 7.2; tech review L9; UX review Y11,
 // Y16, R4). It says which model wrote the note and where that model ran:
 // teal (`--local`) for a seat on this computer, amber (`--cloud`) for a cloud
 // seat, judged by address at write time and recorded as `oscode-where`. The

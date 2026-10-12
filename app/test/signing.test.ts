@@ -1,7 +1,7 @@
 // Signing is ready but off (v1 Phase 1): the Mac build signs and notarizes
 // only when the Developer ID secrets exist, and Windows signs only with its
 // certificate secrets. Without them both builds are exactly today's unsigned
-// ones (the founder's call stands until the secrets are added).
+// ones (a maintainer's call stands until the secrets are added).
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';

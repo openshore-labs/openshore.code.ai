@@ -1,4 +1,4 @@
-// The engine's Vault index (Vault M4, CTO I7; plan 4.6): one index per vault
+// The engine's Vault index (Vault M4, tech review I7; plan 4.6): one index per vault
 // root under the engine state folder, keyed by vaultIndexKey, loaded in the
 // background, reconciled by version, saved whole by atomic rename. Two roots
 // are two indexes, two files, and no crossover in search.
@@ -234,7 +234,7 @@ describe('the engine index is per vault root', () => {
 });
 
 // ---------------------------------------------------------------------------
-// The daemon's vault routes (Vault M5, CTO J7, J8): every route on the
+// The daemon's vault routes (Vault M5, tech review J7, J8): every route on the
 // caller's own root, jailed, compare-and-swap on every write.
 
 describe('the daemon vault routes, on the caller own root', () => {
@@ -578,7 +578,7 @@ describe('the daemon vault routes, on the caller own root', () => {
     expect(long.status).toBe(400);
   });
 
-  // Vault M6 (CTO K13): rename, folders, Trash and attachments, on the
+  // Vault M6 (tech review K13): rename, folders, Trash and attachments, on the
   // caller's own root, every path through the rules and the Jail.
   describe('M6 routes', () => {
     const vault = () => join(home, 'OSCode', 'Vault');
@@ -762,7 +762,7 @@ describe('the daemon vault routes, on the caller own root', () => {
     });
   });
 
-  // Vault M7 (CTO L7, L13): the settings file's one write, on the caller's
+  // Vault M7 (tech review L7, L13): the settings file's one write, on the caller's
   // own root, guarded, capped, parsed, never through a link under .oscode.
   // The real writer (`writeVaultConfigFile`) and parser, end to end: no
   // stand-in (Vault M7 wave 2).

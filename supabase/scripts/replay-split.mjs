@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The production replay's file shuffle (CTO 11, 2026-09-29; CI job
+// The production replay's file shuffle (tech review 11, 2026-09-29; CI job
 // `sql-replay` in .github/workflows/ci.yml). The Supabase CLI builds a local
 // database from every file in supabase/migrations, so to start from
 // production's state the files production has not applied step out first,

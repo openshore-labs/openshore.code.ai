@@ -3,7 +3,7 @@
 // the empty chat shows a seat at all. No React, no platform calls, so every
 // verdict is unit-tested against the engine's own budget (firstSeat.test.ts
 // runs budgetFor and fitsBudget side by side with this file across a grid of
-// machines). The reference machine is the founder's CPU-only box: 8 GB, no
+// machines). The reference machine is a maintainer's CPU-only box: 8 GB, no
 // GPU, where the 7B must read too big and the 3B is the seat.
 import type { CatalogModel } from 'os-code/protocol';
 import { fitFor, type FitLabel } from '../components/marketplace.js';
@@ -62,7 +62,7 @@ export function fitVerdictOrUnknown(sizeGB: number, hw?: HardwareRead): FitVerdi
 }
 
 /** "8 GB memory, no graphics card" or "32 GB memory, 12 GB graphics card":
- *  the words on the box, not GPU or VRAM (CX, jargon rewrites). */
+ *  the words on the box, not GPU or VRAM (UX review, jargon rewrites). */
 export function hardwareDesc(hw: HardwareRead): string {
   const gpu = hw.gpu ? `${hw.gpuVramGB ?? 0} GB graphics card` : 'no graphics card';
   return hw.ramGB > 0 ? `${hw.ramGB} GB memory, ${gpu}` : gpu;

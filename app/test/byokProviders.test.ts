@@ -1,4 +1,4 @@
-// Bring your own keys, any provider (founder, 2026-10-09; docs/byok-any-
+// Bring your own keys, any provider (2026-10-09; docs/byok-any-
 // provider-plan.md, Part 1): eleven named providers join Cloud Connections as
 // data, each OpenAI-compatible with its key page and its models loaded live
 // on the person's key. Each provider's list is read in the shape its own

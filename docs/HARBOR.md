@@ -24,7 +24,7 @@ the most capable, and the one a home-lab hub runs.
   edits repositories on the desktop engine. It is pulled through Ollama on the
   person's own computer, straight from the Ollama library, and seated as the
   Reasoning model in one tap from the First Seat card or the Settings row.
-  Docked, the phone reaches it as "My computer". Founder brief 2026-09-21.
+  Docked, the phone reaches it as "My computer". Maintainer brief 2026-09-21.
 
 In the code each is a reserved model id (`harbor-mini`, `harbor`, and
 `harbor-master`, see `app/src/lib/harborMini.ts`, `app/src/lib/harbor.ts`, and
@@ -171,7 +171,7 @@ open, backend private boundary. Full retrieval over docs is a later upgrade.
 
 ## License
 
-All three are Apache-2.0 (founder, 2026-09-30): Harbor Lite, Harbor, and every
+All three are Apache-2.0 (2026-09-30): Harbor Lite, Harbor, and every
 DeepBlue size. Until then Harbor and DeepBlue's floor were Qwen 2.5 Coder 3B,
 under the Qwen Research License (non-commercial), and both moved to Qwen3 4B
 Instruct; `app/test/curatedLicenses.test.ts` keeps it that way. Harbor downloads from the

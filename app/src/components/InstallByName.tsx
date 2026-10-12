@@ -51,7 +51,7 @@ export function InstallByName({ onInstalled }: { onInstalled?: (ref: string) => 
       {/* A local door: the examples name only models that run here, and the
           last sentence warns off a cloud tag in the words of the engine's own
           judge (isOllamaCloudTag: a tag that is cloud or ends in -cloud), never
-          offering one to copy (CX and CMO, 2026-10-08, B). */}
+          offering one to copy (UX and copy review, 2026-10-08, B). */}
       <p className="hint" style={{ marginTop: 4 }}>
         Type any name from the Ollama library and install it on this computer, even brand new
         models. For example qwen3-coder:30b, deepseek-r1:14b, gemma3:12b. A name whose tag (after

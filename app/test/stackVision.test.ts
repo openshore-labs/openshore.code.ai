@@ -124,7 +124,7 @@ describe('stackVisionReady', () => {
 });
 
 describe('visionSlots and the default cloud position', () => {
-  // D13 (founder, 2026-10-07, B): until the person chooses one, an image goes
+  // D13 (2026-10-07, B): until the person chooses one, an image goes
   // to the least costly Claude model, and every surface names it. This
   // reverses the 2026-09-25 "most capable cloud model" default the old pin
   // held (Opus 5).
@@ -153,7 +153,7 @@ describe('visionSlots and the default cloud position', () => {
     }
   });
 
-  // A plan never carries a picture (CX and CMO, 2026-10-08, E): an unplaced
+  // A plan never carries a picture (UX and copy review, 2026-10-08, E): an unplaced
   // vision step goes to the Reasoning model, never to the reader a picture
   // in the chat would go to.
   it('a play keeps an unplaced vision step on the Reasoning model, whatever the chat would use', () => {

@@ -1,7 +1,7 @@
 // The iPhone app ships a privacy manifest (App Store requirement since 2024):
 // it is in the project's resources, it says the app does not track, and it
 // declares each required-reason API the plugins use. Missing it risks an
-// ITMS-91053 email or a rejection (docs/first-submission-checklist.md).
+// ITMS-91053 email or a rejection.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';

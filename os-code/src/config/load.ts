@@ -343,7 +343,7 @@ export function loadGlobalConfig(): OscConfig {
  *  file and a crash mid-write leaves the previous config intact. The temp file
  *  carries the existing file's mode (0o600 for a new file), so a person's chmod
  *  survives a save, and it is synced before the rename, so the rename never
- *  publishes bytes still in a cache (Vault M1, CTO F7.3). */
+ *  publishes bytes still in a cache (Vault M1, tech review F7.3). */
 export function writeFileAtomic(path: string, data: string): void {
   let mode = 0o600;
   try {

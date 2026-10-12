@@ -1,6 +1,6 @@
 // The setup page: the ways to go further than the built-in guide, none
 // required. A new person never lands here first; they open into Harbor Lite's
-// chat, and its greeting carries the button that brings them here (founder,
+// chat, and its greeting carries the button that brings them here (maintainer,
 // 2026-09-23). No Personal-or-Business question either: with no account,
 // OpenShore runs as personal, and the choice is asked when an account is made.
 // The headline is the App Store's "Your models. Your keys." with a lead that
@@ -15,7 +15,7 @@ import { StartingPaths } from '../components/StartingPaths.js';
 import { isDesktop } from '../lib/platform.js';
 import { thisDeviceNoun } from '../lib/deviceNoun.js';
 
-/** Where OpenShore runs, said from the device in hand (D23, founder
+/** Where OpenShore runs, said from the device in hand (D23, maintainer
  *  2026-10-07): this phone or iPad and your own computer, or this computer
  *  and your phone. One sentence, true on each: the phone runs Harbor and
  *  reaches your computer once it is connected, and on the computer the same
@@ -58,7 +58,7 @@ export function OnboardingScreen() {
                 Open<span className="accent">Shore</span>
               </span>
             </span>
-            {/* The App Store's first line (D23, founder 2026-10-07). Each
+            {/* The App Store's first line (D23, 2026-10-07). Each
                 phrase holds together, so a narrow screen breaks between them
                 and never inside one. */}
             <h1

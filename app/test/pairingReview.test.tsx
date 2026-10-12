@@ -1,5 +1,5 @@
-// The pairing review (CX-led Creative Studio, 2026-10-01; docs/design/pairing-review.md),
-// with the room renamed Computer and pairing called docking by the founder
+// The pairing review (UX-led design review, 2026-10-01; docs/design/pairing-review.md),
+// with the room renamed Computer and pairing called docking by a maintainer
 // (2026-10-07; the dock form moved to components/DockForm.tsx): the QR is a link the iPhone Camera opens and is
 // only ever for the person's own network, a spent code is never thrown away,
 // and the screens say plainly what happened.
@@ -94,7 +94,7 @@ describe('a pairing link opened from the iPhone Camera', () => {
   });
 });
 
-describe('the screens, as CX asked', () => {
+describe('the screens, as UX review asked', () => {
   const screen = read('src', 'screens', 'PairScreen.tsx');
   const form = read('src', 'components', 'DockForm.tsx');
 

@@ -4,7 +4,7 @@
 // mapped to the same {title, url, snippet} shape as every other backend. Needs
 // a key (search.perplexityKeyEnv names the env var), and the key stays on this
 // machine, read from the environment like Brave and Tavily, never carried into
-// a session that runs on a remote hub (the CTO ruling on provider keys). Sonar
+// a session that runs on a remote hub (the tech review ruling on provider keys). Sonar
 // returns sources as `search_results` (title/url/snippet) or, on older
 // responses, a bare `citations` URL list; parse both defensively.
 import type { SearchConfig, SearchProvider, SearchResult } from './index.js';

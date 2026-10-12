@@ -126,7 +126,7 @@ export function CrewScreen() {
     showToast(draft.id ? 'Crew member updated.' : `${name} joined your crew.`);
   };
 
-  // The founder's advisory org, as a crew: eight named perspectives the
+  // A maintainer's advisory org, as a crew: eight named perspectives the
   // Reasoning model can bring in. Adds only the ones not already here, so the
   // tap is safe to repeat and never duplicates a member someone customized.
   const missingAdvisors = ADVISOR_TEAM.filter((p) => !crew.some((a) => a.name === p.name));
@@ -165,7 +165,7 @@ export function CrewScreen() {
             a live line so the roster reads as a team, not a list. Before a
             computer is paired and with no routine, the room behind it can only
             say pair first, so the door is a plain card row and the dark hero
-            waits until there is work to show (founder, D17, 2026-10-07). */}
+            waits until there is work to show (D17, 2026-10-07). */}
         {quietDoor ? (
           <button
             type="button"
@@ -239,7 +239,7 @@ export function CrewScreen() {
         ) : null}
 
         {/* The whole card is the Edit tap, and a swipe left deletes, the way
-            Crew command's routines do (founder, D18, 2026-10-07). The swipe's
+            Crew command's routines do (D18, 2026-10-07). The swipe's
             tap does nothing of its own: the card is a real button, so a tap,
             a key, or VoiceOver opens the editor, and the editor's foot holds
             Delete for a pointer or a screen reader. */}

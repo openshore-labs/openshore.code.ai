@@ -1,5 +1,5 @@
 // Crew routines: the schedule math, the sealed store, and the scheduler's
-// contract as the CTO ruled it before the build. The session a run lives in
+// contract as the tech review ruled it before the build. The session a run lives in
 // is stood in by a fake driver, so these test the decisions (when to fire,
 // when to skip, one at a time, the approval timeout, the cap, the note), not
 // a model.
@@ -414,7 +414,7 @@ describe('routine scheduler', () => {
     }
   });
 
-  // Vault M4 (4.9, CTO I13): a run note carries frontmatter a later run can
+  // Vault M4 (4.9, tech review I13): a run note carries frontmatter a later run can
   // build on, parsed by the vault core, and links the routine's previous run.
   describe('the run note frontmatter', () => {
     function runOnce(
@@ -534,7 +534,7 @@ describe('routine scheduler', () => {
       scheduler.stop();
     });
 
-    // Vault M6 (6.4, CTO K7): a run note links TO the day's note, from the
+    // Vault M6 (6.4, tech review K7): a run note links TO the day's note, from the
     // vault's own daily-notes settings, and never creates or appends to it.
     describe("the day's note link", () => {
       async function runAndSettle(
@@ -855,7 +855,7 @@ describe('routine scheduler', () => {
     expect(routineInstructions(routine)).toContain("saved to their vault as this run's note");
   });
 
-  // CTO 3 (2026-09-29): headless means offline. A routine reads files other
+  // tech review 3 (2026-09-29): headless means offline. A routine reads files other
   // people wrote, so no tool that reaches the network is there, and a network
   // step is denied outright, never left waiting on an approval.
   it('a headless run has neither web tool, and names what it left out', () => {
@@ -912,14 +912,14 @@ describe('routine scheduler', () => {
     expect(text).toContain('It ran offline, so it could not search the web or open web pages.');
     const ws = basename(workspace);
     expect(text).toContain(`Note: A web search did not run, so it used only the files in ${ws}.`);
-    // The query is never written into the note (CTO review 2026-10-01, F1).
+    // The query is never written into the note (tech review 2026-10-01, F1).
     expect(text).not.toContain('react 19');
     expect(text).not.toContain('second query');
     // A refused search is not a step the run took.
     expect(run.steps).toBe(0);
   });
 
-  // CX and CMO, 2026-10-08 (A): a run that drew on a private note leaves a
+  // UX and copy review, 2026-10-08 (A): a run that drew on a private note leaves a
   // private note, so its words reach no cloud seat later; and a change to
   // the memory notes it could not ask about is named in the note.
   it('a run note written after a private read carries oscode: local-only, and a cloud seat cannot read it', async () => {
@@ -1014,7 +1014,7 @@ describe('routine scheduler', () => {
     expect(offlineLine(undefined)).toBe('It ran offline.');
   });
 
-  // Vault M5 (CTO J13): a Crew run neither writes nor reads a handoff, so a
+  // Vault M5 (tech review J13): a Crew run neither writes nor reads a handoff, so a
   // scripted run's summary never becomes the person's "where you left off" on
   // the same project, whatever owner key it would carry.
   it('a headless run writes and reads no handoff; a desk session does', () => {
@@ -1133,7 +1133,7 @@ describe('routine scheduler', () => {
     scheduler.stop();
   });
 
-  it('a passive scheduler takes the clock over once the holder stops (CX cleanup 6)', async () => {
+  it('a passive scheduler takes the clock over once the holder stops (UX review cleanup 6)', async () => {
     // Two processes sharing one machine lock, as the desktop app beside a
     // terminal's osc serve: each sees its own hold as its own pid and the
     // other's as a foreign one.
@@ -1366,7 +1366,7 @@ describe('routines across two processes (H1)', () => {
     holder.scheduler.start();
     holder.scheduler.stop();
     expect(other.store.getRun(live.id)?.state).toBe('failed');
-    // Says what closed, not why, and what it left behind (CX cleanup 3).
+    // Says what closed, not why, and what it left behind (UX review cleanup 3).
     expect(other.store.getRun(live.id)?.summary).toBe(RUN_ORPHANED);
     expect(RUN_ORPHANED).toBe(
       'OpenShore closed before this run finished. Any changes it made before then are still in the folder.',

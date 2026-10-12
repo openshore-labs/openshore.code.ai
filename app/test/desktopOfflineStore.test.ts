@@ -1,4 +1,4 @@
-// Desktop Offline (founder, 2026-10-07), the store against a fake desktop
+// Desktop Offline (2026-10-07), the store against a fake desktop
 // bridge: every connection refresh reports the person's choice to main (which
 // sets this computer's engine flag), main's own read of the network counts
 // beside the window's, choosing Offline in the Status sheet reaches the engine

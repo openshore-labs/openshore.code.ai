@@ -229,7 +229,7 @@ export const editFileTool: ToolDef<typeof schema> = {
   pathOf: (args) => args.path,
   async preview(args, ctx) {
     const abs = ctx.jail.resolve(args.path);
-    // A vault's settings folder is the person's alone (Vault M7, CTO L8).
+    // A vault's settings folder is the person's alone (Vault M7, tech review L8).
     if (workspaceWriteHitsVaultSettings(abs, ctx.vaultRoot)) throw new Error(VAULT_SETTINGS_DENY);
     if (!existsSync(abs)) return { summary: `Edit ${args.path}`, detail: 'File does not exist.' };
     const before = readFileSync(abs, 'utf8');

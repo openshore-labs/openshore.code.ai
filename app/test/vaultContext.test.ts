@@ -1,4 +1,4 @@
-// The vault pack reaches every plain app driver (Vault M5, CTO J1 to J6).
+// The vault pack reaches every plain app driver (Vault M5, tech review J1 to J6).
 // What these rows hold: which seat gets a pack and at what size (J2, J4); the
 // privacy rules a device runs on, which fail closed (J3); the pack itself,
 // prepared once per send inside the cold budget, rendered per seat, never

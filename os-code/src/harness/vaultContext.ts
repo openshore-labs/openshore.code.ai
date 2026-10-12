@@ -1,4 +1,4 @@
-// The vault context pack (Vault M4, CTO I6 to I10). Before a task, the harness
+// The vault context pack (Vault M4, tech review I6 to I10). Before a task, the harness
 // puts what the person already wrote down in front of the seat: this project's
 // Current State, then (for classes that earned it by eval) the notes that
 // match the task, their one-hop links, and a map of the vault. Retrieval is
@@ -36,7 +36,7 @@ export interface PackSource {
   layer: PackLayer;
   path: string;
   title: string;
-  /** A pin the person placed on the project (CTO J14), not a frontmatter
+  /** A pin the person placed on the project (tech review J14), not a frontmatter
    *  pin. Set only on those. */
   project?: true;
   /** The note was cut to fit this seat's budget (its block ends with a
@@ -44,7 +44,7 @@ export interface PackSource {
   trimmed?: true;
   /** The note stays on this computer (a private note, only ever in a pack
    *  for a seat that stays), so a host can tell what made the pack private:
-   *  a project pin alone, or something else (CX and CMO, 2026-10-08, A, G,
+   *  a project pin alone, or something else (UX and copy review, 2026-10-08, A, G,
    *  H). Set only on those. Additive. */
   localOnly?: true;
 }
@@ -61,7 +61,7 @@ export interface PackInput {
   /** Frontmatter pins (a full-mode layer). */
   pins: readonly string[];
   /**
-   * The project's own pins (Vault M5, CTO J14): note paths the person placed
+   * The project's own pins (Vault M5, tech review J14): note paths the person placed
    * on the project (`Project.vaultPins`, at most 8), never a config key. They
    * ride in BOTH modes, in the pin layer, at most `PACK_PINS_MAX` and half the
    * budget, with privacy applied (hidden never, local-only withheld from a
@@ -104,14 +104,14 @@ export interface ContextPack {
 }
 
 /** The most a task waits for a vault's saved index before it goes on with
- *  Current State alone (CTO I7), on the engine and in the app (J1). */
+ *  Current State alone (tech review I7), on the engine and in the app (J1). */
 export const VAULT_PACK_COLD_MS = 250;
 
 /** The most note bodies one plan asks the host to read. */
 export const PACK_PLAN_MAX_READS = 16;
 
 /**
- * What `'auto'` gives each class (CTO I9). Every class is `'current-state'` in
+ * What `'auto'` gives each class (tech review I9). Every class is `'current-state'` in
  * M4: gate 3 and tenet 2 bind mid and large as much as lean seats, so no
  * vault note reaches any seat by default until the 4.8 eval says so. A class
  * flips in its own commit citing its DECISIONS line.
@@ -696,7 +696,7 @@ function oneLine(s: string): string {
   return s.replace(/[\r\n\t]+/g, ' ');
 }
 
-/** What a host prepares once per task (CTO I7, I8): everything a render
+/** What a host prepares once per task (tech review I7, I8): everything a render
  *  needs apart from the seat, so the loop can render per turn for whichever
  *  seat answers. The host reads the bodies a `planContextPack` in `full`
  *  mode, at `VAULT_PACK_MAX_TOKENS`, for a seat that stays on this network,
@@ -707,7 +707,7 @@ export interface PreparedVaultContext {
   bodies: ReadonlyMap<string, string>;
   currentState?: { path: string; text: string };
   pins: readonly string[];
-  /** The project's own pins (CTO J14), read first by the host. */
+  /** The project's own pins (tech review J14), read first by the host. */
   projectPins?: readonly string[];
   handoff?: string;
   privacy: VaultPrivacy;

@@ -17,7 +17,7 @@ on a feature that functions and a test that shows it does.
 
 OpenShore is maintained by Open Shore LLC, which owns this repository, the
 OpenShore name, and the official builds (the App Store app, the signed
-desktop releases, and their update feed). The founder decides what merges
+desktop releases, and their update feed). Its maintainers decide what merges
 and what ships. A working change can still be turned down, or reshaped
 before it lands, if it does not fit where the product is going; when that
 happens we say why.
@@ -77,16 +77,19 @@ the feature docs.
 pnpm --filter os-code build
 pnpm -r format        # rewrites formatting for you
 pnpm -r typecheck
-pnpm -r test
+OSC_TEST_SET=behavior pnpm -r test   # the tests that have to pass
 ```
 
 What has to pass: the build, the typecheck, and the tests about behavior,
-including the one you add for your change.
+including the one you add for your change. That is the `check` job on your
+pull request. `pnpm -r test` on its own runs the house-style tests too.
 
 What you can leave red: the house-style checks. They hold the brand (no em
 dashes, motion and spacing tokens, button and icon rules, contrast, exact
-copy), and the maintainer fixes them when pulling your change in. They live
-in these test files, so a failure in one of them is not on you:
+copy), and the maintainer fixes them when pulling your change in. On a pull
+request they run in their own `house-style` job, which never blocks a merge.
+They live in these test files (`OSC_TEST_SET=style pnpm -r test` runs just
+them), so a failure in one of them is not on you:
 
 - `app/test/em-dash-policy.test.ts`, `os-code/test/em-dash-policy.test.ts`
 - `app/test/uiGuards*.test.ts`, `app/test/polish-standards.test.ts`,

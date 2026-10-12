@@ -119,7 +119,7 @@ describe('what leaves this device', () => {
 
   it('says what the four privacy calls changed, and still names what leaves', () => {
     const by = (id: string) => EGRESS.find((e) => e.id === id)!;
-    // Web search asks once (founder, 2026-10-02), and the list says so.
+    // Web search asks once (2026-10-02), and the list says so.
     expect(by('search').when).toMatch(/after you allow it once/);
     expect(by('search').when).not.toMatch(/on by default/);
     expect(by('search').start).toBe('off');
@@ -129,14 +129,14 @@ describe('what leaves this device', () => {
     expect(by('repo-signin').what).toMatch(/keeps no copy/);
   });
 
-  // Founder, 2026-10-01: a routine follows the one web search switch and only
+  // Maintainer, 2026-10-01: a routine follows the one web search switch and only
   // searches, so the search entry and the Settings row say so in one sentence,
   // and claim no per-routine switch that is not built.
   it('says Crew routines follow the search switch, in the list and under the Settings row', () => {
     const search = EGRESS.find((e) => e.id === 'search')!;
     expect(ROUTINES_SEARCH_LINE).toMatch(/follow this switch.*only search.*never open pages/);
     expect(search.when).toContain(ROUTINES_SEARCH_LINE);
-    // The switch lives in its own group (CMO, 2026-10-07).
+    // The switch lives in its own group (copy review, 2026-10-07).
     expect(search.when).toContain('Settings, Web search');
     expect(search.when).not.toMatch(/turn it on for that routine/i);
     const settings = readFileSync(
@@ -147,9 +147,9 @@ describe('what leaves this device', () => {
     expect(row.slice(0, row.indexOf('trailing='))).toContain('${ROUTINES_SEARCH_LINE}');
   });
 
-  // CX and CMO, 2026-10-08 (E): a plan never carries a picture, so with
+  // UX and copy review, 2026-10-08 (E): a plan never carries a picture, so with
   // nothing set for Image reading its image step runs on the Reasoning model
-  // from the text, and the founder's 2026-10-07 exception is gone. No line
+  // from the text, and a maintainer's 2026-10-07 exception is gone. No line
   // names it, and the cloud-models entry says when a cloud model answers (D).
   it("names no plan's image step that goes to a cloud model without asking", () => {
     expect('PLAN_IMAGE_STEP_LINE' in manifest).toBe(false);
@@ -190,7 +190,7 @@ describe('what leaves this device', () => {
   });
 
   // The private-notes promise is the one vaultCopy words, OpenShore as the
-  // subject and the person's own reach a plain second sentence (CX and CMO,
+  // subject and the person's own reach a plain second sentence (UX and copy review,
   // 2026-10-08, A).
   it('makes the private-notes promise in the vaultCopy words', () => {
     const cloud = EGRESS.find((e) => e.id === 'cloud-models')!;
@@ -223,7 +223,7 @@ describe('what leaves this device', () => {
     );
   });
 
-  // CX and CMO, 2026-10-08 (H): once a chat on a seat that stays holds a
+  // UX and copy review, 2026-10-08 (H): once a chat on a seat that stays holds a
   // private note's text, a search a model writes and a page the agent opens
   // ask every time, so the two entries say so where they say when.
   it('says a search and a page ask every time once a chat holds a private note', () => {
@@ -292,7 +292,7 @@ describe('the guides claim no more than the list', () => {
     /building (?:need|needs|works?)[^.]*(?:no account|signed out)/i,
     /chatting and building/i,
     // A model placed in a Stack chat's slot answers there with no card of
-    // its own (founder, 2026-09-25), so no copy promises every cloud call
+    // its own (2026-09-25), so no copy promises every cloud call
     // waits on a card.
     /nothing spends without your approval/i,
     /spend always asks/i,
@@ -340,7 +340,7 @@ describe('the guides claim no more than the list', () => {
     );
   });
 
-  // CX and CMO, 2026-10-08 (E): the sentence that held the founder's
+  // UX and copy review, 2026-10-08 (E): the sentence that held a maintainer's
   // 2026-10-07 exception now says only when a cloud model runs.
   it('says a cloud model runs only when you pick it or place it', () => {
     const src = (f: string) =>

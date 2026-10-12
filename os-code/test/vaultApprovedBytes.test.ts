@@ -1,4 +1,4 @@
-// Vault M7 (CTO L9): the person approves exactly the bytes that land,
+// Vault M7 (tech review L9): the person approves exactly the bytes that land,
 // provenance lines included. The real merge runs here (no stand-in): an
 // addition to a person's note shows its property change in the diff, execute
 // writes the very bytes the preview hashed, and a seat that changed under the

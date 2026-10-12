@@ -1,4 +1,4 @@
-// The app icon, picked in Settings, Appearance (founder, 2026-10-01): the
+// The app icon, picked in Settings, Appearance (2026-10-01): the
 // default ink tile, the turquoise tile from openshore.ai, or an all-white tile
 // with the shore and wave in near-black. One list, so the picker, the in-app
 // mark, the iPhone's Home Screen icon and the desktop's Dock or window icon

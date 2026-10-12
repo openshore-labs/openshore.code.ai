@@ -1,5 +1,5 @@
 // Seeing changes to the vault folder from the agent, Obsidian, or a sync client
-// while the Vault room is open (Vault M1, CTO F3). The watcher is a hint, never
+// while the Vault room is open (Vault M1, tech review F3). The watcher is a hint, never
 // the protection: compare-and-swap on every write is the protection, and the
 // room's re-check on focus is the backstop. So it stays small:
 //

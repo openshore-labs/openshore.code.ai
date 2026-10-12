@@ -59,11 +59,6 @@ verify_jwt = true
 [functions.stripe-webhook]
 verify_jwt = false
 
-# A signed-in user POSTs their signed StoreKit transaction here to link an Apple
-# purchase to their account, so the caller's JWT is required.
-[functions.link-apple-purchase]
-verify_jwt = true
-
 # A signed-in user deletes their own account (Apple 5.1.1(v)). The caller's JWT
 # is required; the function resolves who they are from it with auth.getUser()
 # and never from the request body.
@@ -74,11 +69,6 @@ verify_jwt = true
 # Supabase bearer, and /exchange requires a valid single-use provider code, so
 # no JWT. The provider client secret lives only in this function's secrets.
 [functions.repo-oauth]
-verify_jwt = false
-
-# App Store Server Notifications V2 endpoint. Apple calls it, not a signed-in
-# user, so no JWT; trust comes from the signed payload's Apple signature.
-[functions.apple-notifications]
 verify_jwt = false
 
 # A signed-in user registers their own APNs device token, so the caller's JWT is

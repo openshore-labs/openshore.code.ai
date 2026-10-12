@@ -1,4 +1,4 @@
-// This computer's memory, in whole GB, read once per process (Vault M4, CTO
+// This computer's memory, in whole GB, read once per process (Vault M4, tech review
 // I1). The served window (`servedContextTokens` in harness/profile.ts) keys
 // its ceiling off this number, and a changed `num_ctx` makes Ollama reload the
 // model, so the number must not drift between requests: it is read the first

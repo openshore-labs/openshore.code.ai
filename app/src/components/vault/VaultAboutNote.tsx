@@ -1,4 +1,4 @@
-// "About this note" (Vault M7 7.2; CTO L9, L10; CX Y12, Y16): what the note's
+// "About this note" (Vault M7 7.2; tech review L9, L10; UX review Y12, Y16): what the note's
 // provenance says, row by row, and the one thing a person does with it, Mark
 // as reviewed. Reviewed means the person read it; it changes nothing a model
 // sees, and the sheet says so under the button. The foot line is honest about

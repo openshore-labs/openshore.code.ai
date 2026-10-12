@@ -1,4 +1,4 @@
-// The fork after Harbor (lib/guidedSetup.ts NEXT_CHOICES, founder 2026-09-25):
+// The fork after Harbor (lib/guidedSetup.ts NEXT_CHOICES, 2026-09-25):
 // once the guide has offered Harbor, the person picks what happens next. Start
 // chatting steps the walk back (it waits behind "Keep setting up", D4); Keep
 // setting up carries on to the next step. Two equal buttons, chatting first since

@@ -65,7 +65,7 @@ export function profileBlurb(id: ProfileId, paired: boolean, home = false): stri
   return PROFILES[id].blurb;
 }
 
-/** The blurbs on the computer itself (Desktop Offline, founder 2026-10-07):
+/** The blurbs on the computer itself (Desktop Offline, 2026-10-07):
  *  the desktop app is the computer, so Docked, a device reaching it, does not
  *  apply here and says so, and the others speak of this computer's models. */
 const HOME_BLURB: Record<ProfileId, string> = {
@@ -90,7 +90,7 @@ export function profileUnavailable(
   return paired ? ' Not reachable right now.' : '';
 }
 
-/** Whether the reach pill shows in the top bar (founder, 2026-10-07, D1 built
+/** Whether the reach pill shows in the top bar (2026-10-07, D1 built
  *  as recommended, B: show it once it can mean something). Until a computer
  *  is connected to this device the pill could only say Offshore, about a
  *  computer the person never connected, so it waits. Offline still shows on

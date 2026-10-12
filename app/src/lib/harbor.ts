@@ -3,7 +3,7 @@
 // code and look things up instead of guessing. Harbor Lite (harborMini.ts) is
 // the tiny built-in guide; a fresh stack seeds with Harbor Lite to keep the
 // first-run download small, and Harbor is the coder a person adds when they
-// want to build on the phone. Founder scope 2026-09-21: the three curated
+// want to build on the phone. Maintainer scope 2026-09-21: the three curated
 // models are Harbor Lite (pocket guide), Harbor (this, the mobile coder), and
 // DeepBlue (the desktop coder).
 //
@@ -13,7 +13,7 @@
 // already has Harbor just re-downloads in place. Version 2.0 was the recast from
 // the earlier Qwen3-1.7B guide to the Qwen 2.5 Coder 3B mobile coder; 3.0 moves
 // to Qwen3-4B-Instruct-2507 because the 3B is under the Qwen Research License
-// (non-commercial) and Harbor must be sellable (founder, 2026-09-30). A device
+// (non-commercial) and Harbor must be sellable (2026-09-30). A device
 // still holding older weights drops them at launch (harborWeightsStale), so no
 // phone keeps running the research-licensed 3B.
 //
@@ -36,7 +36,7 @@ export const HARBOR_MODEL_NAME = 'Harbor';
 // the same weights as DeepBlue's floor size on the desktop. The non-thinking
 // 2507 build, so it answers without a reasoning preamble unless Chain of
 // Thought asks. About 2.5 GB, and it needs a 6 GB phone (the catalog's
-// minRamGB). Not yet measured against the 3B it replaces (tenet 2: the founder
+// minRamGB). Not yet measured against the 3B it replaces (tenet 2: a maintainer
 // runs osc eval on the box). VERIFY the exact filename/casing resolves (200)
 // before a build; this sandbox cannot reach huggingface.co to check it.
 export const HARBOR_MODEL_URL =

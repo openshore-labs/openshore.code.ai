@@ -1,5 +1,5 @@
 // The tappable "First Moves" under a fresh Harbor Lite chat, so a brand-new
-// person never faces a blank composer. Creative Studio direction "The Standing
+// person never faces a blank composer. design review direction "The Standing
 // Light": the chips arrive stepped by --stagger, so they assemble calmly under
 // the seeded greeting rather than popping in as a block. Each carries press-fb,
 // so the very first tap a new user makes answers the finger. Tapping one sends

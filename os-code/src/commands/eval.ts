@@ -65,16 +65,16 @@ export interface EvalOptions {
    *  (for a scripted run; the terminal still says what it costs). */
   yes?: boolean;
   /** Deep only: run the vault tasks with the full context pack ('on') or none
-   *  ('off'), the with and without pair of Vault M4's founder gate (CTO I14). */
+   *  ('off'), the with and without pair of Vault M4's maintainer gate (tech review I14). */
   vaultPack?: string;
-  /** Deep only: send Ollama's `num_ctx` ('auto') or not ('off') (CTO I1). */
+  /** Deep only: send Ollama's `num_ctx` ('auto') or not ('off') (tech review I1). */
   numCtx?: string;
-  /** Deep only: Anthropic prompt caching on or off for the run (CTO J17,
+  /** Deep only: Anthropic prompt caching on or off for the run (tech review J17,
    *  J19), so input tokens, cache reads and writes, and dollars per completed
    *  task can be set side by side. */
   promptCache?: string;
   /** Deep only: run the handoff task with its handoff layer ('on') or with
-   *  that layer empty ('off') (CTO J13, J19). */
+   *  that layer empty ('off') (tech review J13, J19). */
   handoff?: string;
   /** Deep only: the page check on or off for the run (v1 Phase 1). */
   pageCheck?: string;
@@ -85,16 +85,16 @@ export interface EvalOptions {
    *  instead of the engine ('claude-code': Claude Code pointed at Ollama),
    *  the head-to-head baseline. */
   baseline?: string;
-  /** Deep or floor: retrieval before turn one on or off for the run (CTO 6). */
+  /** Deep or floor: retrieval before turn one on or off for the run (tech review 6). */
   retrieval?: string;
-  /** Deep or floor: union decoding on or off for the run (CTO 6). */
+  /** Deep or floor: union decoding on or off for the run (tech review 6). */
   unionDecoding?: string;
-  /** The floor run: every measurement the founder's box owes, in one go
+  /** The floor run: every measurement a maintainer's box owes, in one go
    *  (see `evalFloor.ts`). */
   floor?: boolean;
 }
 
-/** The two harness lift switches (CTO 6), parsed: they go with --deep and
+/** The two harness lift switches (tech review 6), parsed: they go with --deep and
  *  with --floor. An error string names the bad value. */
 export function parseLiftFlags(
   options: Pick<EvalOptions, 'retrieval' | 'unionDecoding'>,
@@ -460,7 +460,7 @@ export interface DeepDriveOptions {
 /**
  * The deep eval's drive: one fresh session per task, wired the way the engine
  * wires one (the real tools, a jail per workspace, the vault context source),
- * with the variant applied (Vault M4, CTO I14):
+ * with the variant applied (Vault M4, tech review I14):
  * - the task's vault folder is the session's vault root, for the tools and
  *   the pack alike; a run with a vault-pack variant and no task vault gets no
  *   vault at all, so the person's own notes never enter a benchmark;
@@ -471,7 +471,7 @@ export interface DeepDriveOptions {
  *   value so Ollama keeps one window for the whole run;
  * - `promptCache` sets `providers.<id>.promptCache` ('on' is 'auto') on an
  *   Anthropic endpoint, on a fresh registry the same way;
- * - a task with a handoff (Vault M5, CTO J13) gets it built from its scripted
+ * - a task with a handoff (Vault M5, tech review J13) gets it built from its scripted
  *   chat and placed in the pack's handoff layer; `handoff` 'off' leaves that
  *   layer empty, and a `handoff` variant without `vaultPack` runs the pack in
  *   full so the handoff layer can render at all. The person's own handoffs are
@@ -522,7 +522,7 @@ export function deepDrive(options: DeepDriveOptions): DriveTask {
         },
       };
     }
-    // The harness lifts (CTO 6), the same way: the run's value, else the
+    // The harness lifts (tech review 6), the same way: the run's value, else the
     // person's own setting (unset reads off).
     driveConfig = withLifts(driveConfig, context);
     // The handoff layer is a full-mode layer, so a handoff run with no pack
@@ -647,7 +647,7 @@ export function deepDrive(options: DeepDriveOptions): DriveTask {
   };
 }
 
-/** A config with the run's harness lift switches set (CTO 6): retrieval
+/** A config with the run's harness lift switches set (tech review 6): retrieval
  *  before turn one and union decoding, each only when the run names it. */
 export function withLifts(
   config: OscConfig,
@@ -835,8 +835,8 @@ export function traceLine(trace: DriveTrace): string {
   return summary + failureLines.join('');
 }
 
-/** What a run cost, when the drive measured it (Vault M4, CTO I14): input
- *  tokens sent, the prompt cache's reads and writes (Vault M5, CTO J19), the
+/** What a run cost, when the drive measured it (Vault M4, tech review I14): input
+ *  tokens sent, the prompt cache's reads and writes (Vault M5, tech review J19), the
  *  pack's share and its notes, how many turns the server cut (C1), and wall
  *  time. '' when none. */
 export function costLine(trace: DriveTrace): string {

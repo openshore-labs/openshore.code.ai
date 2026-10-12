@@ -47,8 +47,8 @@
 		  and the daemon has no public hostname to scope an NSExceptionDomains
 		  entry to, so the blanket flag is required and is kept on deliberately.
 		  Every provider call (Hugging Face, Anthropic, Supabase) is still https.
-		  App Review justification and the reasoning for not narrowing it:
-		  docs/app-review-notes.md. Do NOT flip this without updating that doc.
+		  App Review justification and the reasoning for not narrowing it live
+		  in the maintainers' App Store notes. Do NOT flip this without updating them.
 		-->
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>

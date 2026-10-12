@@ -1,4 +1,4 @@
-// A private plan's file-editing step, run on the computer (CX and CMO,
+// A private plan's file-editing step, run on the computer (UX and copy review,
 // 2026-10-08, J). The app sends it marked local-only (POST /input
 // `localOnly`); the engine holds the whole task to its D5 rules: the reply
 // comes back marked, a handoff to a cloud specialist is refused, and a

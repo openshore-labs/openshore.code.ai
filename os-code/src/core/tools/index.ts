@@ -27,7 +27,7 @@ export interface ToolOutput {
   citations?: Citation[];
   /** Unified diff for edits, shown in transcripts after approval. */
   diffText?: string;
-  /** The content came from a local-only vault note (Vault M4, CTO I5). The
+  /** The content came from a local-only vault note (Vault M4, tech review I5). The
    *  loop carries it onto the tool message (`ChatMessage.localOnly`), so a
    *  later turn on a seat that leaves this network sends a stub instead. */
   localOnly?: true;
@@ -179,11 +179,11 @@ export interface ToolContext {
    *  Unset (a bare test context) denies nothing. */
   denies?: (toolName: string, path: string) => boolean;
   /** Which vault notes are hidden and which stay on this computer (Vault M4,
-   *  CTO I4, I5), compiled once at bootstrap from the machine's vault config
+   *  tech review I4, I5), compiled once at bootstrap from the machine's vault config
    *  (`compileVaultPrivacy`). Every vault tool consults it. Unset (a bare test
    *  context) leaves every note open. */
   vaultPrivacy?: VaultPrivacy;
-  /** Read the vault's own settings again (Vault M7, CTO L5, L6), so the sync
+  /** Read the vault's own settings again (Vault M7, tech review L5, L6), so the sync
    *  `vaultPrivacy` holds the union with the vault's file. Kept 2 s; `force`
    *  reads now (a task start, a pack prepare). Every vault tool awaits it at
    *  entry. Never throws: a read that fails keeps the last good settings.
@@ -193,7 +193,7 @@ export interface ToolContext {
    *  or undefined before the first refresh or with no vault. */
   vaultSettings?: () => ResolvedVaultSettings | undefined;
   /** The seat answering now, for the provenance lines on a note the agent
-   *  writes (Vault M7, CTO L9): its model, class and, for a cloud seat, the
+   *  writes (Vault M7, tech review L9): its model, class and, for a cloud seat, the
    *  provider. Where it runs is `seatLeavesNetwork`. Set by the loop each
    *  turn; unset writes the lines it can without them. */
   vaultSeat?: () => { model?: string; size?: ProvSize; provider?: string };
@@ -209,7 +209,7 @@ export interface ToolContext {
    *  leaves this network. Unset reads as no. */
   chatHoldsLocalOnly?: () => boolean;
   /** The most characters one vault read returns for the seat answering now
-   *  (the class policy's `vaultReadCapChars`, CTO I11). Set by the loop each
+   *  (the class policy's `vaultReadCapChars`, tech review I11). Set by the loop each
    *  turn, like `seatLeavesNetwork`; past it a read returns the note's outline
    *  and asks for a section. Unset uses capContent's own cap. */
   vaultReadCapChars?: () => number;

@@ -1,5 +1,5 @@
-// Live [[wikilink]] suggestions under the Vault editor (Vault M6, 6.7; CTO
-// K14, CX X15). A listbox the editor keeps driving: while it is open, Up and
+// Live [[wikilink]] suggestions under the Vault editor (Vault M6, 6.7; tech review
+// K14, UX review X15). A listbox the editor keeps driving: while it is open, Up and
 // Down move the active row, Enter or Tab picks it, and Esc closes the list
 // only (never the note). The rows are `role="option"` and the editor carries
 // `aria-activedescendant`, so VoiceOver reads the row the keys are on while
@@ -71,7 +71,7 @@ export function relativeNotePath(from: string, to: string): string {
   return [...a.slice(i).map(() => '..'), ...b.slice(i)].join('/');
 }
 
-/** A wikilink target for a note in the vault's link format (Vault M7, CTO
+/** A wikilink target for a note in the vault's link format (Vault M7, tech review
  *  L2, `links.format`): the shortest name that reaches it, its path from the
  *  top, or its path from this note, each used only when it still reaches
  *  exactly that note; otherwise the shortest. */
@@ -288,7 +288,7 @@ export interface VaultLinkSuggestProps {
   layout?: 'chips' | 'list';
   /** The replace range (tests inject; the core's by default). */
   replaceRange?: (text: string, ctx: WikilinkContext) => TextRange;
-  /** The vault's `links.style` (Vault M7, CTO L2): a markdown pick writes
+  /** The vault's `links.style` (Vault M7, tech review L2): a markdown pick writes
    *  `[Title](path)` over the typed `[[`. Default wikilinks. */
   linkStyle?: VaultLinkStyle;
   /** The vault's `links.format`: which path a link names. Default shortest. */

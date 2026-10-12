@@ -1,4 +1,4 @@
-// Whose vault a caller works on (Vault M5, CTO J7, J8). One machine, one
+// Whose vault a caller works on (Vault M5, tech review J7, J8). One machine, one
 // owner's vault (the machine config's vault.dir, ~/OSCode/Vault by default),
 // and on a shared hub one private root per member, so a member's phone, a
 // member's agent, and a member's Crew notes land in that member's own folder

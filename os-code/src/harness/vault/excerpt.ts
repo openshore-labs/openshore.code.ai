@@ -1,4 +1,4 @@
-// A short passage around an offset (Vault M3, CTO H4), for Linked mentions and
+// A short passage around an offset (Vault M3, tech review H4), for Linked mentions and
 // search: the index stores link offsets, never excerpts, and the host reads
 // the linking note's body and cuts one here. Frontmatter never leaks into a
 // body excerpt; an offset inside the frontmatter excerpts its own line.

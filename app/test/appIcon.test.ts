@@ -1,4 +1,4 @@
-// The app icon picker and the Nightshore dark theme (founder, 2026-10-01).
+// The app icon picker and the Nightshore dark theme (2026-10-01).
 // The three tiles are one list (lib/appIcon.ts), and every place that has to
 // agree with it is held to it here: the iOS icon sets and the Xcode setting
 // that compiles them in, the native plugin's allow-list, the desktop's

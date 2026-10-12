@@ -1,6 +1,6 @@
 #!/bin/bash
 # Build the Mac desktop app on this Mac and ship it into a GitHub release, the
-# local twin of codemagic.yaml's mac-desktop job (founder, 2026-09-23: the Mac
+# local twin of codemagic.yaml's mac-desktop job (2026-09-23: the Mac
 # build is also made by hand, offline, as a dmg).
 #
 #   pnpm --filter oscode-app release:mac            # newest release

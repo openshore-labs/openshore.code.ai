@@ -1,7 +1,7 @@
-// Runs on, on screen (founder, 2026-10-12). The project room gains a third
+// Runs on, on screen (2026-10-12). The project room gains a third
 // pill once a machine is docked, and its sheet picks this computer (on the
 // desktop), any docked machine with its kind and size, or the device's own
-// choice. Computer offers the founder's three ways in: your computer, a
+// choice. Computer offers a maintainer's three ways in: your computer, a
 // server at home, a rented server. A rented server's setup says what each
 // size can do, held to the same fit rule the First Seat uses, and how to set
 // up several at once; a server at home is never told about renting. Mounted

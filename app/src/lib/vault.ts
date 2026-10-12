@@ -18,7 +18,7 @@ import {
 } from 'os-code/protocol';
 import type { StoredFileMeta } from './gitos/providers.js';
 
-// The pure path and link rules are the shared core's (Vault M3, CTO H4), so
+// The pure path and link rules are the shared core's (Vault M3, tech review H4), so
 // the app, the engine's vault tools and the desktop's main process can never
 // disagree about what a note name is or where a link lands. Every name this
 // module exported before stays exported.
@@ -158,7 +158,7 @@ export interface TreeEntry {
 }
 
 /** The text to save for a note loaded as `loaded` and edited into `edited`,
- *  with its line endings as they were (Vault M3, CTO H2). A textarea turns
+ *  with its line endings as they were (Vault M3, tech review H2). A textarea turns
  *  every CRLF into LF, so a note that was all CRLF would otherwise come back
  *  with every line changed, frontmatter included. Only an all-CRLF note has
  *  them put back; an LF or mixed note saves as edited. The store's save path
@@ -173,7 +173,7 @@ export function restoreEol(loaded: string, edited: string): string {
 export type TreeFileMeta = StoredFileMeta & { createdAt?: string };
 
 /** Whether the tree can sort by creation time here: every listed note
- *  carries one (Vault M7, CTO L2; an empty vault offers it only when the
+ *  carries one (Vault M7, tech review L2; an empty vault offers it only when the
  *  storage says so, which none does yet). */
 export function vaultTreeSortOffered(files: readonly TreeFileMeta[]): VaultTreeSort[] {
   const created = files.length > 0 && files.every((f) => Boolean(timeOf(f.createdAt)));

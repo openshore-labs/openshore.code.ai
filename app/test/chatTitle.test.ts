@@ -1,4 +1,4 @@
-// Smarter chat names (founder, 2026-10-01): the first message's subject, not
+// Smarter chat names (2026-10-01): the first message's subject, not
 // its first 48 characters. The setup walk's chat is "First-time setup".
 import { describe, expect, it } from 'vitest';
 import { SETUP_CHAT_TITLE, SETUP_HELP_TITLE, TITLE_MAX, chatTitle } from '../src/lib/chatTitle.js';

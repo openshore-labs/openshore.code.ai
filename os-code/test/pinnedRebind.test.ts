@@ -1,4 +1,4 @@
-// DNS rebinding (CTO security review 2026-10-01, F4): a page the model chose
+// DNS rebinding (tech review security review 2026-10-01, F4): a page the model chose
 // connects through the same lookup that checks it, so a name that answers a
 // public address to the check and this computer's own network to the
 // connection is refused before a byte reaches the local service.

@@ -1,4 +1,4 @@
-// Today's note, the pure core (Vault M6, CTO K7): the supported moment token
+// Today's note, the pure core (Vault M6, tech review K7): the supported moment token
 // subset, a refusal that names the first unsupported token, the daily note's
 // path through the one new-name rule, and template variables.
 import { describe, expect, it } from 'vitest';

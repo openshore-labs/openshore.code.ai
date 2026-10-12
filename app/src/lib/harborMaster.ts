@@ -1,5 +1,5 @@
 // DeepBlue: the desktop coder, and the most capable of the three curated
-// out-of-the-box models (founder, 2026-09-21: the scope simplified to Harbor
+// out-of-the-box models (2026-09-21: the scope simplified to Harbor
 // Lite, Harbor, and DeepBlue, each trained on the harness). Harbor Lite is the
 // built-in phone guide; Harbor is the mobile coder; DeepBlue is a real coding
 // agent that plans and edits your repositories on the desktop engine, pulled
@@ -10,8 +10,8 @@
 // The internal slot keeps the harborMaster / harbor-master identifiers (the
 // stable-slot pattern, like harborMini backing "Harbor Lite"); only the display
 // name and the copy carry "DeepBlue". Today every size points at stock Qwen
-// weights under the Apache License 2.0 (the catalog's own picks), and when OpenShore's tuned weights
-// ship (docs/house-model-proposal.md) only the refs, the size labels, and the
+// weights under the Apache License 2.0 (the catalog's own picks), and if OpenShore's own tuned weights
+// ever ship, only the refs, the size labels, and the
 // attribution change. The display name is one constant, so a rename touches copy
 // only.
 //
@@ -20,11 +20,11 @@
 // attribution says the weights are stock Qwen; "tuned for OpenShore" is written
 // only when an adapter actually ships.
 //
-// License (founder, 2026-09-30): every size is Apache 2.0, so DeepBlue is
+// License (2026-09-30): every size is Apache 2.0, so DeepBlue is
 // sellable. The floor was Qwen 2.5 Coder 3B, which is under the Qwen Research
 // License (non-commercial); it is now Qwen3-4B-Instruct-2507, the same weights
 // Harbor runs on the phone. The 3B's 75% on the reference box does not carry
-// over: the 4B is unmeasured until the founder runs osc eval --floor.
+// over: the 4B is unmeasured until a maintainer runs osc eval --floor.
 import { fitVerdict, type FitVerdict, type HardwareRead } from './firstSeat.js';
 
 export const HARBOR_MASTER_MODEL_ID = 'harbor-master';

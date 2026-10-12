@@ -1,4 +1,4 @@
-// The starter layout (Vault M7, 7.3; CTO L12, CX Y13): a few notes and a
+// The starter layout (Vault M7, 7.3; tech review L12, UX review Y13): a few notes and a
 // folder for a vault that is truly empty, offered, previewed, and added only
 // when the person taps "Add these". Never automatic, and an existing vault is
 // never touched.
@@ -13,7 +13,7 @@
 // `ifAbsent`, and a partial result says so. Where the storage can save
 // settings (`settingsWrite`) the vault's own `.oscode/vault.json` is written
 // FIRST, also `ifAbsent`, so the conventions note says the Private and
-// Journal line only when that file landed (CTO reconciliation 3). Nothing
+// Journal line only when that file landed (tech review reconciliation 3). Nothing
 // pins itself.
 import type { ConfigRead } from 'os-code/protocol';
 import { readVaultConfig } from './gitos/config.js';
@@ -35,7 +35,7 @@ export const VAULT_STARTER_PATHS = Object.freeze({
   conventions: 'Vault conventions.md',
 } as const);
 
-/** The settings the starter writes (CTO L12): new notes in Inbox, today's
+/** The settings the starter writes (tech review L12): new notes in Inbox, today's
  *  note from Templates/Daily, the templates folder, and Private and Journal
  *  kept off cloud models by the vault's own union. */
 export function vaultStarterSettingsText(): string {
@@ -140,7 +140,7 @@ function complete(scan: Exclude<StarterScan, { foreign: true }>): boolean {
   return STARTER_NOTES.every((n) => scan.notes.has(n)) && scan.inbox;
 }
 
-/** Whether "Start with a simple layout" is offered (CX Y13). Otherwise the
+/** Whether "Start with a simple layout" is offered (UX review Y13). Otherwise the
  *  ramp keeps "Add a welcome note". */
 export async function vaultStarterOffered(s: VaultStarterState): Promise<boolean> {
   if (!s.personal || !s.caps.folders) return false;
@@ -177,11 +177,11 @@ export type VaultStarterResult =
       settingsLanded: boolean;
       /** Note paths written, for the list and the index. */
       notes: string[];
-      /** The toast (CX Y13): the whole layout, or how much of it. */
+      /** The toast (UX review Y13): the whole layout, or how much of it. */
       line: string;
     };
 
-/** Add the layout (CX Y13's "Add these"). Emptiness re-checked first; every
+/** Add the layout (UX review Y13's "Add these"). Emptiness re-checked first; every
  *  write `ifAbsent`, so a note that appeared since is left as it is. The
  *  caller plays `hapticCommit()` on a full result. */
 export async function applyVaultStarter(s: VaultStarterState): Promise<VaultStarterResult> {

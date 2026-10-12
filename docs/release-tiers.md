@@ -1,6 +1,6 @@
 # Release tiers
 
-Founder, 2026-09-27: "Let's pull crew and terminal into standard v1. V2 will be
+Maintainer, 2026-09-27: "Let's pull crew and terminal into standard v1. V2 will be
 currents, stack health, and launch. V3 marketplace. And v4 is the enterprise
 track with admin configuration and project permissions, etc. the company
 collaboration features. Let's just build personal for now and get that working
@@ -17,7 +17,7 @@ fully."
 
 Each tier carries every tier before it.
 
-Founder, 2026-10-11: the Marketplace comes back into the Personal build so the
+Maintainer, 2026-10-11: the Marketplace comes back into the Personal build so the
 open-source community can help build it. It is a plain v1 room now (no
 `FEATURE_TIER` entry, no `SHIPS_` gate). Its reviews stay shut
 (`REVIEWS_OPEN` in `app/src/lib/reviews.ts`): production's 0027 revoked review
@@ -40,5 +40,5 @@ code stays tested while only v1 ships.
 
 - A new feature names its tier in `FEATURE_TIER` before it has a door.
 - A v1 room never depends on a later-tier feature to work.
-- Unlocking a tier for release is a founder call, recorded in
+- Unlocking a tier for release is a maintainer call, recorded in
   `os-code/DECISIONS.md`.

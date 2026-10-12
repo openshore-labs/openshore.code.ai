@@ -160,7 +160,7 @@ export class RemoteDriver implements SessionDriver {
   }
 
   /** Images do not ride this route. A message marked local-only keeps its
-   *  mark on the wire (CX and CMO, 2026-10-08, J), so the daemon holds the
+   *  mark on the wire (UX and copy review, 2026-10-08, J), so the daemon holds the
    *  task to the engine's D5 rules, as LocalDriver does in process. */
   send(
     text: string,

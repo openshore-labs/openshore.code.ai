@@ -1,4 +1,4 @@
-// The vault tools' descriptions (Vault M5, CTO J10), pure, so the engine's
+// The vault tools' descriptions (Vault M5, tech review J10), pure, so the engine's
 // tools (core/tools/vaultFind.ts) and the app's seats (app/src/lib/vaultTool.ts)
 // teach the same order: search, then read one section, then follow links.
 //

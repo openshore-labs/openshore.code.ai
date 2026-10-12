@@ -120,7 +120,7 @@ describe('OnDeviceDriver web search loop (Harbor)', () => {
 });
 
 // Once a chat on a model that stays on this network holds a private note's
-// text (CX and CMO, 2026-10-08, H), every search that model writes asks
+// text (UX and copy review, 2026-10-08, H), every search that model writes asks
 // first, every time, on a card with the exact words and why; Perplexity, a
 // model off this network, is refused before any ask; a clean chat and Harbor
 // Lite's search of the person's own question keep today's ask.

@@ -1,4 +1,4 @@
-// The security package's store logic (CTO 9: a sibling module, store.ts only
+// The security package's store logic (tech review 9: a sibling module, store.ts only
 // wires it in): the truncation card's item and its "Give it more room" tap,
 // and the ticked files a commit approval carries back.
 import type { DriverEvent } from 'os-code/protocol';
@@ -8,7 +8,7 @@ import type { ThreadItem } from './types.js';
 type WindowCutEvent = Extract<DriverEvent, { type: 'window-cut' }>;
 type WindowCutItem = Extract<ThreadItem, { kind: 'window-cut' }>;
 
-/** The card a `window-cut` event becomes (CX 6). The engine sends it once per
+/** The card a `window-cut` event becomes (UX review 6). The engine sends it once per
  *  chat per model, so every event is a card. */
 export function windowCutItem(event: WindowCutEvent): Omit<WindowCutItem, 'id'> {
   return {
@@ -25,7 +25,7 @@ export type WindowCutPatch = Pick<WindowCutItem, 'state' | 'error'>;
 
 /**
  * The tap on "Give it more room": asks the session's computer to serve this
- * provider's models the larger window (`numCtx: 'auto'`, CTO 5), reporting
+ * provider's models the larger window (`numCtx: 'auto'`, tech review 5), reporting
  * each step through `patch` so the card answers at once and settles on the
  * result. A driver that cannot (a chat that does not run on a computer) says
  * so in plain words.

@@ -91,7 +91,7 @@ describe('the arrival rides the tokens (The Seat Fills)', () => {
 });
 
 describe('the setup paths are honest about their states', () => {
-  // The Harbor Lite hero card left the setup page (founder, 2026-09-23: a new
+  // The Harbor Lite hero card left the setup page (2026-09-23: a new
   // person opens into Harbor Lite's chat instead), and the Settings rows that
   // kept its states rendered nowhere after D9 (2026-10-07), so they are gone.
   // Harbor's own card keeps its download, progress and failure states.

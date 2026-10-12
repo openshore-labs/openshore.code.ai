@@ -1,4 +1,4 @@
-// Chain of Thought (founder, 2026-09-25): off by default; on, every model shows
+// Chain of Thought (2026-09-25): off by default; on, every model shows
 // its reasoning above the answer. These guard the pure pieces (the <think> tag
 // splitter, the native-reasoner test, the Claude thinking parameter, the
 // precedence), each provider's request shape, and the loop's routing both ways.

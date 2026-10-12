@@ -1,4 +1,5 @@
 import { defineConfig } from 'vite';
+import { configDefaults } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 
 // The suite runs as a build with no VITE_ values set, the way GitHub's CI runs
@@ -12,6 +13,27 @@ const blankViteEnv = Object.fromEntries(
     .map((key) => [key, '']),
 );
 
+// The house-style checks (CONTRIBUTING.md): a maintainer fixes these when a
+// change is pulled in, so a pull request's required run leaves them out.
+// OSC_TEST_SET=behavior runs everything else, =style runs only these, and
+// unset runs the whole suite (main, and every maintainer's local run).
+const STYLE = [
+  'test/em-dash-policy.test.ts',
+  'test/uiGuards*.test.ts',
+  'test/polish-standards.test.ts',
+  'test/*Polish*.test.ts',
+  'test/frontier-polish.test.ts',
+  'test/motion*.test.ts',
+  'test/spacing-elevation.test.ts',
+  'test/contrast.test.ts',
+  'test/reviewStaffContrast.test.ts',
+  'test/copy-glossary.test.ts',
+  'test/copyBlocks.test.ts',
+  'test/deviceNoun.test.ts',
+  'test/vaultCopy.test.ts',
+];
+const testSet = process.env.OSC_TEST_SET;
+
 // One web build serves every shell: Electron loads dist/index.html, Capacitor
 // copies it into the iOS app. Relative base so file:// and capacitor:// both
 // resolve assets.
@@ -23,7 +45,9 @@ export default defineConfig({
     target: 'es2022',
   },
   test: {
-    include: ['test/**/*.test.ts', 'test/**/*.test.tsx'],
+    include: testSet === 'style' ? STYLE : ['test/**/*.test.ts', 'test/**/*.test.tsx'],
+    exclude:
+      testSet === 'behavior' ? [...configDefaults.exclude, ...STYLE] : configDefaults.exclude,
     environment: 'node',
     // The suite exercises every tier's code (a Personal build only shuts the
     // later tiers' doors; their code stays). test/focus.test.ts pins what a

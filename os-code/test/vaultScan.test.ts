@@ -1,4 +1,4 @@
-// The Vault's note scanner (Vault M3, CTO H1): code is skipped (fences,
+// The Vault's note scanner (Vault M3, tech review H1): code is skipped (fences,
 // spans, math, comments), the wikilink and markdown-link grammar, tags,
 // headings, block ids, frontmatter bounds and the per-note caps. Documented
 // divergences from Obsidian have their own rows.

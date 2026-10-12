@@ -1,10 +1,10 @@
-// Slack Water (Creative Studio, 2026-10-01; docs/design/slack-water.md): the
+// Slack Water (design review, 2026-10-01; docs/design/slack-water.md): the
 // one-time transition from the setup walk's chat to the main chat page, when
 // the person chooses to just chat at the break. Slack water is the still
 // moment at the turn of the tide, when the current stops pulling either way:
 // setup lets go, and the room they will live in arrives underneath.
 //
-// The third pass (founder, 2026-10-02): the water is clear. Nothing floods the
+// The third pass (2026-10-02): the water is clear. Nothing floods the
 // screen. A train of ripples leaves the tap and crosses the app itself; each
 // of the room's blocks heaves as a crest passes under it, the old chat thins
 // away beneath the water, and the greeting surfaces as it settles.
@@ -15,7 +15,7 @@
 
 /** The beat between the guide's line settling and the water starting: enough
  *  to see the line land, short enough that the tap still feels answered
- *  (founder, 2026-10-02: the old three-second read pause felt like a stall). */
+ *  (2026-10-02: the old three-second read pause felt like a stall). */
 export const WATER_AFTER_LINE_MS = 300;
 
 /** The touch: the surface dips where the finger was before a crest leaves. */

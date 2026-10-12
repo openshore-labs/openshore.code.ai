@@ -7,7 +7,7 @@
 // the risk of a malformed history. The system prompt is injected fresh on each
 // run, so it is not seeded here.
 //
-// Privacy survives the restart (Vault M4, CTO I5): the tool results are not
+// Privacy survives the restart (Vault M4, tech review I5): the tool results are not
 // seeded, but a reply written after a tool read a local-only vault note (its
 // journaled tool-end carries `localOnly`) may quote that note, so the reply
 // comes back marked `localOnly` and a later turn on a seat that leaves this

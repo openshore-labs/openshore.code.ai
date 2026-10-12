@@ -1,6 +1,6 @@
 // The direct cloud chat with an OpenAI-compatible provider (a cloud model
 // picked by itself, not through the Stack; build 2026-09-29, package cloud).
-// It rides the one provider client and its transport (CTO ruling 7): the
+// It rides the one provider client and its transport (tech review ruling 7): the
 // Electron main-process channel, the iPhone's WebView stream with one fall
 // back to the native shim when a provider refuses the cross-origin call, and
 // the web's streaming fetch. Stop closes the turn at once on every branch,

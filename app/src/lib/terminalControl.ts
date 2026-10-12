@@ -1,7 +1,7 @@
 // Terminal Control: the master switch that decides whether the active model may
 // run shell commands on a machine on its own, or whether the person keeps per
 // command control. Off by default, and scoped per target so an On state at your
-// own desk never follows a session onto a shared hub (the incident the CTO
+// own desk never follows a session onto a shared hub (the incident the tech review
 // flagged: state that travels across hosts).
 //
 // These are pure helpers on purpose. The store's approval handler, the Terminal
@@ -136,7 +136,7 @@ export function decideApproval(
     const targetId = terminalTargetId({ desktopLocal: ctx.desktopLocal, daemon: ctx.daemon });
     if (shouldAutoRunShell(req, { targetId, control: ctx.control, canControl: ctx.canControl })) {
       // While the chat holds the project's secrets, OpenShore asks before
-      // every command (D3, CX 7): On lets the model in, but the card still
+      // every command (D3, UX review 7): On lets the model in, but the card still
       // shows, so the person sees each command that could read them.
       return req.lockdown ? { action: 'sheet' } : { action: 'auto-approve' };
     }
@@ -147,7 +147,7 @@ export function decideApproval(
     };
   }
   // A card that asks every time (vaultWrite, and a project note change or a
-  // web search or page after the chat read a private note, CX and CMO
+  // web search or page after the chat read a private note, UX and copy review
   // 2026-10-08, A and H) is never answered by a mode. It reaches a client
   // brain when a Stack plan's step runs on the computer's engine and the
   // Stack forwards the engine's card, a private plan's marked step above all

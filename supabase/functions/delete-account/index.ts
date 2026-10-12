@@ -1,9 +1,9 @@
-// Delete the signed-in person's account (Apple 5.1.1(v); next build E1; CTO 11
+// Delete the signed-in person's account (Apple 5.1.1(v); next build E1; tech review 11
 // package C, one design). The app's Settings, Your account, Delete account
 // posts here with the caller's access token and an empty body; nothing in the
 // body is read.
 //
-// Auth (mirrors link-apple-purchase): a CALLER-SCOPED anon client resolves
+// Auth: a CALLER-SCOPED anon client resolves
 // auth.getUser() as the caller, and every read and write after that goes
 // through a SEPARATE service-role client, for that one user id only.
 // verify_jwt = true in config.toml gates the endpoint too.
@@ -12,7 +12,8 @@
 // plans the rest. The database writes are 0022 section 6's service-role
 // functions, each safe to run twice, so a failure partway is finished by
 // trying again.
-//   1. Read: the Personal entitlement and Apple link, and the orgs this
+//   1. Read: any Personal entitlement and Apple link left from before
+//      OpenShore went free (2026-10-11), and the orgs this
 //      account owns (with their member rows and billing).
 //   2. Refuse with owns_org (409) when an owned org has anyone else active:
 //      the team is not this person's alone to erase. Nothing has changed.
@@ -47,7 +48,7 @@
 //
 // Not here, and live in the 2026-09-24 function until this one is deployed:
 // the ten-minute re-sign-in check, deleting a team that still has members,
-// and refunds (founder decisions F2 and F3; they return with the privacy
+// and refunds (decisions F2 and F3; they return with the privacy
 // branch's own PR).
 //
 // Env (Supabase function secrets): SUPABASE_URL, SUPABASE_ANON_KEY

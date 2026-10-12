@@ -2,7 +2,7 @@
 // from Mail with no request on record, or a link something else opened. It
 // names the account the link is for and waits for a deliberate yes, so a
 // crafted oscode:// link can never sign this device into an account the
-// person never requested (APP-6, CTO ruling 2026-09-05). Presence-aware
+// person never requested (APP-6, tech review ruling 2026-09-05). Presence-aware
 // through Sheet, so it leaves the way it came.
 import { Sheet } from './Sheet.js';
 import { useApp } from '../state/store.js';

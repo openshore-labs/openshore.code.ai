@@ -1,10 +1,10 @@
 # Agentic Currents and Wayfinding
 
 How OpenShore takes on new agent tech without reshaping the familiar app. The
-founder's frame (2026-09-09): the app evolves by connecting to new features and
+maintainer's frame (2026-09-09): the app evolves by connecting to new features and
 layering them in.
 
-**Currents are chosen per project (founder, 2026-09-23).** Both current groups
+**Currents are chosen per project (2026-09-23).** Both current groups
 (Agentic and Harness) are a per-project choice, not an app setting: a current is
 a workflow requirement, so different projects run simultaneously with different
 currents. The selection lives on the project (`Project.agenticCurrent`,
@@ -28,7 +28,7 @@ How the agent finds its way. Three switches, on unless turned off:
 - **Browser.** A driven browser on the paired computer. Every action asks
   first. Docked only.
 
-The name is the Creative Studio's: "Navigation" already means the side panel
+The name is the design review's: "Navigation" already means the side panel
 in this codebase, and memory, skills, and a browser are how the agent finds
 its way.
 
@@ -51,7 +51,7 @@ on purpose: there is nothing to save against a free local model, and a cloud
 call would only add latency and break the offline floor. The copy never claims a
 dollar saving until `osc eval` shows the number on the reference box (harness
 tenet 2). Naming: the harness ordinarily ships with no room and no name (tenet
-1); this one visible group is a deliberate, founder-approved supersede
+1); this one visible group is a deliberate, maintainer-approved supersede
 (2026-09-23). The internal codename Keel stays out of copy; Jev is a real
 connected product name, the way Hermes is named in the agentic group.
 
@@ -106,7 +106,7 @@ it; flip it off and every trace is gone. The five in the first beta:
 | OpenAGI      | No network API yet; an A2A card or `/v1` if yours has    | Arriving row; connects through whichever door answers                        |
 | A2A          | Any agent that publishes an agent card                   | Crew member named from the card, the `askAgent` tool                         |
 
-"Currents" is the CMO and Creative Studio's name (water in motion through the
+"Currents" is the copy review and design review's name (water in motion through the
 familiar app); "Layers" was retired as a mechanism word. "Frontier" stays
 reserved for cloud models on a paid key.
 
@@ -132,10 +132,10 @@ reserved for cloud models on a paid key.
    any A2A agent run on their own computer under their own rules; the tools say
    so to the model, and the rows say so to the person.
 
-### How it is felt (Creative Studio; the Siri replica, founder 2026-09-14)
+### How it is felt (design review; the Siri replica, 2026-09-14)
 
 A replica of the iOS Siri glow in the brand's own water, read frame by frame
-from the founder's screen recording. Flip a current on and a soft bloom rises
+from a maintainer's screen recording. Flip a current on and a soft bloom rises
 from where the switch sits, then a thick multi-hue ring lights the whole
 border with a glow bleeding inward, and settles into a thin ring whose hues
 keep drifting around the perimeter for as long as the current is on. Flip it

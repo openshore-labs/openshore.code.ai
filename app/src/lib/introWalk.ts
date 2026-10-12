@@ -1,4 +1,4 @@
-// The first open's "Tide Letter" (Creative Studio, founder direction
+// The first open's "Tide Letter" (design review, maintainer direction
 // 2026-09-24): Harbor Lite writes to a new person instead of the walk landing
 // finished. The greeting arrives in unhurried word groups, the screen then
 // gives the reader a few seconds, the setup message picks up at a brisker
@@ -11,7 +11,7 @@
 // never on a guessed timeout. A tap or a keystroke skips to the end
 // (lib/streamSmoothing.ts skipReveals); reduced motion shows it all at once.
 
-/** How a scripted line rolls in (Creative Studio, "Swell Line"): a low swell
+/** How a scripted line rolls in (design review, "Swell Line"): a low swell
  *  crosses each line, every character rising from a hair below its baseline,
  *  cresting, and settling as the wave passes. Characters start a fixed step
  *  apart and each takes far longer than a step, so many are mid-swell at once
@@ -47,7 +47,7 @@ export const INTRO_START_MS = 600;
 /** The reader's pause after a line that asks the reader something. */
 export const READ_PAUSE_MS = 3000;
 /** Between the greeting and the setup walk: a brief breath, the same as the
- *  one before a step heading, so the letter reads as one (founder,
+ *  one before a step heading, so the letter reads as one (maintainer,
  *  2026-10-02: the old three-second wait felt like a stall). */
 export const GREETING_TO_WALK_PAUSE_MS = 600;
 /** The breath before a step heading, used instead of the paragraph pause. */

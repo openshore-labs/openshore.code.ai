@@ -1,4 +1,4 @@
-// The Vault's note-path rules (Vault M3, CTO H4): one new-name rule the engine,
+// The Vault's note-path rules (Vault M3, tech review H4): one new-name rule the engine,
 // the desktop's main process and the app share, the note filter every
 // provider's list runs through, and the small path helpers (title, folder,
 // conflict copies, line endings). Pure and import-free, so it rides the
@@ -237,7 +237,7 @@ export function isNotePath(path: string, options: IsNotePathOptions = {}): boole
   return !options.windows || windowsCanHold(path);
 }
 
-/** The agent's hard deny under any dot folder (Vault M7, CTO L8): false when
+/** The agent's hard deny under any dot folder (Vault M7, tech review L8): false when
  *  any folded segment, trimmed, starts with a dot (`.oscode/vault.json`,
  *  `.obsidian/app.json`, `.trash/x.md`), and for an empty or rooted path. A
  *  backslash splits like a slash, so no spelling slips past. Hosts check the

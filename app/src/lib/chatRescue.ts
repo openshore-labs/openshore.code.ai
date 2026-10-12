@@ -1,4 +1,4 @@
-// No dead ends in chat (founder, 2026-09-25). A turn that stops on an error the
+// No dead ends in chat (2026-09-25). A turn that stops on an error the
 // brain cannot get past by itself (a key that needs a workspace id, a rejected
 // key, no account usage, an unreachable host) must still leave the person a way
 // to keep talking. The stopped card always carries a next move: continue this

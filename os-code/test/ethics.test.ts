@@ -291,7 +291,7 @@ describe('enforcement ladder', () => {
   it('does not accrue a restriction from likeness blocks (non-countable)', () => {
     // The Tier 2 consent gate rests on a heuristic that a name is a real
     // person; a false positive there is an ordinary request wrongly stopped,
-    // not abuse. Per the CTO's ship condition (2026-09-05), likeness blocks
+    // not abuse. Per the tech review's ship condition (2026-09-05), likeness blocks
     // never push an account toward a penalty, however many there are.
     const history = Array.from({ length: TIER2_WARN_AT + 10 }, () => record(2, 'likeness'));
     const outcome = evaluateEnforcement(history);

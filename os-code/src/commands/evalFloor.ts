@@ -1,4 +1,4 @@
-// osc eval --floor: every number the founder's box owes the v1 plan, in one
+// osc eval --floor: every number a maintainer's box owes the v1 plan, in one
 // command (tenet 2: nothing is claimed without eval, and the floor is measured
 // on the reference box first). For each floor model it runs:
 //
@@ -10,7 +10,7 @@
 //   - the head-to-head baseline: the everyday suite through Claude Code on the
 //     same model, when Claude Code is installed here.
 //
-// The harness lifts (CTO 6) ride on top: `--retrieval on|off` and
+// The harness lifts (tech review 6) ride on top: `--retrieval on|off` and
 // `--union-decoding on|off` set the lift on every engine run, and the table
 // and its file name carry them, so a floor run with a lift and one without
 // sit side by side. The baseline rows stay with the plain run, since a lift
@@ -62,7 +62,7 @@ export interface FloorRun {
   unionDecoding?: EvalUnionDecoding;
 }
 
-/** The harness lift switches a floor run sets on every engine run (CTO 6). */
+/** The harness lift switches a floor run sets on every engine run (tech review 6). */
 export interface FloorLifts {
   retrieval?: EvalRetrieval;
   unionDecoding?: EvalUnionDecoding;

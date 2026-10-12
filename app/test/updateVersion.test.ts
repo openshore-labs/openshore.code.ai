@@ -97,7 +97,7 @@ describe('the update bar', () => {
     expect(busy.busy).toBe(true);
     expect(busy.text).toContain('42%');
     expect(updateBarCopy({ version: '0.1.5', phase: 'failed' }).action).toBe('Try again');
-    // CX cleanup 1: a refused signature never reads as the network's failure.
+    // UX review cleanup 1: a refused signature never reads as the network's failure.
     expect(updateBarCopy({ version: '0.1.5', phase: 'failed' }).text).toBe(
       'The update to v0.1.5 did not finish.',
     );
@@ -118,7 +118,7 @@ describe('the update bar', () => {
 
 describe('the release workflow', () => {
   const wf = readFileSync(join(process.cwd(), '../.github/workflows/release.yml'), 'utf8');
-  // By hand since 2026-10-01 (founder: a private repo's Actions minutes ran
+  // By hand since 2026-10-01 (maintainer: a private repo's Actions minutes ran
   // out with a release on every push): Run workflow on main publishes, or a
   // v* tag does; a push to main starts nothing.
   it('publishes when run by hand on main or on a tag, never on a plain push', () => {

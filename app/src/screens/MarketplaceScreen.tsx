@@ -763,7 +763,7 @@ export function MarketplaceScreen() {
 
   // Fetch community summaries for whatever is on screen, in ONE batched call, so
   // community-guided browsing costs a single request per view rather than one
-  // per row (the CTO's per-browse-egress guard). Degrades to nothing off a
+  // per row (the tech review's per-browse-egress guard). Degrades to nothing off a
   // configured build or when the read fails.
   useEffect(() => {
     // When the catalog carries a complete review snapshot, browse is driven from
@@ -2639,7 +2639,7 @@ export function MarketplaceScreen() {
 
   // A product page is a page inside the room, so the top bar shows its name
   // and a chevron back to the Marketplace (the same hop as "All models"),
-  // not the menu. Founder, 2026-09-03, from the Kimi page.
+  // not the menu. Maintainer, 2026-09-03, from the Kimi page.
   const returnFamily = familyReturn ? families.find((f) => f.id === familyReturn) : undefined;
   const page = focusedHosted
     ? { title: focusedHosted.name, back: { to: 'Marketplace', onBack: closeHosted } }

@@ -1,5 +1,5 @@
-// The Vault settings sheet, bound to the store (Vault M7 wave 2; CTO L7, L11,
-// L13, L15, L16; CX Y1 to Y10, Y14). One host for every way in (note
+// The Vault settings sheet, bound to the store (Vault M7 wave 2; tech review L7, L11,
+// L13, L15, L16; UX review Y1 to Y10, Y14). One host for every way in (note
 // Options, the storage sheet's end, Settings' Wayfinding row), so the save
 // flow, the conflict and the folder picks are one piece of code:
 // - Each commit writes one field through the store (`vaultSaveSetting`, F's
@@ -11,7 +11,7 @@
 //   settings sheet comes back (R5); a pick for "New notes go in" also sets
 //   where new notes go.
 // - A team vault reads its settings row (0025): an admin changes them and who
-//   may delete, a member reads them with "Your admins set these." (CX Y14),
+//   may delete, a member reads them with "Your admins set these." (UX review Y14),
 //   and a lapsed plan reads only, with the lead's line (Y15). A field the
 //   storage does not carry out (`unappliedSettings`) has no row: the team
 //   vault never offers Delete "For good", since its deletes stay in Trash.
@@ -188,7 +188,7 @@ export function VaultSettingsHost({ open, setOpen, onOpenStorage }: VaultSetting
     void vaultLoadSettings({ force: true });
   }, [open, team, vaultLoadSettings]);
 
-  // The desktop shows the machine's own lists, read-only (CX Y3).
+  // The desktop shows the machine's own lists, read-only (UX review Y3).
   useEffect(() => {
     if (!open || team || !isDesktop()) return;
     const b = bridge();
@@ -355,7 +355,7 @@ export function VaultSettingsHost({ open, setOpen, onOpenStorage }: VaultSetting
         settings={s}
         platform={isPhone() ? 'phone' : 'desktop'}
         team={team}
-        // The team's sheet: its own title (CX Y14), read-only for a member,
+        // The team's sheet: its own title (UX review Y14), read-only for a member,
         // and who may delete.
         {...(!team
           ? {}

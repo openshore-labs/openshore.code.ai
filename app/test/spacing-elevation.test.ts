@@ -1,5 +1,5 @@
-// Spacing and depth are tokens on the rhythm the eye reads (D22, founder
-// 2026-10-07, built as the Creative Studio recommended, B): the page gutter, a
+// Spacing and depth are tokens on the rhythm the eye reads (D22, maintainer
+// 2026-10-07, built as the design review recommended, B): the page gutter, a
 // card's inset, a ledger row, the step between groups, and three depths (a
 // resting card, a raised dock or toast, a sheet). Only the structural
 // selectors are held here; everything else keeps its own value, on purpose.

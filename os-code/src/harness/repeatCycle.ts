@@ -1,4 +1,4 @@
-// The premium harness, CTO 6: alternating-repeat detection, on for every seat.
+// The premium harness, tech review 6: alternating-repeat detection, on for every seat.
 //
 // The loop already answers an exact repeat from the record when nothing that
 // could change the workspace ran since (loop.ts `noteRepeat`). A period-2

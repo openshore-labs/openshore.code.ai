@@ -1,8 +1,8 @@
-// The vault context pack (Vault M4, CTO I6, plan 4.3): every class within its
+// The vault context pack (Vault M4, tech review I6, plan 4.3): every class within its
 // budget, the same inputs give the same bytes, an excluded note never appears,
 // a local-only note never reaches a pack for a seat that leaves this network,
 // the cold fallback, %%comments%% stripped, and the framing on every pack.
-// Vault M5 (CTO J14): the project's own pins ride in both modes, in the pin
+// Vault M5 (tech review J14): the project's own pins ride in both modes, in the pin
 // layer, at most 3 and half the budget, with privacy applied, cold or warm.
 import { describe, expect, it } from 'vitest';
 import { estimateTokens } from '../src/context/compaction.js';
@@ -194,7 +194,7 @@ describe('buildContextPack', () => {
     expect(plain.used.some((u) => u.path === 'Work/Runbook.md')).toBe(true);
     expect(plain.localOnly).toBeUndefined();
     // Each private source says so, so a host can tell a project pin from any
-    // other cause (CX and CMO, 2026-10-08, A, G, H).
+    // other cause (UX and copy review, 2026-10-08, A, G, H).
     expect(cold.used.find((u) => u.path === 'Work/Marked.md')).toMatchObject({
       layer: 'pin',
       project: true,
@@ -293,7 +293,7 @@ describe('buildContextPack', () => {
   });
 });
 
-describe('project pins (CTO J14)', () => {
+describe('project pins (tech review J14)', () => {
   const cloud = { modelClass: 'large' as const, leavesNetwork: true };
 
   it('ride in current-state mode, first, in the pin layer, marked as the project', () => {

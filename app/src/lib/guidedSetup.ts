@@ -1,5 +1,5 @@
 // Guided setup: Harbor Lite walks a new person through setting OpenShore up,
-// in its first chat, one step at a time (founder, 2026-09-23). Each step is a
+// in its first chat, one step at a time (2026-09-23). Each step is a
 // short scripted message from the guide plus the buttons to do it: the button
 // opens the page, and once the connection lands the app brings the person back
 // to the chat and the guide moves on. They can skip any step, and they can ask
@@ -49,21 +49,21 @@ export interface GuidedSetupProgress {
   paused?: boolean;
   /** Harbor's "ready, here is how to switch" line has been said. */
   harborAnnounced?: boolean;
-  /** The one choice the repository step ends on (CX, 2026-09-24, after
+  /** The one choice the repository step ends on (UX review, 2026-09-24, after
    *  Zed's "trust projects" row): how edits are handled. 'asking' while the
    *  two buttons wait for a tap; then the mode picked, or 'later'. */
   editChoice?: 'asking' | 'later' | PermissionMode;
-  /** The fork after Harbor (founder, 2026-09-25): once Harbor is offered, the
+  /** The fork after Harbor (2026-09-25): once Harbor is offered, the
    *  guide asks whether to start chatting or keep setting up, so setup is
    *  never a gate. 'asking' while the two buttons wait for a tap; 'chat' pauses
    *  the walk (it picks up on "Keep setting up"), 'setup' carries on. */
   nextChoice?: 'asking' | NextChoice;
-  /** The break after the walk's opening (founder, 2026-10-01): two buttons,
+  /** The break after the walk's opening (2026-10-01): two buttons,
    *  chat now or set up now, before step one is introduced. 'asking' while
    *  they wait for a tap; 'chat' says where setup waits and carries the person
    *  to the main chat page; 'setup' introduces the first step. */
   startChoice?: 'asking' | NextChoice;
-  /** "Help me get set up" in any chat (founder, 2026-10-01): the walk moves to
+  /** "Help me get set up" in any chat (2026-10-01): the walk moves to
    *  that chat as a list of what is not set up yet. 'asking' while the list's
    *  buttons wait under `menuItemId`; 'step' while a step picked from it is
    *  current. A step that completes or is skipped brings the list back. */
@@ -137,7 +137,7 @@ export const STEP_COPY: Record<SetupStepId, SetupStepCopy> = {
   },
 };
 
-/** The choice the repository step ends on (CX ruling, 2026-09-24). Zed asks
+/** The choice the repository step ends on (UX review ruling, 2026-09-24). Zed asks
  *  up front whether to trust every project; OpenShore asks one narrower
  *  question at the moment it starts to matter, once there is code to edit.
  *  Commands ask either way. Neither button is preselected; Plan and Bypass
@@ -181,12 +181,12 @@ export function editChoiceLead(mode: PermissionMode | undefined): string {
 }
 
 /** The way back into the walk once it is paused: the fork's own "carry on"
- *  label, so the same choice goes by one name (D4, founder 2026-10-07, built
+ *  label, so the same choice goes by one name (D4, 2026-10-07, built
  *  as recommended, C). It sits under the guide's first message. */
 export const SETUP_RESUME_LABEL = 'Keep setting up';
 
 /** The fork's two buttons, in the order they show: chatting first, since
- *  nothing in setup is required (founder, 2026-09-25). */
+ *  nothing in setup is required (2026-09-25). */
 export const NEXT_CHOICES: readonly { choice: NextChoice; label: string }[] = [
   { choice: 'chat', label: 'Start chatting' },
   { choice: 'setup', label: SETUP_RESUME_LABEL },
@@ -318,7 +318,7 @@ export function stepNumber(id: SetupStepId): { n: number; of: number } {
 }
 
 /** The first message of the walk, right under the greeting. */
-/** The line that opens the walk, before the first step (Creative Studio, "Tide
+/** The line that opens the walk, before the first step (design review, "Tide
  *  Letter", 2026-09-24). */
 const COUNT_WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six'];
 export const SETUP_INTRO = `Let's get you set up. There are ${COUNT_WORDS[SETUP_ORDER.length] ?? SETUP_ORDER.length} short steps. For each one I'll say what it is, why it helps, and how it works. Then you can connect it, skip it, or ask me first. Nothing here is required, and you can come back to any of it. If you'd rather just chat, say so.`;
@@ -330,10 +330,10 @@ export function openingMessage(first: SetupStepId | undefined, facts: SetupFacts
   return SETUP_INTRO;
 }
 
-/** The break's two buttons, in the order they show (Creative Studio): Just
+/** The break's two buttons, in the order they show (design review): Just
  *  chat first and full size, so skipping setup is never small or hidden;
  *  Set up OpenShore filled, since it answers the question the intro asked.
- *  A verb, never "setup" as a noun (D4, founder 2026-10-07, built as
+ *  A verb, never "setup" as a noun (D4, 2026-10-07, built as
  *  recommended, C). */
 export const START_CHOICES: readonly { choice: NextChoice; label: string }[] = [
   { choice: 'chat', label: 'Just chat' },
@@ -341,7 +341,7 @@ export const START_CHOICES: readonly { choice: NextChoice; label: string }[] = [
 ];
 
 /** Said when the person picks chatting at the break, just before the walk's
- *  chat gives way to the main chat page (founder's words, 2026-10-01). It
+ *  chat gives way to the main chat page (maintainer's words, 2026-10-01). It
  *  names the phrase that brings the list back from any chat. */
 export const SETUP_LATER_LINE =
   'Sounds good. Whenever you want to get set up, I can guide you through it. Just say "help me get set up" in any chat.';
@@ -396,7 +396,7 @@ export const ASK_ANYTHING = [
   'Can I use Claude Code or Codex here?',
 ];
 
-/** The first chat's first goal, above setup (founder, 2026-09-23). */
+/** The first chat's first goal, above setup (2026-09-23). */
 export const FIRST_CHAT_GOAL =
   'FIRST CHAT: your first goal is a pleasant, genuinely useful conversation that shows the person you are a capable chat companion. Setting up is offered, never pushed.';
 
@@ -438,7 +438,7 @@ export function setupIntent(text: string): SetupIntent | undefined {
   return undefined;
 }
 
-/** "Help me get set up" (founder, 2026-10-01): asked in any chat, read before
+/** "Help me get set up" (2026-10-01): asked in any chat, read before
  *  the message goes to a model. A plain request only, so "do not help me set
  *  up" or a question that mentions setup in passing stays ordinary talk. */
 const HELP_SETUP = new RegExp(
@@ -483,7 +483,7 @@ export interface MenuReturn {
   lead?: string;
 }
 
-/** The list message (Creative Studio, 2026-10-01): what is already set up,
+/** The list message (design review, 2026-10-01): what is already set up,
  *  then what is left as buttons under it. When it comes back after a step,
  *  what just happened leads and stands alone above the buttons. */
 export function setupMenuMessage(

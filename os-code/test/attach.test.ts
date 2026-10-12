@@ -82,7 +82,7 @@ describe('RemoteDriver stops instead of retrying forever (DAE-13)', () => {
   });
 });
 
-// CX and CMO, 2026-10-08 (J): a message marked local-only keeps its mark on
+// UX and copy review, 2026-10-08 (J): a message marked local-only keeps its mark on
 // the wire, as LocalDriver keeps it in process, so the daemon holds the task
 // to the engine's D5 rules whichever driver sent it.
 describe('RemoteDriver carries the local-only mark (J)', () => {

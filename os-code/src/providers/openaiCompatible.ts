@@ -61,7 +61,7 @@ interface ShowInfo {
 /** Construction options. Everything here has a production default; tests
  *  inject to pin a value. */
 export interface OpenAICompatibleOptions {
-  /** This computer's memory in GB, for the served window's ceiling (CTO I1).
+  /** This computer's memory in GB, for the served window's ceiling (tech review I1).
    *  Defaults to `hostRamGB`, read once per process. */
   ramGB?: () => number;
 }
@@ -113,7 +113,7 @@ export class OpenAICompatibleProvider implements Provider, EmbeddingProvider {
   readonly remote: boolean;
   private showCache = new Map<string, ShowInfo>();
   /** The served window per model, fixed for the process once computed: a
-   *  changed `num_ctx` reloads the model in Ollama (CTO I1), and without one
+   *  changed `num_ctx` reloads the model in Ollama (tech review I1), and without one
    *  the Modelfile and the server default hold for the process too. */
   private servedCache = new Map<string, { mode: 'auto' | 'off'; served: number }>();
   private readonly ramGB: () => number;
@@ -440,7 +440,7 @@ export class OpenAICompatibleProvider implements Provider, EmbeddingProvider {
     if (request.temperature !== undefined) options.temperature = request.temperature;
     if (request.maxTokens !== undefined) options.num_predict = request.maxTokens;
     if (request.stop?.length) options.stop = request.stop;
-    // The served window (CTO I1). Only with `numCtx: 'auto'`; off leaves the
+    // The served window (tech review I1). Only with `numCtx: 'auto'`; off leaves the
     // body exactly as it was, so Ollama keeps its own default.
     const numCtx = await this.requestedWindow(request.model, backend);
     if (numCtx !== undefined) options.num_ctx = numCtx;

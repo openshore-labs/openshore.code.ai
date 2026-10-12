@@ -30,7 +30,7 @@ private network. One React codebase (`app/`) is both app shells.
 | `src/providers/` | Model clients: OpenAI-compatible, Anthropic, and the served-window budget (`servedWindow.ts`). |
 | `src/router/` | Which model takes which turn, within the machine's resource budget. |
 | `src/daemon/` | `osc serve`: the HTTP daemon a docked phone talks to. It binds a tailnet or loopback address only, behind per-device credentials. |
-| `src/commands/` | One file per `osc` command: `init`, `serve`, `pair`, `attach`, `market`, `doctor`, `stack`, `key`, `eval`. |
+| `src/commands/` | The `osc` commands: `init`, `serve`, `pair`, `attach`, `market`, `doctor`, `stack`, `key`, `eval`, `login`, `trust`, `token` and the rest. |
 | `src/eval/` | `osc eval`: the task suites and the scoring behind every number we publish. |
 | `src/routines/` | Scheduled routines that run headless on your own computer. |
 | `src/config/` | Config loading and project trust (`projectPolicy.ts` classifies every key). |

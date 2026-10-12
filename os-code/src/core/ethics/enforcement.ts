@@ -14,8 +14,8 @@
 // sees them.
 //
 // There is no IP address anywhere in this file, on purpose. An earlier version
-// proposed banning the address a violation came from; the founder cut it
-// (2026-09-05, after CTO and CMO review) because addresses are shared
+// proposed banning the address a violation came from; a maintainer cut it
+// (2026-09-05, after tech review and copy review review) because addresses are shared
 // (households, offices, cafes, university networks, carrier-grade NAT) and a
 // ban collateral-damages people who did nothing. Enforcement here is account
 // termination plus a lawful report, and nothing else.
@@ -47,7 +47,7 @@ export const TIER2_RESTRICT_AT = 6;
  * `likeness` (the Tier 2 consent gate) does not accrue toward a restriction
  * either, and this is deliberate. The gate rests on a heuristic that a name is
  * a real person, and a false positive there is an ordinary request wrongly
- * stopped, not abuse. The CTO's condition for shipping the gate was that no such
+ * stopped, not abuse. The tech review's condition for shipping the gate was that no such
  * false positive can ever push an account toward a penalty (2026-09-05). A
  * likeness block still refuses the request and is still logged; it just does
  * not count. The brief's "repeated Tier 2 -> warning" is suspended until the

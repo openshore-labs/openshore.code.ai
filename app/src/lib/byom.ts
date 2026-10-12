@@ -30,7 +30,7 @@ export interface ByomConnection {
   /** The model id to send in the request body. */
   model: string;
   /** The window this endpoint serves, when the app knows it (Vault M5,
-   *  CTO J4): the pack is sized from it, else 8192. App-only, device local.
+   *  tech review J4): the pack is sized from it, else 8192. App-only, device local.
    *  A window an address's model list reports is kept only when the address
    *  leaves this network (`keepsListedWindow`). */
   contextTokens?: number;
@@ -59,7 +59,7 @@ export function byomWireOf(x: { wire?: ByomWire } | undefined): ByomWire {
 }
 
 /** The window a BYOM seat is assumed to serve when its connection does not
- *  say (CTO J4). */
+ *  say (tech review J4). */
 export const BYOM_DEFAULT_CONTEXT_TOKENS = 8192;
 
 /** The secret-store key holding a BYOM connection's API key. */
@@ -92,7 +92,7 @@ export function byomRef(conn: ByomConnection): StackModelRef {
  *  to ollama.com (the engine's own seat judge, `seatLeaves`).
  *
  *  Judged by address with the one shared judge, `hostIsLocal` from
- *  os-code/protocol (Vault M5, CTO J2), the same call that decides whether a
+ *  os-code/protocol (Vault M5, tech review J2), the same call that decides whether a
  *  BYOM seat may read a local-only note, so the pill's color and what the seat
  *  is sent never disagree. A `*.ts.net` name is local only on this device's
  *  own tailnet (`ownTailnetSuffix`, from the paired hub's address); another
@@ -118,7 +118,7 @@ export function byomReach(
 
 /** True when a pasted address would send the chat and the key in plain text
  *  to a server that is not on this machine, the home network, or this
- *  device's own tailnet. Refused at connect (CTO review 2026-10-01): plain
+ *  device's own tailnet. Refused at connect (tech review 2026-10-01): plain
  *  http is for your own hosts only. Judged by the address alone: the hop to
  *  a gateway on your own network stays on it, whatever the gateway sends on
  *  over its own https. */
@@ -133,7 +133,7 @@ export function byomPlainHttpToCloud(
  *  for an address that leaves this network, or one marked as passing requests
  *  on, where the provider serves the window it lists. A server on your own
  *  network lists its model's native window, not the one it serves (Ollama's
- *  default is far smaller), so its seat keeps the 8192 guess (CTO J4). */
+ *  default is far smaller), so its seat keeps the 8192 guess (tech review J4). */
 export function keepsListedWindow(
   baseUrl: string,
   ownTailnetSuffix: string | null,

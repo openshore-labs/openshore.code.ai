@@ -1,4 +1,4 @@
-// Provenance on agent-written notes (Vault M7, CTO L9, L10): flat, one-line
+// Provenance on agent-written notes (Vault M7, tech review L9, L10): flat, one-line
 // `oscode-*` frontmatter keys, merged into a note's text byte for byte, so the
 // person's own keys, comments, order and line endings are untouched. The merge
 // runs BEFORE the diff preview (engine `vaultWrite`, app `vaultPropose`), so

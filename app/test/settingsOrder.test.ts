@@ -1,4 +1,4 @@
-// What the first screen of Settings says (founder, D16, 2026-10-07): Privacy
+// What the first screen of Settings says (D16, 2026-10-07): Privacy
 // and Ethical boundaries sit straight after Account, so the lead's promise
 // ("What this app keeps, and where.") is kept on the first screen, and first
 // of all on a build with no account backend, where Account is left out. No

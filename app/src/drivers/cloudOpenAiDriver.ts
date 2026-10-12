@@ -86,7 +86,7 @@ export class CloudOpenAiDriver implements ChatDriver {
   private readonly placeholder = new PlaceholderNotice();
   private readonly contextWindow: number;
   /** The window the provider's catalog lists for this model, if any: the
-   *  pack sizes itself from it, else 128k (CTO J4). */
+   *  pack sizes itself from it, else 128k (tech review J4). */
   private readonly listedWindow?: number;
 
   constructor(
@@ -100,7 +100,7 @@ export class CloudOpenAiDriver implements ChatDriver {
      *  the guided setup's step), read on every reply. */
     private readonly extraSystem?: ChatContext,
     contextWindow?: number,
-    /** The conversation's vault pack (CTO J1), none with Memory off, and the
+    /** The conversation's vault pack (tech review J1), none with Memory off, and the
      *  Humanize Writing setting. */
     opts: CloudChatOptions = {},
   ) {
@@ -164,7 +164,7 @@ export class CloudOpenAiDriver implements ChatDriver {
       const messages: OaiMessage[] = [
         {
           role: 'system',
-          // Stable to volatile (CTO J16): the base prompt and the humanizer,
+          // Stable to volatile (tech review J16): the base prompt and the humanizer,
           // the chat's own context, then the per-send lines, the pack last.
           content: [
             SYSTEM_PROMPT,
@@ -279,7 +279,7 @@ export class CloudOpenAiDriver implements ChatDriver {
   }
 
   abort(): void {
-    // Stop answers at once (CTO ruling 7): the turn closes now with what
+    // Stop answers at once (tech review ruling 7): the turn closes now with what
     // streamed so far, kept in the chat and in history.
     this.turn?.stop();
   }

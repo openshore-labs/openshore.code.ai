@@ -16,7 +16,7 @@ export interface PendingUpdateStatus {
   percent?: number;
   detail?: string;
   /** The download was there and its signature was there, and they did not
-   *  match (CX cleanup 1): nothing was installed, and the bar says it failed
+   *  match (UX review cleanup 1): nothing was installed, and the bar says it failed
    *  a safety check rather than blaming the network. */
   refused?: boolean;
 }

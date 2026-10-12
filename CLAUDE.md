@@ -1,5 +1,13 @@
 # Working notes for Claude, OS Code (openshore.code.ai)
 
+> Standing instructions for the AI coding agents that work on this
+> repository. People do not need to read it to contribute: start with
+> `README.md`, `ARCHITECTURE.md` and `CONTRIBUTING.md`. "Founder", "CTO",
+> "CX", "CMO" and "Creative Studio" below name Open Shore LLC's maintainers
+> and the reviews they run; a ruling attributed to one is a maintainer
+> decision. Codenames (gitOS, botOS, Keel) are internal and never appear in
+> the product.
+
 This repository is open source (Apache 2.0, 2026-10-11). The company's own
 records it names (advisor and Board memos, the UX and security reviews, the
 App Store notes, `os-code/docs/progress-archive.md` and `parked-ideas.md`)

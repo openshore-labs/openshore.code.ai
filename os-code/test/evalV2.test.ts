@@ -1,7 +1,7 @@
 // Eval v2 regression guard: proves the benchmark runs the REAL agent loop
 // against a fixture workspace and scores by behavior, with no model weights.
 // A scripted mock provider stands in for the model, so this is the CI path the
-// CTO asked for: the harness itself is exercised end to end (fixtures written,
+// tech review asked for: the harness itself is exercised end to end (fixtures written,
 // loop run, tools executed, edit applied to disk, checker discriminates).
 import { describe, it, expect } from 'vitest';
 import { readdirSync, statSync } from 'node:fs';
@@ -370,7 +370,7 @@ describe('eval v2 vault tasks (Vault M4, 4.8)', () => {
   });
 });
 
-describe('eval v2 variants and trace fields (Vault M4, CTO I14)', () => {
+describe('eval v2 variants and trace fields (Vault M4, tech review I14)', () => {
   it('records the pack and served-window variant on the report, every trace, and the drive', async () => {
     const contexts: DriveContext[] = [];
     const drive: DriveTask = async (_cwd, _prompt, t, context) => {
@@ -557,7 +557,7 @@ describe('the deep drive and the vault-pack variant', () => {
   });
 });
 
-// Vault M5 (CTO J13, J17, J19): the handoff task, the prompt cache and handoff
+// Vault M5 (tech review J13, J17, J19): the handoff task, the prompt cache and handoff
 // variants, and the cache fields on the trace.
 describe('eval v2 handoff task (Vault M5)', () => {
   const handoffTask = task('vault-continue-handoff');

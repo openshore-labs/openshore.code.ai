@@ -1,4 +1,4 @@
-// A note's outline (Vault M6, 6.8; CTO K15, CX X16): its headings in a Sheet,
+// A note's outline (Vault M6, 6.8; tech review K15, UX review X16): its headings in a Sheet,
 // indented by level, H4 and below aligned with H3. Offered from Options only
 // when the note has two or more headings (Hick: no new bar icon). A pick
 // waits for the sheet's exit, then the screen scrolls to that heading the

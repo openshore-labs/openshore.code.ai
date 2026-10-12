@@ -1,4 +1,4 @@
-// A Claude key linked to a person, not a workspace (founder's phone,
+// A Claude key linked to a person, not a workspace (maintainer's phone,
 // 2026-10-08): the key listed models, so it saved as connected, and then
 // every chat stopped asking for the workspace ID. The stop's "Open Cloud
 // Connections" led to a connected row whose only tap was Disconnect, so

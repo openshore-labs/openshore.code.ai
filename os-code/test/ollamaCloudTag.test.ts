@@ -212,7 +212,7 @@ describe('the loop: a cloud tag gets the cloud card and the amber pill', () => {
   });
 });
 
-// CX and CMO, 2026-10-08 (C): one noun pair, "your messages and the files
+// UX and copy review, 2026-10-08 (C): one noun pair, "your messages and the files
 // the agent reads", both end at ollama.com, and a loopback server is "Ollama
 // on this computer", chosen by hostIsLoopback, never isLocalHost (which
 // passes the LAN and the tailnet).

@@ -65,7 +65,7 @@ export type ChatStreamEvent =
   | { id: string; kind: 'end' }
   | { id: string; kind: 'error'; message: string };
 
-/** A change the vault folder watcher saw (Vault M1, CTO F3): the note paths
+/** A change the vault folder watcher saw (Vault M1, tech review F3): the note paths
  *  that changed, or `tree` when it cannot say which (a folder changed, too
  *  many paths, an event with no name). `rootGone` says the vault folder
  *  itself went away (renamed, deleted, or on a drive that left). A hint only:
@@ -231,8 +231,8 @@ export interface DesktopStatus {
     /** `kind` is judged by seatLeaves (by address, and by an Ollama cloud
      *  tag). `onThisComputer` is set on a seat that stays when its server is
      *  this computer itself (hostIsLoopback, never the LAN or the tailnet),
-     *  so the Stack's chip can say On this computer or On your network (CX
-     *  and CMO, 2026-10-08, B); GET /stack reports the same shape. */
+     *  so the Stack's chip can say On this computer or On your network (UX review
+     *  and copy review, 2026-10-08, B); GET /stack reports the same shape. */
     orchestrator?: {
       model: string;
       provider: string;
@@ -339,13 +339,13 @@ export interface OscodeBridge {
       /** The Harness Current the person turned on (Jev), as its per-session
        *  handle for the engine's verify judge. */
       harnessCurrents?: HarnessCurrentsHandle;
-      /** A handoff from the chat this session continues (Vault M5, CTO J12),
+      /** A handoff from the chat this session continues (Vault M5, tech review J12),
        *  prepended to the first task only, at most `HANDOFF_MAX_BYTES`. */
       handoff?: string;
-      /** The project's own pinned notes (`Project.vaultPins`, CTO J14), at
+      /** The project's own pinned notes (`Project.vaultPins`, tech review J14), at
        *  most 8 vault paths, read first by the pack. */
       vaultPins?: string[];
-      /** The app's vault switches (Vault M7, CTO L13): off-only and
+      /** The app's vault switches (Vault M7, tech review L13): off-only and
        *  lower-only, into `BootstrapOptions.vaultOverrides`. */
       vaultOverrides?: VaultOverrides;
     },
@@ -363,7 +363,7 @@ export interface OscodeBridge {
   /** Trust this session's folder on this computer (the trust card's tap): its
    *  own os-code.config.json applies from the next session there. */
   trustFolder(sessionId: string): Promise<{ ok: true; folder: string } | { error: string }>;
-  /** The truncation card's tap (C1, CTO 5): serve this provider's models the
+  /** The truncation card's tap (C1, tech review 5): serve this provider's models the
    *  larger window from the next message, in every chat. Absent on an older
    *  shell. */
   giveMoreRoom?(provider: string): Promise<{ ok: true; provider: string } | { error: string }>;
@@ -401,7 +401,7 @@ export interface OscodeBridge {
     cb: (payload: { sessionId: string; seq: number; event: DriverEvent }) => void,
   ): () => void;
 
-  // The free chat (CTO ruling 8): one answer from this computer's own local
+  // The free chat (tech review ruling 8): one answer from this computer's own local
   // model, with no session, no tools and no notes. freeChat resolves once the
   // answer has ended; its events arrive on onFreeChat under the request id,
   // `done` or `error` last. Absent on an older shell.
@@ -536,7 +536,7 @@ export interface OscodeBridge {
   routineRun(id: string): Promise<{ queued: true; position: number } | { error: string }>;
   routineStop(id: string): Promise<{ stopped: boolean }>;
   routinesWebSearch(allowed: boolean): Promise<{ webSearch: boolean }>;
-  /** Desktop Offline (founder, 2026-10-07): the person's choice (true for
+  /** Desktop Offline (2026-10-07): the person's choice (true for
    *  Offline) for this computer's engine. Main combines it with its own read
    *  of the network (net.isOnline(), no request) and tells every session;
    *  the answer is main's view, so the renderer learns it at once. Optional
@@ -575,7 +575,7 @@ export interface OscodeBridge {
    *  note's path (Linux watches that note's folder too), off when it leaves. */
   vaultWatch(on: boolean, openPath?: string): Promise<void>;
   /** The vault folder's saved index blob (serializeIndex's output), or null
-   *  when there is none or it is over the cap (Vault M3, CTO H3). Main keys it
+   *  when there is none or it is over the cap (Vault M3, tech review H3). Main keys it
    *  by the vault root it reads itself; no path crosses. */
   vaultIndexLoad(): Promise<string | null>;
   /** Save the index blob for the current vault root: temp file then rename,
@@ -583,17 +583,17 @@ export interface OscodeBridge {
   vaultIndexSave(
     blob: string,
   ): Promise<{ ok: true; bytes: number } | { ok: false; reason: 'too-large' }>;
-  /** Read one allowed config file by its logical name (Vault M3, CTO H5):
+  /** Read one allowed config file by its logical name (Vault M3, tech review H5):
    *  main maps the name to a file in the vault's config folder, reads it only
    *  as a regular file inside the folder, capped at 256 KB. An unknown name
    *  answers 'refused'. */
   vaultReadConfig(name: VaultConfigName): Promise<ConfigRead>;
-  /** This machine's own vault privacy rules (Vault M5, CTO J3): hidden globs
+  /** This machine's own vault privacy rules (Vault M5, tech review J3): hidden globs
    *  and the local-only paths and tags, from the machine config only, for
    *  the core's compileVaultPrivacy. */
   vaultPrivacy(): Promise<VaultPrivacyWire>;
   /** Forget every handoff the engine on this computer keeps (Clear
-   *  conversations, CTO J13). Optional: an older desktop build has none. */
+   *  conversations, tech review J13). Optional: an older desktop build has none. */
   clearHandoffs?(): Promise<void>;
   /** Changes the watcher saw, debounced in main. Returns an unsubscribe. */
   onVaultChanged(cb: (change: VaultChange) => void): () => void;
@@ -631,7 +631,7 @@ export interface OscodeBridge {
   /** macOS: open Privacy & Security, Files and Folders. */
   openPrivacySettings(): Promise<void>;
 
-  // Vault M6 (CTO K13): one IPC each, validated in main like parseVaultGuard,
+  // Vault M6 (tech review K13): one IPC each, validated in main like parseVaultGuard,
   // every path through the note rule or isAttachmentPath and the Jail, and
   // `.trash` reached only by the trash calls. Optional: a desktop build whose
   // main does not answer them yet has none, and the provider checks before
@@ -660,7 +660,7 @@ export interface OscodeBridge {
    *  (jailed, pdf and image extensions only). */
   vaultOpenAttachment?(path: string): Promise<{ ok: boolean }>;
 
-  // Vault M7 (CTO L7): the settings sheet's one write. Optional, like the M6
+  // Vault M7 (tech review L7): the settings sheet's one write. Optional, like the M6
   // calls; keep in lockstep with electron/main.ts and preload.cjs (stream D).
   /** osc:vaultWriteConfig. Main writes `.oscode/vault.json` under the vault
    *  root it holds (`writeVaultConfigFile`): `.oscode` made if missing and
@@ -706,7 +706,7 @@ export interface OscodeBridge {
     body?: string;
   }): Promise<{ ok: boolean; status: number; body: string }>;
 
-  // A streamed chat completion for a model seat (build 2026-09-29, CTO 7;
+  // A streamed chat completion for a model seat (build 2026-09-29, tech review 7;
   // electron/chatStream.ts): POST only, to a path ending /chat/completions or
   // /api/chat, public https pinned, plain http only on your own network, no
   // redirects. chatStream resolves at the response head; the body arrives as

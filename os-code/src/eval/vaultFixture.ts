@@ -1,4 +1,4 @@
-// The vault fixture for eval v2's vault tasks (Vault M4, 4.8, CTO I14). About
+// The vault fixture for eval v2's vault tasks (Vault M4, 4.8, tech review I14). About
 // two hundred plain markdown notes, generated the same way every time, so a
 // with-pack and a without-pack run face the exact same vault on any machine:
 //

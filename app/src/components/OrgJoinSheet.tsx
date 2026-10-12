@@ -1,5 +1,5 @@
 // The explicit yes before this device adopts a company org someone else added
-// the signed-in person to (BE-1 client half, CTO ruling 2026-09-05). An org
+// the signed-in person to (BE-1 client half, tech review ruling 2026-09-05). An org
 // the person owns, or one this device already references, is adopted without
 // asking; anything else waits here. "Not now" is remembered on this device
 // until sign-out, so the question is asked once, not on every launch. The

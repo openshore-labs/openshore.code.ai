@@ -350,7 +350,7 @@ describe('SearchTurn', () => {
 });
 
 // Once a chat on a seat that stays on this network holds a private note's
-// text (CX and CMO, 2026-10-08, H), a search the model writes asks every time,
+// text (UX and copy review, 2026-10-08, H), a search the model writes asks every time,
 // with the exact words; one bound for Perplexity does not run; a seat that
 // leaves, never sent the note, keeps today's ask.
 describe('a search after a private read, on every driver that searches', () => {

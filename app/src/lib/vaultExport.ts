@@ -1,7 +1,7 @@
 // Export the vault as REAL files on the iPhone: every note written as a plain
 // .md under Documents/Vault, which iOS surfaces in the Files app ("On My
 // iPhone / OpenShore / Vault"). It is a one-way copy you hold, the true-compat
-// escape hatch the CTO required for keeping the bytes in the sealed store.
+// escape hatch the tech review required for keeping the bytes in the sealed store.
 //
 // Only the iPhone exports the personal vault (0.11); the team vault exports
 // on the iPhone and the desktop, to its own folder (2.8, below). On the

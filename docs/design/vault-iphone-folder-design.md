@@ -10,7 +10,7 @@ disagree, part two wins, and the plan item already carries its corrections.
 
 ### 2.10 The iPhone opens an existing Obsidian vault in place
 
-Repo root: `/home/user/openshore.code.ai`. This design replaces the draft at `docs/design/vault-v1-plan.md:565-577`. It also fits D2 (`:1031-1035`), D14 (`:1064-1067`) and the out-of-v1 line (`:1009-1010`).
+This design replaces the draft at `docs/design/vault-v1-plan.md:565-577`. It also fits D2 (`:1031-1035`), D14 (`:1064-1067`) and the out-of-v1 line (`:1009-1010`).
 
 **Summary**
 
@@ -522,7 +522,7 @@ Test:
 19. Swipe the picker away: the call resolves as a cancel.
 20. App Review steps pass with a plain folder and no Obsidian installed.
 
-**Founder-facing caveat:**
+**Caveats to weigh:**
 
 - OpenShore opens the vault where it lives and keeps no copy. A vault kept On My iPhone is deleted if Obsidian is deleted.
 - Obsidian does not take part in iOS file coordination, so protection comes from a check at the moment of saving and a re-check when OpenShore comes to the front, not from live updates. Changes from other devices arrive when iCloud syncs them.
@@ -531,4 +531,4 @@ Test:
 
 Sources: [766646](https://developer.apple.com/forums/thread/766646), [773373](https://developer.apple.com/forums/thread/773373), [785030](https://developer.apple.com/forums/thread/785030), [681520](https://developer.apple.com/forums/thread/681520), [820475](https://developer.apple.com/forums/thread/820475), [TN3192](https://developer.apple.com/documentation/technotes/tn3192-migrating-your-app-from-the-deprecated-uirequiresfullscreen-key), [coordinate(readingItemAt:)](https://developer.apple.com/documentation/foundation/nsfilecoordinator/1407416-coordinate), [File Coordinators guide](https://developer.apple.com/library/archive/documentation/FileManagement/Conceptual/FileSystemProgrammingGuide/FileCoordinators/FileCoordinators.html).
 
-I did not modify any tracked file. The code checked is in `/home/user/openshore.code.ai/app/plugins/oscode-icloud/ios/Sources/OscodeIcloudPlugin/OscodeIcloudPlugin.swift`, `/home/user/openshore.code.ai/app/src/lib/gitos/` and `/home/user/openshore.code.ai/app/src/state/store.ts`. The other files are `/home/user/openshore.code.ai/app/src/screens/VaultScreen.tsx`, `/home/user/openshore.code.ai/app/ios/App/App/Info.plist`, `/home/user/openshore.code.ai/docs/vault-v1-plan.md`, and `/home/user/openshore.code.ai/node_modules/.pnpm/@capacitor+ios@8.5.0_@capacitor+core@8.5.0/node_modules/@capacitor/ios/Capacitor/Capacitor/CapacitorBridge.swift`.
+The code this design was checked against: `app/plugins/oscode-icloud/ios/Sources/OscodeIcloudPlugin/OscodeIcloudPlugin.swift`, `app/src/lib/gitos/`, `app/src/state/store.ts`, `app/src/screens/VaultScreen.tsx`, `app/ios/App/App/Info.plist`, `docs/design/vault-v1-plan.md`, and Capacitor's `CapacitorBridge.swift` (8.5.0).

@@ -1,4 +1,4 @@
-// Keys on your server, the app's side (founder, 2026-10-09;
+// Keys on your server, the app's side (2026-10-09;
 // docs/design/byok-any-provider-plan.md, part 3): the daemon calls, the pure choices
 // and copy, the lifecycle (forgetting a server deletes its keys before this
 // device's credential is revoked, re-pairing only revokes, and a disconnected
@@ -403,7 +403,7 @@ describe('the choices and the words', () => {
     expect(words).not.toMatch(/encrypt/i);
     expect(lib.SERVER_KEYS_HOLD).toContain('a file only its OpenShore account and root can read');
     expect(lib.SERVER_KEYS_HOLD).toContain('The company you rent from can reach that disk.');
-    // Routines and the free chat refuse a cloud model there (CTO 3), so the
+    // Routines and the free chat refuse a cloud model there (tech review 3), so the
     // words say they stop, never that they stay on a local one.
     expect(words).not.toMatch(/routine|free chat/i);
     expect(lib.SERVER_MODEL_LOCAL_ONLY).toBe(

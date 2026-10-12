@@ -300,7 +300,7 @@ const drive = makeProvider('gdrive');
 // A compare-and-swap storage other than the folder (iCloud, once its native
 // half checks the guard), for the "every provider" cases (Vault M2).
 const cloud = makeProvider('icloud', true);
-// The paired computer's vault (Vault M5, CTO J9): compare-and-swap, like the
+// The paired computer's vault (Vault M5, tech review J9): compare-and-swap, like the
 // daemon's routes.
 const hub = makeProvider('hub', true);
 const byId: Record<string, ReturnType<typeof makeProvider>> = {
@@ -916,7 +916,7 @@ describe('a stale draft never replays over a newer save (0.1)', () => {
     expect([...team.keys()]).toEqual(['plan.md']);
   });
 
-  // CTO G3: a team entry stashed before M2 without a rev keeps its old base,
+  // tech review G3: a team entry stashed before M2 without a rev keeps its old base,
   // which can never equal a rev string, so it resolves as keep both: the note
   // is untouched and the draft lands beside it. Nothing is lost.
   it('a team draft stashed with no rev keeps both, and never writes over the note', async () => {
@@ -2411,7 +2411,7 @@ describe('the desktop defaults to the folder (1.3)', () => {
   });
 });
 
-// Vault M1 1.4 (CTO F7.6): a pick only repoints, and text typed against the
+// Vault M1 1.4 (tech review F7.6): a pick only repoints, and text typed against the
 // old folder never replays into the new one.
 describe('picking another folder (1.4)', () => {
   const OLD = {
@@ -2487,7 +2487,7 @@ describe('picking another folder (1.4)', () => {
   });
 });
 
-// Creative Studio 1d: settling a move's forked pair in the folder.
+// design review 1d: settling a move's forked pair in the folder.
 describe("settling a move's forked pairs (1d)", () => {
   const pair = { from: 'a.md', to: 'a (conflict 2026-09-27 1405).md' };
   beforeEach(() => {
@@ -3091,7 +3091,7 @@ describe('who last saved a note (M2 2.7)', () => {
   });
 });
 
-// The Vault index (M3 3.2, CTO H3 and H6): the store feeds it from every
+// The Vault index (M3 3.2, tech review H3 and H6): the store feeds it from every
 // write, remove, list, and open, and a sign-out that forgets team drafts
 // forgets the team index too. The CRLF wrap on the save path (H2) keeps an
 // all-CRLF note's bytes.
@@ -3198,7 +3198,7 @@ describe('the Vault index (M3 3.2)', () => {
   });
 });
 
-// Vault M5, CTO J9 (D2): what pairing does to the personal vault. An empty
+// Vault M5, tech review J9 (D2): what pairing does to the personal vault. An empty
 // vault on This device by default points at the computer with one toast; one
 // that holds notes (or text waiting to save) gets the one-time move card,
 // whose move writes every copy ifAbsent; a storage the person chose is never
@@ -3267,7 +3267,7 @@ describe('pairing and the vault on your computer', () => {
     await useApp.getState().vaultRefresh();
     await vi.waitFor(() => expect(currentVaultIndex()?.target.providerId).toBe('local'));
     // Pairing: the link names this computer and this person on it, and the
-    // personal index that belonged to the old arrangement closes (CTO J1).
+    // personal index that belonged to the old arrangement closes (tech review J1).
     await useApp.getState().saveHub(box, { role: 'admin' });
     expect(hubVaultLink()?.target).toMatchObject({
       providerId: 'hub',
@@ -3634,7 +3634,7 @@ describe('a team delete is always one tap to Trash', () => {
   });
 });
 
-// A lapsed team plan (CX Y15, 0025's OV402), or a member under admins-only
+// A lapsed team plan (UX review Y15, 0025's OV402), or a member under admins-only
 // delete (Y14, OV403): every store write the room can still hand over (an
 // Undo toast up, a Trash page or a resolve sheet open when the plan lapsed,
 // any other caller) says the plan's line before the server is asked, and

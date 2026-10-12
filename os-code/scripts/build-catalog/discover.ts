@@ -5,7 +5,7 @@
 // discovered entry is clearly labelled (`discovery` set, no ratings, no eval,
 // not orchestrator-capable) so the storefront never presents a machine-found
 // model as a curated or rated one. The editorial seed always wins on an id
-// collision, and the founder's curation and overlay still apply on top.
+// collision, and a maintainer's curation and overlay still apply on top.
 //
 // Pure where it can be: `discoverModels` takes a `DiscoveryClient` so the
 // tests drive it with fixtures; `HuggingFaceDiscovery` is the one live client.
@@ -136,7 +136,7 @@ const LAB_FAMILY =
  *  catch a guardrail-stripped line with a clean name. Keeping the store to
  *  known labs and curated quantizers is what actually holds that line, so this
  *  set is grown deliberately, publisher by publisher, never opened wholesale
- *  (CTO ruling, 2026-09-03: opening the allowlist reintroduces the junk crop). */
+ *  (tech review ruling, 2026-09-03: opening the allowlist reintroduces the junk crop). */
 export const TRUSTED_PUBLISHERS = new Set([
   // Curated quantizers the community pulls from. A quantizer upload must also
   // name a known lab family (cheapReject), so these cannot smuggle in a merge.
@@ -238,7 +238,7 @@ const PHONE_MAX_GB = 2.5;
  *  The cap only keeps out the 300GB+ frontier dumps no local box runs. */
 const DESKTOP_MAX_GB = 200;
 
-/** How many discovered models the catalog carries. Broadened (CTO-approved
+/** How many discovered models the catalog carries. Broadened (tech review-approved
  *  ceiling) so the store reflects the fast-moving local-model landscape;
  *  the app renders the list incrementally so a few hundred stays smooth. */
 export const DEFAULT_CAP = 250;

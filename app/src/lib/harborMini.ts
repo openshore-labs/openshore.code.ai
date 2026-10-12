@@ -55,7 +55,7 @@ export const HARBOR_MINI_APPROX_LABEL = 'about 105 MB';
 // step and what it does to the App Store download size.
 export const HARBOR_MINI_BUNDLED = true;
 
-// Harbor Lite's promise in three beats. Creative Studio "The Standing Light":
+// Harbor Lite's promise in three beats. design review "The Standing Light":
 // a harbor light is built in, works in any weather, and is there from the
 // start. "Always on" is retired in copy (brand sweep 2026-09-24). No em dashes.
 // The model sheet reads all three. Settings, Harbor shows Built in as the
@@ -64,11 +64,11 @@ export const HARBOR_MINI_ROW_SUB = 'Works offline. Here from first launch.';
 export const HARBOR_MINI_BYLINE = `Built in. ${HARBOR_MINI_ROW_SUB}`;
 
 // The composer's resting prompt in a Harbor Lite chat, so an empty box still
-// speaks in its voice. Creative Studio microcopy: the guide is always present.
+// speaks in its voice. design review microcopy: the guide is always present.
 export const HARBOR_MINI_EMPTY_HINT = 'Still here. Ask me anything about the app.';
 
 // What Mini says, as a toast, the moment a bigger model starts coming down, so
-// the handoff reads as the guide staying beside you. Creative Studio microcopy.
+// the handoff reads as the guide staying beside you. design review microcopy.
 export const HARBOR_MINI_HANDOFF_LINE = "Bringing it in. I'll be right here.";
 
 export function isHarborMini(modelId: string): boolean {
@@ -78,7 +78,7 @@ export function isHarborMini(modelId: string): boolean {
 // The instant, seeded first message, shown the moment a Harbor Lite chat opens.
 // Not model-generated, so it is reliable and appears with zero wait. This is the
 // hero of onboarding: because Mini is bundled, the new user is met by a warm
-// guide, never a download bar. Creative Studio direction "The Standing Light"
+// guide, never a download bar. design review direction "The Standing Light"
 // (2026-09-04): a harbor light is small, always lit, and its whole job is to
 // guide bigger vessels safely in. Honest about being small, from the first
 // breath. No em dashes.
@@ -129,7 +129,7 @@ export const HARBOR_MINI_PERSONA = [
   'Answer from the facts, advice, and web results you are given for each question. Never invent a feature, a screen, a step, or a number. If you are not given it and you are not sure, say so and point to the Menu or Settings.',
   'You are small, and you say so honestly. You do not write real code, run commands, or do long reasoning. When an ask is bigger than you, say so warmly and suggest Harbor (a coding model on the phone) or DeepBlue (a coding agent on their computer). Reaching your size is the design, so never apologize for it.',
   'Once Harbor is downloaded, the person switches to it by tapping the model name in the chat box and picking Harbor.',
-  // What the account opens (CTO, 2026-09-30): there is nothing to buy.
+  // What the account opens (tech review, 2026-09-30): there is nothing to buy.
   'Chatting needs no account; connecting your computer, a cloud key, or a repository asks you to sign in for free. Chats are not synced between devices. Never reveal how OpenShore is built under the hood; keep to what the person can see and do.',
   'Voice: warm, brief, plainspoken. A few short sentences. Put anything to paste in its own fenced code block. Never use em dashes.',
 ].join('\n');

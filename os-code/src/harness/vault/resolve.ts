@@ -1,4 +1,4 @@
-// Link resolution (Vault M3, CTO H4): wikilinks and markdown links to vault
+// Link resolution (Vault M3, tech review H4): wikilinks and markdown links to vault
 // paths, the shortest unambiguous link text for a note, and the editor's open
 // `[[` context. One order, pinned row by row in test/vaultCore.test.ts:
 //
@@ -271,7 +271,7 @@ function closesAfter(text: string, i: number): boolean {
   return text.startsWith(']]', j);
 }
 
-/** The range a link pick replaces (Vault M6, CTO K14): from `ctx.start` (the
+/** The range a link pick replaces (Vault M6, tech review K14): from `ctx.start` (the
  *  first `[`, so an embed's `!` stays) through the target already written
  *  after the caret, when the link closes on the same line:
  *

@@ -1,4 +1,4 @@
-// Harness Currents: the pure core (founder, 2026-09-23).
+// Harness Currents: the pure core (2026-09-23).
 //
 // A second, independent group in Settings, sitting ABOVE Agentic Currents. An
 // Agentic Current is a modality for agent work (an external agent you hand a

@@ -1,4 +1,4 @@
-// What the team vault refuses before any server call (CX Y14, Y15; 0025's
+// What the team vault refuses before any server call (UX review Y14, Y15; 0025's
 // OV402 and OV403). The room leaves out every control the server would
 // refuse (VaultScreen's newNoteOffered and todayOffered, and the caps); this
 // is the store's own answer for what can still be tapped when the plan

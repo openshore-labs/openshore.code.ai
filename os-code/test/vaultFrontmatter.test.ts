@@ -1,4 +1,4 @@
-// The Vault's frontmatter reader (Vault M3, CTO H2): js-yaml CORE_SCHEMA,
+// The Vault's frontmatter reader (Vault M3, tech review H2): js-yaml CORE_SCHEMA,
 // read-only, bounded. Edge cases: BOM, CRLF, invalid YAML, a block over
 // 64 KB, duplicate keys, alias bombs, `__proto__`, and tags and aliases in
 // every shape people write them.

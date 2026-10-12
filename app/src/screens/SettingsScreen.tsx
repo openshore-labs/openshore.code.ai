@@ -2,7 +2,7 @@
 // serif heads, one row per thing, the current value on the right, and
 // everything deeper in a sheet. What this app keeps, where it lives, and a
 // few careful switches. No telemetry to toggle because there is none. Built
-// with the Creative Studio (2026-09-02, "The Ledger" direction).
+// with the design review (2026-09-02, "The Ledger" direction).
 import { SHIPS_ADMIN, SHIPS_LAUNCH, SHIPS_STACKHEALTH, SHIPS_TEAMS } from '../lib/focus.js';
 import { ACCOUNT_PITCH } from '../lib/accountGate.js';
 import { Fragment, useEffect, useRef, useState } from 'react';
@@ -301,14 +301,14 @@ export function SettingsScreen() {
   const setWebSearchAllowed = useApp((s) => s.setWebSearchAllowed);
   const setWebFetchMode = useApp((s) => s.setWebFetchMode);
   const deleteAccount = useApp((s) => s.deleteAccount);
-  // The ways out while their rooms are shut (signed out, CTO 2026-09-30):
+  // The ways out while their rooms are shut (signed out, tech review 2026-09-30):
   // exporting the iPhone's sealed vault and removing a git host's sign-in.
   const exportPersonalVault = useApp((s) => s.exportPersonalVault);
   const vaultRoomShut = useApp((s) => s.needsAccountNow());
   const reposRoomShut = vaultRoomShut;
   const connectedRepoPlatforms = useApp((s) => s.connectedRepoPlatforms);
   const disconnectRepoPlatform = useApp((s) => s.disconnectRepoPlatform);
-  // Vault settings over Settings (Vault M7, CX Y4): the personal vault's.
+  // Vault settings over Settings (Vault M7, UX review Y4): the personal vault's.
   const [vaultSettingsOpen, setVaultSettingsOpen] = useState(false);
   const memoryOn = memoryOverride(settings) !== false;
   const vaultDevice = vaultDeviceView(settings, { memoryOn, cloudSeat: false });
@@ -485,7 +485,7 @@ export function SettingsScreen() {
           />
         </SettingsGroup>
 
-        {/* Privacy comes straight after Account (founder, D16, 2026-10-07), so
+        {/* Privacy comes straight after Account (D16, 2026-10-07), so
             the first screen keeps the lead's promise: what leaves this device,
             how the rest is kept, and the three limits. First of all on a build
             with no account backend, where Account is left out. */}
@@ -731,7 +731,7 @@ export function SettingsScreen() {
           />
         </SettingsGroup>
 
-        {/* Approvals (CX, 2026-09-24, after Zed's "trust all projects" row):
+        {/* Approvals (UX review, 2026-09-24, after Zed's "trust all projects" row):
             not a blanket trust switch, one comfort level for edits, the same
             choice the setup walk asks once a repository connects. Kept on this
             device. Commands ask first unless the person allows them (Terminal
@@ -917,7 +917,7 @@ export function SettingsScreen() {
         <SettingsGroup title="Web search" index={group++}>
           <SettingsRow
             label="Let models search the web"
-            // Crew routines follow this switch and only search (founder,
+            // Crew routines follow this switch and only search (maintainer,
             // 2026-10-01); every other web tool stays off for them.
             sub={`${
               webSearchOn(settings.webSearchConsent)
@@ -1233,7 +1233,7 @@ export function SettingsScreen() {
                   />
                 }
               />
-              {/* Directly after Memory (Vault M7, CX Y4, Y7): the vault's two
+              {/* Directly after Memory (Vault M7, UX review Y4, Y7): the vault's two
                   device switches and its settings. Rows of this group, never
                   a group or a room of their own. */}
               {id === 'memory' ? (
@@ -1322,7 +1322,7 @@ export function SettingsScreen() {
         </SettingsGroup>
 
         {/* Currents (Agentic and Harness) moved to per-project settings
-            (founder, 2026-09-23): a current is a workflow choice, so it lives
+            (2026-09-23): a current is a workflow choice, so it lives
             on the project (ProjectDetailScreen), where different projects run
             different currents at once. Connecting one stays device-local, on
             its connect sheet, reached from the project row. */}
@@ -1350,7 +1350,7 @@ export function SettingsScreen() {
           title={signedIn ? 'Your account' : signInMode === 'signup' ? 'Create account' : 'Sign in'}
           onClose={close}
         />
-        {/* A team's plan and price are v4 (founder 2026-09-30: Personal first). */}
+        {/* A team's plan and price are v4 (2026-09-30: Personal first). */}
         {SHIPS_TEAMS && signedIn && account?.type === 'commercial' && org ? (
           <p className="sheet-sub">
             {tierById(org.tierId).name} plan · {org.members.length}{' '}
@@ -1369,7 +1369,7 @@ export function SettingsScreen() {
             Manage the company account
           </button>
         ) : null}
-        {/* Delete account (Apple 5.1.1(v), CX ruling 3): last in the sheet,
+        {/* Delete account (Apple 5.1.1(v), UX review ruling 3): last in the sheet,
             shown only while signed in; its goodbye closes this sheet too. */}
         <DeleteAccount signedIn={signedIn} onDelete={deleteAccount} onDone={close} />
       </Sheet>
@@ -1507,7 +1507,7 @@ export function SettingsScreen() {
           );
         }}
       />
-      {/* The same Vault settings sheet as the Vault room's (CX Y4). "Where it
+      {/* The same Vault settings sheet as the Vault room's (UX review Y4). "Where it
           lives" goes to the Vault room and opens its storage sheet there. */}
       <VaultSettingsHost
         open={vaultSettingsOpen}

@@ -156,7 +156,7 @@ describe('the vault context layer end to end (Vault M4)', () => {
   });
 
   // A chat that holds a private note's text never escalates to a seat that
-  // leaves this network (CX and CMO, 2026-10-08, J): nothing goes to the
+  // leaves this network (UX and copy review, 2026-10-08, J): nothing goes to the
   // cloud seat, not even the stub, and no card asks for it.
   it('a local private read holds the escalation: nothing reaches the cloud seat', async () => {
     const local = new MockProvider('mock', [

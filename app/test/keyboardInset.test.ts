@@ -1,4 +1,4 @@
-// The composer must never end up under the keyboard (founder, 2026-09-03, a
+// The composer must never end up under the keyboard (2026-09-03, a
 // recording of the keyboard rising clean over the text box). The lift no
 // longer hangs on one plugin event with one good number: the height is
 // remembered on the device, a stray zero lifts by the remembered height, both
@@ -85,7 +85,7 @@ describe('the attach tray', () => {
   const theme = read('theme.css');
 
   it('is as tall as its tiles, never a keyboard of empty paper', () => {
-    // Founder, 2026-09-25: with the keyboard down, + lifted the composer a
+    // Maintainer, 2026-09-25: with the keyboard down, + lifted the composer a
     // whole keyboard height over three tiles and a blank field. The tray's
     // height is its content, a CSS token, never the remembered keyboard.
     expect(composer).not.toContain("setProperty('--tray-inset'");

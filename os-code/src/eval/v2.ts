@@ -29,21 +29,21 @@ import { EVAL_EVERYDAY_TASKS } from './everydayTasks.js';
  *  chart, a broken button). */
 export type EvalSuite = 'code' | 'everyday';
 
-/** The with-pack and without-pack variant (Vault M4, 4.8, CTO I14). 'on' asks
+/** The with-pack and without-pack variant (Vault M4, 4.8, tech review I14). 'on' asks
  *  the drive to run the context pack in full (`vault.context: 'full'`), 'off'
  *  to run with none (`vault.context: 'off'`). */
 export type EvalVaultPack = 'on' | 'off';
 
-/** The served-window variant (CTO I1): 'auto' sends Ollama's `num_ctx`, 'off'
+/** The served-window variant (tech review I1): 'auto' sends Ollama's `num_ctx`, 'off'
  *  sends none. */
 export type EvalNumCtx = 'auto' | 'off';
 
-/** The prompt cache variant (Vault M5, CTO J17 and J19): 'on' sets the
+/** The prompt cache variant (Vault M5, tech review J17 and J19): 'on' sets the
  *  provider's `promptCache: 'auto'`, 'off' sets `'off'`. Only an Anthropic
  *  endpoint reads it; any other provider runs unchanged. */
 export type EvalPromptCache = 'on' | 'off';
 
-/** The handoff variant (Vault M5, CTO J13 and J19): 'on' runs the pack in
+/** The handoff variant (Vault M5, tech review J13 and J19): 'on' runs the pack in
  *  full with the task's handoff in its handoff layer, 'off' runs the same pack
  *  with that layer empty, so the two runs differ by the handoff alone. */
 export type EvalHandoffLayer = 'on' | 'off';
@@ -53,12 +53,12 @@ export type EvalHandoffLayer = 'on' | 'off';
  *  everyday suite measures the check that needs no test suite. */
 export type EvalPageCheck = 'on' | 'off';
 
-/** Retrieval before turn one (CTO 6): 'on' sets
+/** Retrieval before turn one (tech review 6): 'on' sets
  *  `harness.retrieval.firstTurn: 'on'` for the run, 'off' sets 'off', so the
  *  two runs differ by the excerpts alone. */
 export type EvalRetrieval = 'on' | 'off';
 
-/** Union decoding (CTO 6): 'on' sets `harness.decoding.union: 'on'` for the
+/** Union decoding (tech review 6): 'on' sets `harness.decoding.union: 'on'` for the
  *  run, 'off' sets 'off'. It engages only on a tiny or small seat on the
  *  text bridge, which each trace's `unionTurns` shows. */
 export type EvalUnionDecoding = 'on' | 'off';
@@ -130,7 +130,7 @@ export interface DriveTrace {
   packNotes?: string[];
   /** Calls the harness answered from the record instead of running them
    *  (the tool-end events marked `repeat`): the same call again with nothing
-   *  changed since, and two calls taking turns (CTO 6). Absent when none. */
+   *  changed since, and two calls taking turns (tech review 6). Absent when none. */
   repeatBreaks?: { exact: number; alternating: number };
   /** Tokens the excerpts took when retrieval ran before turn one (the
    *  `retrieval` event), the prefill the lift costs. Absent when it did not. */
@@ -460,7 +460,7 @@ export type VaultTraceFields = Pick<
  *  cache's reads and writes (summed over the `usage` events that carry them),
  *  each turn's served prompt against its estimate (C1), the pack's tokens
  *  (summed over `context-pack` events) and the notes it used, and the harness
- *  lifts' own counts (CTO 6): repeats broken, the retrieval's tokens, union
+ *  lifts' own counts (tech review 6): repeats broken, the retrieval's tokens, union
  *  turns. Pure, so the CLI and the tests read the events the same way. */
 export function vaultTraceFields(events: readonly AgentEvent[]): VaultTraceFields {
   let promptTokens = 0;

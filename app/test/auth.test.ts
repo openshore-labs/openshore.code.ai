@@ -6,7 +6,7 @@
 // (APP-7), and a sign-in link is bound to the request that asked for it,
 // across a cold start, or confirmed by hand when nothing asked (APP-6). Sign
 // out ends this device's sign-in only, finishes here offline too, and "Sign
-// out everywhere" says plainly when nothing changed (finding 20, CX 4); the
+// out everywhere" says plainly when nothing changed (finding 20, UX review 4); the
 // guardrail record rides the store's one refresh (the refresh race).
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -448,7 +448,7 @@ describe('sign-out ends this device only (finding 20)', () => {
   });
 });
 
-describe('sign out everywhere (CX 4)', () => {
+describe('sign out everywhere (UX review 4)', () => {
   beforeEach(resetAll);
 
   it('ends the sign-in on every device with a live token, then here', async () => {

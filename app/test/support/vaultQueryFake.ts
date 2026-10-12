@@ -1,4 +1,4 @@
-// A fake of stream A1's query core (Vault M6, CTO K8), to its contract, for
+// A fake of stream A1's query core (Vault M6, tech review K8), to its contract, for
 // the search UI's tests while the real one is a stub in this tree:
 // whitespace clauses, quoted phrases, tag:, path:, file:, `#x` as tag:x, a
 // leading `-` negates, the last bare term a prefix.

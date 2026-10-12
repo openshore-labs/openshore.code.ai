@@ -1,4 +1,4 @@
-// The engine's Anthropic prompt cache (Vault M5, CTO J17). Off, which is what
+// The engine's Anthropic prompt cache (Vault M5, tech review J17). Off, which is what
 // an unset `providers.<id>.promptCache` reads as, sends the request exactly as
 // before: `system` one string, no cache marker anywhere, whatever `cacheAt`
 // says. On, `system` goes as text blocks split where the stable head ends,

@@ -1,4 +1,4 @@
-// Docking (connect-anywhere, founder 2026-10-07): the word for linking this
+// Docking (connect-anywhere, 2026-10-07): the word for linking this
 // device to a machine that does the work. The Computer room offers every way
 // in, and Cloud Connections sets up a server beside the cloud providers, so
 // each lands where it belongs: a docked machine in Computer and the model
@@ -17,7 +17,7 @@ export function dockKindOf(body: unknown): DockKind | undefined {
 }
 
 /** Where a server lives, as the person said when they docked it (many
- *  machines, founder 2026-10-12): at home, or rented from a provider. A
+ *  machines, 2026-10-12): at home, or rented from a provider. A
  *  server cannot tell, so this device keeps the answer. Unset on a server
  *  docked before the question existed, which reads as plain "Server". */
 export type DockPlace = 'home' | 'rented';
@@ -52,7 +52,7 @@ export function machineFactsLine(m: MachineFacts | undefined): string | undefine
   return parts.join(', ');
 }
 
-/** The founder's three kinds of machine (2026-10-12): your computer, a
+/** A maintainer's three kinds of machine (2026-10-12): your computer, a
  *  server at home, and a server you rent. A computer is not called "at home",
  *  since a docked desktop may sit anywhere; a server docked before the
  *  question was asked is just a server. */
@@ -181,7 +181,7 @@ export function serverSteps(place: DockPlace): { title: string; detail: string }
 export const SERVER_RENTED_LINE =
   'A rented server runs on hardware another company owns, and that company can reach its disk. Pick one you trust.';
 
-/** What a rented server of each size can do (founder, 2026-10-12: "VPS and
+/** What a rented server of each size can do (2026-10-12: "VPS and
  *  shared vCPU servers"). Memory decides it, by the same fit rule the
  *  desktop's First Seat uses (lib/firstSeat.ts; test/runsOn.test.ts holds
  *  the 3B and 4B lines to it). No provider is named or ranked, and nothing

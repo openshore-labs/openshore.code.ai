@@ -1,4 +1,4 @@
-// The voice list (founder, 2026-10-01): the best-sounding English voices by
+// The voice list (2026-10-01): the best-sounding English voices by
 // name, Siri's first where the device offers them, split female and male, ten
 // at most, and no novelty voices or other languages.
 import { describe, expect, it } from 'vitest';
@@ -22,7 +22,7 @@ const v = (
   gender?: TtsVoiceInfo['gender'],
 ): TtsVoiceInfo => ({ id, name, lang, quality, gender });
 
-// What the founder's iPhone listed: every language and the novelty set.
+// What a maintainer's iPhone listed: every language and the novelty set.
 const PHONE: TtsVoiceInfo[] = [
   v('com.apple.speech.synthesis.voice.Albert', 'Albert', 'en-US', 'default', 'male'),
   v('com.apple.voice.compact.it-IT.Alice', 'Alice', 'it-IT', 'default', 'female'),

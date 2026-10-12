@@ -6,7 +6,7 @@
 // in the Claude iPhone app, and search turns the dock into one field. On the
 // desktop (900 and wider), as in the Claude desktop app, New project is the
 // bar's action and search is the Chats room's pill on top of the list, so
-// neither sits a window's height under the list it serves (D11, founder
+// neither sits a window's height under the list it serves (D11, maintainer
 // 2026-10-07). New project opens a sheet with the name and what the project
 // is for (its standing instructions). Tap a row to open the project's own
 // room (chats, instructions, repos, and, for a company account, who on the

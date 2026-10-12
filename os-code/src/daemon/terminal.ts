@@ -7,7 +7,7 @@
 //
 //   - PTYs OUTLIVE client connections. A dropped phone does not kill the shell;
 //     a long build keeps running and the phone reattaches to it. This is the
-//     tmux property the founder wanted, without a second auth surface.
+//     tmux property a maintainer wanted, without a second auth surface.
 //   - Reattach is OFFSET-BASED, not journal-based. Raw terminal bytes are ANSI
 //     control streams that cannot be redacted line-wise and must never enter the
 //     sealed event journal (that is the runShell/command lane's job). Instead

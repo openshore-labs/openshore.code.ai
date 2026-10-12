@@ -1,5 +1,5 @@
 // The role selectors decide who may change the shared stack and storage. They
-// are the founder-visible boundary in a commercial org, so pin them: a personal
+// are a maintainer-visible boundary in a commercial org, so pin them: a personal
 // account owns everything, only an admin does in a company, and the member
 // preview flips the view without giving up real authority.
 import { describe, expect, it } from 'vitest';

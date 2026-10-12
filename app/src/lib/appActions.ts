@@ -1,4 +1,4 @@
-// App actions (founder, 2026-10-01): a model on this person's own hardware can
+// App actions (2026-10-01): a model on this person's own hardware can
 // offer to change a piece of the app for them, and the person taps to apply
 // it. The model never changes anything itself. It proposes one exact value in
 // a fenced block tagged `openshore-set:<key>`, the chat renders that block as
@@ -8,7 +8,7 @@
 // Local seats only. The contract that tells a model it may propose an action
 // rides only into a seat whose requests stay on this network (judged by
 // address, `leavesNetwork`, never by a provider's label), so a cloud provider
-// is never told about the app's controls (the founder's privacy line). A cloud
+// is never told about the app's controls (a maintainer's privacy line). A cloud
 // seat still answers, and is never asked for a fence; one it writes anyway in
 // a chat that asked shows the same card, the value whole, and only the tap
 // writes (the card cannot tell which seat wrote a reply).

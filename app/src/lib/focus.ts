@@ -1,4 +1,4 @@
-// Release tiers (founder, 2026-09-27; docs/release-tiers.md). One gate for
+// Release tiers (2026-09-27; docs/release-tiers.md). One gate for
 // what a build carries, so a later tier's surfaces have no door in an
 // earlier one:
 //

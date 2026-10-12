@@ -1,7 +1,7 @@
 // The nav split (review 6, blocker A): Terminal is day-one on a desktop or a
 // phone with a paired computer, second-session on a bare phone. Every room is
 // listed exactly once either way. The Sidebar's default order reads it (D10,
-// founder 2026-10-07; sidebarOrder.test.tsx mounts it).
+// 2026-10-07; sidebarOrder.test.tsx mounts it).
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -35,7 +35,7 @@ describe('navRooms', () => {
     expect(explore[explore.length - 1]?.view).toBe('settings');
   });
 
-  // The order the sidebar has always shown (founder, 2026-10-01): Crew, Cloud
+  // The order the sidebar has always shown (2026-10-01): Crew, Cloud
   // Connections and Pairing straight under the day-one rooms, the later
   // tiers' rooms after them, Settings last.
   it('keeps Crew, Cloud Connections and Pairing first among the rest', () => {
@@ -68,7 +68,7 @@ describe('navRooms', () => {
   });
 
   // The current room is a filled row with aria-current, not a tint alone, and
-  // a page inside a room keeps that room lit (Creative Studio, 2026-10-07).
+  // a page inside a room keeps that room lit (design review, 2026-10-07).
   it('marks the current room by more than colour', () => {
     const sidebar = readFileSync(join(process.cwd(), 'src/components/Sidebar.tsx'), 'utf8');
     expect(sidebar).toContain("aria-current={lit === v ? 'page' : undefined}");

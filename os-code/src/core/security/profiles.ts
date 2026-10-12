@@ -21,7 +21,7 @@ export interface SecurityProfile {
    *  run at all without a person to ask? Off on the headless profile, where a
    *  network call is denied outright, never asked: a routine reads files
    *  other people wrote, and one injected line could send a secret out in a
-   *  URL or a search while nobody watches (CTO 3, headless means offline). */
+   *  URL or a search while nobody watches (tech review 3, headless means offline). */
   allowNetworkAutoApprove: boolean;
 }
 

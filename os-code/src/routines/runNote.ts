@@ -1,4 +1,4 @@
-// The frontmatter on a Crew run note (Vault M4, 4.9, CTO I13). Hand-written,
+// The frontmatter on a Crew run note (Vault M4, 4.9, tech review I13). Hand-written,
 // never serialized by a YAML library (the vault core serializes no YAML, H2):
 // every value is a JSON string, which YAML reads as a double-quoted scalar,
 // so a routine named `Q3: "auth"` or a model named `qwen2.5:7b` can never be
@@ -6,20 +6,20 @@
 // (or the person, in Obsidian) find this run by type, routine, and tag, and
 // follow `previous` back through the routine's history.
 //
-// Vault M6 (6.4, CTO K7): a run note links TO the day's note (`day`), read
+// Vault M6 (6.4, tech review K7): a run note links TO the day's note (`day`), read
 // from the vault's own daily-notes settings, and never creates or appends to
 // it; the day's Linked mentions then show the run. The link is written only
 // when the date format is one the vault core supports, so a guessed name can
 // never fork the day's note.
 //
-// Vault M7 (CTO L9, L10): the block carries the note's provenance, the flat
+// Vault M7 (tech review L9, L10): the block carries the note's provenance, the flat
 // `oscode-*` keys, written by the same `mergeProvenance` every agent write
 // goes through: `oscode-source: "crew"`, the model, when it started, and,
 // when the scheduler judged them, where the seat ran (by address), its class,
 // and a cloud seat's provider. Machine `vault.provenance: off` passes 'off'.
 //
 // A run that drew on a private note writes `oscode: "local-only"` in the
-// block (CX and CMO, 2026-10-08, A), so its note stays on this computer too.
+// block (UX and copy review, 2026-10-08, A), so its note stays on this computer too.
 import { VAULT_DAILY_DEFAULTS, dailyNotePath, datePartsOf } from '../harness/vault/dates.js';
 import { mergeProvenance } from '../harness/vault/provenance.js';
 import type {
@@ -31,7 +31,7 @@ import type {
 } from '../harness/vault/types.js';
 import { yamlString } from '../harness/vault/yamlScalar.js';
 
-// Moved to harness/vault/yamlScalar.ts (Vault M7, CTO L10); re-exported for
+// Moved to harness/vault/yamlScalar.ts (Vault M7, tech review L10); re-exported for
 // the callers that name it here.
 export { yamlString };
 
@@ -77,8 +77,8 @@ export interface RunNoteFields {
   provenance?: RunNoteProvenance | 'off';
   /** The run drew on a private note (its session held local-only text at
    *  some point), so its note may quote one: the block carries
-   *  `oscode: "local-only"` and the vault judges the note private (CX and
-   *  CMO, 2026-10-08, A). */
+   *  `oscode: "local-only"` and the vault judges the note private (UX review and
+   *  copy review, 2026-10-08, A). */
   localOnly?: true;
 }
 

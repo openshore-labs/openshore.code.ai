@@ -84,7 +84,7 @@ export class SearchTurn {
   /** Run the one search this message may make and return the results turn
    *  for the answer pass. A stop while it runs (or while the consent sheet is
    *  up) unwinds at once. `priv` is set by the driver once the chat on the
-   *  seat that wrote the query holds a private note's text (CX and CMO,
+   *  seat that wrote the query holds a private note's text (UX and copy review,
    *  2026-10-08, H): the search then asks every time, and one bound for
    *  Perplexity does not run. */
   async run(

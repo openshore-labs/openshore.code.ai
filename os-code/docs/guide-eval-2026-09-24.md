@@ -61,7 +61,7 @@ Full output of `/tmp/guide-eval-fp16.txt`:
 
 ```
 
-> oscode-app@0.1.0 eval:guide /home/openshore/openshore.code.ai/app
+> oscode-app@0.1.0 eval:guide <repo>/app
 > tsx scripts/guide-eval.ts --search
 
 stack          with  67%  without  67%  (missing reasoning)
@@ -127,7 +127,7 @@ Full output of `/tmp/guide-eval-q4.txt`:
 
 ```
 
-> oscode-app@0.1.0 eval:guide /home/openshore/openshore.code.ai/app
+> oscode-app@0.1.0 eval:guide <repo>/app
 > tsx scripts/guide-eval.ts smollm2:135m-instruct-q4_K_M --search
 
 stack          with  67%  without  67%  (missing reasoning)

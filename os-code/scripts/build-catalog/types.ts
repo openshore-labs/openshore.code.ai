@@ -1,7 +1,7 @@
 // Shared types for the server-side catalog builder. The builder runs in CI
 // ONLY. It reads metadata (never weights) from Hugging Face and the Ollama
 // library, derives provenance-backed star ratings from published benchmarks,
-// merges the founder's editorial overlay, gates the result, and writes the
+// merges a maintainer's editorial overlay, gates the result, and writes the
 // enriched catalog.json that the client fetches. Nothing here is shipped in
 // the client bundle: the isolation guard test forbids src/ from importing it.
 import type { CapabilityCategory } from '../../src/router/roles.js';
@@ -69,7 +69,7 @@ export type EvalAverages = EvalEntries;
 /** One editorial overlay entry, from curation/recommended.json. */
 export interface OverlayEntry {
   isRecommended: boolean;
-  /** The recommendation note (why the founder picked it). */
+  /** The recommendation note (why a maintainer picked it). */
   note?: string;
   /** An override rank inside the recommended shelf (lower shows first). */
   rank?: number;

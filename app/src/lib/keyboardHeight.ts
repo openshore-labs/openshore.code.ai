@@ -2,7 +2,7 @@
 // plugin hands the exact height over on keyboardWillShow, and the composer
 // lifts by it (hooks/useKeyboardInset.ts). The fallback needs that number when
 // the plugin has not just said it: it lifts a focused composer anyway when no
-// show event arrives in time (founder, 2026-09-03: the keyboard rose over the
+// show event arrives in time (2026-09-03: the keyboard rose over the
 // text box after Chats, then a chat, then a tap). A keyboard's height is
 // stable per device and orientation, so the last real reading is the right
 // guess (one per orientation), and a phone-sized

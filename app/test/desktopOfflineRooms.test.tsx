@@ -1,4 +1,4 @@
-// Desktop Offline (founder, 2026-10-07), what the person sees on the desktop,
+// Desktop Offline (2026-10-07), what the person sees on the desktop,
 // mounted in a real (small) DOM: the Status sheet in this computer's words
 // (Automatic follows the connection, Offline is a choice, Docked and Offshore
 // say why they cannot apply), the Stack room's quiet door under its status

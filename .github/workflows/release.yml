@@ -6,15 +6,15 @@
 # Electron, so unlike ci.yml it lets the Electron binary download and rebuilds
 # node-pty against Electron's ABI. Linux and Windows packages need no code
 # signing certificate. Every Windows and Linux file is signed for the app's
-# own update check instead (CTO ruling 2, the maintainer release-signing runbook): the
+# own update check instead (tech review ruling 2, the maintainer release-signing runbook): the
 # publish job signs them with OPENSHORE_DESKTOP_SIGNING_KEY, and an installed
 # app with the desktop key pinned installs only a file whose .sig checks.
 # (macOS is a separate, Codemagic-driven build outside
 # this workflow: see codemagic.yaml's mac-desktop job. It ships unsigned by
-# founder decision, so it is not part of electron-updater's silent install
+# maintainer decision, so it is not part of electron-updater's silent install
 # path; the desktop app's update check handles that platform separately.)
 #
-# Two ways in, both by hand (founder, 2026-10-01: a one-person team on a
+# Two ways in, both by hand (2026-10-01: a one-person team on a
 # private repo pushes everything to main, and a release on every push spent
 # the month's Actions minutes; this supersedes the 2026-09-23 "every push
 # reaches the desktops"):
@@ -48,7 +48,7 @@ on:
         type: boolean
         default: true
 
-# Read only by default (CTO ruling 2, 2026-09-29). The build jobs run
+# Read only by default (tech review ruling 2, 2026-09-29). The build jobs run
 # third-party install scripts (pnpm install, electron-builder's downloads), so
 # they never hold a token that can write to the repository. Only the publish
 # job, which runs no install at all, gets contents: write, below.
@@ -180,7 +180,7 @@ jobs:
       # it with the desktop key, and the installer refuses it unsigned. Then
       # prove the packed engine starts on its own Node.
       # Until the first server release has gone out, a failure here never
-      # holds the desktop release back (CTO review 2026-10-08).
+      # holds the desktop release back (tech review 2026-10-08).
       - name: Pack the server package
         continue-on-error: true
         env:
@@ -376,11 +376,11 @@ jobs:
       # No certificate by default (see the file header): electron-builder
       # produces a working NSIS installer without an Authenticode signature,
       # and Windows SmartScreen warns on first run. Code-signed only when the
-      # founder adds the WIN_CSC_LINK and WIN_CSC_KEY_PASSWORD repository
+      # maintainer adds the WIN_CSC_LINK and WIN_CSC_KEY_PASSWORD repository
       # secrets (a code-signing certificate). Still writes latest.yml locally
       # (electron-updater's Windows feed file) even under --publish never.
       #
-      # The publisher name (CTO ruling 2) is set only when the certificate is
+      # The publisher name (tech review ruling 2) is set only when the certificate is
       # present. electron-builder 26 keeps it at win.signtoolOptions.publisherName
       # and, left unset, fills it from the certificate's common name into the
       # app's update settings (app-update.yml). From then on, an installed app
@@ -428,9 +428,9 @@ jobs:
   # the same tag separately. `gh` is first-party and preinstalled on the
   # runner, so no third-party release action is trusted with the write token.
   #
-  # CTO ruling 2 (2026-09-29): this is the only job that can write, and it
+  # tech review ruling 2 (2026-09-29): this is the only job that can write, and it
   # runs in the `release` environment, which holds the desktop signing key.
-  # The founder limits that environment to main and v* tags, with no required
+  # A maintainer limits that environment to main and v* tags, with no required
   # reviewer (the maintainer release-signing runbook), so every push to main still ships.
   publish:
     needs: [version, package-linux, package-windows, package-server-arm64]
@@ -528,7 +528,7 @@ jobs:
             --notes "OpenShore $TAG for Linux and Windows. Mac builds are published separately. Download from https://openshore.ai." \
             release/*
 
-      # No Mac build starts from here (founder, 2026-09-30): every push to main
+      # No Mac build starts from here (2026-09-30): every push to main
       # publishes Linux and Windows, but Codemagic minutes are metered, so the
       # Mac build (codemagic.yaml, mac-desktop) runs only when started by hand
       # in Codemagic. It uploads into the newest release; Macs update to the

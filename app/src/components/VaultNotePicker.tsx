@@ -1,4 +1,4 @@
-// The note picker behind `[[` in the composer (Vault M5, CTO J15, "take a note
+// The note picker behind `[[` in the composer (Vault M5, tech review J15, "take a note
 // to a model"). A presence-aware Sheet rises by transform with the person's
 // notes, searched by title; picking one hands it back to the composer, which
 // inserts a trimmed excerpt with a cost line. Data only through props: the

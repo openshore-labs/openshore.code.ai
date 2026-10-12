@@ -1,6 +1,6 @@
 // Agentic Currents and Wayfinding: the pure core.
 //
-// The founder's frame (2026-09-09): the app evolves by connecting to new tech
+// A maintainer's frame (2026-09-09): the app evolves by connecting to new tech
 // and layering it in, never by reshaping the familiar rooms. Two groups in
 // Settings hold that promise. Wayfinding (memory, skills, browser) is how the
 // agent finds its way and is on by default. Agentic Currents (Hermes Agent,
@@ -12,7 +12,7 @@
 // Everything here is pure and tested. Every room renders a current ONLY
 // through `activeContribution`, never by naming one itself; the guard test
 // keeps it so, which is what makes "off leaves no trace" a fact rather than a
-// hope. The name "Currents" is the CMO and Creative Studio's (water in motion
+// hope. The name "Currents" is the copy review and design review's (water in motion
 // through the familiar app); "Layers" was retired as a mechanism word.
 import type { CurrentsHandles, CurrentsHostProbe } from 'os-code/protocol';
 import { AGENTIC_CURRENT_IDS, type AgenticCurrentId } from 'os-code/protocol';
@@ -73,7 +73,7 @@ export function wayfindingOn(
   return settings.wayfinding?.[id] !== false;
 }
 
-/** The Memory switch as the engine session override (plan 1.5, CTO F6):
+/** The Memory switch as the engine session override (plan 1.5, tech review F6):
  *  `false` when the person turned Memory off, otherwise undefined, never
  *  `true`. The engine's memoryEnabled lets the override only turn memory off,
  *  so a project whose config turns it off stays off; sending nothing when the
@@ -318,7 +318,7 @@ export function hostOf(url: string | undefined): string {
 }
 
 /** Decide the next active current when a switch is flipped: one at a time
- *  everywhere (founder, 2026-09-09), so turning one on turns the other off. */
+ *  everywhere (2026-09-09), so turning one on turns the other off. */
 export function nextActiveCurrent(
   current: AgenticCurrentId | null,
   id: AgenticCurrentId,

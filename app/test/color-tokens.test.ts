@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
-// Color meaning is code, not memory (Creative Studio brand sweep, 2026-09-24).
+// Color meaning is code, not memory (design review brand sweep, 2026-09-24).
 // Every colour lives as a token in theme.css :root and the two dark blocks;
 // the rules reference tokens only, so dark mode follows everywhere. Teal
 // (--local) means local and private only; amber (--cloud) means cloud and
@@ -110,7 +110,7 @@ function sourceFiles(dir = SRC, out: string[] = []): string[] {
 const TSX_COLOR_ALLOW: Record<string, string> = {
   'components/BrandMark.tsx': 'the brand mark is drawn in its exact brand values in both themes',
   'lib/appIcon.ts':
-    'the three app icon tiles, in the exact brand values of their PNGs (founder, 2026-10-01)',
+    'the three app icon tiles, in the exact brand values of their PNGs (2026-10-01)',
   'components/terminalTheme.ts': 'xterm fallbacks for --term-bg/--term-fg, read before CSS lands',
 };
 // Single lines elsewhere, matched by content.
@@ -139,7 +139,7 @@ const LOCAL_ALLOW: Record<string, string> = {
   'cc-routine.working': 'the same working state, on a routine card',
   'store-row-meta': 'the on-device capability glyph on a store row',
   'vault-move-card': 'the Vault move card: notes moving into a folder on this computer',
-  'window-cut': 'the truncation card (CX 6): a model on this computer ran out of room',
+  'window-cut': 'the truncation card (UX review 6): a model on this computer ran out of room',
   'approval-lockdown': "the secrets lockdown line: the chat holds the project's private secrets",
 };
 
@@ -239,7 +239,7 @@ describe('color tokens', () => {
 
   it('paints in-app links in the accent', () => {
     // Blue (--link) means a link that leaves the app. A link that stays in it,
-    // and the armed terminal key, wear the accent (Creative Studio, 2026-10-07).
+    // and the armed terminal key, wear the accent (design review, 2026-10-07).
     expect(blockBody(/^\.linklike \{/m).body).toMatch(/color: var\(--accent\);/);
     expect(blockBody(/^\.accessory-key\.armed \{/m).body).not.toMatch(/--link/);
   });

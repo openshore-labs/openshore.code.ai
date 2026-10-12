@@ -1,4 +1,4 @@
-// Runs on, in the store (founder, 2026-10-12): a device docked to several
+// Runs on, in the store (2026-10-12): a device docked to several
 // machines (a computer, a server at home, a rented server) opens a project's
 // coding session on the machine that project names, whatever is active; the
 // chat records that machine and always goes back to it; forgetting the

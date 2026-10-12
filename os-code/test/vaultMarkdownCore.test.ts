@@ -1,4 +1,4 @@
-// Obsidian markdown, the pure core (Vault M6, CTO K10, K11, K14, K15):
+// Obsidian markdown, the pure core (Vault M6, tech review K10, K11, K14, K15):
 // callouts, highlights, comment masking, sections and block anchors, tasks and
 // their write-back toggle, unlinked mentions, the outline, attachments (type,
 // magic bytes, the pinned resolution order) and the link pick's replace
@@ -29,7 +29,7 @@ import {
 const slices = (text: string, ranges: Array<{ start: number; end: number }>) =>
   ranges.map((r) => text.slice(r.start, r.end));
 
-describe('parseCallout (K10, CX X12)', () => {
+describe('parseCallout (K10, UX review X12)', () => {
   it.each([
     ['> [!note]', { type: 'note', family: 'neutral' }],
     ['> [!TIP] Try this', { type: 'tip', family: 'positive', title: 'Try this' }],
@@ -286,7 +286,7 @@ describe('findUnlinkedMentions (K15, 6.8)', () => {
   });
 });
 
-describe('outlineOf (K15, CX X16)', () => {
+describe('outlineOf (K15, UX review X16)', () => {
   it('lists headings with depth capped at H3 and their index', () => {
     const t = '# A\n## B\n#### D\n```\n# code\n```\nC\n===\n';
     expect(outlineOf(t).map((h) => [h.text, h.level, h.depth, h.line, h.index])).toEqual([

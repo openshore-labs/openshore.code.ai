@@ -21,7 +21,7 @@ describe('plan tiers', () => {
     expect(tierForSeats(2.7).id).toBe('commercial_micro');
   });
 
-  it('carries the founder prices', () => {
+  it('carries a maintainer prices', () => {
     expect(tierById('commercial_micro').priceYear).toBe(20);
     expect(tierById('commercial_small').priceYear).toBe(100);
     expect(tierById('commercial_mid').priceYear).toBe(250);

@@ -1,4 +1,4 @@
-// Every local model searches the web (founder, 2026-09-25): a pocket model in a
+// Every local model searches the web (2026-09-25): a pocket model in a
 // Stack chat, your own model server (BYOM), and the desktop's free chat all ask
 // with one SEARCH: line and get results from the Settings provider. The line
 // never reaches the screen, the search runs once per message, and on the

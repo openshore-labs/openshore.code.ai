@@ -1,4 +1,4 @@
-// Vault M6 on a desktop folder (CTO K3, K5, K6, K11, K13): rename guarded by
+// Vault M6 on a desktop folder (tech review K3, K5, K6, K11, K13): rename guarded by
 // the source's version and never replacing, folders with counts, Trash under
 // `.trash/<original path>` with Restore beside a taken name, attachments and
 // their capped bytes. The same folderFs code serves Electron main and the

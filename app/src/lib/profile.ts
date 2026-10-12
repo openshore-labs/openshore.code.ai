@@ -1,4 +1,4 @@
-// The signed-in person's profile (founder, 2026-10-02): the account button in
+// The signed-in person's profile (2026-10-02): the account button in
 // the sidebar names the account, and tapping it opens the profile sheet
 // (components/ProfileSheet.tsx). Nothing here is a new stored field: the name
 // shown is the account's own email.
@@ -42,7 +42,7 @@ export function followsList(): string {
 }
 
 /** The same list as its own line (the row's label already says they follow
- *  you; CX, 2026-10-02). */
+ *  you; UX review, 2026-10-02). */
 export function followsLine(): string {
   const list = followsList();
   const first = list ? list.charAt(0).toUpperCase() + list.slice(1) : '';

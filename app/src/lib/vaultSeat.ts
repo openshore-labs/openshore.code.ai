@@ -1,4 +1,4 @@
-// Which app seat gets a vault pack, and sized how (Vault M5, CTO J2, J4). Pure.
+// Which app seat gets a vault pack, and sized how (Vault M5, tech review J2, J4). Pure.
 // Locality is judged by address with the one shared judge (`hostIsLocal` from
 // os-code/protocol), never by a label, so the BYOM reach pill and what a seat
 // may read never disagree.
@@ -11,7 +11,7 @@ import { isCurrentBenchId } from './currents.js';
 import type { StackModelRef } from './stack.js';
 
 /** The window an OpenAI-compatible cloud model is assumed to serve when its
- *  provider's catalog does not say (CTO J4). */
+ *  provider's catalog does not say (tech review J4). */
 export const CLOUD_DEFAULT_CONTEXT_TOKENS = 128_000;
 
 /** A Claude model's window when its id is not in the catalog. */

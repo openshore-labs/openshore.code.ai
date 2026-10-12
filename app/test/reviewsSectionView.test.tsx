@@ -1,5 +1,5 @@
 // The room on a model page, mounted, reading rows the way the public view
-// sends them (CTO 11 package B): no author ids, the reader's own review known
+// sends them (tech review 11 package B): no author ids, the reader's own review known
 // by is_mine, the "OpenShore team" label only where the server set is_staff,
 // and Block naming the review, then reading the list again so the view drops
 // the blocked author's reviews.

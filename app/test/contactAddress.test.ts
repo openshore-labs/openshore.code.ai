@@ -1,4 +1,4 @@
-// One published address (founder decision F1, 2026-09-30: support@openshore.ai
+// One published address (decision F1, 2026-09-30: support@openshore.ai
 // passed its round-trip test). The engine's SUPPORT_EMAIL is the one
 // constant: the block card's appeal line and the Delete account sheet read it.
 // Two places cannot import it, the server's enforcement ladder (the newest

@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="1024" height="1024">
-  <!-- The white app icon (founder, 2026-10-01): an all-white tile with the
+  <!-- The white app icon (2026-10-01): an all-white tile with the
        shore and the wave in near-black #0b1417. Otherwise the exact openshore.ai wave-mark, full-bleed for the iOS app icon
        (the navy rect covers the whole 32x32 canvas; iOS masks the corners to
        its own squircle). Colors and mark geometry match the marketing-site

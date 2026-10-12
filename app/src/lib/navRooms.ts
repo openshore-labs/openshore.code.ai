@@ -1,6 +1,6 @@
 // Which rooms are day-one and which are second-session, per device. Pure, so
 // the split is a tested rule rather than a constant someone has to remember.
-// The Sidebar's default order reads it (D10, founder 2026-10-07): the day-one
+// The Sidebar's default order reads it (D10, 2026-10-07): the day-one
 // rooms, then the rest, in one group.
 //
 // Terminal is day-one on a desktop (the shell is right there) and on a phone
@@ -37,7 +37,7 @@ export interface NavEntry {
   label: string;
 }
 
-/** The one list of room names (brand sweep, founder 2026-09-24). The Sidebar,
+/** The one list of room names (brand sweep, 2026-09-24). The Sidebar,
  *  the BackBar, and the guides all read these, so a room is named one way
  *  everywhere. Title Case only for proper nouns (Crew, Stack Health, Cloud
  *  Connections, Vault, Marketplace); Sentence case for the rest. The stack is
@@ -69,7 +69,7 @@ const PRIMARY_BASE: NavEntry[] = (['chats', 'projects', 'repos', 'stack', 'vault
 );
 
 // Crew, Cloud Connections and Pairing straight under the day-one rooms
-// (founder, 2026-10-01), then the Marketplace (v1 since 2026-10-11) and the
+// (2026-10-01), then the Marketplace (v1 since 2026-10-11) and the
 // later tiers' rooms, then Settings.
 const EXPLORE_BASE: NavEntry[] = (
   ['crew', 'connections', 'pair', 'marketplace', 'stackhealth', 'launch', 'settings'] as const

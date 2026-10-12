@@ -1,4 +1,4 @@
-// Computer (founder, 2026-10-07; once Pairing, named by CX 2026-10-01, and
+// Computer (2026-10-07; once Pairing, named by UX review 2026-10-01, and
 // before that "Desktop + phone"). Docking is the word for linking a device to
 // a machine that does the work. On the desktop: phone access on or off, a QR
 // that is a link the iPhone Camera opens, and docking this computer to a
@@ -126,12 +126,11 @@ export function PairScreen() {
 
 function DesktopPair() {
   const { showToast } = useApp();
-  // The pairing code is the paid moment on this side: it shows only while
-  // Plus is open. Revoking a phone stays free.
+  // The pairing code and the docked devices, with revoke beside each.
   const [info, setInfo] = useState<DaemonInfo | undefined>();
   const [qr, setQr] = useState<string | undefined>();
   const [showToken, setShowToken] = useState(false);
-  // The "it worked" moment (CX 2026-10-01): a phone that pairs while this
+  // The "it worked" moment (UX review 2026-10-01): a phone that pairs while this
   // room is open is named at the top, and the QR folds into a quiet "Pair
   // another phone" until it is asked for again.
   const knownDevices = useRef<Set<string> | undefined>(undefined);
@@ -370,12 +369,12 @@ function DesktopPair() {
           task.
         </p>
 
-        {/* A server for this computer's projects (founder, 2026-10-12): in
+        {/* A server for this computer's projects (2026-10-12): in
             the room, not folded away, since a project can now choose to run
             on one. The bare address and key stay under More options. */}
         <DesktopServerCard />
 
-        {/* The expert tools, folded away from a first pairing (CX 2026-10-01). */}
+        {/* The expert tools, folded away from a first pairing (UX review 2026-10-01). */}
         <button
           type="button"
           className="linklike press-fb"
@@ -520,7 +519,7 @@ function RemoteHubPanel() {
   );
 }
 
-/** The desktop's door to a server (founder, 2026-10-12): a server at home or
+/** The desktop's door to a server (2026-10-12): a server at home or
  *  a rented one, docked here so this computer's projects can run on it, and
  *  every machine docked so far. */
 function DesktopServerCard() {
@@ -570,7 +569,7 @@ function PhonePair() {
   const [left, setLeft] = useState<KeysLeft | undefined>();
   const titleRef = useRef<HTMLHeadingElement>(null);
   const paired = settings.daemon;
-  // Which way in the person is looking at: the founder's three (2026-10-12),
+  // Which way in the person is looking at: a maintainer's three (2026-10-12),
   // your computer, a server at home, a server you rent. A device already
   // docked to a server opens on its path, everyone else on the computer.
   const [path, setPath] = useState<'computer' | DockPlace>(
@@ -811,7 +810,7 @@ function ForgetComputerConfirm({
   );
 }
 
-/** The paired computer, live (CX 2026-10-01): who it is and whether it
+/** The paired computer, live (UX review 2026-10-01): who it is and whether it
  *  answers right now, so the screen after pairing never looks like the
  *  screen before it. */
 function ConnectedCard({ onTerminal }: { onTerminal: () => void }) {

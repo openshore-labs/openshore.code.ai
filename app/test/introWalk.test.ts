@@ -1,4 +1,4 @@
-// The first open's letter ("Tide Letter", Creative Studio 2026-09-24): Harbor
+// The first open's letter ("Tide Letter", design review 2026-09-24): Harbor
 // Lite's greeting and the walk's opening write themselves in whole-word groups,
 // a bold heading arrives as one piece, the step heading gets its breath, and
 // the reader gets a few seconds after the greeting. These pin the plan the
@@ -75,7 +75,7 @@ describe('the ink plan', () => {
     expect(total).toBeGreaterThan(GREETING_TO_WALK_PAUSE_MS + 5000);
   });
 
-  it('pauses only briefly between the greeting and the walk (founder, 2026-10-02)', () => {
+  it('pauses only briefly between the greeting and the walk (2026-10-02)', () => {
     expect(GREETING_TO_WALK_PAUSE_MS).toBeLessThanOrEqual(800);
     const store = readFileSync(join(process.cwd(), 'src', 'state', 'store.ts'), 'utf8');
     expect(store).toMatch(/GREETING_PACE\) \+ GREETING_TO_WALK_PAUSE_MS/);

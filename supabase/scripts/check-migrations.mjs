@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Branch guard for migration numbers (CTO 11, 2026-09-29; the workflow
+// Branch guard for migration numbers (tech review 11, 2026-09-29; the workflow
 // .github/workflows/migrations.yml). `supabase db push` matches a migration by
 // its number only, so a branch that reuses a number main or production already
 // gave to another file would have that file skipped, or re-run under a new
@@ -82,7 +82,7 @@ function historyAt(ref) {
 /**
  * Every problem with `ref`'s migrations (null: the working tree) against main.
  *
- * Production decides what a number means (CTO 11). So a file production ran
+ * Production decides what a number means (tech review 11). So a file production ran
  * (in the history, with the pinned bytes) never counts against (a) or (c):
  * where main disagrees with it, main is the one that is wrong. The history is
  * main's production-history.tsv; only while main has none yet (the reconcile
@@ -215,7 +215,7 @@ if (args.includes('--scan-remotes')) {
     }
   }
   const summary = lines.length
-    ? `### Migration numbers on other branches\n\n${lines.join('\n')}\n\nEach such branch merges main, or renumbers above the newest taken number, before it merges (CTO 11).\n`
+    ? `### Migration numbers on other branches\n\n${lines.join('\n')}\n\nEach such branch merges main, or renumbers above the newest taken number, before it merges.\n`
     : '### Migration numbers on other branches\n\nNo branch collides with main or production.\n';
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary);
   console.log(summary);
@@ -226,7 +226,7 @@ if (args.includes('--scan-remotes')) {
     console.log('note: no production-history.tsv on either side, so check (b) was skipped');
   if (problems.length) {
     console.error(
-      `Migration numbers collide with ${against} or production (CTO 11):\n  ${problems.join('\n  ')}`,
+      `Migration numbers collide with ${against} or production:\n  ${problems.join('\n  ')}`,
     );
     process.exit(1);
   }

@@ -2,7 +2,7 @@
 // Claude model or a connected provider's model, picked by itself rather than
 // through the Stack. Both ride the one provider client (providerClient.ts), so
 // they stream on every shell, and both keep the abort contract the Stack keeps
-// (CTO ruling 7): Stop ends the turn at once, whatever the request is waiting
+// (tech review ruling 7): Stop ends the turn at once, whatever the request is waiting
 // on, with what arrived so far kept in the chat and in history; late data from
 // a stopped request goes nowhere; a failure keeps its partial too.
 import { humanizerStandardPrompt, type DriverEvent, type ModelClass } from 'os-code/protocol';

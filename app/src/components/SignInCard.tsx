@@ -9,7 +9,7 @@
 // text stashed offline does not show under Not saved, so a sign-out with any
 // left asks first, and deleting it is its own button, never a silent wipe.
 //
-// Sign out ends this device's sign-in only (CX ruling 4). A quiet link below
+// Sign out ends this device's sign-in only (UX review ruling 4). A quiet link below
 // it ends every device's, after one confirm (state/signinOps.ts).
 import { featureOn } from '../lib/focus.js';
 import { ACCOUNT_PITCH, SIGNED_IN_PERKS } from '../lib/accountGate.js';
@@ -88,7 +88,7 @@ export function SignInCard({
   // device signs out.
   const [unsentFor, setUnsentFor] = useState<'here' | 'everywhere'>('here');
   const [everywhere, setEverywhere] = useState(false);
-  // "Sign out everywhere" waits on the server (CX cleanup 7): while it does,
+  // "Sign out everywhere" waits on the server (UX review cleanup 7): while it does,
   // both controls hold and a status line takes the link's place, so a second
   // tap cannot fire and the wait is visible. The toasts say how it ended.
   const [leaving, setLeaving] = useState(false);
@@ -225,7 +225,7 @@ export function SignInCard({
           <div className="card-row">
             <div className="grow">
               {/* The profile already names the account and lists what
-                  follows you (CX, 2026-10-02), so there the card is only
+                  follows you (UX review, 2026-10-02), so there the card is only
                   the way out. */}
               {variant === 'profile' ? (
                 <div className="sub">Signing out keeps everything on this device.</div>

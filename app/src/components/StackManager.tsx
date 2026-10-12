@@ -140,7 +140,7 @@ const BYOM_ALREADY_CLOUD_LINE =
 
 /** The teal/amber chip for a model's location. */
 function KindChip({ refModel }: { refModel: StackModelRef }) {
-  // This device's own tailnet is the paired hub's (CTO J2), so another
+  // This device's own tailnet is the paired hub's (tech review J2), so another
   // tailnet's server reads cloud, exactly as the vault pack judges it.
   const hubUrl = useApp((s) => s.settings.daemon?.baseUrl);
   const { cls, label } = kindMeta(refModel, hubTailnetSuffix(hubUrl));
@@ -321,7 +321,7 @@ export function StackManager({
     setByomOpen(true);
   };
 
-  /** Plain http goes only to your own hosts (CTO review 2026-10-01), for the
+  /** Plain http goes only to your own hosts (tech review 2026-10-01), for the
    *  list read and the chat alike: either carries the key. */
   const refusesPlainHttp = (): boolean => {
     const hub = hubTailnetSuffix(useApp.getState().settings.daemon?.baseUrl);
@@ -437,7 +437,7 @@ export function StackManager({
   // chat path's own choice (stackDriver's routeVision), an anchor or
   // specialist that can see, then the first connected cloud reader. The rows
   // name it, so they say the model the approval card will ask about (D13,
-  // founder 2026-10-07: the least costly Claude model, named, until the
+  // 2026-10-07: the least costly Claude model, named, until the
   // person chooses one). A device model cannot read images on this build.
   const cloudOn = locationAllowed(editProfile, 'cloud');
   const reach = (r: StackModelRef) =>
@@ -463,13 +463,13 @@ export function StackManager({
   // The stand-in asks before a picture unless it was placed for Image reading
   // (routeVision's `dedicated`). It never takes a plan's image step: a plan
   // carries no picture, so with nothing set for Image reading its image step
-  // goes to the Reasoning model, which works from the text (CX and CMO,
+  // goes to the Reasoning model, which works from the text (UX and copy review,
   // 2026-10-08, E), and no line names an exception.
   const standInAsk =
     chatPick && chatPick.placement?.category === 'vision' ? '' : ' It asks before a picture.';
   // With both slots set and the Local model reading here, the Cloud model
   // reads a picture the Local one failed on, after a card asks (the chat
-  // path's fallback, CX and CMO, 2026-10-08, K): only one that reads images
+  // path's fallback, UX and copy review, 2026-10-08, K): only one that reads images
   // and is in reach in this status, the driver's own test, so the row never
   // claims a fallback that cannot happen.
   const cloudFallback = Boolean(
@@ -634,7 +634,7 @@ export function StackManager({
             picture (a screenshot, a photo, a video's frames) routes here. The
             intro says what the chat path does: the Local model first, and the
             Cloud model only for what it cannot read, after a card when the
-            Local model failed on one (CX and CMO, 2026-10-08, K). */}
+            Local model failed on one (UX and copy review, 2026-10-08, K). */}
         <SettingsGroup
           title="Image reading"
           intro="Screenshots, photos, and video frames. The Local model reads them first. The Cloud model reads what it cannot, and asks before it takes a picture the Local model failed on."
@@ -918,7 +918,7 @@ export function StackManager({
           Use a model you run or hold a key for: on this computer, your own server, a gateway, or
           another service with your key.
         </p>
-        <ul className="paywall-benefits">
+        <ul className="benefit-list">
           <li>
             Any address works, in either format: OpenAI-compatible, which most servers and providers
             speak, or Anthropic-compatible. OpenShore asks the address for its list of models, and

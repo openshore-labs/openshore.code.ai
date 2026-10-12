@@ -259,7 +259,7 @@ describe('the daemon tells a paired phone', () => {
       JSON.stringify({ stack: { orchestrator: { provider: 'ollama', model: 'qwen' } } }),
     );
     // Ollama's default address is this computer itself, so the chip may say
-    // so (hostIsLoopback, CX and CMO 2026-10-08, B).
+    // so (hostIsLoopback, UX and copy review 2026-10-08, B).
     expect((await get<DaemonStackInfo>('/stack')).orchestrator).toEqual({
       model: 'qwen',
       provider: 'ollama',

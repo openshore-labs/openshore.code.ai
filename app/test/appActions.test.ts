@@ -1,4 +1,4 @@
-// Your writing voice and app actions (founder, 2026-10-01). The voice is the
+// Your writing voice and app actions (2026-10-01). The voice is the
 // person's own instruction, so it rides to every seat; the app actions
 // contract tells a model it may propose a settings change, so it rides only to
 // a seat whose requests stay on this network (judged by address). A proposal
@@ -50,7 +50,7 @@ describe('your writing voice', () => {
     expect(SETTINGS_REACH.writingVoice).toBe('device');
   });
 
-  it("opens the shaping chat on the founder's prompt, left open to finish", () => {
+  it("opens the shaping chat on a maintainer's prompt, left open to finish", () => {
     const first = writingVoiceSeed(undefined);
     expect(first.text).toBe(WRITING_VOICE_CHAT_PROMPT);
     expect(first.text.startsWith('Provide the OpenShore customized writing prompt')).toBe(true);
@@ -61,7 +61,7 @@ describe('your writing voice', () => {
 });
 
 const SHAPING = `${WRITING_VOICE_CHAT_PROMPT}a ship's log.`;
-// The founder's screenshot (2026-10-02): an ordinary writing request in a chat
+// A maintainer's screenshot (2026-10-02): an ordinary writing request in a chat
 // that never asked for a setting.
 const BRIEFING = 'Write me a 1-page briefing on the expedition and team. Make it exciting';
 

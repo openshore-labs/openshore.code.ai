@@ -1,4 +1,4 @@
-// Runs on (founder, 2026-10-12): "in your projects, you can choose the Hub to
+// Runs on (2026-10-12): "in your projects, you can choose the Hub to
 // run your project from, either your home computer, home server, or remote
 // server." A pill under the project's title, beside its repositories and its
 // instructions, and the sheet it opens: this computer (on the desktop), each

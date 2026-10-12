@@ -161,7 +161,7 @@ describe('rename drift: no quarterback in engine strings the app shows', () => {
     for (const rel of ['../src/router/roles.ts', '../src/router/router.ts']) {
       const src = readFileSync(resolve(here, rel), 'utf8');
       expect(src, rel).not.toMatch(/quarterback/i);
-      // D2 (founder, 2026-10-07): the acronym retired from what a person reads.
+      // D2 (2026-10-07): the acronym retired from what a person reads.
       expect(src, rel).not.toMatch(/Reasoning LLM/);
       expect(src, rel).toMatch(/Reasoning model/);
     }

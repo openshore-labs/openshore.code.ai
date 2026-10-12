@@ -1,4 +1,4 @@
-// The words said once a chat holds a private note's text (CX and CMO,
+// The words said once a chat holds a private note's text (UX and copy review,
 // 2026-10-08), pinned word for word, and reachable through os-code/protocol
 // so the app says exactly what the engine says.
 import { describe, expect, it } from 'vitest';

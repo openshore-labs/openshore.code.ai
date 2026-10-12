@@ -1,6 +1,6 @@
 // The First Seat: the empty chat's center when nothing on this device can
 // answer yet. One pick and one tap to set it up. It is not a room and carries
-// no codename: it is just how a fresh OpenShore greets you. Creative Studio direction "The Seat Fills": the
+// no codename: it is just how a fresh OpenShore greets you. design review direction "The Seat Fills": the
 // room resolves into readiness, the mark settles, the fit line writes itself,
 // the card seats with a soft teal bloom and a single tick. The whole surface is
 // presence-aware (it animates out, never snaps) and honors reduced motion.
@@ -14,7 +14,7 @@
 // Light's First Moves on the phone), so the seat only ever owns an empty room.
 //
 // A first message sent while the seat is up waits here (state/firstRunOps.ts)
-// and the card says so in CX ruling 2's words; it goes out by itself, as a
+// and the card says so in UX review ruling 2's words; it goes out by itself, as a
 // plain chat that needs no account, the moment DeepBlue is ready. Signing in
 // never stands in the way of the download or the message: while the download
 // runs, one quiet line offers it, and its link opens the plain Sign in sheet.
@@ -49,7 +49,7 @@ export function FirstSeat({
   onEditHeld,
 }: {
   fallback: ReactNode;
-  /** Take the saved message back into the composer (CX cleanup 8): the chat
+  /** Take the saved message back into the composer (UX review cleanup 8): the chat
    *  screen's restore path, with the cursor at the end and no toast. The
    *  download keeps going, and Send saves the message again. */
   onEditHeld?: () => void;
@@ -157,7 +157,7 @@ export function FirstSeat({
     : `${HARBOR_APPROX_LABEL.charAt(0).toUpperCase()}${HARBOR_APPROX_LABEL.slice(1)} download.`;
   const pulling = Boolean(harborMasterDownload && !harborMasterDownload.failed);
   const failed = Boolean(harborMasterDownload?.failed);
-  // A first message waiting on this seat (CX ruling 2).
+  // A first message waiting on this seat (UX review ruling 2).
   const held = heldMessage;
   const heldLine = lastHeldLine.current;
   // Only while the download runs, and only for someone signed out.
@@ -257,7 +257,7 @@ export function FirstSeat({
                 type="button"
                 className="linklike"
                 onClick={() => {
-                  // CX ruling 2 rests on an assumption (the wait costs nothing);
+                  // UX review ruling 2 rests on an assumption (the wait costs nothing);
                   // counting the sign-ins that start here tests it.
                   logEvent('first_seat_sign_in_open');
                   setSignInOpen(true);

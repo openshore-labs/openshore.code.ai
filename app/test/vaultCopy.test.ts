@@ -9,7 +9,7 @@
 //   agent line is the platform's own pointer to where its vault really is,
 //   said on a phone only once a computer is paired (an unpaired phone or the
 //   web says instead, in the empty-vault ramp only, how its own chats use
-//   the notes; founder, D20, 2026-10-07), and a member on someone else's
+//   the notes; maintainer, D20, 2026-10-07), and a member on someone else's
 //   computer is promised nothing;
 // - Obsidian is named only in the exact sentences each storage may say:
 //   only This folder says Obsidian opens it; the team vault says it is not
@@ -160,7 +160,7 @@ function rendered(p: Pair): string[] {
 
 // The pairs where the agent's folder IS the vault on screen: This folder on
 // the desktop, and Your computer on a phone paired to its own computer (the
-// hub serves the owner the same folder; Vault M5, CTO J9).
+// hub serves the owner the same folder; Vault M5, tech review J9).
 const agentsFolder = (p: Pair) =>
   (p.on === 'electron' && p.id === 'files') ||
   (p.on !== 'electron' && p.id === 'hub' && p.device === 'paired');
@@ -322,7 +322,7 @@ describe('the Vault copy map (0.19)', () => {
     expect(note).toMatch(/\[\[Ideas\]\]/);
   });
 
-  // Creative Studio 3c: the desktop's Keep as plain files row is retired as a
+  // design review 3c: the desktop's Keep as plain files row is retired as a
   // duplicate of This folder, so the 0.11 way out is This folder itself,
   // offered on the desktop whichever storage holds the vault.
   it('on the desktop the storage sheet always offers This folder, the one way out', () => {
@@ -381,7 +381,7 @@ describe('the Vault copy map (0.19)', () => {
 
   // The empty ramp says where the notes live and how the agent fits, so the
   // lead above it steps aside rather than say a sentence twice (Creative
-  // Studio and CMO, 2026-10-07). Nothing it drops goes unsaid.
+  // Studio and copy review, 2026-10-07). Nothing it drops goes unsaid.
   it('steps the lead aside while the ramp says it, and loses no sentence', () => {
     for (const p of PAIRS.filter((x) => x.id !== 'org')) {
       const c = vaultCopy(p.on, p.id, optsOf(p));
@@ -400,7 +400,7 @@ describe('the Vault copy map (0.19)', () => {
 
   // A vault on this device, or on the person's own computer, did not fail
   // for want of a connection, so only a network storage is told to check one
-  // (CMO, 2026-10-07).
+  // (copy review, 2026-10-07).
   it('tells only a network storage to check its connection when the vault does not load', () => {
     for (const id of ['local', 'files', 'hub'] as const) {
       const { title, sub } = vaultLoadFailed(id);
@@ -414,7 +414,7 @@ describe('the Vault copy map (0.19)', () => {
   });
 });
 
-// Your computer (Vault M5, CTO J8, J9): the paired computer's vault. Every
+// Your computer (Vault M5, tech review J8, J9): the paired computer's vault. Every
 // line says it holds only while the computer is on, a member is told whose
 // computer holds their notes and nothing more, and the desktop, where the
 // same folder is This folder, is never offered it.
@@ -716,7 +716,7 @@ describe('the private-notes promise', () => {
   it('names the one way a private note can reach a cloud model', () => {
     expect(VAULT_COMMAND_CAVEAT).toBe('unless a command you run or allow reads them');
     // OpenShore is the subject, and the person's own reach is a plain second
-    // sentence, never an "unless" inside the promise (CX and CMO, 2026-10-08,
+    // sentence, never an "unless" inside the promise (UX and copy review, 2026-10-08,
     // A). "Allow", not "approve": Accept edits lets a change land unasked.
     expect(VAULT_CARRY_CAVEAT).toBe(
       'A command you run or allow, or a change you allow, can still carry their words to a cloud model.',
@@ -756,7 +756,7 @@ describe('the private-notes promise', () => {
       /Models never see these, in any chat\./i,
       /\(never a private note\)/i,
       /A private note goes only to one on your own network\./i,
-      // The "unless" promise and the setting's old name (CX and CMO,
+      // The "unless" promise and the setting's old name (UX and copy review,
       // 2026-10-08, A).
       /run or allow a command or change that carries them/i,
       /A cloud model never does/i,
@@ -771,7 +771,7 @@ describe('the private-notes promise', () => {
   });
 });
 
-// Vault M6 retired lines (CX X8, X14): with Trash real, a delete no longer
+// Vault M6 retired lines (UX review X8, X14): with Trash real, a delete no longer
 // reads "Note deleted." and never asks the old two-tap question; a permanent
 // delete says "for good". The reader shows embeds, so "not supported" goes.
 const M6_RETIRED = [
@@ -806,7 +806,7 @@ describe('the Vault screen shows only the held text of the account signed in now
   });
 });
 
-// The resolve sheet (Vault M1, 1.1; Creative Studio 1a): the two sides are
+// The resolve sheet (Vault M1, 1.1; design review 1a): the two sides are
 // "yours" and "the other version", and no resolve line names a writer it
 // cannot prove, calls a version newer or older, or says "disk".
 describe('the resolve sheet says only what it knows (1.1)', () => {
@@ -1112,7 +1112,7 @@ describe('the desktop move card and the folder picker (1.3, 1.4)', () => {
     expect(vaultPickResultCopy({ display: '~/B', large: false }).back).toBeUndefined();
   });
 
-  it('Bring offers the notes of the folder before, in the CX words', () => {
+  it('Bring offers the notes of the folder before, in the UX review words', () => {
     const three = vaultPickResultCopy({
       display: '~/Brain',
       previous: { display: '~/OSCode/Vault', notes: 3 },
@@ -1268,7 +1268,7 @@ describe('the save chip and conflict badges (M2 2.2)', () => {
   });
 });
 
-// Vault M7 (CX R2, Y7, Y8, Y17; D12, tenet 2): nothing in the M7 copy claims a
+// Vault M7 (UX review R2, Y7, Y8, Y17; D12, tenet 2): nothing in the M7 copy claims a
 // speed, a quality, a memory, or "always", and the handoff never "picks up
 // where you left off" until its eval passes. Swept over every string literal
 // inside the M7 fences of vaultCopy.ts, so each stream's lines are covered the
@@ -1509,7 +1509,7 @@ describe("the team's path rule says what 0015 says, in the app's words (E43)", (
 // file that changes the number or the words fails here until the copy says
 // the new ones. The test fake raises the same text. No "try again" (a purge
 // frees space about a month later, so a retry fails the same way) and no
-// price or plan name (a Board gate).
+// price or plan name (a business gate).
 describe("the team's free space says what 0023 says (the review, finding 1)", () => {
   const sql = readFileSync(resolve(ROOT, '../supabase/migrations/0023_org_free_caps.sql'), 'utf8');
   const bytes = Number(

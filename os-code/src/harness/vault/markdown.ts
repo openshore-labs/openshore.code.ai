@@ -1,5 +1,5 @@
 // Obsidian markdown helpers for the reading view and the editor (Vault M6,
-// CTO K10, K11, K15): callout heads, `==highlight==` spans, hidden
+// tech review K10, K11, K15): callout heads, `==highlight==` spans, hidden
 // `%%comments%%` (masked with spaces, every line break kept, so offsets and
 // line numbers hold), a heading's section and a block anchor's range for
 // embeds and scroll-to, GFM tasks and their write-back toggle (skipped ranges
@@ -62,7 +62,7 @@ function inRanges(ranges: readonly TextRange[], at: number): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Callouts (K10, CX X12)
+// Callouts (K10, UX review X12)
 
 const FAMILIES: Readonly<Record<string, CalloutFamily>> = {
   note: 'neutral',
@@ -397,7 +397,7 @@ export function findUnlinkedMentions(text: string, names: readonly string[]): Un
 }
 
 // ---------------------------------------------------------------------------
-// Outline (K15, CX X16)
+// Outline (K15, UX review X16)
 
 /** One outline row: the heading, and the indent the sheet draws (H1 is 0;
  *  H4 and below align with H3, so the deepest indent is 2). */

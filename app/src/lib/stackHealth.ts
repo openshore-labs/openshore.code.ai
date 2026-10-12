@@ -6,7 +6,7 @@
 // sessions. With neither a bridge nor a hub there is nothing to read yet, and the
 // screen invites the person to pair one.
 //
-// Cadence is daily, not on demand (founder, 2026-09-04). A per-range result is
+// Cadence is daily, not on demand (2026-09-04). A per-range result is
 // cached with the time it was folded; within a day the cache is served as-is and
 // nothing recomputes, so opening the screen twice in an afternoon shows the same
 // numbers. Past a day (or with no cache) it folds fresh on open and restamps.

@@ -1,4 +1,4 @@
-// The Vault index's tokenizer (Vault M3, CTO H3). One function turns text into
+// The Vault index's tokenizer (Vault M3, tech review H3). One function turns text into
 // search terms, the same way for a note and for a query, so BM25 compares like
 // with like. Pure, with no imports, so the phone can run it.
 //

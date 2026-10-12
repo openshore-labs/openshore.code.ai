@@ -1,4 +1,4 @@
-// The vault context layer in the loop (Vault M4, CTO I5, I8 to I12): the pack
+// The vault context layer in the loop (Vault M4, tech review I5, I8 to I12): the pack
 // rides the system prompt after the code map, per seat, gated by Memory and
 // `vault.context`; a local-only note's text never reaches a seat that leaves
 // this network; vault writes are not code changes; and after a change
@@ -222,7 +222,7 @@ function escalatingSession(source?: VaultContextSource) {
 }
 
 // A chat that holds a private note's text never escalates to a seat that
-// leaves this network (CX and CMO, 2026-10-08, J): the escalation would send
+// leaves this network (UX and copy review, 2026-10-08, J): the escalation would send
 // the cloud seat the whole history, so it is held, and no card asks for it.
 // (Before the ruling the cloud seat got the stub in the note's place; now it
 // gets nothing at all.)

@@ -3,7 +3,7 @@
 // ("OpenShore Project <name> MDs/") in the repo working tree, and nothing else.
 // Because it cannot touch anything outside that set, its writes land silently
 // but visibly: the permission engine auto-allows it by name, while every general
-// write (writeFile, editFile, vaultWrite) still asks. This is the founder's
+// write (writeFile, editFile, vaultWrite) still asks. This is a maintainer's
 // "narrow exception". The notes live in the repo and ride into the agent's
 // commits with the code. No em dashes anywhere in this file.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -130,7 +130,7 @@ export const projectMemoryWriteTool: ToolDef<typeof writeSchema> = {
 };
 
 // ---------------------------------------------------------------------------
-// The harness keeps Current State current for lean seats (Vault M4, 4.7, CTO
+// The harness keeps Current State current for lean seats (Vault M4, 4.7, tech review
 // I12). After a change verifies on a small or tiny seat, the loop records one
 // dated line itself, so a 7B that never calls projectMemoryWrite still leaves
 // its project memory true. Called directly by the loop, never through

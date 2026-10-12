@@ -1,4 +1,4 @@
-// Where the work runs (founder, 2026-10-12): a device docks to as many
+// Where the work runs (2026-10-12): a device docks to as many
 // machines as the person likes (a computer, a server at home, a rented
 // server), each project may name one, and each chat goes back to the machine
 // its session opened on, never to another that has never heard of it.

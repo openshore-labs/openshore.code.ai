@@ -1,4 +1,4 @@
-// The team vault's live refresh (Vault M2 2.7, CTO G6): while a team note is
+// The team vault's live refresh (Vault M2 2.7, tech review G6): while a team note is
 // open, the page is visible, and the device is online, its head is checked
 // every 30 s with a little jitter, so teammates' saves reach an open note
 // without a reopen. Errors back off to five minutes and reset on success.

@@ -218,7 +218,7 @@ function buildModel(
     ? { isRecommended: overlay.isRecommended, ...(overlay.note ? { note: overlay.note } : {}) }
     : undefined;
 
-  // An overlay rank overrides curation.rank, so the founder's editorial order is
+  // An overlay rank overrides curation.rank, so a maintainer's editorial order is
   // what the default sort reads. The schema stores order in curation.rank, so
   // this is the schema-safe home for an editorial rank.
   const curation =

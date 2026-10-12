@@ -1,6 +1,6 @@
 // The desktop's first minutes, mounted in a real (small) DOM (build
 // 2026-09-29, package F1). The First Seat says what happens to a waiting
-// message in CX ruling 2's words, offers sign-in only while DeepBlue comes
+// message in UX review ruling 2's words, offers sign-in only while DeepBlue comes
 // down (never in the way), and its link opens the plain Sign in sheet. The
 // model sheet on the desktop never names the phone's download: its Local
 // models list the free chat with this computer's own model, or the way to
@@ -93,7 +93,7 @@ afterEach(async () => {
   await dom.unmount();
 });
 
-describe('the First Seat with a waiting message (CX ruling 2)', () => {
+describe('the First Seat with a waiting message (UX review ruling 2)', () => {
   async function seat() {
     const { FirstSeat } = await import('../src/components/FirstSeat.js');
     await dom.render(<FirstSeat fallback={<p>greeting</p>} />);
@@ -152,7 +152,7 @@ describe('the First Seat with a waiting message (CX ruling 2)', () => {
     expect(dom.buttons()).toContain('Try DeepBlue again');
   });
 
-  it('"Edit" takes the saved message back, the line folds away, and the download goes on (CX cleanup 8)', async () => {
+  it('"Edit" takes the saved message back, the line folds away, and the download goes on (UX review cleanup 8)', async () => {
     const { FIRST_SEAT_COPY } = await import('../src/state/firstRunOps.js');
     const { FirstSeat } = await import('../src/components/FirstSeat.js');
     Object.assign(app.state, {

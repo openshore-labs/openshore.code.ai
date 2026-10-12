@@ -23,7 +23,7 @@ normalization tables, the client sorts and filters, and the editorial workflow.
   popularity, never as quality.
 - `createdAt` / `updatedAt`: ISO strings from source metadata. A weird format
   degrades to ignored rather than rejecting the catalog.
-- `recommended`: `{ isRecommended, note? }`, the founder's editorial pick.
+- `recommended`: `{ isRecommended, note? }`, a maintainer's editorial pick.
 
 Shared types added: `CapabilityEnum` (the router/roles.ts taxonomy, promoted so
 the ratings map and the categories field cannot drift) and a `StarSchema` that
@@ -107,7 +107,7 @@ Rules that keep ratings honest:
   `osCodeFit` on a specialist (a pure embedder cannot orchestrate) is correct
   information, not a penalty.
 
-### CTO must-fixes
+### tech review must-fixes
 
 - **License fail-closed** (`licenses.table.ts`): id, name, and url come ONLY
   from the fixed SPDX allow-list. A missing or unmapped license id drops the
@@ -125,7 +125,7 @@ Rules that keep ratings honest:
   the job and publishes nothing.
 - **Editorial overlay** (`curation/recommended.json`): a map of modelId to
   `{ isRecommended, note?, rank?, licenseNote? }`. An overlay `rank` overrides
-  `curation.rank`, which is the schema-safe home for the founder's editorial
+  `curation.rank`, which is the schema-safe home for a maintainer's editorial
   order. `licenseNote` is the only place a human license note may come from.
 - **Schema validation**: `CatalogSchema.parse` before writing.
 
@@ -143,7 +143,7 @@ from the source.
 ### The phone storefront (2026-09-05)
 
 On an iPhone the store front reads top to bottom as "what this phone can take,
-then what it can only browse." The founder's brief: the phone has few choices,
+then what it can only browse." A maintainer's brief: the phone has few choices,
 so be package-ready there; the desktop has the luxury of choice.
 
 1. **Set up this iPhone**: three packs, one per connection status the header
@@ -184,10 +184,10 @@ curated gate as an orchestrator only once `osc eval` has scored it into
 `curation/eval.json`, so until then the live feed carries it as nothing and the
 packs fall back to Qwen 2.5 1.5B. The bundled seed shows it either way.
 
-### Where it runs, and the phone memory ceiling (2026-09-05, CTO + CMO consensus)
+### Where it runs, and the phone memory ceiling (2026-09-05, tech review + copy review consensus)
 
-The founder asked whether we could smooth a LARGER on-device model on an
-iPhone. The CTO and CMO agreed on one line: a great 4B is the phone ceiling,
+A maintainer asked whether we could smooth a LARGER on-device model on an
+iPhone. The tech review and copy review agreed on one line: a great 4B is the phone ceiling,
 and bigger models run on your computer. We do not chase a 7B on the phone (it
 swaps, throttles, and gets memory-killed mid-reply, and we cannot verify it off
 a device). Instead the store is honest and smart about the device.
@@ -226,7 +226,7 @@ a device). Instead the store is honest and smart about the device.
 - **Newest**: `createdAt` / `updatedAt` descending.
 - **Best fit for my machine**: reuses the engine budget fractions.
 
-Undefined ordering (CTO must-fix): a missing value always sorts LAST, whatever
+Undefined ordering (tech review must-fix): a missing value always sorts LAST, whatever
 the direction, with `curation.rank` as the stable tiebreaker. A partial or old
 catalog (no popularity, no timestamps) still renders in curated order instead of
 collapsing into an arbitrary heap.
@@ -288,7 +288,7 @@ when a large drop is intended). Each run:
 5. Always uploads the built catalog as a run artifact, so a no-publish run (no
    token, or an unchanged catalog) still leaves the output inspectable.
 
-### The one secret the founder must add
+### The one secret a maintainer must add
 
 - **`MARKETING_DEPLOY_TOKEN`** (repository secret on `openshore.code.ai`): a
   fine-grained personal access token scoped to `openshore-labs/OpenShore.ai-marketing-site`
@@ -303,7 +303,7 @@ An initial `catalog.json` is committed in the marketing repo alongside this
 change, so the URL is live from the first Cloudflare deploy without waiting for
 a scheduled run.
 
-## What else the founder must wire
+## What else a maintainer must wire
 
 - **Seed the curation files**: the committed `curation/*.json` are a working
   sample. Extend them as the roster grows.

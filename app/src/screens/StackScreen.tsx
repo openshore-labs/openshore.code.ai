@@ -59,7 +59,7 @@ function engineModelName(model: string, provider?: string): string {
 }
 
 /** The chip for where a seat the engine reports answers, in words that hold
- *  for a server on the LAN (CX and CMO, 2026-10-08, B): Cloud when it leaves
+ *  for a server on the LAN (UX and copy review, 2026-10-08, B): Cloud when it leaves
  *  this network (the engine's seatLeaves, a cloud tag included), On this
  *  computer when its server is this computer itself (hostIsLoopback), and On
  *  your network for any other server that stays. A seat with no kind (a
@@ -77,7 +77,7 @@ function SeatChip({ seat }: { seat: { kind?: 'local' | 'cloud'; onThisComputer?:
 export function StackScreen() {
   const { settings, connectivity, showToast, setView, ensureHarborMaster, harborMasterDownload } =
     useApp();
-  // Desktop Offline (founder, 2026-10-07): the phone's quiet door under its
+  // Desktop Offline (2026-10-07): the phone's quiet door under its
   // status note, here in this computer's words. It offers Offline while
   // online, and the way back once Offline is chosen; a connection that simply
   // dropped is already Offline, with the lone pill in the bar.
@@ -267,7 +267,7 @@ export function StackScreen() {
     <div className="screen">
       <BackBar title="Stack" titleHiddenUntil={titleRef} />
       {/* The desktop Stack in the Settings ledger, the phone's shape
-          (Creative Studio, 2026-10-02): who runs the show, the specialists,
+          (design review, 2026-10-02): who runs the show, the specialists,
           then the prefab stacks (first while nothing runs the show). */}
       <div className="screen-inner settings stack-manager">
         <h1 ref={titleRef}>Stack</h1>
@@ -455,7 +455,7 @@ export function StackScreen() {
             </div>
             {/* An Ollama cloud tag answers on ollama.com, not here: it is
                 listed apart, with the cloud chip, and says where its words go,
-                in the cloud card's own nouns (CX and CMO, 2026-10-08, C). */}
+                in the cloud card's own nouns (UX and copy review, 2026-10-08, C). */}
             {listed.cloud.length ? (
               <>
                 <p className="sheet-sub">
@@ -488,7 +488,7 @@ export function StackScreen() {
             ) : null}
             {status.ollama.up ? <InstallByName /> : null}
             {/* Turning a specialist off lives here, not as a button in the
-                ledger (Creative Studio, 2026-10-02). */}
+                ledger (design review, 2026-10-02). */}
             {pickFor !== 'orchestrator' && specialists.some((s) => s.role === pickFor) ? (
               <div className="sheet-actions">
                 <button

@@ -4,7 +4,7 @@
 // terminal: it asks the running daemon (over loopback, with the shared token)
 // for a one-time claim, prints the QR the phone scans, and puts each request
 // to the person as "Allow this device?". The yes is still typed by the person
-// on the machine, as the desktop's dialog has it (CTO review 2026-10-01, F3).
+// on the machine, as the desktop's dialog has it (tech review 2026-10-01, F3).
 // This file is the logic; the command renders it.
 
 /** The link the phone's camera or in-app scanner reads. The same shape as the

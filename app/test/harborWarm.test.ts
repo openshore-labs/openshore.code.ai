@@ -1,4 +1,4 @@
-// Founder, 2026-10-01: Harbor's download includes the warm-up, so the first
+// Maintainer, 2026-10-01: Harbor's download includes the warm-up, so the first
 // message answers without a "Warming up" wait, and a downloaded Harbor becomes
 // the phone's model in every status until the person places another in Stack.
 import { beforeEach, describe, expect, it, vi } from 'vitest';

@@ -1,5 +1,5 @@
 // Which folder holds a vault's Obsidian config, and which files a host may
-// read from it (Vault M3, CTO H5). Pure, so the desktop's main process and the
+// read from it (Vault M3, tech review H5). Pure, so the desktop's main process and the
 // iPhone folder provider pick the same folder by the same rule; the Node
 // reader is `core/vault/configFile.ts`.
 //

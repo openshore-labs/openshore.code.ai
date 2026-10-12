@@ -1,4 +1,4 @@
-// Link rewrites for a set of moves (Vault M6, CTO K4 with R1): a pure plan the
+// Link rewrites for a set of moves (Vault M6, tech review K4 with R1): a pure plan the
 // host applies one compare-and-swap write at a time. For each link, the note
 // it should reach is where its target went (`moves`), or where it already was.
 // A link is spliced only when its resolution from the source's new path

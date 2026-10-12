@@ -1,13 +1,13 @@
-// The sidebar is the app's main navigation (founder, 2026-09-02): every room
-// in one group at the top (founder, 2026-10-01), the day-one rooms first and
+// The sidebar is the app's main navigation (2026-09-02): every room
+// in one group at the top (2026-10-01), the day-one rooms first and
 // Crew, Cloud Connections and Pairing under them, in navRooms' order for this
-// device (D10, founder 2026-10-07), so a phone with no computer keeps Terminal
+// device (D10, 2026-10-07), so a phone with no computer keeps Terminal
 // after the Vault. The project switcher lives in the Projects room. New chat
-// is an action, not a room (Creative Studio, 2026-10-12): the phone's drawer
+// is an action, not a room (design review, 2026-10-12): the phone's drawer
 // carries it as a floating button over its bottom right, the desktop's
 // sidebar as a compose icon in its head, never as a nav row. Persistent on desktop, a slide-over drawer on the phone.
 //
-// The person's own order (founder, 2026-10-01): every room can be dragged to
+// The person's own order (2026-10-01): every room can be dragged to
 // a new place, in its group or across to the other (hooks/useNavReorder.ts,
 // lib/sidebarOrder.ts). The recent chats sit under the top group, as many as
 // fit cleanly, with View all to the Chats room. Settings and the sign-in card
@@ -64,12 +64,12 @@ const nav = (view: NavIconName & NavRoom) => ({ view, label: ROOM_LABELS[view] }
 type NavEntry = { view: NavIconName; label: string };
 
 // Settings is pinned to the bottom, under every room and above the sign-in
-// card, in both layouts (founder, 2026-10-01).
+// card, in both layouts (2026-10-01).
 const SETTINGS: NavEntry = nav('settings');
 
 /** The order before the person has moved anything: every room in one group
- *  above the recent chats (founder, 2026-10-01, "no need for a separate
- *  section"), in navRooms' order for this device (D10, founder 2026-10-07):
+ *  above the recent chats (2026-10-01, "no need for a separate
+ *  section"), in navRooms' order for this device (D10, 2026-10-07):
  *  the day-one rooms first, then Crew, Cloud Connections and Pairing. On a
  *  phone with no computer, Terminal is only a setup page, so it waits after
  *  the Vault, and it moves up to third the day the phone pairs. The release
@@ -389,9 +389,9 @@ export function Sidebar({
       </nav>
 
       {/* Pinned to the bottom: Settings, then the account
-          card under it (founder, 2026-10-01): Sign in while signed out, and
+          card under it (2026-10-01): Sign in while signed out, and
           once signed in the same card names the account and opens the
-          profile (founder, 2026-10-02). */}
+          profile (2026-10-02). */}
       <div className="sidebar-foot">
         {/* The drawer's New chat floats over its bottom right, above the foot,
             where the thumb already is; it arrives with the door and leaves

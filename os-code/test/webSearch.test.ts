@@ -230,7 +230,7 @@ describe('webFetch tool', () => {
   });
 });
 
-// Web search asks once (founder, 2026-09-27): until the person allows it in the
+// Web search asks once (2026-09-27): until the person allows it in the
 // app, the session is built without the webSearch tool, so no search words can
 // leave. webFetch stays (it fetches a page the person or the task names), and
 // the CLI, routines, and config keep searching as before (undefined is on).

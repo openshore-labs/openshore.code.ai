@@ -1,7 +1,7 @@
 // The transcript's reveal pacing. A cousin of os-code/src/tui/smoothing.ts,
 // tuned for the phone: a calm fixed pace with a bounded lag, rather than the
 // terminal's drain-a-sixth-per-tick, so a cloud burst types out instead of
-// landing as a block (founder, 2026-09-03).
+// landing as a block (2026-09-03).
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';

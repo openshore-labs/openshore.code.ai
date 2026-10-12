@@ -1,4 +1,4 @@
-// The Pairing screen's two cleanup changes (CX cleanup 5): the status
+// The Pairing screen's two cleanup changes (UX review cleanup 5): the status
 // line says what a failed bind means, without blaming Tailscale when Tailscale
 // is up and without the raw error; and "Replace the shared key" asks once,
 // replaces the key through main, and says how it went.
@@ -52,7 +52,7 @@ describe('the phone connection status line', () => {
     expect(hubStatusLine(undefined)).toMatch(/^Tailscale is not up on this computer\./);
   });
 
-  // CX 2026-10-01: the Linux command only on Linux.
+  // UX review 2026-10-01: the Linux command only on Linux.
   it('shows sudo tailscale up on Linux only', () => {
     const off = { ...base, running: false, tailscaleUp: false };
     expect(hubStatusLine(off)).toBe(
