@@ -1,4 +1,4 @@
-// A short line that rolls in on the swell (Creative Studio, "Swell Line"):
+// A short line that rolls in on the swell (design review, "Swell Line"):
 // each word a nowrap span, each character rising a hair, cresting, and
 // settling on its step, so a line of plain text reads as one low wave. Used
 // where a scripted moment is a single line rather than markdown (the empty

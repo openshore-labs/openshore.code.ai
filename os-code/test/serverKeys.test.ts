@@ -1,4 +1,4 @@
-// Keys on your server (founder, 2026-10-09; docs/byok-any-provider-plan.md,
+// Keys on your server (2026-10-09; docs/design/byok-any-provider-plan.md,
 // part 3), the daemon's half: the routes answer only on a server and only to
 // an admin device; a key goes in once and never comes back out, in an answer
 // or a log line; removing one clears the stack slots that named it; and a
@@ -196,7 +196,7 @@ describe('the key routes on a server', () => {
 
   // A gateway on the server's own network (LiteLLM passing turns to a cloud)
   // would read as local, so routines, the free chat and private notes would
-  // reach it (CTO 3, D5): the key door takes only an address off it.
+  // reach it (tech review 3, D5): the key door takes only an address off it.
   it('refuses an address on the server own network', async () => {
     daemon = await server();
     const { call } = client(daemon);
@@ -416,7 +416,7 @@ describe('a key on the server serves coding sessions only', () => {
     placeOrchestrator({ provider: 'groq', model: 'openai/gpt-oss-120b', contextTokens: 131072 });
   }
 
-  it('a routine still refuses an orchestrator on a server key (CTO 3)', () => {
+  it('a routine still refuses an orchestrator on a server key (tech review 3)', () => {
     cloudOrchestrator();
     const routine = routineStore.createRoutine({
       name: 'Morning review',

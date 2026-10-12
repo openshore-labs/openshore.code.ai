@@ -42,6 +42,7 @@ import {
   readHermesNote,
 } from '../currents/host.js';
 import { tailscaleIp } from '../connect/tailscale.js';
+import { machineFacts } from './machineFacts.js';
 import { PERMISSION_MODES, type PermissionMode } from '../core/agent/types.js';
 import { bootstrapSession } from '../core/agent/bootstrap.js';
 import { effectiveMode } from '../core/agent/modes.js';
@@ -117,7 +118,7 @@ import { logger } from '../util/log.js';
 // The phone app runs in a WebView, so the daemon must speak CORS: a
 // capacitor://localhost origin preflights every authorized request. The
 // bearer token still gates everything; CORS is transport manners, not auth.
-// `*` stays by decision (DAE-15, CTO): no cookies ride this API, and the
+// `*` stays by decision (DAE-15, tech review): no cookies ride this API, and the
 // desktop's Electron origin is null, so an allowlist would be worse. Never
 // allow-credentials. The one tightening: a 401 carries NO CORS headers, so a
 // web page probing the port sees an opaque error, not a readable fingerprint.
@@ -200,7 +201,7 @@ export interface DaemonOptions {
    *  pass one with an injected spawn so "node-pty not installed" and fake
    *  terminals are reproducible on any machine, built natives or not. */
   terminals?: TerminalManager;
-  /** Ask the person on this computer whether a device may pair (CTO security
+  /** Ask the person on this computer whether a device may pair (tech review security
    *  review 2026-10-01, F3). Resolves true for Allow. The desktop app shows a
    *  native dialog with the label and the short code the phone shows; the
    *  promise may settle after the request expired, which changes nothing.
@@ -566,7 +567,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
       return;
     }
     // A long-lived stream re-checks the credential it opened with on every
-    // keepalive (pairing review, CX 2026-10-01), so revoking a lost phone cuts
+    // keepalive (pairing review, UX review 2026-10-01), so revoking a lost phone cuts
     // its open event stream and shell too, not only its next request.
     const stillAuthorized = (): boolean => resolveAuth(presented, legacyToken(), { from }) !== null;
     // requireAdmin gates a mutating admin route (403 for a member). Read routes
@@ -594,6 +595,9 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         // This server keeps provider keys for its sessions (GET /keys).
         // Additive: a desktop and an older server send nothing.
         ...(options.pairingConsole ? { keysOnServer: true } : {}),
+        // Its memory, cores and processor family, so a device docked to
+        // several machines can tell them apart (machineFacts.ts). Additive.
+        machine: machineFacts(),
       });
       return;
     }
@@ -603,7 +607,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
     // answers the request: `osc pair --server` over SSH (the shared token on
     // loopback), or a device already paired as admin adding the next one.
     // Only on a server: the desktop's yes stays in its own dialog, on the
-    // computer, so a docked phone cannot let another device in there (CTO
+    // computer, so a docked phone cannot let another device in there (tech review
     // review 2026-10-08).
     const consoleRoute =
       (req.method === 'POST' && url.pathname === '/pair/claims') ||
@@ -650,7 +654,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
     }
 
     // A phone forgetting this computer revokes its own credential, so the
-    // desktop's Paired devices list never fills with rows nothing uses (CX
+    // desktop's Paired devices list never fills with rows nothing uses (UX review
     // 2026-10-01). Only the credential presented: never the shared token,
     // never another device.
     if (req.method === 'DELETE' && url.pathname === '/pair/self') {
@@ -918,7 +922,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
           isOllamaCloudTag(orchestratorModel);
       // A seat that stays wears "On this computer" only when its server is
       // this computer itself (hostIsLoopback, never the LAN or the tailnet),
-      // so a chip can say where it answers (CX and CMO, 2026-10-08, B).
+      // so a chip can say where it answers (UX and copy review, 2026-10-08, B).
       const onThisComputer = (providerId: string): { onThisComputer?: true } => {
         const endpoint = config.providers[providerId];
         if (!endpoint || !('baseUrl' in endpoint) || typeof endpoint.baseUrl !== 'string') {
@@ -982,7 +986,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
     // copy leaving the hub. The phone is a window onto this machine: the numbers
     // are computed here, on the local journals, and only the aggregate payload
     // crosses the tailnet. On a shared hub the fold spans every member's
-    // sessions, so an admin can restrict it (default 'admins', per the CTO/CMO
+    // sessions, so an admin can restrict it (default 'admins', per the tech review/copy review
     // call). The setting lives in daemon config and is read FRESH here so an
     // admin's toggle takes effect without a restart. Scope is stamped honestly:
     // a minted multi-user credential sees a 'machine' aggregate, the legacy solo
@@ -1035,7 +1039,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
       }
       return;
     }
-    // ---- Clear the stored handoffs (Vault M5, CTO J13). ----
+    // ---- Clear the stored handoffs (Vault M5, tech review J13). ----
     // Part of the action that clears the chats: every "where you left off"
     // summary on this machine goes. Admin only, since the store is keyed by a
     // hash and holds every owner's; a member's go with each session they
@@ -1049,10 +1053,10 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
       sendJson(res, 200, { cleared: true });
       return;
     }
-    // ---- The vault, scoped to the caller's own root (Vault M5, CTO J7). ----
+    // ---- The vault, scoped to the caller's own root (Vault M5, tech review J7). ----
     // Not owner-only (D9): the owner and the legacy token reach the machine's
     // vault, a member reaches their own root. The handler lives in
-    // vaultRoutes.ts; no route takes a root. M6 (CTO K13) adds rename,
+    // vaultRoutes.ts; no route takes a root. M6 (tech review K13) adds rename,
     // folders, Trash and attachments there; an attachment answers raw bytes
     // with its own headers, written as they come.
     if (parts[0] === 'vault') {
@@ -1090,7 +1094,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         signal: controller.signal,
         // One answer at a time per credential (H1).
         lane: { key: `${auth.source}:${auth.userId}:${auth.label}`, busy: chatsInFlight },
-        // The vault context pack (Vault M5, CTO J6), built here over the
+        // The vault context pack (Vault M5, tech review J6), built here over the
         // caller's own root so the phone never ships note bodies to this
         // computer and back.
         pack: (ctx) => desktopChatPack(body, { auth, ...ctx }),
@@ -1123,7 +1127,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
     // unattended work on this machine, so it is admin-only, and the workspace
     // is gated to the allowed roots for every caller inside the scheduler.
     // Opening web pages, the person's choice for this computer's coding agent
-    // (founder, 2026-10-02): ask, allow, or off. Machine config; admin only.
+    // (2026-10-02): ask, allow, or off. Machine config; admin only.
     if (req.method === 'POST' && url.pathname === '/settings/web-fetch') {
       if (!hasRole(auth, 'admin')) {
         sendJson(res, 403, { error: "Only the computer's owner can change this." });
@@ -1140,7 +1144,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
       return;
     }
 
-    // ---- Keys on your server (founder, 2026-10-09). ----
+    // ---- Keys on your server (2026-10-09). ----
     // A docked device puts a provider's key here once, so this server's coding
     // sessions can use it while the device sleeps, and places one of that
     // provider's models as the server's own. Only on a server (the switch the
@@ -1211,7 +1215,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         return;
       }
       // The person's "Let models search the web" switch, carried to this
-      // computer so a routine follows it (founder, 2026-10-01). Machine config.
+      // computer so a routine follows it (2026-10-01). Machine config.
       if (req.method === 'POST' && parts[1] === 'web-search' && !parts[2]) {
         if (!requireAdmin()) return;
         const body = (await readJson(req)) as { allowed?: unknown };
@@ -1373,7 +1377,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         currents = Object.keys(rest).length ? rest : undefined;
       }
       const harnessCurrents = parseHarnessCurrentsHandle(body.harnessCurrents);
-      // A handoff from the chat this session continues (CTO J12), first task
+      // A handoff from the chat this session continues (tech review J12), first task
       // only, and the project's own pins (J14). Both additive: an old app
       // sends neither. An oversized handoff is refused, never cut mid-line.
       const handoff =
@@ -1383,7 +1387,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         return;
       }
       const vaultPins = parseVaultPins(body.vaultPins);
-      // The app's vault switches (Vault M7, CTO L13): off-only and one of the
+      // The app's vault switches (Vault M7, tech review L13): off-only and one of the
       // three sizes, anything else dropped; the engine keeps size lower-only.
       const vaultOverrides = parseVaultOverrides(body.vaultOverrides);
       if (!hasRole(auth, 'admin') && !isAdminProvisionedWorkspace(cwd)) {
@@ -1401,7 +1405,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         sendJson(res, 403, { error: MEMBER_VAULT_REFUSAL });
         return;
       }
-      // The caller's own vault (CTO J8): the owner's for an admin, the
+      // The caller's own vault (tech review J8): the owner's for an admin, the
       // member's own root for a member, made on first use so its tools work.
       const vaultRoot = vaultRootFor(auth);
       try {
@@ -1419,7 +1423,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
           ...(webSearch === false ? { webSearch } : {}),
           currents,
           harnessCurrents,
-          // Each agent works on its caller's own root (CTO J8): a member's
+          // Each agent works on its caller's own root (tech review J8): a member's
           // own folder, never the owner's.
           vaultRoot,
           // Only the computer's owner decides which check command may run
@@ -1686,7 +1690,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
           sendJson(res, 403, { error: `Session ${id} belongs to another user.` });
           return;
         }
-        // The handoff this session's project holds goes with the chat (CTO
+        // The handoff this session's project holds goes with the chat (tech review
         // J13), read before the stored files are removed.
         const owner = live ? live.owner : stored?.ownerUserId;
         const cwd = live ? live.cwd : stored?.cwd;
@@ -1732,7 +1736,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
           // continues, and the project it was opened for (its name and standing
           // instructions, kept in info.json) comes back with it.
           try {
-            // The root is the session OWNER's, never the caller's (CTO J8).
+            // The root is the session OWNER's, never the caller's (tech review J8).
             const ownerAdmin = ownerHoldsAdmin(stored.ownerUserId);
             const ownerRoot = vaultRootForOwner(stored.ownerUserId, ownerAdmin);
             if (isMemberVaultRoot(ownerRoot)) ensureVaultRootAt(ownerRoot);
@@ -1769,7 +1773,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
           return;
         }
         // `localOnly: true` marks the message as carrying a private note's
-        // text (a private plan's step, CX and CMO 2026-10-08, J): the task
+        // text (a private plan's step, UX and copy review 2026-10-08, J): the task
         // runs under the engine's D5 rules and its reply comes back marked.
         // Any other value reads as unmarked, as an older client sends.
         driver.send(body.text, undefined, body.localOnly === true ? { localOnly: true } : {});
@@ -1797,7 +1801,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         sendJson(res, 'error' in result ? 409 : 200, result);
         return;
       }
-      // ---- more room: the truncation card's action (C1, CTO 5) ----
+      // ---- more room: the truncation card's action (C1, tech review 5) ----
       // Serve this provider's models the larger window from the next message,
       // in every chat: `numCtx: 'auto'` in machine config. Admin only, since
       // it spends this computer's memory, which on a shared hub is the
@@ -1903,7 +1907,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         return;
       }
       // ---- user-initiated command lane (chat-to-terminal bridge) ----
-      // ADMIN-only (P0-1, CTO ruling): this lane is `bash -c` in the workspace
+      // ADMIN-only (P0-1, tech review ruling): this lane is `bash -c` in the workspace
       // with no jail and no model approval, which is a raw shell however it is
       // dressed. On a shared hub a member with it could read the admin token
       // and push with the admin's git credentials, so members keep only the
@@ -2086,7 +2090,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
           // startup): the primary bind is what the phone uses. Log, resolve with
           // the tailnet-only daemon, and carry on. resolve() is idempotent, so
           // the success path below is harmless if it also fires.
-          // A server is the exception (CTO review 2026-10-08): `osc pair
+          // A server is the exception (tech review 2026-10-08): `osc pair
           // --server` sends the shared token to this port on loopback, so a
           // port someone else holds there must stop the daemon, never be
           // left to them.
@@ -2142,7 +2146,7 @@ function effectiveRemoteMode(requested: PermissionMode | undefined): {
 }
 
 /**
- * The desktop chat's vault pack (Vault M5, CTO J6). Built only when the app
+ * The desktop chat's vault pack (Vault M5, tech review J6). Built only when the app
  * sent `vaultPack` and not `memory: false`, with Memory and `vault.context` on
  * in this machine's config. The notes come from the caller's own root; this
  * project's Current State only from a `cwd` that passes the same checks a
@@ -2176,7 +2180,7 @@ async function desktopChatPack(
   try {
     const caps = await o.provider.capabilities(o.model);
     const root = vaultRootFor(o.auth);
-    // The machine's rules unioned with the vault's own file (Vault M7, CTO
+    // The machine's rules unioned with the vault's own file (Vault M7, tech review
     // L4), the same holder a session's tools judge by, read fresh now.
     const holder = vaultPrivacyHolder(vaultPrivacyConfig(o.config), root);
     try {

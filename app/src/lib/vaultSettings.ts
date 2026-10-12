@@ -1,4 +1,4 @@
-// The vault's settings in the app (Vault M7, CTO L3 to L7, L18; CX Y2, Y3,
+// The vault's settings in the app (Vault M7, tech review L3 to L7, L18; UX review Y2, Y3,
 // Y5). One loader for every provider: four config reads through the seam
 // (`oscode/vault`, then Obsidian's `app`, `daily-notes` and `templates`),
 // resolved by the shared core (`resolveVaultSettings` from os-code/protocol),
@@ -17,7 +17,7 @@
 // LAST GOOD narrowing for that vault, kept sealed on the device, so a file
 // mid-sync never opens a note up. A file that is absent means none.
 //
-// The save (L7, CX Y5) is the person's alone: only the sheet calls
+// The save (L7, UX review Y5) is the person's alone: only the sheet calls
 // `saveVaultSetting`, never an agent path (a grep test holds that). It
 // writes the one changed field by compare-and-swap; when the file changed
 // elsewhere, a DIFFERENT field is re-applied on theirs once, and the SAME
@@ -285,7 +285,7 @@ export function vaultNarrowingStamp(settings: ResolvedVaultSettings | undefined)
 // ---------------------------------------------------------------------------
 // Save
 
-/** What one committed change did (CX Y5). */
+/** What one committed change did (UX review Y5). */
 export type VaultSettingSave =
   /** Written. `merged`: the file had changed elsewhere in another field, so
    *  this field was re-applied on theirs ("Saved. Some other settings
@@ -382,7 +382,7 @@ async function writeOnce(
   return { ok: false, conflict: r.conflict, ...(theirs ? { theirs } : {}) };
 }
 
-/** Save one changed field (L7, CX Y5): only that key is written, every other
+/** Save one changed field (L7, UX review Y5): only that key is written, every other
  *  key (unknown and set-aside ones too) kept as found; `null` removes it. */
 export async function saveVaultSetting(
   deps: VaultSettingSaveDeps,
@@ -464,7 +464,7 @@ export async function saveVaultSetting(
 }
 
 // ---------------------------------------------------------------------------
-// Sheet logic (CX Y2, Y3, Y5): what a row may do and what it says, so the
+// Sheet logic (UX review Y2, Y3, Y5): what a row may do and what it says, so the
 // sheet (stream G) renders and never decides.
 
 /** One row's state. `readOnly` rows are `aria-disabled` with `reason` as
@@ -479,7 +479,7 @@ export interface VaultSettingRowState {
   more?: string;
 }
 
-/** A row's state (CX Y2, Y5): a field Obsidian sets is read-only "From
+/** A row's state (UX review Y2, Y5): a field Obsidian sets is read-only "From
  *  Obsidian"; a bad file makes every row read-only with its line; a storage
  *  that cannot save makes every row read-only with the storage's own line
  *  (`storageLine`, e.g. `vaultCapLine` or the away line). */
@@ -511,7 +511,7 @@ export function vaultSettingRow(
   return { readOnly: false, ...(own ? { sub: own } : {}) };
 }
 
-/** The fields Obsidian has a setting for (CTO L2's seed column), so only
+/** The fields Obsidian has a setting for (tech review L2's seed column), so only
  *  these say "Obsidian keeps its own setting for this." in a vault that has
  *  `.obsidian/`. */
 const OBSIDIAN_SEEDED: ReadonlySet<VaultSettingsField> = new Set<VaultSettingsField>([
@@ -531,7 +531,7 @@ const OBSIDIAN_SEEDED: ReadonlySet<VaultSettingsField> = new Set<VaultSettingsFi
   'attachments.folder',
 ]);
 
-/** The quiet lines at the top of section 2 (CX Y3): one per ask the file may
+/** The quiet lines at the top of section 2 (UX review Y3): one per ask the file may
  *  not make, from the schema's `plain` fragment. Keys the file got wrong or
  *  that no version knows are not asks, so they say nothing here. */
 export function vaultSettingsSetAsideLines(settings: ResolvedVaultSettings): string[] {
@@ -545,7 +545,7 @@ export function vaultSettingsSetAsideLines(settings: ResolvedVaultSettings): str
   return out;
 }
 
-/** The status line after a save (CX Y5), or undefined for none. The
+/** The status line after a save (UX review Y5), or undefined for none. The
  *  same-field line names the field and theirs; the sheet adds "Use
  *  {yours}" with `vaultSettingsUseYours`. */
 export function vaultSettingSaveLine(

@@ -2,7 +2,7 @@
 // transport that does the file system work somewhere else: the Electron main
 // process on the desktop today (deviceFolder.ts), and the iPhone's
 // coordinated folder later (plan 2.10a), so the two keep one set of rules and
-// one version token (Vault M1, CTO F1, F4).
+// one version token (Vault M1, tech review F1, F4).
 //
 // What the client adds on top of the transport: only notes cross it (the seam's
 // isNotePath rule: `.md`, no dot segment, so `.obsidian/` and attachments never
@@ -12,7 +12,7 @@
 // and publish in one step; a folder provider therefore declares
 // `compareAndSwap: true`.
 //
-// Vault M6 (CTO K2, K3, K5, K6, K11): the rename, folder, Trash and attachment
+// Vault M6 (tech review K2, K3, K5, K6, K11): the rename, folder, Trash and attachment
 // members are optional on the transport, and the client declares a seam
 // member only when its transport has it. So the desktop lights them through
 // the bridge, and the iPhone folder (the held native branch, K19) lights the

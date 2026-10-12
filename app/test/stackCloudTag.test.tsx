@@ -129,7 +129,7 @@ describe("the desktop Stack's picker", () => {
     expect(here!.sub).toBe('Models installed on this computer. Ollama, a free app, runs them.');
     expect(here!.options).toEqual(['qwen2.5-coder:7b']);
     // One name for the place, the one the install card uses (Ollama's cloud),
-    // and the cloud card's own nouns, ending where they go (CX and CMO,
+    // and the cloud card's own nouns, ending where they go (UX and copy review,
     // 2026-10-08, C).
     expect(cloud!.sub).toBe(
       "Cloud models your Ollama lists. They run on Ollama's cloud, under your Ollama account, so your messages and the files the agent reads go to ollama.com.",
@@ -138,7 +138,7 @@ describe("the desktop Stack's picker", () => {
     expect(cloud!.options).toEqual(['kimi-k3:cloud [Cloud]', 'gpt-oss:120b-cloud [Cloud]']);
   });
 
-  // CX and CMO, 2026-10-08 (B): the install card is a local door, so its
+  // UX and copy review, 2026-10-08 (B): the install card is a local door, so its
   // examples are models that run here and it offers no cloud tag to copy; its
   // warning says what a cloud tag is in the engine judge's own rule, so a
   // local tag such as "mycloud" is not misnamed.
@@ -176,7 +176,7 @@ describe("the desktop Stack's picker", () => {
   });
 });
 
-// CX and CMO, 2026-10-08 (B): Runs the show and every Specialists row wear a
+// UX and copy review, 2026-10-08 (B): Runs the show and every Specialists row wear a
 // chip by where the seat answers, in words that hold for a server on the LAN:
 // Cloud when it leaves (the engine's seatLeaves, a cloud tag included), On
 // this computer only when its server is this computer itself

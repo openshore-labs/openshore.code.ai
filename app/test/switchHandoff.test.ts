@@ -1,4 +1,4 @@
-// The switch handoff (Vault M5, CTO J12, J13). A model switch seeds the new
+// The switch handoff (Vault M5, tech review J12, J13). A model switch seeds the new
 // seat with the whole chat when it fits the seat's window, and otherwise with
 // a handoff covering exactly what dropped plus the newest turns that fit; a
 // 32k seat never gets more than fits; the desktop agent, which takes no

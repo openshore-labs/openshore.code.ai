@@ -9,7 +9,7 @@ import { LANDING_PACE, takeLandingSwell } from '../lib/introWalk.js';
 import { durationMs, easing, prefersReducedMotion } from '../lib/motion.js';
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { INIT_PROMPT } from 'os-code/protocol';
-import { useApp, driverFor } from '../state/store.js';
+import { useApp, driverFor, conversationWhere, newChatWhere } from '../state/store.js';
 import type { HubRole } from '../drivers/types.js';
 import { sourceSupportsVision, type ConversationSource } from '../state/types.js';
 import { MessageList } from '../components/MessageList.js';
@@ -162,7 +162,7 @@ function childWith(body: HTMLElement, cls: string): HTMLElement | undefined {
   return undefined;
 }
 
-/** The desktop opening (D5, founder 2026-10-07, built as recommended, A). On a
+/** The desktop opening (D5, 2026-10-07, built as recommended, A). On a
  *  fine pointer the empty chat's greeting and the composer sit together as one
  *  group (theme.css, `.chat-body:has(> .greeting)`). On a first send the
  *  composer glides from the group to the foot, and when a new chat opens it
@@ -307,6 +307,9 @@ export function ChatScreen({ compact }: { compact: boolean }) {
   // conversation instead.
   const activeProjectId = settings.activeProjectId ?? settings.projects?.[0]?.id;
   const activeProject = settings.projects?.find((p) => p.id === activeProjectId);
+  // Only a project chat (opened from a project) has repositories. A plain chat
+  // works like claude.ai: nothing to connect, no picker.
+  const projectScope = Boolean(viewProjectId) && viewTrail.includes('project');
   const [pendingRepoIds, setPendingRepoIds] = useState<string[]>(
     () => activeProject?.repoIds ?? [],
   );
@@ -380,6 +383,9 @@ export function ChatScreen({ compact }: { compact: boolean }) {
   useOpeningGlide(bodyRef);
 
   const conv = activeId ? conversations[activeId] : undefined;
+  const showRepoPicker = Boolean(
+    conv && (conv.projectChat || conv.source.kind === 'desktop' || (conv.repoIds?.length ?? 0) > 0),
+  );
   const thread = conv?.thread;
   // Guided setup (lib/guidedSetup.ts): where the walk stands, and the guide's
   // latest message, which carries the current step's buttons.
@@ -476,6 +482,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
         else showToast('Open a chat, then /help lists what the composer can do.');
         return;
       }
+      case 'new':
       case 'clear':
         startNewChat();
         return;
@@ -541,7 +548,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
   const [landingSwellId, setLandingSwellId] = useState(() => (takeLandingSwell() ? 0 : -1));
   // Slack Water (components/SlackWater.tsx) lands the person here from the
   // setup walk: the greeting waits unseen a beat while the page surfaces
-  // under the last rings, then lands on the swell (Creative Studio).
+  // under the last rings, then lands on the swell (design review).
   const [heldUnderWater, setHeldUnderWater] = useState(false);
   // One-time discovery nudge, played on the first empty-state paint of the
   // session and never again.
@@ -678,7 +685,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
   // the pending selection for the next new chat.
   const composerSource = conv ? conv.source : selectedSource;
 
-  // The vault behind `[[` (Vault M5, CTO J15): the notes the privacy rules
+  // The vault behind `[[` (Vault M5, tech review J15): the notes the privacy rules
   // let a model see, a body reader, the seat the next send goes to, and a
   // note "Ask about this note" is taking in. With Memory off there is no vault
   // in a chat, so the composer gets none and `[[` is plain text.
@@ -740,7 +747,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
 
   // A Stack chat can read images when a capable model is placed in it, or a
   // connected cloud provider reads them. On a phone or an iPad its composer
-  // takes a picture either way (founder, 2026-10-07): the Stack answers one it
+  // takes a picture either way (2026-10-07): the Stack answers one it
   // cannot read with the two doors below instead of a toast, so the chat
   // itself says what to set up. The desktop keeps the toast: its Stack is the
   // engine's, with no Image reading row for the doors to point at. The offer
@@ -761,10 +768,10 @@ export function ChatScreen({ compact }: { compact: boolean }) {
     // The first message rides in on the new chat itself, so its bubble is on
     // screen at once, not after the model has loaded.
     const id = await newConversation(source, {
-      repoIds: pendingRepoIds,
+      ...(projectScope ? { repoIds: pendingRepoIds, projectChat: true } : {}),
       ...(hasMessage ? { firstMessage: { text: text ?? '', attachments } } : {}),
     });
-    // No new chat opened (the sign-in sheet or a paywall stood in the way):
+    // No new chat opened (the sign-in sheet stood in the way):
     // the composer already cleared, so hand the message back rather than lose
     // it.
     if (hasMessage && !id) {
@@ -842,23 +849,29 @@ export function ChatScreen({ compact }: { compact: boolean }) {
             <div className="topbar-sub">
               {/* The repo picker sits where the model name used to be (the
                   model still lives in the composer pill). A live session's
-                  branch and dirty dot ride on the summary. */}
-              <RepoPicker
-                selected={conv.repoIds ?? []}
-                onChange={(ids) => void setConversationRepos(conv.id, ids)}
-                branch={thread?.repo?.branch}
-                dirty={thread?.repo?.dirty}
-                onOpenRepos={() => setView('repos')}
-                workingIn={
-                  conv.source.kind === 'desktop' && conv.source.sessionId
-                    ? conv.source.cwd
-                    : undefined
-                }
-                onNewChat={(ids) => void newConversation({ kind: 'desktop' }, { repoIds: ids })}
-              />
+                  branch and dirty dot ride on the summary. Project chats and
+                  coding sessions only: a plain chat has no repository. */}
+              {showRepoPicker ? (
+                <RepoPicker
+                  selected={conv.repoIds ?? []}
+                  on={conversationWhere(settings, conv)}
+                  onChange={(ids) => void setConversationRepos(conv.id, ids)}
+                  branch={thread?.repo?.branch}
+                  dirty={thread?.repo?.dirty}
+                  onOpenRepos={() => setView('repos')}
+                  workingIn={
+                    conv.source.kind === 'desktop' && conv.source.sessionId
+                      ? conv.source.cwd
+                      : undefined
+                  }
+                  onNewChat={(ids) =>
+                    void newConversation({ kind: 'desktop' }, { repoIds: ids, projectChat: true })
+                  }
+                />
+              ) : null}
               {thread && thread.dollars > 0 ? (
                 <>
-                  {' · '}
+                  {showRepoPicker ? ' · ' : null}
                   {/* Cloud spend so far: marked as spend, so it wears amber. */}
                   <span className="chat-spend spend" title="Cloud spend in this chat">
                     ${thread.dollars.toFixed(2)}
@@ -878,11 +891,14 @@ export function ChatScreen({ compact }: { compact: boolean }) {
           </div>
         ) : (
           <div className="topbar-spacer topbar-spacer-repos">
-            <RepoPicker
-              selected={pendingRepoIds}
-              onChange={setPendingRepoIds}
-              onOpenRepos={() => setView('repos')}
-            />
+            {projectScope ? (
+              <RepoPicker
+                selected={pendingRepoIds}
+                on={newChatWhere(settings)}
+                onChange={setPendingRepoIds}
+                onOpenRepos={() => setView('repos')}
+              />
+            ) : null}
           </div>
         )}
         {/* Terminal entry, desktop-backed chats only: a real PTY on the desktop,
@@ -899,7 +915,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
           </button>
         ) : null}
         {/* New chat, one tap from any open chat on phone and desktop (D7,
-            founder 2026-10-07, built as recommended, D): the Chats room's
+            2026-10-07, built as recommended, D): the Chats room's
             compose, beside the status. It starts a chat in the active project
             the same way. Not on the empty new chat itself, which has nothing
             to leave. */}
@@ -1125,7 +1141,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
                 </h1>
               </div>
             }
-            // "Edit" on the saved line (CX cleanup 8): the words go back into
+            // "Edit" on the saved line (UX review cleanup 8): the words go back into
             // the composer through the same restore a dismissed chooser uses,
             // with no toast; the download keeps going, and Send saves again.
             onEditHeld={() => {
@@ -1221,7 +1237,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
               if (!sourceReady(selectedSource)) {
                 // On the desktop with nothing set up, the First Seat is the
                 // one way on: the message waits there, says so, and goes out
-                // once DeepBlue is ready (CX ruling 2).
+                // once DeepBlue is ready (UX review ruling 2).
                 if (sendWaitsOnFirstSeat()) {
                   void holdUntilReady(text, attachments);
                   return;
@@ -1298,6 +1314,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
         <ModelSheet
           initialStage={sheetStage}
           current={composerSource}
+          machine={conv ? conversationWhere(settings, conv) : newChatWhere(settings)}
           onPick={(source) => {
             setPickedSource(source);
             setSheetOpen(false);

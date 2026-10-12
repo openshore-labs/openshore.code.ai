@@ -1,5 +1,5 @@
-// The pairing review (CX-led Creative Studio, 2026-10-01; docs/pairing-review.md),
-// with the room renamed Computer and pairing called docking by the founder
+// The pairing review (UX-led design review, 2026-10-01; docs/design/pairing-review.md),
+// with the room renamed Computer and pairing called docking by a maintainer
 // (2026-10-07; the dock form moved to components/DockForm.tsx): the QR is a link the iPhone Camera opens and is
 // only ever for the person's own network, a spent code is never thrown away,
 // and the screens say plainly what happened.
@@ -75,7 +75,10 @@ describe('a pairing link opened from the iPhone Camera', () => {
     // Computer's own forms answer the link, on both paths.
     const screen = read('src', 'screens', 'PairScreen.tsx');
     expect(screen).toContain('<DockForm expect="desktop" offers />');
-    expect(screen).toContain('<DockForm expect="server" offers />');
+    // Both server paths, at home and rented (2026-10-12), answer it too.
+    expect(screen).toContain(
+      '<DockForm key={`dock-${path}`} expect="server" place={path} offers />',
+    );
   });
 
   it("refuses a link for an address off the person's own network", () => {
@@ -91,12 +94,15 @@ describe('a pairing link opened from the iPhone Camera', () => {
   });
 });
 
-describe('the screens, as CX asked', () => {
+describe('the screens, as UX review asked', () => {
   const screen = read('src', 'screens', 'PairScreen.tsx');
   const form = read('src', 'components', 'DockForm.tsx');
 
   it('saves the new credential before checking it, and retries the check once', () => {
-    const save = form.indexOf('await saveHub({ baseUrl, token }, { role: claimed.role });');
+    // Where a server lives (at home or rented) is saved with the credential.
+    const save = form.indexOf(
+      'await saveHub({ baseUrl, token, ...placed }, { role: claimed.role });',
+    );
     const check = form.indexOf('let health = await daemonHealth({ baseUrl, token });');
     expect(save).toBeGreaterThan(0);
     expect(check).toBeGreaterThan(save);

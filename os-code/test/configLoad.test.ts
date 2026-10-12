@@ -94,7 +94,7 @@ describe('saveGlobalConfig durability', () => {
     expect(strays).toEqual([]);
   });
 
-  // Vault M1, CTO F7.3: the desktop app writes vault.dir through this writer,
+  // Vault M1, tech review F7.3: the desktop app writes vault.dir through this writer,
   // and its temp-and-rename must not silently reset a person's chmod.
   it.skipIf(process.platform === 'win32')('keeps an existing 0o600 mode across a save', () => {
     const path = globalConfigPath();

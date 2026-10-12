@@ -1,4 +1,4 @@
-// The Vault's frontmatter reader (Vault M3, CTO H2). Parses with js-yaml's
+// The Vault's frontmatter reader (Vault M3, tech review H2). Parses with js-yaml's
 // CORE_SCHEMA, the parser Obsidian's own parseYaml is backed by, so invalid
 // YAML is judged the same way; dates stay the strings the person typed, and
 // there are no binary or omap types. Read-only: nothing here or anywhere in

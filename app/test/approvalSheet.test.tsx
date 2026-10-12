@@ -111,7 +111,7 @@ describe('the approval sheet for any other tool', () => {
 });
 
 // A project note change after the chat read a private note asks every time
-// (CX and CMO, 2026-10-08, A), and its card says why in one line above the
+// (UX and copy review, 2026-10-08, A), and its card says why in one line above the
 // diff. An older engine sends no `why`, and the card reads as before.
 describe('the approval sheet says why a card asks', () => {
   const why =

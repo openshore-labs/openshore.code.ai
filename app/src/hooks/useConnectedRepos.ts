@@ -10,7 +10,8 @@ import { bridge } from '../lib/electronBridge.js';
 import { daemonWorkspaces } from '../drivers/remoteDriver.js';
 import { REPO_CONNECTORS, type RepoPlatform } from '../lib/repos.js';
 import { githubAppSlug, repoToken } from '../lib/gitos/repoOAuth.js';
-import { computerFor } from '../lib/repoClone.js';
+import { cloneTargetFor, computerFor } from '../lib/repoClone.js';
+import { whereKey, type Where } from '../lib/runsOn.js';
 import { plainError } from '../lib/plainError.js';
 import {
   githubStatus,
@@ -42,13 +43,20 @@ export interface ConnectedRepos {
 
 const PLATFORM_ORDER: readonly RepoPlatform[] = REPO_CONNECTORS.map((c) => c.id);
 
-export function useConnectedRepos(enabled: boolean): ConnectedRepos {
-  const daemon = useApp((s) => s.settings.daemon);
-  const preferRemoteHub = useApp((s) => s.settings.preferRemoteHub);
+/** `on` names the machine to list workspaces from: a chat's or a project's
+ *  own (lib/runsOn.ts). Unset, this device's machine, as before. */
+export function useConnectedRepos(enabled: boolean, on?: Where): ConnectedRepos {
+  const activeDaemon = useApp((s) => s.settings.daemon);
+  const activePrefer = useApp((s) => s.settings.preferRemoteHub);
   const platforms = useApp((s) => s.connectedRepoPlatforms);
   const connected = PLATFORM_ORDER.filter((p) => platforms[p]);
   const connectedKey = connected.join(',');
-  const where = computerFor({ daemon, preferRemoteHub });
+  const target = on ? cloneTargetFor(on) : { daemon: activeDaemon, preferRemoteHub: activePrefer };
+  const daemon = target.daemon;
+  const where = computerFor(target);
+  // The machine by its address, so a fresh `on` object each render does not
+  // read again.
+  const machineKey = on ? (whereKey(on) ?? 'none') : (activeDaemon?.baseUrl ?? 'device');
   const [workspaces, setWorkspaces] = useState<RepoOption[]>([]);
   const [remote, setRemote] = useState<RepoOption[]>(() => readRepoCache() ?? []);
   const [loading, setLoading] = useState(false);
@@ -123,7 +131,8 @@ export function useConnectedRepos(enabled: boolean): ConnectedRepos {
     return () => {
       live = false;
     };
-  }, [enabled, daemon, where, connectedKey, tick]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, machineKey, where, connectedKey, tick]);
 
   // Back from GitHub (or any other app) with the picker open: read again, at
   // most once every few seconds.

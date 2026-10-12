@@ -1,4 +1,4 @@
-// The Memory switch does something (Vault v1, 1.5; CTO F6). Project memory is
+// The Memory switch does something (Vault v1, 1.5; tech review F6). Project memory is
 // on by default; config `memory.enabled: false`, a project file's false, or the
 // app's override false each remove the projectMemoryWrite tool (the permission
 // engine allows it by name, so it must be unregistered) and the prompt block
@@ -160,7 +160,7 @@ describe('memory off removes the tool and the prompt block', () => {
   });
 });
 
-// Vault M4 (4.4, CTO I8, F6): the context pack rides the same switch. The
+// Vault M4 (4.4, tech review I8, F6): the context pack rides the same switch. The
 // loop-level cases (the prompt, the card) are in loopVaultContext.test.ts;
 // here the real bootstrap threads a source through and the switch closes it.
 describe('memory off removes the vault context pack', () => {
@@ -202,7 +202,7 @@ describe('memory off removes the vault context pack', () => {
   });
 });
 
-// Vault M5 (CTO J8): a session works on the caller's own vault root. A path
+// Vault M5 (tech review J8): a session works on the caller's own vault root. A path
 // gives the tools and the pack on that root, null gives no vault tools, and
 // unset keeps the machine's vault. The legacy boolean flag is gone.
 describe("the session's own vault root", () => {

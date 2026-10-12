@@ -21,10 +21,10 @@ import {
 
 const MB = 1024 * 1024;
 
-/** Over this, a video is compressed before its frames are taken (founder:
+/** Over this, a video is compressed before its frames are taken (maintainer:
  *  "when you provide a video that is over 30mg"). */
 export const VIDEO_COMPRESS_THRESHOLD_BYTES = 30 * MB;
-/** The band the compressor aims to land the file in (founder: "between 25 and
+/** The band the compressor aims to land the file in (maintainer: "between 25 and
  *  29mg with the quality required to create a frame by frame breakdown"). */
 export const VIDEO_TARGET_MIN_BYTES = 25 * MB;
 export const VIDEO_TARGET_MAX_BYTES = 29 * MB;

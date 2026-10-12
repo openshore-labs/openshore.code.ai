@@ -143,6 +143,8 @@ import {
   launchAtLoginSupport,
   readHubPaused,
   readOfflineChosen,
+  takeQuitMarker,
+  writeQuitMarker,
   writeHubPaused,
   writeOfflineChosen,
   powerBlockerNext,
@@ -544,7 +546,7 @@ const host = new EngineHost(
   (payload) => win?.webContents.send('osc:terminal-data', payload),
 );
 
-// Desktop Offline (founder, 2026-10-07): this computer is offline when it has
+// Desktop Offline (2026-10-07): this computer is offline when it has
 // no network (Electron's net.isOnline(), no request made) or the person chose
 // Offline. Main owns it: every change reaches the engine's one machine flag,
 // which each session reads before its next turn, and a network change reaches
@@ -602,7 +604,7 @@ async function confirmInMain(opts: ConfirmWords): Promise<boolean> {
   return response === 0;
 }
 
-// A device asking to pair (CTO security review 2026-10-01, F3): the claim on
+// A device asking to pair (tech review security review 2026-10-01, F3): the claim on
 // the QR is spent, and only this dialog's Allow gives the device a credential.
 // Deny is the default button. The dialog shows the same four-digit code the
 // phone shows, and closes itself if the request expires first.
@@ -689,9 +691,18 @@ function refreshTrayMenu(): void {
   );
 }
 
-async function onTrayAction(id: 'open' | 'hub' | 'quit'): Promise<void> {
+/** The tray's and the Dock's New chat: bring the window up, then the renderer
+ *  opens a plain chat (hooks/useNewChatDoors.ts). */
+function newChatFromMenu(): void {
+  showWindow();
+  win?.webContents.send('osc:new-chat');
+}
+
+async function onTrayAction(id: 'open' | 'new' | 'hub' | 'quit'): Promise<void> {
   if (id === 'open') {
     showWindow();
+  } else if (id === 'new') {
+    newChatFromMenu();
   } else if (id === 'hub') {
     if (host.daemonRunning()) {
       await host.daemonStop();
@@ -878,8 +889,17 @@ function createWindow(): void {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      // A hidden or covered window keeps running its timers and streams, so a
+      // reply in flight (and the hub's live link) is not slowed when the window
+      // is out of sight.
+      backgroundThrottling: false,
+      // The last run ended in Quit: the page opens fresh, with the full
+      // splash and no chat restored. Read by the preload (afterQuit).
+      ...(launchAfterQuit ? { additionalArguments: [AFTER_QUIT_ARG] } : {}),
     },
   });
+  // Only the first window after a Quit opens fresh.
+  launchAfterQuit = false;
 
   // No device for any page but the app's own, and for it only what it uses
   // (mainGuards.ts): Electron's default would grant the camera, microphone,
@@ -976,6 +996,11 @@ function createWindow(): void {
   void win.loadFile(join(here, '..', 'dist', 'index.html'));
 }
 
+/** Whether the run before this one ended in Quit (lifecycle.ts), handed to
+ *  the page as an argument the preload reads. */
+let launchAfterQuit = false;
+const AFTER_QUIT_ARG = '--oscode-after-quit';
+
 // The smoke run ends itself once the page and the engine both reported in.
 let smokeSteps = 0;
 function smokeStep(): void {
@@ -1065,11 +1090,11 @@ function sessionOpts(v: unknown) {
     currents: parseCurrentsHandles(o.currents),
     // The Harness Current's handle (Jev), parsed the same way.
     harnessCurrents: parseHarnessCurrentsHandle(o.harnessCurrents),
-    // Vault M5 (CTO J12, J14): a handoff for the first task, capped, and the
+    // Vault M5 (tech review J12, J14): a handoff for the first task, capped, and the
     // project's own pins, note paths only, at most eight.
     handoff: optHandoff(o.handoff),
     vaultPins: optVaultPins(o.vaultPins),
-    // Vault M7 (CTO L13): the app's vault switches, off-only and one of the
+    // Vault M7 (tech review L13): the app's vault switches, off-only and one of the
     // three sizes; the daemon's parser, so a bad value is dropped the same way.
     vaultOverrides: parseVaultOverrides(o.vaultOverrides),
   };
@@ -1099,7 +1124,7 @@ guarded('osc:trustFolder', async (sessionId: unknown) => {
   return host.trustFolder(id);
 });
 guarded('osc:createSample', () => host.createSample());
-// The truncation card's action (C1, CTO 5): serve this provider's models the
+// The truncation card's action (C1, tech review 5): serve this provider's models the
 // larger window from the next message, in every chat. Machine config, so only
 // a provider id crosses; main writes it through the engine's one writer.
 guarded('osc:giveMoreRoom', (provider: unknown) => host.giveMoreRoom(str(provider, 'provider')));
@@ -1137,7 +1162,7 @@ guarded('osc:answerApproval', (sessionId: unknown, approvalId: unknown, answer: 
   });
 });
 
-// The free chat (CTO ruling 8): the engine's local-only chat, with no session
+// The free chat (tech review ruling 8): the engine's local-only chat, with no session
 // and no tools. Each event rides osc:free-chat under the request's own id, so
 // the renderer drops a late event for an answer it already stopped.
 guarded('osc:freeChat', (requestId: unknown, body: unknown) => {
@@ -1295,7 +1320,7 @@ guarded('osc:revokeDeviceCredential', (id: unknown) =>
 );
 guarded('osc:rotateSharedToken', () => host.rotateSharedToken());
 guarded('osc:launchAtLogin', () => launchAtLogin());
-// The app icon picked in Settings, Appearance (founder, 2026-10-01): the Dock
+// The app icon picked in Settings, Appearance (2026-10-01): the Dock
 // icon on a Mac, the window icon elsewhere, while the app runs. Only the
 // three known tiles, read from the app's own bundled files.
 guarded('osc:setAppIcon', (id: unknown) => setAppIcon(str(id, 'id')));
@@ -1340,7 +1365,7 @@ guarded('osc:hardware', () => host.hardware());
 // (compare-and-swap, Vault M1 1.1). The root is read again on every call.
 // The default folder is made on first use; a configured folder that has gone
 // missing (renamed, or on a drive that is not connected) is never recreated
-// here, so notes are never scattered between two places (CX 1.3, 1.4). The
+// here, so notes are never scattered between two places (UX review 1.3, 1.4). The
 // engine's one helper, the same the agent's vault tools and the routine
 // scheduler go through (review M1-1).
 function vaultDir(): string {
@@ -1350,7 +1375,7 @@ function vaultDir(): string {
 guarded('osc:vaultList', () => listVaultFolder(vaultDir()));
 guarded('osc:vaultStat', (p: unknown) => statVaultFile(vaultDir(), str(p, 'path')));
 guarded('osc:vaultRead', (p: unknown) => readVaultFile(vaultDir(), str(p, 'path')));
-// One cap for every writer of a note from outside the engine (Vault M5, CTO
+// One cap for every writer of a note from outside the engine (Vault M5, tech review
 // J7): the renderer here and a paired phone on the daemon's PUT route.
 guarded('osc:vaultWrite', (p: unknown, t: unknown, g: unknown) => {
   const text = str(t, 'text');
@@ -1363,11 +1388,11 @@ guarded('osc:vaultRemove', (p: unknown, g: unknown) =>
   removeVaultFile(vaultDir(), str(p, 'path'), parseVaultRemoveGuard(g)),
 );
 
-// The folder vault's persisted index (Vault M3, CTO H3 "Persistence"). One
+// The folder vault's persisted index (Vault M3, tech review H3 "Persistence"). One
 // file per vault root under oscHome()/vault-index, named by a hash of the
 // root's real path, through the engine's indexFile module (0700 folder, 0600
 // file, temp then rename). The renderer passes only the blob, never a path
-// (CTO F7): main keys it by the vault root it reads itself on every call, so
+// (tech review F7): main keys it by the vault root it reads itself on every call, so
 // a repoint loads and saves the new root's index. A blob over 32 MB is
 // refused before it is written; a file over the cap loads as null.
 guarded('osc:vaultIndexLoad', () => loadVaultIndexFile(vaultDir()));
@@ -1381,12 +1406,12 @@ guarded('osc:vaultIndexSave', (blob: unknown) => {
   return saveVaultIndexFile(vaultDir(), text);
 });
 
-// The machine's own privacy rules for the vault (Vault M5, CTO J3): which
+// The machine's own privacy rules for the vault (Vault M5, tech review J3): which
 // notes are hidden from every model and which stay on this computer. Read
 // from this machine's config on every call (projectPolicy never lets a
 // project file set these keys); the renderer compiles them with the core's
 // compileVaultPrivacy, so the app's pack and the engine's judge alike.
-// Clear the engine's stored handoffs (Vault M5, CTO J13): part of the action
+// Clear the engine's stored handoffs (Vault M5, tech review J13): part of the action
 // that clears the chats, so no "where you left off" summary outlives them.
 guarded('osc:clearHandoffs', () => {
   clearHandoffs();
@@ -1398,7 +1423,7 @@ guarded('osc:clearHandoffs', () => {
 // less room than the device's choice. One builder with the daemon's route.
 guarded('osc:vaultPrivacy', () => machineVaultWire(loadConfig().config));
 
-// readConfig for the folder vault (Vault M3, CTO H5): the renderer sends a
+// readConfig for the folder vault (Vault M3, tech review H5): the renderer sends a
 // logical name, never a path. Main's allow-list maps it to one file in the
 // vault's config folder (anything else is refused before the disk is
 // touched), and the engine's configFile resolves it through the Jail and
@@ -1409,7 +1434,7 @@ guarded('osc:vaultReadConfig', (name: unknown) => {
   return readVaultConfigFile(vaultDir(), name);
 });
 
-// The settings sheet's one write (Vault M7, CTO L7): `.oscode/vault.json`
+// The settings sheet's one write (Vault M7, tech review L7): `.oscode/vault.json`
 // under the vault root main reads itself, never a path from the renderer.
 // The daemon's PUT runs the same putVaultSettingsFile: only `oscode/vault`
 // (every obsidian/* name refused), capped at 256 KB, text the parser can
@@ -1419,7 +1444,7 @@ guarded('osc:vaultWriteConfig', (name: unknown, text: unknown, guard: unknown) =
   putVaultSettingsFile(vaultDir(), name, str(text, 'text'), parseConfigWriteGuard(guard)),
 );
 
-// Vault M6 (CTO K3, K5, K6, K11, K13): rename, folders, Trash and
+// Vault M6 (tech review K3, K5, K6, K11, K13): rename, folders, Trash and
 // attachments on the folder, through the engine's folderFs (the same code the
 // daemon's routes run). The renderer names vault-relative paths only; every
 // one is checked by the note, folder or attachment rule and the Jail there,
@@ -1458,7 +1483,7 @@ guarded('osc:vaultOpenAttachment', async (p: unknown) => {
   return { ok: (await shell.openPath(abs)) === '' };
 });
 
-// The folder watcher (CTO F3), on while the Vault room is open. The open
+// The folder watcher (tech review F3), on while the Vault room is open. The open
 // note's path is checked like any other (a note, inside the folder) before
 // Linux watches its folder. Changes go out debounced on osc:vault-changed.
 const vaultWatcher = new VaultWatcher({
@@ -1477,7 +1502,7 @@ guarded('osc:vaultWatch', (on: unknown, openPath: unknown) => {
   vaultWatcher.start(root, open);
 });
 
-// Where the vault lives, and the one way to change it (Vault M1 1.4, CTO F7).
+// Where the vault lives, and the one way to change it (Vault M1 1.4, tech review F7).
 // Every IPC here takes no path: the folder comes from the system dialog, and
 // a refinement names a choice main itself offered. Main checks the folder,
 // lists it once (so a macOS privacy prompt appears in context), and writes
@@ -1531,7 +1556,7 @@ guarded('osc:vaultRefineDir', (choice: unknown) => {
   afterVaultRepoint(result);
   return result;
 });
-// Bring the previous folder's notes into this one (the CTO's ruling): no
+// Bring the previous folder's notes into this one (the tech review's ruling): no
 // argument, and any the renderer sends is ignored. Main copies from the
 // folder its own last pick left, creates only, and never removes.
 guarded('osc:vaultBringPrevious', () => vaultDirs.bringPrevious());
@@ -1679,7 +1704,7 @@ guarded('osc:httpFetch', async (req: unknown) => {
   }
 });
 
-// A model seat's streamed chat request (CTO ruling 7, electron/chatStream.ts):
+// A model seat's streamed chat request (tech review ruling 7, electron/chatStream.ts):
 // POST to a chat path only, public https pinned, plain http only on your own
 // network, no redirects, capped and timed. The body streams back as
 // osc:chat-stream events for the renderer's id; httpFetch above is unchanged.
@@ -1707,7 +1732,7 @@ guarded('osc:chatStreamAbort', (id: unknown) => chatStreams.abort(id));
 // signature), the click opens the release page instead.
 //
 // Every desktop update is checked against a key pinned in the app before it
-// runs (releaseVerify.ts, CTO rulings 1 and 2): the Mac file before it is
+// runs (releaseVerify.ts, tech review rulings 1 and 2): the Mac file before it is
 // unpacked, the Windows and Linux file before quitAndInstall.
 // Releases live in the public openshore-releases repo (installers only, no
 // code), so an update check needs no token; this repo is private.
@@ -1754,7 +1779,7 @@ function applyUpdate(event: UpdaterEvent): void {
 }
 
 /** Windows and Linux: install the download only once its signature checks
- *  against the pinned desktop key (CTO ruling 2; electron-updater's own feed
+ *  against the pinned desktop key (tech review ruling 2; electron-updater's own feed
  *  file could be replaced along with it). With no key pinned yet, it installs
  *  as before and the log says the check was skipped. */
 async function installDownloadedUpdate(): Promise<void> {
@@ -1938,7 +1963,13 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   void app.whenReady().then(async () => {
+    launchAfterQuit = takeQuitMarker(app.getPath('userData'));
     const trayReady = createTray();
+    // The Dock's own menu (a right-click on the Dock icon) carries New chat
+    // too, the tray's twin on a Mac.
+    if (process.platform === 'darwin') {
+      app.dock?.setMenu(Menu.buildFromTemplate([{ label: 'New chat', click: newChatFromMenu }]));
+    }
     // A login launch (--hidden) starts in the tray alone; without a tray to
     // hide in, the window opens regardless.
     if (!isHiddenLaunch(process.argv) || !trayReady) createWindow();
@@ -1979,6 +2010,8 @@ if (!app.requestSingleInstanceLock()) {
 
 app.on('before-quit', () => {
   quitting = true;
+  // A deliberate Quit: the next launch opens fresh (lib/resumePoint.ts).
+  writeQuitMarker(app.getPath('userData'));
 });
 
 app.on('window-all-closed', () => {

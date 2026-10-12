@@ -1,4 +1,4 @@
-// Computer (founder, 2026-10-07; once Pairing, named by CX 2026-10-01, and
+// Computer (2026-10-07; once Pairing, named by UX review 2026-10-01, and
 // before that "Desktop + phone"). Docking is the word for linking a device to
 // a machine that does the work. On the desktop: phone access on or off, a QR
 // that is a link the iPhone Camera opens, and docking this computer to a
@@ -6,8 +6,8 @@
 // home and a server you rent docked right here, by a scan or a typed code the
 // device trades for its own credential. The daemon owns the run, so a dropped
 // connection reattaches with nothing lost. Free, like everything in OpenShore.
-// docs/pairing-review.md, docs/connect-anywhere-proposal.md.
-import { useEffect, useRef, useState } from 'react';
+// docs/design/pairing-review.md, docs/design/connect-anywhere-proposal.md.
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import QRCode from 'qrcode';
 import { hubList, useApp, type HubRole } from '../state/store.js';
 import { bridge, type DaemonInfo } from '../lib/electronBridge.js';
@@ -26,7 +26,17 @@ import { DockForm, hostOf } from '../components/DockForm.js';
 import { ServerSetup } from '../components/ServerSetup.js';
 import { ServerKeysLeftSheet, type KeysLeft } from '../components/ServerKeys.js';
 import type { HubKeysCleared } from '../state/serverKeysOps.js';
-import { DOCK_PATHS, dockedNoun, unreachableLine, type DockPath } from '../lib/docking.js';
+import {
+  DOCK_PATHS,
+  dockedNoun,
+  machineFactsLine,
+  machineKindLabel,
+  machineKindOf,
+  unreachableLine,
+  type DockPath,
+  type DockPlace,
+} from '../lib/docking.js';
+import { projectsOn } from '../lib/runsOn.js';
 import { sheetExitMs } from '../lib/motion.js';
 
 export { phoneDeviceName } from '../components/DockForm.js';
@@ -116,12 +126,11 @@ export function PairScreen() {
 
 function DesktopPair() {
   const { showToast } = useApp();
-  // The pairing code is the paid moment on this side: it shows only while
-  // Plus is open. Revoking a phone stays free.
+  // The pairing code and the docked devices, with revoke beside each.
   const [info, setInfo] = useState<DaemonInfo | undefined>();
   const [qr, setQr] = useState<string | undefined>();
   const [showToken, setShowToken] = useState(false);
-  // The "it worked" moment (CX 2026-10-01): a phone that pairs while this
+  // The "it worked" moment (UX review 2026-10-01): a phone that pairs while this
   // room is open is named at the top, and the QR folds into a quiet "Pair
   // another phone" until it is asked for again.
   const knownDevices = useRef<Set<string> | undefined>(undefined);
@@ -360,7 +369,12 @@ function DesktopPair() {
           task.
         </p>
 
-        {/* The expert tools, folded away from a first pairing (CX 2026-10-01). */}
+        {/* A server for this computer's projects (2026-10-12): in
+            the room, not folded away, since a project can now choose to run
+            on one. The bare address and key stay under More options. */}
+        <DesktopServerCard />
+
+        {/* The expert tools, folded away from a first pairing (UX review 2026-10-01). */}
         <button
           type="button"
           className="linklike press-fb"
@@ -375,18 +389,19 @@ function DesktopPair() {
               <ReplaceSharedKey rotate={() => bridge()!.rotateSharedToken!()} onToast={showToast} />
             ) : null}
             <RemoteHubPanel />
-            <p className="hint" style={{ marginTop: 24 }}>
-              A server you rent keeps working while this computer sleeps. Once docked, this computer
-              runs its sessions there.
-            </p>
-            <ServerSetup />
-            <DockForm expect="server" />
           </>
         ) : null}
       </div>
     </div>
   );
 }
+
+/** The three ways to dock, short enough to sit side by side on a phone. */
+export const DOCK_CHOICE_LABEL: Record<'computer' | DockPlace, string> = {
+  computer: 'Your computer',
+  home: 'Home server',
+  rented: 'Rented server',
+};
 
 /** The switch that keeps phone access honest: "while your computer is on"
  *  means while OpenShore is open on it. */
@@ -498,10 +513,51 @@ function RemoteHubPanel() {
               {state}
             </p>
           ) : null}
-          <HubList />
         </>
       ) : null}
     </div>
+  );
+}
+
+/** The desktop's door to a server (2026-10-12): a server at home or
+ *  a rented one, docked here so this computer's projects can run on it, and
+ *  every machine docked so far. */
+function DesktopServerCard() {
+  const [open, setOpen] = useState(false);
+  const [place, setPlace] = useState<DockPlace>('rented');
+  return (
+    <>
+      <h2 className="dock-other-head">Run projects on a server</h2>
+      <p className="hint" style={{ marginTop: 0 }}>
+        A server at home or one you rent keeps working while this computer sleeps. Dock to it here,
+        then choose it under Runs on in a project.
+      </p>
+      <HubList min={1} />
+      {open ? (
+        <>
+          <div className="segmented dock-choice" role="tablist" aria-label="Where the server is">
+            {(['home', 'rented'] as const).map((id) => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={place === id}
+                className={`seg press-fb${place === id ? ' active' : ''}`}
+                onClick={() => setPlace(id)}
+              >
+                {DOCK_CHOICE_LABEL[id]}
+              </button>
+            ))}
+          </div>
+          <ServerSetup key={place} place={place} />
+          <DockForm key={`dock-${place}`} expect="server" place={place} />
+        </>
+      ) : (
+        <button type="button" className="btn block press-fb" onClick={() => setOpen(true)}>
+          Set up a server
+        </button>
+      )}
+    </>
   );
 }
 
@@ -513,10 +569,11 @@ function PhonePair() {
   const [left, setLeft] = useState<KeysLeft | undefined>();
   const titleRef = useRef<HTMLHeadingElement>(null);
   const paired = settings.daemon;
-  // Which way in the person is looking at. A device already docked to a
-  // server opens on the server path, everyone else on the computer at home.
-  const [path, setPath] = useState<'computer' | 'server'>(
-    paired?.kind === 'server' ? 'server' : 'computer',
+  // Which way in the person is looking at: a maintainer's three (2026-10-12),
+  // your computer, a server at home, a server you rent. A device already
+  // docked to a server opens on its path, everyone else on the computer.
+  const [path, setPath] = useState<'computer' | DockPlace>(
+    paired?.kind === 'server' ? (paired.place === 'home' ? 'home' : 'rented') : 'computer',
   );
 
   return (
@@ -525,9 +582,10 @@ function PhonePair() {
       <div className="screen-inner">
         <h1 ref={titleRef}>{PHONE_TITLE}</h1>
         <p className="lead">
-          Docking links {thisDeviceNoun()} to a machine that does the work: your computer at home,
-          or a server you rent. It runs over your own private network, so a long task keeps going
-          even when you close the app.
+          Docking links {thisDeviceNoun()} to a machine that does the work: your computer, a server
+          at home, or a server you rent. Dock to as many as you like; each project can choose the
+          one it runs on. It runs over your own private network, so a long task keeps going even
+          when you close the app.
           {!paired ? (
             <>
               {' '}
@@ -548,7 +606,7 @@ function PhonePair() {
             dock are one small choice above it, and the other ways to give
             OpenShore a brain wait below. */}
         <div className="segmented dock-choice" role="tablist" aria-label="Dock to">
-          {(['computer', 'server'] as const).map((id) => (
+          {(['computer', 'home', 'rented'] as const).map((id) => (
             <button
               key={id}
               type="button"
@@ -557,7 +615,7 @@ function PhonePair() {
               className={`seg press-fb${path === id ? ' active' : ''}`}
               onClick={() => setPath(id)}
             >
-              {id === 'computer' ? 'Your computer' : 'A server you rent'}
+              {DOCK_CHOICE_LABEL[id]}
             </button>
           ))}
         </div>
@@ -587,8 +645,8 @@ function PhonePair() {
           </>
         ) : (
           <>
-            <ServerSetup />
-            <DockForm expect="server" offers />
+            <ServerSetup key={path} place={path} />
+            <DockForm key={`dock-${path}`} expect="server" place={path} offers />
           </>
         )}
 
@@ -609,6 +667,7 @@ function PhonePair() {
         <ForgetComputerConfirm
           name={forgetting && paired ? computerLabel(paired) : undefined}
           keys={Boolean(paired && keysGoFirst(paired, settings.hubRoles))}
+          projects={paired ? projectsOn(settings.projects, paired.baseUrl) : 0}
           onKeep={() => setForgetting(false)}
           onForget={async () => {
             setForgetting(false);
@@ -704,6 +763,7 @@ function computerLabel(hub: { baseUrl: string; name?: string }): string {
 function ForgetComputerConfirm({
   name,
   keys = false,
+  projects = 0,
   onKeep,
   onForget,
 }: {
@@ -711,12 +771,21 @@ function ForgetComputerConfirm({
   /** A server this device is the admin of: every provider key it keeps is
    *  deleted there first. */
   keys?: boolean;
+  /** How many projects run on it (lib/runsOn.ts). */
+  projects?: number;
   onKeep: () => void;
   onForget: () => void;
 }) {
   return (
     <Sheet open={name !== undefined} onClose={onKeep} variant="confirm">
       <h3>Forget {name}?</h3>
+      {projects > 0 ? (
+        <p>
+          {projects === 1 ? 'One project runs' : `${projects} projects run`} on it. New chats there
+          go back to running where this device runs; chats already started there stop until you dock
+          to it again.
+        </p>
+      ) : null}
       {keys ? (
         <p>
           This device stops reaching it. If the server answers, every provider key it keeps is
@@ -741,12 +810,14 @@ function ForgetComputerConfirm({
   );
 }
 
-/** The paired computer, live (CX 2026-10-01): who it is and whether it
+/** The paired computer, live (UX review 2026-10-01): who it is and whether it
  *  answers right now, so the screen after pairing never looks like the
  *  screen before it. */
 function ConnectedCard({ onTerminal }: { onTerminal: () => void }) {
   const daemon = useApp((s) => s.settings.daemon);
+  const noteMachineFacts = useApp((s) => s.noteMachineFacts);
   const [reach, setReach] = useState<'checking' | 'yes' | 'no' | 'refused'>('checking');
+  const [editing, setEditing] = useState(false);
   useEffect(() => {
     if (!daemon) return;
     let alive = true;
@@ -754,6 +825,8 @@ function ConnectedCard({ onTerminal }: { onTerminal: () => void }) {
       const h = await daemonHealth(daemon);
       if (!alive) return;
       setReach(h.ok ? 'yes' : h.detail === PAIRING_REJECTED ? 'refused' : 'no');
+      // A resized server says so here (many machines, 2026-10-12).
+      if (h.machine) void noteMachineFacts(daemon.baseUrl, h.machine);
     };
     void check();
     const t = setInterval(() => void check(), 15_000);
@@ -761,7 +834,7 @@ function ConnectedCard({ onTerminal }: { onTerminal: () => void }) {
       alive = false;
       clearInterval(t);
     };
-  }, [daemon]);
+  }, [daemon, noteMachineFacts]);
   if (!daemon) return null;
   const name = computerLabel(daemon);
   return (
@@ -769,6 +842,7 @@ function ConnectedCard({ onTerminal }: { onTerminal: () => void }) {
       <div className="card-row" style={{ alignItems: 'center' }}>
         <div className="grow">
           <h3 style={{ margin: 0 }}>Docked to {name}</h3>
+          <div className="sub">{machineLine(daemon)}</div>
           <div className="sub">
             {reach === 'refused'
               ? PAIRING_REJECTED
@@ -794,18 +868,53 @@ function ConnectedCard({ onTerminal }: { onTerminal: () => void }) {
             : 'Open a terminal on your computer'}
         </button>
       ) : null}
+      <button
+        type="button"
+        className="linklike press-fb"
+        style={{ marginTop: 10 }}
+        onClick={() => setEditing(true)}
+      >
+        {daemon.kind === 'server' ? 'Name it, or say where it is' : 'Name it'}
+      </button>
+      <Sheet open={editing} onClose={() => setEditing(false)}>
+        {editing ? (
+          <HubNameForm
+            key={daemon.baseUrl}
+            hub={{ ...daemon, host: hostOf(daemon.baseUrl) }}
+            onDone={() => setEditing(false)}
+          />
+        ) : null}
+      </Sheet>
     </div>
   );
 }
 
-// The saved hubs, for switching between more than one of your computers. Shown
-// only once a second hub exists, so a single-computer setup never sees it. The
-// active one is marked; tapping another switches sessions to it, and each can
-// be named or forgotten.
-function HubList() {
+/** A machine's second line: what kind it is, and its size once it said. */
+function machineLine(hub: {
+  kind?: 'desktop' | 'server';
+  place?: DockPlace;
+  machine?: Parameters<typeof machineFactsLine>[0];
+}): string {
+  const kind = machineKindLabel(machineKindOf(hub));
+  const size = machineFactsLine(hub.machine);
+  return size ? `${kind}, ${size}` : kind;
+}
+
+// Your machines (many machines, 2026-10-12): every docked computer and server
+// with its kind and size and the projects that run on it. On a phone it shows
+// once a second machine exists (the card above covers one); the desktop's
+// server section shows it from the first. The active one is marked; tapping
+// another makes it active, and each can be edited or forgotten.
+function HubList({ min = 2 }: { min?: number }) {
   const { settings, selectHub, removeHub, showToast } = useApp();
-  // The computer being named, while its sheet is open.
-  const [naming, setNaming] = useState<{ baseUrl: string; name?: string; host: string }>();
+  // The machine being named, while its sheet is open.
+  const [naming, setNaming] = useState<{
+    baseUrl: string;
+    name?: string;
+    host: string;
+    kind?: 'desktop' | 'server';
+    place?: DockPlace;
+  }>();
   // The computer being forgotten, while its confirm is open, and whether its
   // provider keys go first (a server this device is the admin of).
   const [forgetting, setForgetting] = useState<{
@@ -813,58 +922,78 @@ function HubList() {
     name: string;
     server: boolean;
     keys: boolean;
+    projects: number;
   }>();
   // A forgotten server whose keys could not be deleted there.
   const [left, setLeft] = useState<KeysLeft | undefined>();
   const hubs = hubList(settings);
-  const activeUrl = settings.daemon?.baseUrl;
-  // The confirm sits outside the list: forgetting the second of two computers
+  // On the desktop the active machine matters only while this computer runs
+  // its sessions elsewhere; on a phone it always does.
+  const activeUrl = isDesktop() && !settings.preferRemoteHub ? undefined : settings.daemon?.baseUrl;
+  // The confirm sits outside the list: forgetting the second of two machines
   // hides the list, and the confirm still plays its exit.
   return (
     <>
-      {hubs.length >= 2 ? (
+      {hubs.length >= min ? (
         <div className="card">
-          <h3 style={{ marginTop: 0 }}>Your computers</h3>
+          <h3 style={{ marginTop: 0 }}>Your machines</h3>
           <p className="hint" style={{ marginTop: 0, marginBottom: 10 }}>
-            Switch which computer your sessions and terminal run on.
+            {isDesktop()
+              ? 'A project runs on the one it chooses under Runs on.'
+              : 'The active one runs the Stack, the Vault on it, Crew, and every project that does not choose its own under Runs on.'}
           </p>
-          {hubs.map((h) => {
+          {hubs.map((h, i) => {
             const active = h.baseUrl === activeUrl;
-            let host = h.baseUrl;
-            try {
-              host = new URL(h.baseUrl).hostname;
-            } catch {}
+            const host = hostOf(h.baseUrl);
+            const runs = projectsOn(settings.projects, h.baseUrl);
             return (
-              <div className="card-row" key={h.baseUrl} style={{ alignItems: 'center' }}>
+              <div
+                className="card-row machine-row stagger-in"
+                key={h.baseUrl}
+                style={{ '--i': Math.min(i, 8) } as CSSProperties}
+              >
                 <button
-                  className="linklike grow press-fb"
-                  style={{ textAlign: 'left' }}
-                  disabled={active}
+                  className="linklike grow press-fb machine-row-main"
+                  disabled={active || (isDesktop() && !settings.preferRemoteHub)}
                   onClick={() => void selectHub(h.baseUrl)}
                 >
-                  <span style={{ fontWeight: 600 }}>{h.name?.trim() || host}</span>
-                  {h.name?.trim() ? <span className="sub"> {host}</span> : null}
+                  <span className="machine-row-name">{h.name?.trim() || host}</span>
+                  <span className="sub">
+                    {machineLine(h)}
+                    {runs ? `. Runs ${runs === 1 ? 'one project' : `${runs} projects`}.` : ''}
+                  </span>
                 </button>
                 {active ? <span className="pill ink">Active</span> : null}
-                <button
-                  className="linklike press-fb"
-                  onClick={() => setNaming({ baseUrl: h.baseUrl, name: h.name, host })}
-                >
-                  Rename
-                </button>
-                <button
-                  className="linklike press-fb"
-                  onClick={() =>
-                    setForgetting({
-                      baseUrl: h.baseUrl,
-                      name: computerLabel(h),
-                      server: h.kind === 'server',
-                      keys: keysGoFirst(h, settings.hubRoles),
-                    })
-                  }
-                >
-                  Forget
-                </button>
+                <span className="machine-row-actions">
+                  <button
+                    className="linklike press-fb"
+                    onClick={() =>
+                      setNaming({
+                        baseUrl: h.baseUrl,
+                        name: h.name,
+                        host,
+                        kind: h.kind,
+                        place: h.place,
+                      })
+                    }
+                  >
+                    Edit
+                  </button>
+                  <button
+                    className="linklike press-fb"
+                    onClick={() =>
+                      setForgetting({
+                        baseUrl: h.baseUrl,
+                        name: computerLabel(h),
+                        server: h.kind === 'server',
+                        keys: keysGoFirst(h, settings.hubRoles),
+                        projects: runs,
+                      })
+                    }
+                  >
+                    Forget
+                  </button>
+                </span>
               </div>
             );
           })}
@@ -878,6 +1007,7 @@ function HubList() {
       <ForgetComputerConfirm
         name={forgetting?.name}
         keys={forgetting?.keys}
+        projects={forgetting?.projects}
         onKeep={() => setForgetting(undefined)}
         onForget={async () => {
           const target = forgetting;
@@ -903,18 +1033,27 @@ function HubNameForm({
   hub,
   onDone,
 }: {
-  hub: { baseUrl: string; name?: string; host: string };
+  hub: {
+    baseUrl: string;
+    name?: string;
+    host: string;
+    kind?: 'desktop' | 'server';
+    place?: DockPlace;
+  };
   onDone: () => void;
 }) {
-  const { renameHub } = useApp();
+  const { renameHub, setHubPlace } = useApp();
   const [name, setName] = useState(hub.name ?? '');
+  const [place, setPlace] = useState<DockPlace | undefined>(hub.place);
+  const server = hub.kind === 'server';
   const save = () => {
     void renameHub(hub.baseUrl, name);
+    if (server && place && place !== hub.place) void setHubPlace(hub.baseUrl, place);
     onDone();
   };
   return (
     <>
-      <SheetHead title="Name this computer" onClose={onDone} />
+      <SheetHead title={server ? 'This server' : 'Name this computer'} onClose={onDone} />
       <div className="field">
         <label htmlFor="pair-hub-name">Name</label>
         <input
@@ -930,6 +1069,27 @@ function HubNameForm({
           }}
         />
       </div>
+      {/* Where a server lives: a server cannot tell, so this device asks.
+          Rented adds the line about renting where its notes are. */}
+      {server ? (
+        <div className="field">
+          <label>Where it is</label>
+          <div className="segmented" role="tablist" aria-label="Where it is">
+            {(['home', 'rented'] as const).map((id) => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={place === id}
+                className={`seg press-fb${place === id ? ' active' : ''}`}
+                onClick={() => setPlace(id)}
+              >
+                {id === 'home' ? 'At home' : 'Rented'}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
       {/* One way out, the round close above (the 2026-10-07 form-sheet
           rule), so the foot holds Save alone. */}
       <div className="sheet-actions">

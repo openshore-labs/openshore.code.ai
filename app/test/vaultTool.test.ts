@@ -1,4 +1,4 @@
-// The vault tools on app seats (Vault M5, CTO J10): the slice is present for
+// The vault tools on app seats (Vault M5, tech review J10): the slice is present for
 // cloud and BYOM seats and absent for device, current bench, play step and
 // team vault; every answer honors the one privacy judge (hidden is absent,
 // local-only stays on this computer for a leaving seat and is flagged for a
@@ -293,7 +293,7 @@ describe('proposals', () => {
       baseVersion: 'v-Decisions/Auth.md',
     });
     // The note's text at that version rides along, so the exact bytes an
-    // approval writes are known before the card (Vault M7, CTO L9).
+    // approval writes are known before the card (Vault M7, tech review L9).
     expect(typeof proposals[0]!.baseText).toBe('string');
   });
 });
@@ -438,7 +438,7 @@ describe('the Stack batches every proposal into one approval card', () => {
     driver.answerApproval(cards(events)[0]!.request.id, { approve: true });
     await settle();
     expect(write).toHaveBeenCalledTimes(2);
-    // Each note carries who wrote it (Vault M7, CTO L9), merged before the
+    // Each note carries who wrote it (Vault M7, tech review L9), merged before the
     // card for a new note and at the write for an addition.
     expect(write.mock.calls[0]![0]).toBe('Ideas/Launch.md');
     expect(write.mock.calls[0]![2]).toEqual({ ifAbsent: true });
@@ -459,7 +459,7 @@ describe('the Stack batches every proposal into one approval card', () => {
     driver.send('save a launch note');
     await settle();
     const detail = cards(events)[0]!.request.detail!;
-    // Vault M7, CTO L9: the person approves the properties with the text.
+    // Vault M7, tech review L9: the person approves the properties with the text.
     expect(detail).toContain(
       'Also records in its properties: Edited by claude-sonnet-4-5 · Cloud.',
     );

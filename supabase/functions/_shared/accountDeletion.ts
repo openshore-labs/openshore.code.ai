@@ -1,4 +1,4 @@
-// The decisions behind delete-account (Apple 5.1.1(v); next build E1; CTO 11
+// The decisions behind delete-account (Apple 5.1.1(v); next build E1; tech review 11
 // package C), kept pure so CI's `deno test supabase/functions/_shared` covers
 // them. The edge function reads everything first, asks planAccountDeletion
 // what to do, and only then writes: the owns_org refusal comes before any
@@ -27,7 +27,7 @@ export const DELETE_ACCOUNT_STATUS: Record<DeleteAccountError, number> = {
 
 /** The success body. `ok` is what main's app reads; `deleted` is what the
  *  2026-09-24 function answered (`{ deleted: true }`), so a build that reads
- *  either one sees success (CTO 11). */
+ *  either one sees success (tech review 11). */
 export interface DeleteAccountAnswer {
   ok: true;
   deleted: true;

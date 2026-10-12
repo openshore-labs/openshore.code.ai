@@ -1,8 +1,8 @@
 // The web search sheet's rules, apart from the store (which only wires them
-// in). Web search asks once (founder, 2026-10-02; What leaves this device): a
+// in). Web search asks once (2026-10-02; What leaves this device): a
 // yes is remembered on this device, a "not now" holds until the next launch.
 // A search a model writes once its chat on a seat that stays on this network
-// holds a private note's text (CX and CMO, 2026-10-08, H) asks every time
+// holds a private note's text (UX and copy review, 2026-10-08, H) asks every time
 // instead, on a card with the exact words and why, whatever was allowed
 // before, and its answer is never remembered: no standing allow, and a no
 // keeps web search as it was. One card is on screen at a time.

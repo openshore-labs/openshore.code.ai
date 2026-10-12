@@ -1,4 +1,4 @@
-// The Supabase migrations as a list (CTO ruling 4, then CTO 11, 2026-09-29).
+// The Supabase migrations as a list (tech review ruling 4, then tech review 11, 2026-09-29).
 // `supabase db push` records a migration by its number, so two files with one
 // prefix would leave one of them silently unapplied (0016 was once edited in
 // place for the same reason, 0017's header). Production's history decides what
@@ -165,7 +165,7 @@ describe('the newest record_enforcement', () => {
     expect(body).toMatch(/v_operator_terminated := v_operator_terminated or v_tombstoned/);
   });
 
-  it('names the published appeal address (founder decision F1)', () => {
+  it('names the published appeal address (decision F1)', () => {
     // The same address as the app's SUPPORT_EMAIL: app/test/contactAddress.test.ts.
     expect(body).toMatch(/write to support@openshore\.ai\./);
     expect(body).not.toMatch(/os-code@openshorellc\.com/);
@@ -186,7 +186,7 @@ describe('the Vault secret never reaches a push', () => {
     expect(readFileSync(join(SUPABASE, 'config.toml'), 'utf8')).not.toMatch(/^\s*\[db\.vault\]/m);
   });
 
-  for (const doc of ['supabase/README.md', 'docs/vault-gate1-runbook.md']) {
+  for (const doc of ['supabase/README.md']) {
     it(`every db push command in ${doc} carries --skip-vault`, () => {
       const text = readFileSync(join(process.cwd(), '..', doc), 'utf8');
       const commands: string[] = [];
@@ -213,7 +213,7 @@ describe('the Vault secret never reaches a push', () => {
 });
 
 describe('no file names the old 0019 org vault file', () => {
-  it('supabase/ and the gate 1 runbook say 0021_org_vault_v1', () => {
+  it('supabase/ says 0021_org_vault_v1', () => {
     const stale = '0019_org' + '_vault_v1';
     const hits: string[] = [];
     const walk = (dir: string, rel: string) => {
@@ -225,8 +225,6 @@ describe('no file names the old 0019 org vault file', () => {
       }
     };
     walk(SUPABASE, 'supabase');
-    const runbook = readFileSync(join(process.cwd(), '..', 'docs/vault-gate1-runbook.md'), 'utf8');
-    if (runbook.includes(stale)) hits.push('docs/vault-gate1-runbook.md');
     expect(hits).toEqual([]);
   });
 });

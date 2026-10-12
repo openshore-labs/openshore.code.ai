@@ -301,7 +301,7 @@ const commitSchema = z.object({
     .describe('Paths to stage; omit to stage every change in the workspace'),
 });
 
-/** Files a secret usually lives in, by name (CX 7): a settings file of keys
+/** Files a secret usually lives in, by name (UX review 7): a settings file of keys
  *  (`.env`, `.env.local`, but not the committed templates), a certificate or
  *  private key (`*.pem`), a private login key (`id_rsa`, `id_ed25519`, never
  *  the `.pub` half). */
@@ -385,7 +385,7 @@ export function platformOfRemote(url: string): string | undefined {
 }
 
 /**
- * Where the app's sync sends this branch after a commit (CX 7's "and sent to
+ * Where the app's sync sends this branch after a commit (UX review 7's "and sent to
  * {platform}"), or undefined when the commit stays on this computer: the
  * project turned `sync.autoPush` off, the branch tracks nothing, or it tracks
  * the remote's default branch and the project has not opted in to pushing

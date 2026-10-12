@@ -21,7 +21,14 @@ import type {
   VaultOverrides,
 } from 'os-code/protocol';
 import { HANDOFF_MAX_BYTES } from 'os-code/protocol';
-import { dockKindOf, dockedNoun, type DockKind } from '../lib/docking.js';
+import {
+  dockKindOf,
+  dockedNoun,
+  machineFactsOf,
+  type DockKind,
+  type DockPlace,
+  type MachineFacts,
+} from '../lib/docking.js';
 import { isNotePath } from '../lib/gitos/providers.js';
 import { PROJECT_VAULT_PINS_MAX } from '../state/types.js';
 import type {
@@ -74,6 +81,12 @@ export interface DaemonTarget {
   /** What it is, as its /health said when it docked (lib/docking.ts): a
    *  server or the desktop app. Absent on an older daemon. */
   kind?: DockKind;
+  /** Where a server lives, as the person said when docking it: at home or
+   *  rented (lib/docking.ts). Kept on this device; a server cannot tell. */
+  place?: DockPlace;
+  /** Its size, as its /health last said (memory, cores, processor family).
+   *  Absent from an older daemon. */
+  machine?: MachineFacts;
 }
 
 function headers(target: DaemonTarget): Record<string, string> {
@@ -134,6 +147,9 @@ export async function daemonHealth(target: DaemonTarget): Promise<{
   /** It keeps provider keys for its sessions (GET /keys): a server, never
    *  the desktop app. Absent from an older daemon. */
   keysOnServer?: true;
+  /** Its size (memory, cores, processor family). Absent from an older
+   *  daemon. */
+  machine?: MachineFacts;
 }> {
   try {
     const res = await fetch(`${target.baseUrl}/health`, {
@@ -162,6 +178,8 @@ export async function daemonHealth(target: DaemonTarget): Promise<{
     const kind = dockKindOf(body);
     // Keys on your server (2026-10-09): only a server says it keeps them.
     const keysOnServer = (body as { keysOnServer?: unknown } | null)?.keysOnServer === true;
+    // Its size, so several docked machines read apart (2026-10-12).
+    const machine = machineFactsOf(body);
     return {
       ok: true,
       detail: kind === 'server' ? 'Docked to your server.' : 'Connected to your computer.',
@@ -169,6 +187,7 @@ export async function daemonHealth(target: DaemonTarget): Promise<{
       ...(offline ? { offline } : {}),
       ...(kind ? { kind } : {}),
       ...(keysOnServer ? { keysOnServer: true as const } : {}),
+      ...(machine ? { machine } : {}),
     };
   } catch {
     // A rejected credential answers 401 with no CORS headers (DAE-15), which a
@@ -209,7 +228,7 @@ async function hubAnswers(baseUrl: string): Promise<boolean> {
 
 /** This phone forgetting its computer: ask the computer to revoke this
  *  device's own credential (DELETE /pair/self), so its Paired devices list
- *  never keeps a row nothing uses (CX 2026-10-01). Best effort: a computer
+ *  never keeps a row nothing uses (UX review 2026-10-01). Best effort: a computer
  *  that is off or away keeps the row until it is revoked there. */
 export async function daemonForgetSelf(target: DaemonTarget): Promise<boolean> {
   try {
@@ -256,7 +275,7 @@ export async function redeemPairClaim(
       secret?: unknown;
       code?: unknown;
     };
-    // The computer asks the person first (CTO security review 2026-10-01,
+    // The computer asks the person first (tech review security review 2026-10-01,
     // F3): the phone shows the same short code and asks until it answers.
     if (res.status === 202 && typeof body.request === 'string' && typeof body.secret === 'string') {
       const pending = { request: body.request, secret: body.secret };
@@ -336,15 +355,15 @@ export async function daemonCreateSession(
     currents?: CurrentsHandles;
     /** The Harness Current that is on (Jev), as its per-session handle. */
     harnessCurrents?: HarnessCurrentsHandle;
-    /** A model switch's handoff (Vault M5, CTO J12), prepended to the first
+    /** A model switch's handoff (Vault M5, tech review J12), prepended to the first
      *  task's preamble only. Cut to `HANDOFF_MAX_BYTES` of UTF-8 before it
      *  goes on the wire, so the daemon never refuses the create over it. */
     handoff?: string;
-    /** The project's own pins (`Project.vaultPins`, CTO J14): note paths in
+    /** The project's own pins (`Project.vaultPins`, tech review J14): note paths in
      *  the person's vault, at most `PROJECT_VAULT_PINS_MAX`. Only paths that
      *  name a note go on the wire. */
     vaultPins?: string[];
-    /** The app's vault switches (Vault M7, CTO L13): off-only for context and
+    /** The app's vault switches (Vault M7, tech review L13): off-only for context and
      *  the handoff, lower-only for the pack size. The daemon parses each
      *  value and drops anything else. */
     vaultOverrides?: VaultOverrides;
@@ -381,7 +400,7 @@ export async function daemonCreateSession(
   return body.id;
 }
 
-/** Forget every handoff the computer keeps (Clear conversations, CTO J13).
+/** Forget every handoff the computer keeps (Clear conversations, tech review J13).
  *  Owner only on the hub; an older hub without the route answers 404, which
  *  is nothing to clear. Resolves false when the computer did not do it. */
 export async function daemonClearHandoffs(target: DaemonTarget): Promise<boolean> {
@@ -796,7 +815,7 @@ export class RemoteDriver implements ChatDriver {
           this.setLink('away');
           // A revoked phone's 401 carries no CORS headers, so the WebView's
           // stream reports it as a network error and the check above never
-          // sees it (pairing review, CX 2026-10-01). Once per outage, ask the
+          // sees it (pairing review, UX review 2026-10-01). Once per outage, ask the
           // credential-free route whether the computer is there and only this
           // phone is refused; if so, say so and stop, instead of "away" forever.
           if (!this.rejectionChecked) {
@@ -824,7 +843,7 @@ export class RemoteDriver implements ChatDriver {
   }
 
   /** Images do not ride this route. A message marked local-only (a private
-   *  plan's step, CX and CMO 2026-10-08, J) keeps its mark on the wire, so
+   *  plan's step, UX and copy review 2026-10-08, J) keeps its mark on the wire, so
    *  the daemon holds the task to the engine's D5 rules; an older daemon
    *  ignores the field, which is why a step goes marked only to a daemon
    *  that says it takes one (GET /stack `acceptsLocalOnly`). */

@@ -1,4 +1,4 @@
-// Vault privacy, decided once for every reader (Vault M4, CTO I3 to I5). The
+// Vault privacy, decided once for every reader (Vault M4, tech review I3 to I5). The
 // vault tools, the context pack and the loop all ask the same compiled rules
 // which notes are hidden and which stay on this computer, so a rule cannot
 // hold in one place and leak in another. Pure: no glob package (the purity

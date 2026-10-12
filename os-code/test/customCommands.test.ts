@@ -1,4 +1,4 @@
-// Your Claude Code commands work here (P3, CTO wave-3). A person's command
+// Your Claude Code commands work here (P3, tech review wave-3). A person's command
 // files (the repository's .claude/commands, their own ~/.claude/commands) run
 // as /name: the chat shows what they typed, the file's filled-in text rides in
 // the preamble, and nothing else changes. OpenShore's own names win, then the

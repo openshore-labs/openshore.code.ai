@@ -45,7 +45,7 @@ export interface CliHandle {
 }
 
 /** What a session was handed for the current that is on. One current at a
- *  time everywhere (founder ruling), so at most one field is set; the shape
+ *  time everywhere (ruling), so at most one field is set; the shape
  *  still names each so the tools stay independent. */
 export interface CurrentsHandles {
   hermes?: HermesHandle;
@@ -127,7 +127,7 @@ export function parseCurrentsHandles(v: unknown): CurrentsHandles | undefined {
 
 // --------------------------------------------------------- harness currents
 //
-// A second, independent group of currents (founder, 2026-09-23). Where an
+// A second, independent group of currents (2026-09-23). Where an
 // Agentic Current is a modality for agent work (an external agent you hand a
 // task to), a Harness Current layers a cost-saving decision method INTO the
 // harness itself: it does not answer for a seat, it steers which seat answers

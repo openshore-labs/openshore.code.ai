@@ -435,7 +435,7 @@ describe('vault writes are never silent', () => {
   });
 });
 
-// Vault v1, 1.2 (CTO F5): the diff the person approved is what lands, or
+// Vault v1, 1.2 (tech review F5): the diff the person approved is what lands, or
 // nothing does. The preview names the bytes it was built against, the loop
 // hands that basis to execute, and execute refuses when the note moved.
 describe('a vault write lands exactly as approved', () => {
@@ -449,7 +449,7 @@ describe('a vault write lands exactly as approved', () => {
   const note = () => join(root, 'log.md');
 
   it('the preview names the bytes it was built against', async () => {
-    // Then the hash of the exact bytes it showed (Vault M7, CTO L9).
+    // Then the hash of the exact bytes it showed (Vault M7, tech review L9).
     const after = (t: string) => `#after=sha256:${createHash('sha256').update(t).digest('hex')}`;
     expect((await vaultWriteTool.preview!(args('x'), ctx())).basis).toBe(`absent${after('x')}`);
     writeFileSync(note(), 'v1\n');
@@ -851,7 +851,7 @@ describe('a vault inside the workspace', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Vault M4 (4.5, CTO I11): tools that search first
+// Vault M4 (4.5, tech review I11): tools that search first
 
 function seed(files: Record<string, string>): void {
   for (const [rel, text] of Object.entries(files)) {
@@ -984,7 +984,7 @@ describe('vault tools that search first', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Vault M4 (4.2 tool half, CTO I5): privacy inside the tools
+// Vault M4 (4.2 tool half, tech review I5): privacy inside the tools
 
 /** A hand-built privacy judge standing in for compileVaultPrivacy: Secret/ and
  *  an exclude mark hide, Private/, a private tag and a local-only mark keep a
@@ -1099,7 +1099,7 @@ describe('vault privacy in the tools', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Vault M4 (CTO I11): a lean seat sees the one merged vault tool
+// Vault M4 (tech review I11): a lean seat sees the one merged vault tool
 
 /** The loop's small-seat priority list as it stands (core/agent/loop.ts),
  *  with vaultLookup placed by the registry's helper. */

@@ -1,4 +1,4 @@
-// Your computer, the hub vault (Vault M5, CTO J9), through the real provider
+// Your computer, the hub vault (Vault M5, tech review J9), through the real provider
 // against a fake of the daemon's /vault routes (support/fakeHubDaemon.ts):
 // - online, it lists, reads and writes with compare-and-swap, and only notes
 //   ever cross;
@@ -431,7 +431,7 @@ describe('the index', () => {
   });
 });
 
-// Vault M6 (CTO K2, K13): rename, folders, Trash and attachments over the
+// Vault M6 (tech review K2, K13): rename, folders, Trash and attachments over the
 // daemon's routes. The cross-provider cases are in providerContract; these
 // pin what is the hub's own: the wire it speaks, the stash following a move,
 // the away and old-computer answers, and the registered face.

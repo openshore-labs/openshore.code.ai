@@ -15,10 +15,19 @@ import { platformForCloneUrl } from './chatRepos.js';
 import { repoToken } from './gitos/repoOAuth.js';
 import { PlainError } from './plainError.js';
 import { daemonCloneRepo, type DaemonTarget } from '../drivers/remoteDriver.js';
+import type { Where } from './runsOn.js';
 
 export interface CloneTargetSettings {
   daemon?: DaemonTarget;
   preferRemoteHub?: boolean;
+}
+
+/** The same choice for one chat or project's own machine (lib/runsOn.ts):
+ *  its repositories are listed and cloned where its sessions run. */
+export function cloneTargetFor(where: Where): CloneTargetSettings {
+  if (where.kind === 'docked') return { daemon: where.target, preferRemoteHub: true };
+  if (where.kind === 'local') return { preferRemoteHub: false };
+  return { preferRemoteHub: true };
 }
 
 /** Where a clone (and a session) runs: this desktop's engine unless the

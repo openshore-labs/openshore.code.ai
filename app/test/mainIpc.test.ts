@@ -37,7 +37,7 @@ describe('main-process IPC guard (UI-6)', () => {
     expect(guarded).toEqual(invoked);
   });
 
-  // The free chat (CTO ruling 8): two guarded channels, the request id and
+  // The free chat (tech review ruling 8): two guarded channels, the request id and
   // the body type-checked, each event sent under its request id, and every
   // answer still running stopped when the page reloads.
   it('the free chat channels are guarded, checked, and stopped on a reload', () => {
@@ -57,7 +57,7 @@ describe('main-process IPC guard (UI-6)', () => {
     expect(main).toMatch(/guarded\('osc:createSession'[\s\S]*?dir\(/);
   });
 
-  // Vault M1 1.4, CTO F7: the renderer never sends a vault path. The folder
+  // Vault M1 1.4, tech review F7: the renderer never sends a vault path. The folder
   // controls take no argument, and the one refinement names a choice main
   // checks against what it found itself.
   it('the vault folder IPCs take no path from the renderer', () => {
@@ -67,7 +67,7 @@ describe('main-process IPC guard (UI-6)', () => {
       'osc:vaultReveal',
       'osc:vaultOpenObsidian',
       'osc:openPrivacySettings',
-      // Bring (CTO ruling): copies from main's own previous folder into the
+      // Bring (tech review ruling): copies from main's own previous folder into the
       // current one; any argument the renderer sends is ignored.
       'osc:vaultBringPrevious',
     ]) {
@@ -79,7 +79,7 @@ describe('main-process IPC guard (UI-6)', () => {
     expect(main).toMatch(/saveGlobalConfig\(\{ vault: \{ dir \} \}\)/);
   });
 
-  // Vault M3 (CTO H3, H5): the index and config IPCs take no path. The index
+  // Vault M3 (tech review H3, H5): the index and config IPCs take no path. The index
   // is keyed by the vault root main reads itself and capped at 32 MB; a config
   // read names a logical file main maps through its own allow-list.
   it('the vault index and config IPCs take no path, and each holds its bound', () => {
@@ -97,7 +97,7 @@ describe('main-process IPC guard (UI-6)', () => {
     }
   });
 
-  // Vault M6 (CTO K13): every new vault channel is guarded, takes only
+  // Vault M6 (tech review K13): every new vault channel is guarded, takes only
   // vault-relative paths main checks through the engine's folderFs, and
   // validates each guard, target and option like parseVaultGuard.
   it('the M6 vault IPCs are guarded, root-free, and validate every argument', () => {
@@ -131,7 +131,7 @@ describe('main-process IPC guard (UI-6)', () => {
     expect(main).toMatch(/if \(!st\.isFile\(\)\) return \{ ok: false \}/);
   });
 
-  // Vault M7 (CTO L7, L13): the settings write takes a logical name, the
+  // Vault M7 (tech review L7, L13): the settings write takes a logical name, the
   // text and a guard, never a path; it runs the daemon's own write
   // (putVaultSettingsFile: oscode/vault only, capped, parsed, link-safe) on
   // the root main reads itself, and every guard is parsed first. The session
@@ -173,7 +173,7 @@ describe('main-process IPC guard (UI-6)', () => {
     for (const ch of ['osc:trustFolder', 'osc:cloneRepo', 'osc:setLaunchAtLogin']) {
       expect(handler(ch), ch).toMatch(/await confirmInMain\(/);
     }
-    // CX cleanup 2: each dialog's words come from mainGuards.ts, and the trust
+    // UX review cleanup 2: each dialog's words come from mainGuards.ts, and the trust
     // dialog lists what trusting turns on, read by the engine in main.
     expect(handler('osc:trustFolder')).toMatch(
       /await confirmInMain\(trustConfirm\(host\.trustWaiting\(folder\), folder\)\)/,
@@ -227,7 +227,7 @@ describe('main-process IPC guard (UI-6)', () => {
     expect(main).not.toMatch(/let pendingUpdate|let installWhenReady/);
   });
 
-  // Build 2026-09-29 (CTO ruling 7): a model seat's reply streams through
+  // Build 2026-09-29 (tech review ruling 7): a model seat's reply streams through
   // its own guarded channel, validated in electron/chatStream.ts, with its
   // data on osc:chat-stream and every stream torn down when the page goes.
   // httpFetch keeps its own rules, untouched.

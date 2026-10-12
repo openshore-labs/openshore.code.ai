@@ -19,7 +19,7 @@ export interface SearchKey {
   apiKey: string;
 }
 
-/** Web search asks once (founder, 2026-10-02, the CTO's recommendation under
+/** Web search asks once (2026-10-02, the tech review's recommendation under
  *  the Proton standard, superseding on-by-default of 2026-10-01): nothing
  *  reaches a search service until the person allows it, in the ask sheet or
  *  in Settings. Unset reads as off; the first search a model wants asks. */

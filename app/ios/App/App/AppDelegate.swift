@@ -9,6 +9,28 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
 
     var window: UIWindow?
 
+    // Leaving the app asks iOS for the extra minute or so it grants a task in
+    // flight, so a reply that is streaming (or a save) can finish before the
+    // app is suspended. It is released the moment the app returns or the time
+    // is up. This does not keep the app running in the background: iOS still
+    // suspends it, and the web layer returns to the same chat if the system
+    // reclaims it (lib/resumePoint.ts). Scene based apps get the notifications,
+    // not the app delegate callbacks.
+    private var finishTask: UIBackgroundTaskIdentifier = .invalid
+
+    private func beginFinishTask() {
+        guard finishTask == .invalid else { return }
+        finishTask = UIApplication.shared.beginBackgroundTask(withName: "oscode.finish-turn") {
+            [weak self] in self?.endFinishTask()
+        }
+    }
+
+    private func endFinishTask() {
+        guard finishTask != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(finishTask)
+        finishTask = .invalid
+    }
+
     // iOS calls this when it has relaunched the app in the background to finish
     // model downloads that kept running on the background URLSession while the
     // app was suspended or closed. Hand the completion handler to the store,
@@ -33,6 +55,12 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         // screen can open with the keyboard already up (the Claude app does the
         // same). Guarded end to end, see ProgrammaticKeyboard below.
         ProgrammaticKeyboard.install()
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main
+        ) { [weak self] _ in self?.beginFinishTask() }
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main
+        ) { [weak self] _ in self?.endFinishTask() }
         return true
     }
 

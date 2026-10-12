@@ -1,4 +1,4 @@
-// Keys on your server (founder, 2026-10-09; docs/byok-any-provider-plan.md,
+// Keys on your server (2026-10-09; docs/design/byok-any-provider-plan.md,
 // part 3), the app's pure half: which of this device's providers a docked
 // server can keep a key for, what goes with each key, the models this device
 // knows for a provider the server keeps a key for, and the plain words for
@@ -197,6 +197,6 @@ export const SERVER_KEYS_HOLD =
 /** What a cloud model as the server's model means for the rest of it: Crew
  *  routines (routines/scheduler.ts, ROUTINE_NEEDS_LOCAL_MODEL) and the free
  *  chat (daemon/freeChat.ts) refuse a model that leaves, so they stop while
- *  one is placed, and never use it (CTO 3). */
+ *  one is placed, and never use it (tech review 3). */
 export const SERVER_MODEL_LOCAL_ONLY =
   "Crew routines and Chat with your server run only on a local model, so they do not run while a cloud model is the server's model.";

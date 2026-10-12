@@ -130,7 +130,7 @@ describe('classBlurb', () => {
       expect(classBlurb(c).length).toBeGreaterThan(0);
     }
     expect(classBlurb('tiny').toLowerCase()).toContain('one step at a time');
-    // D3 (founder, 2026-10-07): the CMO's plain rewrite, read by a person.
+    // D3 (2026-10-07): the copy review's plain rewrite, read by a person.
     for (const c of MODEL_CLASSES) {
       expect(classBlurb(c)).not.toMatch(/harness|seat|tools|subagent/i);
     }
@@ -138,7 +138,7 @@ describe('classBlurb', () => {
   });
 });
 
-// Vault M4, CTO I1 and I2: the served window and the pack budget. The numbers
+// Vault M4, tech review I1 and I2: the served window and the pack budget. The numbers
 // are placeholders until the eval; these pin the shape, not the values' worth.
 describe('the served window', () => {
   it('reads the class ceiling by memory band', () => {
@@ -180,7 +180,7 @@ describe('the pack budget', () => {
   });
 });
 
-// Vault M4, 4.1 (CTO I2): the loop now reads these, so the tighter class
+// Vault M4, 4.1 (tech review I2): the loop now reads these, so the tighter class
 // must spend less of its window on the map and compact sooner, and every
 // budget must scale with the served window.
 describe('the budgets the loop reads, by class', () => {

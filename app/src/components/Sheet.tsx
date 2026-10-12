@@ -57,7 +57,7 @@ export function Sheet({
   className?: string;
   /** 'dialog': focus goes to the sheet itself when it opens, never to a
    *  button, so a stray Space or Enter from the last keystroke cannot choose
-   *  for the person (the Vault's resolve sheet, CX 1.1). By default the focus
+   *  for the person (the Vault's resolve sheet, UX review 1.1). By default the focus
    *  trap moves focus to the first control. */
   initialFocus?: 'dialog';
 }) {

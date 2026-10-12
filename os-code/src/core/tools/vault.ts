@@ -2,7 +2,7 @@
 // files under a single vault directory, so the same tree opens in Obsidian or
 // any editor and matches the app's Vault. The agent reads and lists freely, but
 // every WRITE is always-ask: it prompts the user with a diff and never lands a
-// byte without approval (the founder's ruling, enforced by alwaysAsk here plus
+// byte without approval (a maintainer's ruling, enforced by alwaysAsk here plus
 // the permission engine honoring it before any auto-allow path). A write lands
 // exactly as approved or not at all: execute re-checks the bytes the preview
 // showed, and saves through the same writeNote the app uses on this folder
@@ -51,7 +51,7 @@ export { vaultReadTool } from './vaultFind.js';
  *  new name that folds onto an existing note is refused with that note's
  *  name, so the model updates it rather than making a twin. */
 async function writeTarget(jail: Jail, raw: string, ctx?: ToolContext): Promise<string> {
-  // The vault's settings folder is the person's alone (Vault M7, CTO L8),
+  // The vault's settings folder is the person's alone (Vault M7, tech review L8),
   // said plainly before any note-name rule speaks.
   if (namesSettingsDir(raw)) throw new WriteRefused(VAULT_SETTINGS_DENY);
   const rel = await noteTarget(jail, raw);
@@ -135,7 +135,7 @@ function normalizeFolder(raw: string): string {
     .join('/');
 }
 
-/** The refusal for a note the person's vault settings exclude (CTO I5): the
+/** The refusal for a note the person's vault settings exclude (tech review I5): the
  *  agent may not write where it may not read. */
 function hiddenRefusal(rel: string): string {
   const slash = rel.lastIndexOf('/');
@@ -180,7 +180,7 @@ function basisOf(bytes: Buffer | undefined): string {
   return bytes ? `sha256:${createHash('sha256').update(bytes).digest('hex')}` : 'absent';
 }
 
-/** The provenance lines for this write (Vault M7, CTO L9), or undefined when
+/** The provenance lines for this write (Vault M7, tech review L9), or undefined when
  *  `vault.provenance` is off (or the context carries no config). A new note
  *  is the agent's (`agent`, created now); a note the agent made keeps
  *  `agent`; any other note it changes is `agent-edit`, and an edit clears
@@ -232,7 +232,7 @@ function stamped(text: string, fields: ProvenanceFields | undefined): string {
  *  writes the very bytes the preview showed. */
 const CREATED_MARK = '#created=';
 /** The hash of the exact bytes the preview showed (the note's text with its
- *  provenance lines), so execute writes those bytes or nothing (CTO L9: the
+ *  provenance lines), so execute writes those bytes or nothing (tech review L9: the
  *  person approves exactly what lands). */
 const AFTER_MARK = '#after=';
 
@@ -350,7 +350,7 @@ export const vaultWriteTool: ToolDef<typeof writeSchema> = {
       current ? { ifMatch: current.version } : { ifAbsent: true },
     );
     if (!saved.ok) return { ok: false, content: CHANGED_SINCE_APPROVAL };
-    // The engine's index takes the text in hand (CTO I7), so a search right
+    // The engine's index takes the text in hand (tech review I7), so a search right
     // after the write finds it without a read.
     const handle = await openEngineVaultIndex(jail.root).catch(() => undefined);
     handle?.noteWrite(
@@ -547,7 +547,7 @@ export const vaultListTool: ToolDef<typeof listSchema> = {
       return { ok: false, content: `Could not read ${base || 'the vault'} (${unreadable}).` };
     }
     // Notes the person's vault settings exclude are absent, not counted and
-    // not named (CTO I5): by glob always, and by a note's own tags and marks
+    // not named (tech review I5): by glob always, and by a note's own tags and marks
     // once the engine's index has loaded. Asking opens the index in the
     // background, so later searches find it warm.
     const handle = await engineVaultIndex(new Jail(root).root).catch(() => undefined);

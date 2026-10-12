@@ -51,7 +51,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     id: 'overview',
     title: 'What OpenShore is',
     // Opens on the App Store's first caption, the line the setup page's
-    // headline says too (founder, D23, 2026-10-07).
+    // headline says too (D23, 2026-10-07).
     text: 'Your models. Your keys. OpenShore is a local-first coding assistant for your computer (Mac, Windows, or Linux) and your iPhone. You build a stack of models you own; local models are the default and the cloud is an opt-in choice on your own key. Once set up it works like a coding agent: say the goal, it proposes a plan, you pick, it does the work and asks before anything risky.',
     keywords: [
       'what is openshore',
@@ -365,11 +365,11 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     ],
   },
   {
-    // The founder's two doors (2026-10-07), in the words the chat's card and
+    // A maintainer's two doors (2026-10-07), in the words the chat's card and
     // its guides use; the local pick comes from the catalog. The Local slot
     // reads first and the Cloud slot takes a failed picture only after a
     // card (K), and a plan's image step runs on the Reasoning model from the
-    // text, since a plan never carries a picture (E; CX and CMO, 2026-10-08).
+    // text, since a plan never carries a picture (E; UX and copy review, 2026-10-08).
     id: 'image-reading',
     title: 'Reading images',
     where: 'Menu, Stack, Image reading',

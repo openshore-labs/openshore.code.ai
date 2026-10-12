@@ -1,4 +1,4 @@
-// Keys on your server (founder, 2026-10-09), the store's half: what turning a
+// Keys on your server (2026-10-09), the store's half: what turning a
 // key on or off for a docked server sends, and what disconnecting a provider
 // and forgetting a server do to the keys a server keeps. Plain functions over
 // the daemon wire (drivers/remoteDriver.ts); the store wires the lifecycle

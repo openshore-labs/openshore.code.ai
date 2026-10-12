@@ -1,4 +1,4 @@
-// When the desktop's one-time move card shows (Vault M1 1.3, CX 1.3). Pure,
+// When the desktop's one-time move card shows (Vault M1 1.3, UX review 1.3). Pure,
 // so the rule is a table a test can read.
 //
 // The card is for a vault sealed on This device by default, never by the

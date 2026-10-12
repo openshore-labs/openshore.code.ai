@@ -2,13 +2,13 @@
 // never reasons about raw rows. The load-bearing honesty rules live here:
 //
 //   1. A community average is HIDDEN below a minimum count, so one grumpy first
-//      report cannot stamp a score on a good model (CX: below ~5 the mean swings
+//      report cannot stamp a score on a good model (UX review: below ~5 the mean swings
 //      on a single voice).
 //   2. When shown, a sparse average is SHRUNK toward the benchmark prior, so the
 //      number is honest at n=1 and converges to the crowd as reports arrive
-//      (CX: Bayesian shrinkage beats a hard show/hide cliff).
+//      (UX review: Bayesian shrinkage beats a hard show/hide cliff).
 //   3. Community stars are ALWAYS reported with their count. The count is the
-//      tell that separates a crowd score from the benchmark score (CMO).
+//      tell that separates a crowd score from the benchmark score (copy review).
 //
 // None of this ever writes into the benchmark ratings; it is a separate axis.
 

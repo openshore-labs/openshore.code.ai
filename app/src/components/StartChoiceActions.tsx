@@ -1,9 +1,9 @@
 // The break after the setup walk's opening (lib/guidedSetup.ts START_CHOICES,
-// founder 2026-10-01): the guide has said what setup is and that chatting is
+// 2026-10-01): the guide has said what setup is and that chatting is
 // fine too, and the person picks. Just chat says where setup waits and then
 // the tide carries them to the main chat page (components/TideTurn.tsx),
 // rising from the button they tapped; Set up OpenShore introduces step one
-// (D4). One row of equal widths (Creative Studio): Just chat first and full
+// (D4). One row of equal widths (design review): Just chat first and full
 // size, so skipping setup is never small, and Set up OpenShore filled, since
 // it answers the question the intro asked.
 import type { MouseEvent } from 'react';

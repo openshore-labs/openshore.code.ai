@@ -1,6 +1,6 @@
 #!/bin/bash
 # Build the Mac desktop app on this Mac and ship it into a GitHub release, the
-# local twin of codemagic.yaml's mac-desktop job (founder, 2026-09-23: the Mac
+# local twin of codemagic.yaml's mac-desktop job (2026-09-23: the Mac
 # build is also made by hand, offline, as a dmg).
 #
 #   pnpm --filter oscode-app release:mac            # newest release
@@ -57,7 +57,7 @@ pnpm --filter oscode-app rebuild:native
 pnpm exec electron-builder --mac --publish never
 
 shopt -s nullglob
-# Sign for the in-place update (docs/release-signing.md): an installed Mac
+# Sign for the in-place update (the maintainer release-signing runbook): an installed Mac
 # with the Mac key pinned swaps in only a file whose .sig checks, and opens
 # the release page for anything else.
 if [ -n "${OPENSHORE_MAC_SIGNING_KEY:-}" ]; then

@@ -355,7 +355,7 @@ export async function storeSetJson(key: string, value: unknown): Promise<void> {
   await storeSet(key, JSON.stringify(value));
 }
 
-/** Seal a blob with the device key for a store of its own (Vault M3, CTO H3:
+/** Seal a blob with the device key for a store of its own (Vault M3, tech review H3:
  *  the iPhone's vault index, written to the Caches folder, which the sealed
  *  key-value store is too small to hold). Null when the key cannot be used
  *  right now (locked, or no WebCrypto): the caller then keeps the blob in

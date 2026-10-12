@@ -2,6 +2,8 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App.js';
 import './theme.css';
+import { splashHoldMs } from './lib/resumePoint.js';
+import { platform } from './lib/platform.js';
 
 const root = createRoot(document.getElementById('root')!);
 root.render(
@@ -19,7 +21,9 @@ root.render(
 // opening. THIS IS THE KNOB to make it slower or faster; pair it with the
 // entrance/exit durations in index.html. The mark holds until this time, then
 // the 0.5s cross-fade runs, so total opening is roughly SPLASH_MIN_MS + 500ms.
-const SPLASH_MIN_MS = 2700;
+// A quick return (the system reclaimed the app while it was away) holds only a
+// beat; a Quit or a long absence gets the full opening: lib/resumePoint.ts.
+const SPLASH_MIN_MS = splashHoldMs(platform());
 
 // Dismiss the boot splash once BOTH the first React frame has painted AND the
 // deliberate minimum hold has elapsed, whichever is later. A double rAF waits

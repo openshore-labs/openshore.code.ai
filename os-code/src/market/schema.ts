@@ -133,7 +133,7 @@ export const CatalogModelSchema = z.object({
    *  format degrades (ignored) rather than rejecting the whole catalog. */
   createdAt: z.string().optional(),
   updatedAt: z.string().optional(),
-  /** The founder's editorial pick, merged from curation/recommended.json. */
+  /** A maintainer's editorial pick, merged from curation/recommended.json. */
   recommended: z
     .object({
       isRecommended: z.boolean(),

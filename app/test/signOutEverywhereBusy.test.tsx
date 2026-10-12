@@ -1,4 +1,4 @@
-// "Sign out everywhere" while the server works (CX cleanup 7), mounted in a
+// "Sign out everywhere" while the server works (UX review cleanup 7), mounted in a
 // real (small) DOM: after the confirm, both controls hold, a status line
 // takes the link's place, and a second tap cannot fire. When the call fails,
 // the card comes back as it was.

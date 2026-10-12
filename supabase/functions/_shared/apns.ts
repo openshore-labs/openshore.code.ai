@@ -1,9 +1,7 @@
 // APNs provider client for the content-free completion push. This SIGNS a
 // provider authentication token (ES256 JWT, iss=teamId, kid=keyId) and POSTs an
-// alert to Apple's HTTP/2 APNs endpoint. It is distinct from _shared/apple.ts,
-// which only VERIFIES inbound signed StoreKit data and never signs a provider
-// token; the keys are different too, so this uses its OWN secrets and must not
-// be pointed at the App Store Server API key.
+// alert to Apple's HTTP/2 APNs endpoint, with its OWN secrets (an APNs key,
+// never an App Store Server API key).
 //
 // Env (Supabase function secrets):
 //   APNS_AUTH_KEY_P8 - the .p8 key contents (the PEM block, newlines may be

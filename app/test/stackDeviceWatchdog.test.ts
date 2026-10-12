@@ -100,7 +100,7 @@ describe('StackDriver device stall watchdog (B2)', () => {
     driver.dispose();
   });
 
-  // Stop answers at once (build 2026-09-29, CTO ruling 7): the turn closes
+  // Stop answers at once (build 2026-09-29, tech review ruling 7): the turn closes
   // the moment abort() is called, and when the runner never confirms the stop
   // the slot claim is dropped a beat later, so the next send reloads.
   it('abort() finishes the turn at once, and drops the slot when Llama.stop yields no generationDone', async () => {

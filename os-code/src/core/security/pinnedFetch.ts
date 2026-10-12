@@ -1,5 +1,5 @@
 // A page fetch whose connection is checked by the same name lookup it
-// connects with (CTO security review 2026-10-01, F4, DNS rebinding). The
+// connects with (tech review security review 2026-10-01, F4, DNS rebinding). The
 // global fetch resolves a name again after the egress policy checked it, so
 // a name could answer a public address to the check and this computer's own
 // network to the connection. Here the lookup Node calls to connect is the

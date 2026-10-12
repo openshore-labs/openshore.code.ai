@@ -1,5 +1,5 @@
 // Where the desktop vault lives, and the one way to change it (Vault M1 1.4,
-// CTO F7, CX 1.4). Only the main process picks, checks, and writes vault.dir:
+// tech review F7, UX review 1.4). Only the main process picks, checks, and writes vault.dir:
 // the renderer never sends a path, and every action here takes none (a pick
 // comes from the system dialog, a refinement names a choice main itself
 // offered). The folder is stored as an absolute realpath through the engine's
@@ -442,7 +442,7 @@ export class VaultDirChooser {
 
   /**
    * Bring the notes of the folder the vault used before the last pick into
-   * the one it uses now (the CTO's ruling on Bring). Takes no argument; any
+   * the one it uses now (the tech review's ruling on Bring). Takes no argument; any
    * the renderer sends is ignored. Every write is a create (ifAbsent): a note
    * already here is never replaced; the same text is left as it is, and
    * different text lands beside it under the conflict name. Nothing is ever

@@ -1,6 +1,6 @@
 // Delete account (Apple 5.1.1(v); next build E1): the app half. The pure
 // flow first, with fakes for the session, the call, and the sign-out (the
-// state/accountDeletion.ts seam, CTO ruling 9); then the store against a
+// state/accountDeletion.ts seam, tech review ruling 9); then the store against a
 // mocked Supabase, proving the wiring asks delete-account with a live session
 // and leaves the device signed out with no Apple receipt waiting to link.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -145,7 +145,7 @@ describe('the deletion flow', () => {
     expect(seen.cleared).toBe(0);
   });
 
-  // The 2026-09-24 function (production's until main's is deployed, CTO 11
+  // The 2026-09-24 function (production's until main's is deployed, tech review 11
   // package C) answers { deleted: true } with no ok and no appleNote. That is
   // a deletion: the device must sign out, and never say it failed.
   it("reads the live 2026-09-24 function's { deleted: true } as deleted, and signs out", async () => {

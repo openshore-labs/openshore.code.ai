@@ -1,4 +1,4 @@
-// Obsidian's reading-view syntax for the Vault (Vault M6, CTO K10 and K11; CX
+// Obsidian's reading-view syntax for the Vault (Vault M6, tech review K10 and K11; UX review
 // X12 and X13). One hand-written remark plugin, no new package, working on
 // mdast nodes so code is never touched: fenced and indented code are `code`
 // nodes and code spans are `inlineCode`, never `text`.
@@ -16,7 +16,7 @@
 // - Headings carry `data-heading-index`. No `id` attribute is ever built from
 //   note text (DOM clobbering); scroll-to walks these attributes instead.
 // - A `#tag` in the text becomes a `vault-tag` element carrying the tag, so
-//   the reader can make it a tap that searches `tag:x` (CX X2). Not inside a
+//   the reader can make it a tap that searches `tag:x` (UX review X2). Not inside a
 //   link, and a tag of digits alone (`#1`) is not a tag, as in Obsidian.
 // - GFM task items become a `vault-task` line carrying the task's line in the
 //   whole note (frontmatter lines counted), so a tick can find its marker.
@@ -53,7 +53,7 @@ const MARK = /==(?![\s=])([^\n]*?[^\s=])==/g;
 const TAG = /(^|[\s([{])#([\p{L}\p{N}_/-]*[\p{L}_/-][\p{L}\p{N}_/-]*)/gu;
 
 /** A callout title from its type when the line gives none: `Note`,
- *  `Warning`, `Faq` (CX X12). */
+ *  `Warning`, `Faq` (UX review X12). */
 export function calloutTitleOf(type: string): string {
   const t = type.replace(/-/g, ' ').trim();
   return t ? t[0]!.toUpperCase() + t.slice(1).toLowerCase() : 'Note';

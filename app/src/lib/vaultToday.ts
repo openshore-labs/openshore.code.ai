@@ -1,6 +1,6 @@
-// Today's note (Vault M6, 6.4; CTO K7, CX X11): which note is today's, and
+// Today's note (Vault M6, 6.4; tech review K7, UX review X11): which note is today's, and
 // what a new one starts with. The folder, the date format and the template
-// come from the vault's resolved settings (Vault M7, CTO L3, L5): Obsidian's
+// come from the vault's resolved settings (Vault M7, tech review L3, L5): Obsidian's
 // `daily-notes.json` and `templates.json` where they set a field, else the
 // vault's own `.oscode/vault.json`, else Obsidian's defaults: the vault root,
 // `YYYY-MM-DD`, no template, `HH:mm`.
@@ -96,7 +96,7 @@ export type VaultTodayPlan =
   | { ok: false; reason: 'name'; error: string };
 
 /** How long a vault's daily config is trusted before it is read again: the
- *  settings loader's (Vault M7, CTO L5, L6), which Today now reads. */
+ *  settings loader's (Vault M7, tech review L5, L6), which Today now reads. */
 export const VAULT_TODAY_CONFIG_TTL_MS = VAULT_SETTINGS_TTL_MS;
 
 /** Forget every cached config (a repoint, a sign-out, tests). An alias of
@@ -213,7 +213,7 @@ export async function resolveVaultToday(deps: VaultTodayDeps): Promise<VaultToda
   };
 }
 
-/** The line to show once today's note is started (CX X11), or undefined when
+/** The line to show once today's note is started (UX review X11), or undefined when
  *  there is nothing to say: an existing note opens with no toast. Call it only
  *  after the write lands; a write that finds the note already there (another
  *  device made it a moment ago) also says nothing. */

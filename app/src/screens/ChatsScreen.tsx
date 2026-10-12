@@ -349,8 +349,9 @@ export function ChatsScreen() {
       return;
     }
     const s = row.session;
-    void openDesktopSession({ id: s.id, cwd: s.cwd, title: s.title }).catch((err: unknown) =>
-      showToast(plainError(err)),
+    // Listed from the active machine, so it opens there (lib/runsOn.ts).
+    void openDesktopSession({ id: s.id, cwd: s.cwd, title: s.title, hub: daemon?.baseUrl }).catch(
+      (err: unknown) => showToast(plainError(err)),
     );
   };
 

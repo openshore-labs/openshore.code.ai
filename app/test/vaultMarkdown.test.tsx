@@ -176,7 +176,7 @@ describe('ErrorBoundary in a real render', () => {
   });
 });
 
-// Vault M3 3.3 (CTO H2): the core finds the frontmatter and the renderer shows
+// Vault M3 3.3 (tech review H2): the core finds the frontmatter and the renderer shows
 // only `text.slice(fm.end)`, so YAML is never read as markdown; properties sit
 // in a quiet strip above; and nothing on the read path ever writes the note.
 describe('frontmatter in the reader (Vault M3 H2)', () => {
@@ -277,7 +277,7 @@ describe('frontmatter in the reader (Vault M3 H2)', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Vault M6 6.5 and 6.6 (CTO K10, K11; CX X12 to X14): one case per syntax.
+// Vault M6 6.5 and 6.6 (tech review K10, K11; UX review X12 to X14): one case per syntax.
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
 
@@ -881,7 +881,7 @@ describe('blob URL lifetime (K11)', () => {
   });
 });
 
-// Vault M6 wave 2: a #tag is a tap that searches tag:x (CX X2), and headings
+// Vault M6 wave 2: a #tag is a tap that searches tag:x (UX review X2), and headings
 // carry the index the outline scrolls by (K10).
 describe('tags and heading indexes in reading view', () => {
   let dom: TestDom;

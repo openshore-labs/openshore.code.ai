@@ -7,7 +7,7 @@
 // The resourceId for a team vault IS the org's server id (its `orgs.id` uuid),
 // so one org has one team vault in v1. Membership is enforced server-side.
 //
-// Compare-and-swap (Vault M2 2.1 and 2.3, CTO G3): a note's version is its
+// Compare-and-swap (Vault M2 2.1 and 2.3, tech review G3): a note's version is its
 // server rev as a string, the same token from list, stat, read, and write. A
 // write goes through org_vault_write with exactly one guard and a remove
 // through org_vault_remove with the rev it was read at (see
@@ -16,7 +16,7 @@
 // for every other provider; the server never makes a copy for this client.
 // The base lives in the open note and the stash entry, never in this module.
 //
-// Rename, Trash and Restore (Vault M6, CTO K3, K6, R3; migration 0024). A
+// Rename, Trash and Restore (Vault M6, tech review K3, K6, R3; migration 0024). A
 // rename is org_vault_move under the source's rev; the store adopts the path
 // and rev it answers. Trash is org_vault_remove under the rev (a tombstone
 // plus a 'deleted' revision row); Trash lists a tombstone only while its
@@ -28,7 +28,7 @@
 // weekly purge drops tombstones and revisions after 30 days, so team Trash is
 // Restore only.
 //
-// Settings and the plan (Vault M7, CTO L17, CX Y14, Y15; migration 0025). The
+// Settings and the plan (Vault M7, tech review L17, UX review Y14, Y15; migration 0025). The
 // vault's settings are one row per org, read with org_vault_settings_get and
 // written, by admins only, with org_vault_settings_put under its rev. The
 // text this seam carries is that jsonb rendered in Postgres's own key order,
@@ -149,7 +149,7 @@ type SettingsPutReply =
   | { ok: true; rev: number; updated_at: string }
   | { ok: false; conflict: 'changed'; theirs: SettingsRow };
 
-/** The team's plan as the Vault needs it (CX Y14, Y15): whether team notes
+/** The team's plan as the Vault needs it (UX review Y14, Y15): whether team notes
  *  can change, until when a never-paid team stays editable (the notice), and
  *  whether this person is an admin and who may delete. */
 export interface OrgVaultPlan {
@@ -202,7 +202,7 @@ export const ORG_VAULT_PAGE_SIZE = 500;
 /** The most pages one list walks: 50,000 notes. */
 export const ORG_VAULT_MAX_PAGES = 100;
 
-/** How long the member labels behind "Edited by" are reused (CTO G6). */
+/** How long the member labels behind "Edited by" are reused (tech review G6). */
 export const ORG_VAULT_MEMBERS_TTL_MS = 10 * 60 * 1000;
 
 /** A team vault refusal that retrying cannot fix: over the 1 MB cap, a path
@@ -222,7 +222,7 @@ export class OrgVaultRefusal extends Error {
  *  function not found, which arrives as a 404): a build that reached people
  *  before migration 0021 did. Not permanent, so the store stashes the text
  *  and retries it once the server catches up, and nothing is written blind
- *  through the old last-write-wins function in the meantime (CTO G3). */
+ *  through the old last-write-wins function in the meantime (tech review G3). */
 export class OrgVaultNotReady extends Error {
   /** The seam's mark for the store, which says this line, never "offline"
    *  (round 7 E42); its words are vaultCopy's. */
@@ -235,7 +235,7 @@ export class OrgVaultNotReady extends Error {
 
 /** The team plan is not active (OV402, migration 0025): team notes are
  *  read-only, every note still reads and exports. Permanent, so a save
- *  refused mid-edit is held as Not saved with this reason (CX Y15). */
+ *  refused mid-edit is held as Not saved with this reason (UX review Y15). */
 export class OrgVaultLapsed extends OrgVaultRefusal {
   /** The seam's mark for the store, which turns the open note back to the
    *  team's text once its words are held (round 7 E28). */
@@ -247,7 +247,7 @@ export class OrgVaultLapsed extends OrgVaultRefusal {
 }
 
 /** A member's delete under admins-only (OV403, migration 0025). `whole`
- *  says the message is the whole line, said as it is (CX Y14). */
+ *  says the message is the whole line, said as it is (UX review Y14). */
 export class OrgVaultDeleteRefused extends OrgVaultRefusal {
   readonly whole = true;
   constructor() {
@@ -351,7 +351,7 @@ async function refusing<T>(call: () => Promise<T>): Promise<T> {
 }
 
 /** refusing, for one team: a plan refused as not active (OV402) marks that
- *  team's plan lapsed, so the room turns read-only and says why (CX Y15),
+ *  team's plan lapsed, so the room turns read-only and says why (UX review Y15),
  *  and an admins-only delete refusal (OV403) marks who may delete, so the
  *  room drops Delete and the next one is refused before it is sent (round 7
  *  E19). */
@@ -375,7 +375,7 @@ async function refusingFor<T>(resourceId: string, call: () => Promise<T>): Promi
 
 // ---------------------------------------------------------------- the plan
 // The last plan each org's settings read gave, and who hears a change: the
-// store, which turns the room read-only and says why (CX Y15).
+// store, which turns the room read-only and says why (UX review Y15).
 const plans = new Map<string, OrgVaultPlan>();
 /** Which sign-in this module's memory belongs to: resetOrgVault moves it on,
  *  and an answer to a call made under an earlier one (another account's
@@ -545,7 +545,7 @@ export function resetOrgVault(): void {
 }
 
 /** @deprecated Kept as a shim until the store drops it (Vault M2 wave 2,
- *  CTO G3): the base is now the note's version, String(rev), carried in the
+ *  tech review G3): the base is now the note's version, String(rev), carried in the
  *  open note and the stash entry, so this module keeps no revs. Always
  *  undefined. */
 export function orgVaultBaseRev(_resourceId: string, _path: string): number | undefined {
@@ -553,7 +553,7 @@ export function orgVaultBaseRev(_resourceId: string, _path: string): number | un
 }
 
 /** @deprecated Kept as a shim until the store drops it (Vault M2 wave 2,
- *  CTO G3). Does nothing: a replay sends its base as the write's ifMatch. */
+ *  tech review G3). Does nothing: a replay sends its base as the write's ifMatch. */
 export function seedOrgVaultBaseRev(_resourceId: string, _path: string, _rev: number): void {
   // Nothing to seed: the guard carries the base.
 }
@@ -1164,7 +1164,7 @@ async function putSettings(
   return reply;
 }
 
-/** An admin changes who may delete team notes (CX Y14). The settings stay
+/** An admin changes who may delete team notes (UX review Y14). The settings stay
  *  as they are; the write is guarded by the rev just read, so a change from
  *  another admin in between is `changed`, never lost. */
 /** Read the team's plan again (one settings read) and return it, or
@@ -1204,7 +1204,7 @@ export const orgVaultProvider: StorageProvider = {
   compareAndSwap: true,
   unappliedSettings: ORG_VAULT_UNAPPLIED_SETTINGS,
 
-  // Keyset paging (CTO G3): ordered by path, each page starts after the last
+  // Keyset paging (tech review G3): ordered by path, each page starts after the last
   // path of the one before, until a short page. Offsets would skip or repeat
   // a note when a teammate creates or removes one between pages.
   async list(resourceId) {
@@ -1320,7 +1320,7 @@ export const orgVaultProvider: StorageProvider = {
     // Nothing held, nothing to release.
   },
 
-  // ---- Vault M6 (CTO K3, K6, R3; migration 0024) ----------------------------
+  // ---- Vault M6 (tech review K3, K6, R3; migration 0024) ----------------------------
 
   async rename(resourceId, from, to, guard: RenameGuard): Promise<RenameResult> {
     if (!isNotePath(from))
@@ -1619,7 +1619,7 @@ export const orgVaultProvider: StorageProvider = {
   // No emptyTrash: the team's Trash is Restore only (R3); the server's
   // weekly purge drops what has been there 30 days.
 
-  // ---- Vault M7 (CTO L7, L17; CX Y14, Y15; migration 0025) ------------------
+  // ---- Vault M7 (tech review L7, L17; UX review Y14, Y15; migration 0025) ------------------
 
   // Only the vault's own settings live on the server; Obsidian's files never
   // do, so each of their names reads absent. The read also brings the plan.

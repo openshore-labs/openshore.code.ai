@@ -2,7 +2,7 @@
 // each pinned so it stays fixed. Honest words about accounts, no switch that
 // does nothing, a Claude key that needs no workspace, a terminal that says
 // when it lost the computer, Install by name in Stack, and, since OpenShore
-// went open source (founder, 2026-10-11), no paywall anywhere: Crew's work
+// went open source (2026-10-11), no paywall anywhere: Crew's work
 // meets only the free sign-in.
 import { describe, expect, it } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
@@ -11,7 +11,7 @@ import { WAYFINDING_READY } from '../src/lib/currents.js';
 
 const read = (...parts: string[]) => readFileSync(join(process.cwd(), ...parts), 'utf8');
 
-describe('nothing is sold (open source, founder 2026-10-11)', () => {
+describe('nothing is sold (open source, 2026-10-11)', () => {
   it('the paywall, the pay gate and the in-app purchase are gone', () => {
     for (const gone of [
       ['src', 'components', 'Paywall.tsx'],

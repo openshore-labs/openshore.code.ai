@@ -1,4 +1,4 @@
-// Keys on your server (founder, 2026-10-09; docs/byok-any-provider-plan.md,
+// Keys on your server (2026-10-09; docs/design/byok-any-provider-plan.md,
 // part 3), the room's half. Cloud Connections lists, under each docked server
 // that keeps keys and takes this device as its admin, which provider keys it
 // keeps and which model it runs; these are the two sheets those rows open,

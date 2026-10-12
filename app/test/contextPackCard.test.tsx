@@ -162,7 +162,7 @@ describe('the context pack card', () => {
     expect(mapOnly?.remote).toBeUndefined();
   });
 
-  // Vault M5 (CTO J9): when this device's vault can open the note, each title
+  // Vault M5 (tech review J9): when this device's vault can open the note, each title
   // is a button, and the foot no longer says the notes are only on the
   // computer. Without an opener the titles stay plain.
   it('opens a note from its title when this device can, and stays plain when not', () => {

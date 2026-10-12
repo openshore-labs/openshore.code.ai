@@ -1,5 +1,5 @@
-// The first open's swell (founder direction 2026-09-24: "a wave rolling across
-// the screen to reveal the text", shaped by the Creative Studio as "Swell
+// The first open's swell (direction 2026-09-24: "a wave rolling across
+// the screen to reveal the text", shaped by the design review as "Swell
 // Line"). A scripted line is laid out whole from the start, so nothing
 // reflows. Every word is a nowrap span, so a line only ever wraps between
 // words, and every character inside it is its own inline-block span that

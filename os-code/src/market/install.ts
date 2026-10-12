@@ -27,7 +27,7 @@ export interface InstallOptions {
 
 /** What a finished pull says: where the model runs. A cloud tag's "pull"
  *  only registers it with the local Ollama, which passes every request on to
- *  ollama.com, so it says so (CX and CMO, 2026-10-08, B). */
+ *  ollama.com, so it says so (UX and copy review, 2026-10-08, B). */
 export function pulledLine(ref: string): string {
   return isOllamaCloudTag(ref)
     ? `${ref} is ready. It runs on Ollama's cloud, under your Ollama account, not on this computer, so the Stack lists it apart as a cloud model.`

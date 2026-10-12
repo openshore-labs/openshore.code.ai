@@ -45,7 +45,7 @@ describe('thisDeviceNoun', () => {
 describe('copy names the device through the helper', () => {
   // The later tiers' rooms have no door in a Personal build; they keep their
   // own lines until a tier opens them (the review's follow-up says which).
-  // The Marketplace is a v1 room since 2026-10-11 (founder): its lines are
+  // The Marketplace is a v1 room since 2026-10-11: its lines are
   // known UI polish debt, open for contributors, and stay exempt until fixed.
   const LATER_TIER = new Set([
     'screens/MarketplaceScreen.tsx',

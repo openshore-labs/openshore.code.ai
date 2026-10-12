@@ -243,7 +243,7 @@ interface ForkSteps {
 }
 
 /** How long the editor must be quiet before the resolve sheet rises over it
- *  (Creative Studio 1c): never mid-keystroke, so the text the person is
+ *  (design review 1c): never mid-keystroke, so the text the person is
  *  typing into never jumps. A behavior timer, not motion: twice the autosave
  *  debounce. */
 const VAULT_RESOLVE_IDLE_MS = 2 * VAULT_AUTOSAVE_MS;
@@ -365,6 +365,7 @@ export function VaultScreen() {
     hubName: settings.daemon?.name,
     paired: Boolean(settings.daemon),
     hubServer: settings.daemon?.kind === 'server',
+    hubServerHome: settings.daemon?.kind === 'server' && settings.daemon.place === 'home',
   };
   // The held text this account may see: every personal entry, and team text
   // only under the account that typed it (R-19). Raw vaultHeld also holds
@@ -436,7 +437,7 @@ export function VaultScreen() {
   const driveReadOnly = team ? undefined : vaultReadOnly();
   // The desktop vault's folder is not there (renamed, moved, or on a drive
   // that is not connected): the room says so and writes nothing, and never
-  // falls back quietly to another folder (CX 1.4).
+  // falls back quietly to another folder (UX review 1.4).
   const personalOnFolder =
     !team &&
     (settings.gitosResources as GitosResource[] | undefined)?.find(
@@ -444,11 +445,11 @@ export function VaultScreen() {
     )?.providerId === 'files';
   const folderGone = personalOnFolder && vaultFolder?.exists === false;
   // A move is running: the room holds still, so nothing typed can miss the
-  // copy (CX 1.3).
+  // copy (UX review 1.3).
   // The team sign-in expired with a team note open: the note stays, read-only,
   // until the person signs back in or leaves it (2.6).
   const teamExpired = team && Boolean(vaultTeamExpired);
-  // The team's plan is not active (CX Y15; 0025's OV402): every note reads and
+  // The team's plan is not active (UX review Y15; 0025's OV402): every note reads and
   // exports, and nothing changes, calmly; New note, Today, Rename and Delete
   // leave, and Options says why.
   const teamLapsed = team && vaultTeamPlan?.entitled === false;
@@ -459,7 +460,7 @@ export function VaultScreen() {
   // Only admins may delete team notes here, and this person is not one (Y14).
   const teamDeleteBlocked =
     team && vaultTeamPlan?.deleteRole === 'admin' && vaultTeamPlan.isAdmin === false;
-  // The personal vault is on the paired computer and it did not answer (CTO
+  // The personal vault is on the paired computer and it did not answer (tech review
   // J9): the list is the last one seen, an open note still saves (its change
   // waits here), and the tree holds still, so New note and Delete leave.
   const reach = useSyncExternalStore(subscribeHubReach, hubReach, hubReach);
@@ -489,14 +490,14 @@ export function VaultScreen() {
     !teamExpired &&
     !teamLapsed &&
     !teamFull;
-  // What this storage may do now (CTO K1): every M6 action's visibility
+  // What this storage may do now (tech review K1): every M6 action's visibility
   // follows this one answer.
   const caps = vaultCapsNow();
   // Today's note may be offered now: the header's button and the switcher's
   // first row follow this one answer. A lapsed plan takes no new note
   // (OV402), a moving vault holds still, and a folder that is gone has none.
   const todayOffered = caps.today && !vaultMoving && !folderGone && !teamLapsed && !teamFull;
-  // What the storage itself lacks, said once in Options (CTO K1): rename, and
+  // What the storage itself lacks, said once in Options (tech review K1): rename, and
   // a Trash, where a delete is then for good.
   const storageCaps = vaultCapsNow({ storageOnly: true });
   const capKey = team
@@ -511,7 +512,7 @@ export function VaultScreen() {
         .filter((cap) => !storageCaps[cap])
         .map((cap) => vaultCapLine(capKey, cap))
     : [];
-  // Options also says why the plan leaves a row out (CX Y14, Y15).
+  // Options also says why the plan leaves a row out (UX review Y14, Y15).
   if (teamLapsed) capNotes.push(VAULT_TEAM_LAPSED_LEAD);
   else if (teamDeleteBlocked) capNotes.push(VAULT_TEAM_DELETE_ADMINS_ONLY);
   const teamAvailable = teamVaultAvailable();
@@ -542,13 +543,13 @@ export function VaultScreen() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [backlinks, setBacklinks] = useState<Array<{ path: string; excerpt: string }>>([]);
-  // Linked mentions are being read: three skeleton rows (CX X17).
+  // Linked mentions are being read: three skeleton rows (UX review X17).
   const [mentionsLoading, setMentionsLoading] = useState(true);
-  // Unlinked mentions, on request only (CTO K15), and the rows whose Link is
-  // writing (CX X16).
+  // Unlinked mentions, on request only (tech review K15), and the rows whose Link is
+  // writing (UX review X16).
   const [unlinked, setUnlinked] = useState<VaultUnlinkedState>({ status: 'idle' });
   const [linking, setLinking] = useState<ReadonlySet<string>>(new Set());
-  // The outline sheet (CX X16), and where the reader sits for its scroll.
+  // The outline sheet (UX review X16), and where the reader sits for its scroll.
   const [outlineOpen, setOutlineOpen] = useState(false);
   const readerRef = useRef<HTMLDivElement | null>(null);
   // The note on screen now, for a late answer that must not land on another.
@@ -576,19 +577,19 @@ export function VaultScreen() {
   const [pickLine, setPickLine] = useState<
     { text: string; warn: boolean; privacy?: boolean } | undefined
   >();
-  // A refused move from the move card, said inside the card (CX 1.3).
+  // A refused move from the move card, said inside the card (UX review 1.3).
   const [offerFailed, setOfferFailed] = useState<string | undefined>();
   // A move's forked pairs, one at a time in the move-mode resolve sheet (1d).
   const [forks, setForks] = useState<ForkSteps | undefined>();
   const [forksOpen, setForksOpen] = useState(false);
-  // The Undo toast after a delete (CX X9): one at a time, each with the vault
+  // The Undo toast after a delete (UX review X9): one at a time, each with the vault
   // it was deleted from, so an Undo never lands in another one.
   const [undoItem, setUndoItem] = useState<VaultUndoToastItem | undefined>();
   const undoFor = useRef(new Map<string, { undo: VaultUndo; at?: VaultTargetRef }>());
-  // The Trash view, a page inside the room (CX X10).
+  // The Trash view, a page inside the room (UX review X10).
   const [trashOpen, setTrashOpen] = useState(false);
   const [trashError, setTrashError] = useState<string | undefined>();
-  // Rename or move (6.2, CX X5 to X7): what the sheet moves, whether it is
+  // Rename or move (6.2, UX review X5 to X7): what the sheet moves, whether it is
   // up, the folder options sheet and its counts, and the standing card on a
   // renamed note whose links were not all updated.
   const [renaming, setRenaming] = useState<
@@ -599,15 +600,15 @@ export function VaultScreen() {
   const [folderCounts, setFolderCounts] = useState<
     { notes: number; attachments: number } | undefined
   >();
-  // Search in the tree and the switcher (6.1; CX X1 to X4). The query lives
+  // Search in the tree and the switcher (6.1; UX review X1 to X4). The query lives
   // here, so a tapped #tag can fill in tag:x.
   const [searchQ, setSearchQ] = useState('');
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [agentNotes, setAgentNotes] = useState<VaultPickerNote[]>([]);
   // A note Today just started opens in the editor with the caret at the end
-  // (CX X11).
+  // (UX review X11).
   const caretToEnd = useRef(false);
-  // A link's #Heading or #^block to land on once its note shows (CX X12),
+  // A link's #Heading or #^block to land on once its note shows (UX review X12),
   // tied to that note so another note's reader never tries it.
   const [pendingAnchor, setPendingAnchor] = useState<
     { path: string; subpath: string; key: number } | undefined
@@ -627,7 +628,7 @@ export function VaultScreen() {
     | undefined
   >();
   const editorRef = useRef<HTMLTextAreaElement | null>(null);
-  // Tree and note, and read and edit, are true crossfades (CTO K18, CX X17):
+  // Tree and note, and read and edit, are true crossfades (tech review K18, UX review X17):
   // the leaving view's snapshot fades out on the tokens while the arriving
   // view fades in, inert and aria-hidden until it is gone (useViewGhost).
   const pageGhost = useViewGhost(vaultNote ? 'note' : trashOpen ? 'trash' : 'tree');
@@ -648,7 +649,7 @@ export function VaultScreen() {
   const [resolveFailed, setResolveFailed] = useState(false);
   const [updatedShown, setUpdatedShown] = useState(false);
   const lastReload = useRef<number | undefined>(undefined);
-  // Live [[wikilink]] suggestions (6.7; CTO K14, CX X15): the open link
+  // Live [[wikilink]] suggestions (6.7; tech review K14, UX review X15): the open link
   // under the caret, or null. A pick replaces through an existing `]]` or
   // `|` (wikilinkReplaceRange) and inserts through the native undo stack.
   const [linkCtx, setLinkCtx] = useState<WikilinkContext | null>(null);
@@ -686,14 +687,14 @@ export function VaultScreen() {
   const personalCopy = vaultCopy(on, personalKey, copyOpts);
   const labelOf = (id: StorageProviderId) => PROVIDER_ROSTER.find((r) => r.id === id)?.label ?? id;
 
-  // The vault's settings (Vault M7, CTO L3 to L6): read fresh when the room
+  // The vault's settings (Vault M7, tech review L3 to L6): read fresh when the room
   // shows and when the vault on screen changes. A team vault on main reads
   // the defaults (L16).
   useEffect(() => {
     void vaultLoadSettings({ force: true });
   }, [vaultLoadSettings, currentProviderId, vaultScope]);
   const vs = vaultSettings || VAULT_SETTINGS_DEFAULTS;
-  // The open note's provenance (CTO L9), from the text as loaded or saved.
+  // The open note's provenance (tech review L9), from the text as loaded or saved.
   const noteText = vaultNote?.text;
   const noteProvenance = useMemo(() => {
     if (noteText === undefined) return undefined;
@@ -750,7 +751,7 @@ export function VaultScreen() {
   useEffect(() => {
     void vaultRefresh();
     // Leaving the Vault keeps the personal index warm, so a chat's pack finds
-    // it (Vault M5, CTO J1); the store closes it on a storage move, a
+    // it (Vault M5, tech review J1); the store closes it on a storage move, a
     // sign-out, or a pairing change. The team vault is never in context, so
     // its index closes here, its last write saved first.
     return () => {
@@ -777,7 +778,7 @@ export function VaultScreen() {
   );
 
   // The desktop folder is shared with the agent, routines, and Obsidian, so
-  // while this room is open main watches it (CTO F3) and every change it saw,
+  // while this room is open main watches it (tech review F3) and every change it saw,
   // and every return to the window, re-checks the open note. The watcher is a
   // hint; compare-and-swap on the write is the protection.
   const onFolder = !team && currentProviderId === 'files';
@@ -1058,7 +1059,7 @@ export function VaultScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conflictWaiting, conflictHere?.path, conflictHere?.foundAt]);
   // Leaving the room is not leaving the note: an open choice waits as the
-  // card, never the sheet, when the person comes back (CX 1.1).
+  // card, never the sheet, when the person comes back (UX review 1.1).
   const conflictRef = useRef(vaultConflict);
   conflictRef.current = vaultConflict;
   useEffect(
@@ -1090,7 +1091,7 @@ export function VaultScreen() {
     setStorageOpen(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vaultSheetRequest]);
-  // Vault settings (Vault M7, CX Y4): one host for Options and the storage
+  // Vault settings (Vault M7, UX review Y4): one host for Options and the storage
   // sheet's end. "Where it lives" opens the storage sheet, which lives in
   // the tree, so an open note is saved and closed first.
   const settingsHost = (
@@ -1196,7 +1197,7 @@ export function VaultScreen() {
     void vaultOpen(path);
   };
 
-  // Today's note (6.4; CTO K7, CX X11): an existing one opens unchanged and
+  // Today's note (6.4; tech review K7, UX review X11): an existing one opens unchanged and
   // says nothing; a new one opens in the editor, caret at the end, with its
   // line; a vault that cannot start one says why.
   const openToday = async () => {
@@ -1227,7 +1228,7 @@ export function VaultScreen() {
     </button>
   ) : null;
 
-  // The quick switcher (6.1; CTO K9, CX X3): Cmd or Ctrl+O while the room is
+  // The quick switcher (6.1; tech review K9, UX review X3): Cmd or Ctrl+O while the room is
   // shown. Titles only; Today first and Recent while the field is empty.
   // Today and New note are rows only where the header offers them, so a
   // lapsed plan's switcher opens notes and offers nothing it cannot make.
@@ -1314,7 +1315,7 @@ export function VaultScreen() {
     if (nonNoteExtension(p)) {
       const name = p.slice(p.lastIndexOf('/') + 1);
       // An image or a PDF opens in the system viewer on the desktop's own
-      // folder; elsewhere it says so. Other files keep M3's line (CX X14).
+      // folder; elsewhere it says so. Other files keep M3's line (UX review X14).
       if (isAttachmentPath(p)) {
         if (media?.openAttachment) {
           void media.openAttachment(p).then((r) => {
@@ -1347,7 +1348,7 @@ export function VaultScreen() {
       void vaultCreate(p);
     } else if (p !== vaultNote?.path) openNote(p);
   };
-  // ---- outgoing, unlinked, outline (6.8; CTO K15; CX X16) -----------------
+  // ---- outgoing, unlinked, outline (6.8; tech review K15; UX review X16) -----------------
   // The note's links out, from the index (no read).
   const outgoing = useMemo(() => {
     const path = vaultNote?.path;
@@ -1384,7 +1385,7 @@ export function VaultScreen() {
       },
     );
   };
-  // Link one mention: the person's own write, compare-and-swap (CX X16).
+  // Link one mention: the person's own write, compare-and-swap (UX review X16).
   const linkMention = (row: VaultUnlinkedRow) => {
     const path = vaultNote?.path;
     if (!path) return;
@@ -1435,7 +1436,7 @@ export function VaultScreen() {
     } else land();
   };
 
-  // A tapped #tag searches tag:x in the tree (CX X2).
+  // A tapped #tag searches tag:x in the tree (UX review X2).
   const searchTag = (tag: string) => {
     flushSave();
     setSearchQ(`tag:${tag}`);
@@ -1443,7 +1444,7 @@ export function VaultScreen() {
     vaultCloseNote();
   };
 
-  // ---- delete, Undo and Trash (6.3; CTO K6, R2; CX X8 to X10) -------------
+  // ---- delete, Undo and Trash (6.3; tech review K6, R2; UX review X8 to X10) -------------
   // A folder's Restore that came back only in part (a team near its free
   // space, 0023): how many, which stayed in Trash, and why when it was said.
   const restoredPart = (
@@ -1554,7 +1555,7 @@ export function VaultScreen() {
       ? 'folder'
       : 'local';
 
-  // ---- rename, move and folders (6.2; CTO K3 to K5, R1; CX X5 to X8) ------
+  // ---- rename, move and folders (6.2; tech review K3 to K5, R1; UX review X5 to X8) ------
   // Every folder there is to move into: each note's parents, the storage's
   // own empty folders and the ones remembered here.
   const folderPaths = useMemo(
@@ -1774,7 +1775,7 @@ export function VaultScreen() {
     }
     setMoving(false);
     // The move card keeps a refused move's line inside itself, since a toast
-    // would fade, and its button becomes Try again (CX 1.3).
+    // would fade, and its button becomes Try again (UX review 1.3).
     if (from === 'card' && !result?.ok) {
       setOfferFailed(vaultMoveLine(result, labelOf(id)));
       return;
@@ -1794,14 +1795,14 @@ export function VaultScreen() {
     }
     // Forked pairs open the move-mode sheet once the storage sheet has left,
     // so sheets never stack. The toast leaves the forked sentence to the
-    // sheet only when the sheet actually opened (Creative Studio 1d, M1-2).
+    // sheet only when the sheet actually opened (design review 1d, M1-2).
     setTimeout(
       () => void openForks(forked).then((opened) => showToast(line(!opened))),
       from === 'sheet' ? sheetExitMs() : 0,
     );
   };
 
-  // Bring the previous folder's notes into this one (the CTO's ruling): the
+  // Bring the previous folder's notes into this one (the tech review's ruling): the
   // result reads like a move's, and forked pairs open the same move-mode
   // sheet, both files in the current folder.
   const bringNotes = async (prevDisplay: string) => {
@@ -1828,7 +1829,7 @@ export function VaultScreen() {
     );
   };
 
-  // ---- a move's forked pairs (Creative Studio 1d) -------------------------
+  // ---- a move's forked pairs (design review 1d) -------------------------
   // One sheet steps through them. Keep both simply advances (both files are
   // there); the other two rows take two taps. After the last pair it closes.
   const loadFork = async (steps: ForkSteps, i: number): Promise<ForkSteps | undefined> => {
@@ -1897,7 +1898,7 @@ export function VaultScreen() {
       setPick(result);
       setPickAnswered(false);
       setPickLine(undefined);
-      // From the card, the storage sheet opens on the pick's result (CX 1.3).
+      // From the card, the storage sheet opens on the pick's result (UX review 1.3).
       if (from === 'card') setStorageOpen(true);
       return;
     }
@@ -2134,7 +2135,7 @@ export function VaultScreen() {
     const title = noteTitle(vaultNote.path);
     const parent = noteFolder(vaultNote.path);
     const words = draft.trim() ? draft.trim().split(/\s+/).length : 0;
-    // The outline is the draft's own headings (CX X16), first in Options
+    // The outline is the draft's own headings (UX review X16), first in Options
     // when there are two or more.
     // Scanned only while Options or the outline is up, never per keystroke.
     const outlineHeadings = menuOpen || outlineOpen ? scanNote(draft).headings : [];
@@ -2142,12 +2143,12 @@ export function VaultScreen() {
     const editedLine = team
       ? vaultEditedByLine(vaultNote.editedBy, vaultNote.updatedAt, uid)
       : undefined;
-    // Who wrote the note and where it ran (Vault M7, CX Y11), from its own
+    // Who wrote the note and where it ran (Vault M7, UX review Y11), from its own
     // properties as last loaded; nothing shows unless it says both.
     const provenance = noteProvenance;
 
     // One suggestion list: under the editor on the desktop, as chips inside
-    // the accessory bar on the phone (CX X15). A pick inserts into the
+    // the accessory bar on the phone (UX review X15). A pick inserts into the
     // editor, whose own onChange then saves it.
     const phone = isPhone();
     const suggest = (layout: 'list' | 'chips') => (
@@ -2160,7 +2161,7 @@ export function VaultScreen() {
         onDismiss={() => setLinkCtx(null)}
         layout={layout}
         // The vault's link style everywhere; the path format on the desktop
-        // only (CX Y1: the phone has no Link paths row).
+        // only (UX review Y1: the phone has no Link paths row).
         linkStyle={vs.links.style}
         linkFormat={phone ? 'shortest' : vs.links.format}
       />
@@ -2336,7 +2337,7 @@ export function VaultScreen() {
               </div>
             ) : null}
             {/* The phone's bar on the keyboard, lifted by transform only: the
-              link suggestions live inside it there (CX X15). */}
+              link suggestions live inside it there (UX review X15). */}
             <VaultAccessoryBar
               shown={editing && !locked && phone}
               editor={editorRef}
@@ -2507,7 +2508,7 @@ export function VaultScreen() {
     );
   }
 
-  // ---- Trash (6.3, CX X10): a page inside the room -------------------------
+  // ---- Trash (6.3, UX review X10): a page inside the room -------------------------
   // The page sits in the room's own screen, beside the tree's place, so the
   // swap each way leaves a fading snapshot (pageGhost), never a cut.
   if (trashOpen) {
@@ -2897,7 +2898,7 @@ export function VaultScreen() {
         {vaultFiles.length === 0 && (driveExplains || folderGone) ? null : vaultFiles.length ===
             0 && !vaultListed ? (
           // A vault still listing, never the empty ramp over notes that are
-          // on their way (CX 1.4).
+          // on their way (UX review 1.4).
           <p className="hint" role="status">
             {VAULT_OPENING_LINE}
           </p>
@@ -2914,7 +2915,7 @@ export function VaultScreen() {
             <h3>Your team vault is empty.</h3>
             {/* Lapsed (or read-only), no first note can be written, so the
                 card neither promises one nor offers New note; the lead above
-                says why (CX Y15). */}
+                says why (UX review Y15). */}
             {newNoteOffered ? (
               <>
                 <p className="sub">The first note you write is shared with your organization.</p>
@@ -2937,7 +2938,7 @@ export function VaultScreen() {
             onWelcome={() => void addStarterNote()}
             onWhere={() => setStorageOpen(true)}
             // An empty personal vault with folders and no Obsidian config
-            // offers the simple layout instead (Vault M7, CX Y13).
+            // offers the simple layout instead (Vault M7, UX review Y13).
             {...(starterOffered ? { onStarter: () => setStarterOpen(true) } : {})}
           />
         ) : (
@@ -2986,7 +2987,7 @@ export function VaultScreen() {
                 ),
               )}
               {/* Trash is the last row at the root, only while it holds
-                something (CX X10). */}
+                something (UX review X10). */}
               {!folder && caps.trash ? (
                 <VaultTrashRow count={vaultTrash?.length ?? 0} onOpen={openTrash} />
               ) : null}
@@ -2995,7 +2996,7 @@ export function VaultScreen() {
         )}
       </div>
 
-      {/* A move's forked pairs (Creative Studio 1d). Closing keeps both. */}
+      {/* A move's forked pairs (design review 1d). Closing keeps both. */}
       <VaultResolveSheet
         open={forksOpen && Boolean(forks?.shown)}
         mode="move"
@@ -3227,7 +3228,7 @@ export function VaultScreen() {
                   Export as plain files
                 </button>
               ) : null}
-              {/* Vault settings at the end (Vault M7, CX Y4), so a vault with
+              {/* Vault settings at the end (Vault M7, UX review Y4), so a vault with
                   no notes yet can reach them; they open once this sheet has
                   left. */}
               <button
@@ -3413,7 +3414,7 @@ function VaultRamp({
   readOnly: boolean;
   onWrite: () => void;
   onWelcome: () => void;
-  /** The starter layout is offered (CTO L12): the second way in opens its
+  /** The starter layout is offered (tech review L12): the second way in opens its
    *  preview instead of adding the welcome note. */
   onStarter?: () => void;
   /** Opens the storage sheet, from a link at the end of the lead, beside the
@@ -3516,7 +3517,7 @@ function pinToast(
   }
 }
 
-// The one-time card after pairing (Vault M5, CTO J9): the notes are on this
+// The one-time card after pairing (Vault M5, tech review J9): the notes are on this
 // device, and one tap moves them to the computer with the existing move
 // (nothing there is replaced). It folds out like the desktop move card.
 function HubMoveCard({
@@ -3668,7 +3669,7 @@ function ConflictCard({
   );
 }
 
-// The one-time desktop move card (Vault M1 1.3, D7; Creative Studio 2). It
+// The one-time desktop move card (Vault M1 1.3, D7; design review 2). It
 // rides useExitPresence like the Drive card: on a successful move it folds
 // out with the words it last showed, never a cut. Both buttons are
 // decisions, so there is no X. A refused move keeps the card, says why inside
@@ -3746,7 +3747,7 @@ function VaultMoveCard({
   );
 }
 
-// The vault folder is not there (CX 1.4): the room says so, hides every
+// The vault folder is not there (UX review 1.4): the room says so, hides every
 // control that writes, and never falls back quietly to another folder.
 function VaultMissingCard({
   shown,
@@ -3801,7 +3802,7 @@ function VaultMissingCard({
   );
 }
 
-// The desktop folder under This folder's row (Creative Studio 3a): where it
+// The desktop folder under This folder's row (design review 3a): where it
 // is, any line about it, and the actions that fit this computer. Open in
 // Obsidian shows only for a folder Obsidian already knows.
 function FolderBlock({ info }: { info: VaultDirInfo }) {
@@ -3853,7 +3854,7 @@ function FolderBlock({ info }: { info: VaultDirInfo }) {
   );
 }
 
-// What a pick found, under the picker row (CX 1.4): where the vault is now,
+// What a pick found, under the picker row (UX review 1.4): where the vault is now,
 // the facts, at most one question, the lines that apply, and the ways to act
 // on the change. It arrives on fade-rise; an answer settles the facts in.
 function PickResult({

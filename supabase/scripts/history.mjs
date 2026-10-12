@@ -1,4 +1,4 @@
-// Production's migration history as the repo records it (CTO 11, 2026-09-29).
+// Production's migration history as the repo records it (tech review 11, 2026-09-29).
 // Shared by replay-split.mjs, check-migrations.mjs and push-preflight.mjs.
 // Node built-ins only, so every caller runs with no install. It reads files
 // and git objects; it never connects to a database.

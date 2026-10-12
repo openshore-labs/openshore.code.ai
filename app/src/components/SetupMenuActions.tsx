@@ -1,4 +1,4 @@
-// The "help me get set up" list (lib/guidedSetup.ts setupMenuMessage, founder
+// The "help me get set up" list (lib/guidedSetup.ts setupMenuMessage, maintainer
 // 2026-10-01): one button for each thing not set up yet, read live, so a
 // connection made somewhere else drops its button. A tap has the guide walk
 // through that step; the list comes back when it is done or skipped.

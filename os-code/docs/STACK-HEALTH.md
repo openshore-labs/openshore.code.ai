@@ -107,7 +107,7 @@ specialists (`config.stack`), each shown with its model, whether it runs local o
 cloud, and how many turns its model handled in the window (attributed by model
 id). **Named agents are Phase 2.** The current config schema has no per-agent
 definitions and `AgentEvent` carries no `agentId`, so per-named-agent stats are
-not yet attributable. The CTO-approved foundation for that (an `agents` record in
+not yet attributable. The tech review-approved foundation for that (an `agents` record in
 `ConfigSchema` and an opaque `agentId` on `task-start` / `turn-start`, threaded
 through `loop.ts` and stamped as a stable record key, never a display name) is a
 prerequisite for the named-crew view and is tracked separately.

@@ -1,4 +1,4 @@
-// The v1 review's four privacy calls (founder, 2026-09-27, DECISIONS), each
+// The v1 review's four privacy calls (2026-09-27, DECISIONS), each
 // held by a test so none of them drifts back:
 //   1. Web search asks once: nothing reaches a search service until the person
 //      allows it, and a "Not now" is answered honestly to the model (on by
@@ -81,7 +81,7 @@ describe('1. web search asks once', () => {
     expect(SEARCH_NOT_ALLOWED).toMatch(/did not search the web/);
   });
 
-  // Founder, 2026-10-02 (the CTO's recommendation, the Proton standard): web
+  // Maintainer, 2026-10-02 (the tech review's recommendation, the Proton standard): web
   // search asks once again. Nothing reaches a search service until the person
   // allows it in the sheet or in Settings.
   it('asks once in one sheet, remembers a yes, and is off until then', () => {

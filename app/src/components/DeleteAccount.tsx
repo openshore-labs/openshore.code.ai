@@ -1,4 +1,4 @@
-// Delete account (Apple 5.1.1(v); CX ruling 3, 2026-09-29): a danger row in
+// Delete account (Apple 5.1.1(v); UX review ruling 3, 2026-09-29): a danger row in
 // the Your account sheet, below the signed-in card, shown only while signed
 // in, two taps from Settings. One confirm sheet, one irreversible choice; no
 // "erase this device" here (that belongs beside Clear conversations). The
@@ -18,7 +18,7 @@
 // left open. Only the lines for a refusal the server named say "was not
 // deleted"; the unconfirmed one never does.
 //
-// The support address is the one published address (SUPPORT_EMAIL, founder
+// The support address is the one published address (SUPPORT_EMAIL, maintainer
 // decision F1), read from the engine's constant so the app, the Terms and the
 // server's ladder cannot drift apart (app/test/contactAddress.test.ts).
 import { useState } from 'react';
@@ -29,7 +29,7 @@ import { openExternal } from '../lib/platform.js';
 import { Sheet } from './Sheet.js';
 import { SettingsRow } from './SettingsRow.js';
 
-/** Every word the flow shows (CX ruling 3). */
+/** Every word the flow shows (UX review ruling 3). */
 export const DELETE_ACCOUNT_COPY = {
   row: 'Delete account',
   rowSub: 'Erases your account from our server. This device keeps what it has.',

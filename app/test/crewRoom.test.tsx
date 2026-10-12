@@ -1,4 +1,4 @@
-// Crew, as the founder ruled it on 2026-10-07. D17: before a computer is
+// Crew, as a maintainer ruled it on 2026-10-07. D17: before a computer is
 // paired, with no routine, the door to Crew command is a plain card row and
 // the dark hero waits for work to show; Crew command keeps the crew to one
 // line with Manage. D18: the whole crew card is the Edit tap, a swipe left

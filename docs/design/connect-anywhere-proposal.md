@@ -259,6 +259,37 @@ it only once part B shows people renting servers for OpenShore.
   6. The GPU server: the spend line, Stop the model, the eval run.
   7. Part C on its own go.
 
+## Part D: many machines, and Runs on (BUILT 2026-10-12)
+
+Founder: "a great scalable way to allow use of remote servers like from
+Hetzner: so essentially VPS and shared vCPU servers... in your projects, you
+can choose the Hub to run your project from, either your home computer, home
+server, or remote server." Built on parts A and B:
+
+- **Scale is many machines, not a bigger one.** A device docks to any number
+  of computers and servers; each project chooses one under Runs on, and each
+  chat records the machine its session opened on and goes back only there
+  (`app/src/lib/runsOn.ts`). Projects run on different machines at once; the
+  device's active machine keeps the Stack, the Vault on it and Crew.
+- **Three ways in.** Computer offers your computer, a server at home and a
+  rented server; a server's place is the person's answer and decides whether
+  the renting line shows. Every docked machine is listed with its kind, its
+  size (`/health` reports memory, cores and processor family) and the
+  projects that run on it.
+- **Shared vCPU servers.** The rented path says what each size can do by the
+  First Seat's fit rule: 2 to 4 GB runs OpenShore and a cloud model on your key
+  kept on the server (keys on your server); 8 GB or more also fits a 3B or 4B
+  of its own; a GPU server runs big models, billed by the hour. No provider is
+  named or ranked and no speed is promised (tenet 2). The installer and the
+  server package take arm64, the cheapest shared-vCPU plans at several
+  providers, packed on GitHub's arm64 runner.
+- **Several at once.** A cloud-init the person pastes at a provider's create
+  page installs Tailscale, joins the tailnet with a one-off auth key, and runs
+  the same signed installer; with no terminal the installer prints the pairing
+  command, so the yes is still typed on the server.
+
+"Rent one for me" (part C) stays parked.
+
 ## Founder decisions still open
 
 1. A rented server judged local by address, with the one setup line? Or amber,

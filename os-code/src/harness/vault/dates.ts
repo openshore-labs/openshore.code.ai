@@ -1,4 +1,4 @@
-// Today's note (Vault M6, CTO K7): the host's local clock split into parts,
+// Today's note (Vault M6, tech review K7): the host's local clock split into parts,
 // Obsidian's moment tokens (`YYYY YY Q M MM MMM MMMM D DD Do DDD DDDD d dd ddd
 // dddd E W WW GGGG GG w ww gggg H HH h hh k kk m mm s ss A a X x` and
 // `[literal]`; `/` makes folders; English names only), the daily note's path,

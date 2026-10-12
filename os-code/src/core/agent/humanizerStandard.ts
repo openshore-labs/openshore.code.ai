@@ -191,7 +191,7 @@ export const AI_VOCABULARY: string[] = [
  *
  * Precedence: the override can only turn it OFF, never force it on. A project
  * that set `humanizer.standard: "off"` (or added `notes`) in its config made a
- * deliberate project-level call that always holds, per the founder's rule that
+ * deliberate project-level call that always holds, per a maintainer's rule that
  * a project's own instructions win. So the app toggle's OFF propagates
  * everywhere the app starts a session, while its ON defers to the config.
  */

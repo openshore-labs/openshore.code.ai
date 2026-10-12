@@ -1,12 +1,12 @@
 // The success haptic at a turn's end, and when a turn has earned it. The rule
-// lives here, apart from the store (CTO ruling 9), as plain functions a test
+// lives here, apart from the store (tech review ruling 9), as plain functions a test
 // reads without it; the store's attachDriver folds each event through
 // turnShown and asks celebratesTurn at the task's end. The haptic itself
 // still goes through lib/haptics.ts, the one path. Test:
 // app/test/turnEndHaptic.test.ts.
 //
 // A turn whose only result is the image offer (nothing here could read the
-// picture, founder 2026-10-07) ends complete, since it is a calm reply and
+// picture, 2026-10-07) ends complete, since it is a calm reply and
 // not a failure, but it answered nothing: a success tap there would cheer a
 // picture that went unread. A play that answered and then offers still has
 // its answer, so it keeps the tap.

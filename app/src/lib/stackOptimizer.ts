@@ -1,6 +1,6 @@
 // Run leaner: honest, advisory suggestions for a stack that would use less
 // energy per token. Pure and unit-tested, because this is exactly where the
-// honesty risk lives. Two guardrails, both from the CTO/CMO call:
+// honesty risk lives. Two guardrails, both from the tech review/copy review call:
 //
 //   1. Capability-parity gate. modelEnergyPer1kTok is a size proxy, so left
 //      ungated it always points at the smallest model, which would quietly gut

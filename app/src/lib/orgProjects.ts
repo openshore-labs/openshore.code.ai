@@ -8,7 +8,7 @@
 // the server decides, so a member who edits the JSON gains nothing.
 //
 // What syncs is name, instructions and repoIds, nothing else. A project's
-// Vault pins (`Project.vaultPins`, Vault M5 CTO J14) name the person's own
+// Vault pins (`Project.vaultPins`, Vault M5 tech review J14) name the person's own
 // notes, so they never leave this device: no RPC here carries them, a pulled
 // row never sets them, and a merge keeps the device's own. `test/vaultPins`
 // holds that.

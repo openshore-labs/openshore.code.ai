@@ -84,7 +84,7 @@ const ALL_SETUP_GUIDES: Partial<Record<SetupGuideId, SetupGuide>> = {
     ],
     done: 'The provider shows connected, and it appears in the model menu. Your API key is stored only on this device and sent only to that provider, unless you turn it on for a server you dock, which then keeps it too.',
   },
-  // Bring your own keys, Part 4 (founder, 2026-10-09): Bedrock, Azure and
+  // Bring your own keys, Part 4 (2026-10-09): Bedrock, Azure and
   // Vertex sign in their own way, so they come through a gateway the person
   // runs, never one of ours. LiteLLM's proxy listens on 0.0.0.0, port 4000,
   // by default, which on a rented server is the open internet, so the start
@@ -156,7 +156,7 @@ const ALL_SETUP_GUIDES: Partial<Record<SetupGuideId, SetupGuide>> = {
     ],
     done: 'Stack shows a model with a teal local pill, and the empty chat answers.',
   },
-  // The two doors a Stack chat offers when nothing can read images (founder,
+  // The two doors a Stack chat offers when nothing can read images (maintainer,
   // 2026-10-07). The model names, sizes and pull commands come from the
   // catalog through imageReading.ts. A model on the phone cannot read images
   // on this build (stack.ts visionCapable), so the local reader runs on the

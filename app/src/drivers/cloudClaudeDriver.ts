@@ -94,7 +94,7 @@ const SYSTEM_PROMPT = [
 ].join('\n');
 
 /**
- * Claude's `system` for one request (CTO J16). With caching on: blocks,
+ * Claude's `system` for one request (tech review J16). With caching on: blocks,
  * stable to volatile, the head (the base prompt and the chat's own context,
  * its project and repositories) byte-identical from send to send and carrying
  * the one cache marker; the effort line, the frame-reading note and the vault
@@ -161,7 +161,7 @@ export class CloudClaudeDriver implements ChatDriver {
     /** Extra system context for this chat (the repositories it works with,
      *  the guided setup's step), read on every reply. */
     private readonly extraSystem?: ChatContext,
-    /** The conversation's vault pack (CTO J1), none with Memory off, and the
+    /** The conversation's vault pack (tech review J1), none with Memory off, and the
      *  Humanize Writing setting. */
     opts: CloudChatOptions = {},
   ) {
@@ -306,7 +306,7 @@ export class CloudClaudeDriver implements ChatDriver {
   }
 
   abort(): void {
-    // Stop answers at once (CTO ruling 7): the turn closes now with what
+    // Stop answers at once (tech review ruling 7): the turn closes now with what
     // streamed so far, kept in the chat and in history.
     this.turn?.stop();
   }

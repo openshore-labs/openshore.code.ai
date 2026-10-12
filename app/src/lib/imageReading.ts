@@ -1,4 +1,4 @@
-// Image reading in plain words (founder, 2026-10-07): the offer. When nothing
+// Image reading in plain words (2026-10-07): the offer. When nothing
 // in a Stack chat can read images, the chat says what is missing and offers
 // two doors, a local model to source and a cloud model to connect, each
 // opening its step-by-step guide (setupGuides.ts). The local pick comes from
@@ -42,7 +42,7 @@ export function imageOfferTitle(gap: Pick<ImageReaderGap, 'status'>): string {
   return gap.status ? `Nothing can read images while ${gap.status}` : IMAGE_OFFER_TITLE;
 }
 
-/** The two doors, in the founder's words. */
+/** The two doors, in a maintainer's words. */
 export const SOURCE_LOCAL = 'Source a local model';
 export const CONNECT_CLOUD = 'Connect a cloud model';
 

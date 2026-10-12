@@ -131,7 +131,7 @@ export async function recordEthicsEvent(record: EthicsRecord): Promise<void> {
 async function postRecord(record: EthicsRecord): Promise<void> {
   try {
     if (!isConfigured() || !ethicsAuth) return;
-    // Only a block the ladder counts reaches the account (CTO review
+    // Only a block the ladder counts reaches the account (tech review
     // 2026-10-01, the bare-minimum rule). A failed check is the layer failing
     // closed, not a person misbehaving, and an allowed-with-assertion row is
     // not a violation: neither drives enforcement, so both stay on the device.

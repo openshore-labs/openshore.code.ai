@@ -52,7 +52,7 @@ describe('destructive confirms', () => {
 
   it('the armed vault delete ends on btn danger, and arms only when it is for good', () => {
     // The Options sheet moved out of VaultScreen (Vault M6 wave 0). Since M6
-    // (CTO R2, CX X8) a delete is one tap where Trash is real; only a
+    // (tech review R2, UX review X8) a delete is one tap where Trash is real; only a
     // permanent delete arms, and its armed row is the danger button worded
     // "for good".
     const src = read('../src/components/vault/VaultNoteOptions.tsx');

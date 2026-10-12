@@ -3,7 +3,7 @@
   "private": true,
   "license": "Apache-2.0",
   "version": "0.1.0",
-  "description": "OS Code: native iOS and Linux desktop apps for building with your own stack of local LLMs. Your machine, your models, your keys.",
+  "description": "OpenShore: an open source coding agent on your own computer or server, with the model you choose. Desktop, terminal and iPhone.",
   "packageManager": "pnpm@10.33.0",
   "engines": {
     "node": ">=22.12"

@@ -22,6 +22,7 @@ export const COMMAND_FILES_MAX = 200;
  */
 export const BUILT_IN_COMMANDS: readonly string[] = [
   'help',
+  'new',
   'clear',
   'compact',
   'model',

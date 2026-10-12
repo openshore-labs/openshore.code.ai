@@ -1,4 +1,4 @@
-// supabase/scripts/local-vault.sh (CTO 11; the closure memo, item 6): the
+// supabase/scripts/local-vault.sh (tech review 11; the closure memo, item 6): the
 // throwaway [db.vault] entry it appends to config.toml is safe only while the
 // allowlist in front of it lets through nothing but commands that touch the
 // LOCAL stack. The CLI reads `--linked=true`, `--linked=1` and the rest as
@@ -11,7 +11,7 @@
 // supabase/ with its own config.toml, against stand-in `supabase` and `npx`
 // commands that print what they were given, so nothing here reaches a CLI, a
 // network, or the repo's config.toml. The last block runs every use the
-// runbook, the README and CI document, read from those files.
+// README and CI document, read from those files.
 import { spawnSync } from 'node:child_process';
 import {
   chmodSync,
@@ -161,8 +161,8 @@ describe('local-vault.sh runs the local commands with a throwaway key, then puts
     'supabase db reset --local',
     'supabase db push --local',
     'supabase db push --local=true --skip-vault',
-    // The CLI's global flags that take a value, as the runbook's `sb` alias
-    // writes them, no longer read as the subcommand.
+    // The CLI's global flags that take a value, as the maintainer gate 1
+    // runbook's `sb` alias writes them, no longer read as the subcommand.
     'npx --yes supabase@2.118.0 --agent no db start',
     'npx --yes supabase@2.118.0 --log-level warn db push --local',
     'supabase --output-format json db reset --local',
@@ -197,16 +197,12 @@ describe('local-vault.sh runs the local commands with a throwaway key, then puts
 });
 
 /** Every `bash supabase/scripts/local-vault.sh ...` the repo documents, as it
- *  is written: the runbook, the README (a use may wrap across lines inside
- *  one backtick span) and CI. */
+ *  is written: the README (a use may wrap across lines inside one backtick
+ *  span) and CI. */
 function documentedUses(): string[] {
   const repo = join(process.cwd(), '..');
   const uses = new Set<string>();
-  for (const file of [
-    join('docs', 'vault-gate1-runbook.md'),
-    join('supabase', 'README.md'),
-    join('.github', 'workflows', 'ci.yml'),
-  ]) {
+  for (const file of [join('supabase', 'README.md'), join('.github', 'workflows', 'ci.yml')]) {
     const text = readFileSync(join(repo, file), 'utf8')
       // An inline code span wrapped across two lines reads as one line.
       .replace(/`([^`\n]+)\n\s*([^`\n]+)`/g, '`$1 $2`');

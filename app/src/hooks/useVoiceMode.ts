@@ -155,7 +155,7 @@ class VoiceController {
         return;
       }
       if (intent === 'revise') {
-        // "Change something" returns to the text composer (founder's call), so
+        // "Change something" returns to the text composer (maintainer's call), so
         // this is a hand-back to the screen.
         this.opts().revisePlan();
         this.opts().onBreakToScreen(brk);

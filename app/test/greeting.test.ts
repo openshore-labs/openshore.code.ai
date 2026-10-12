@@ -76,7 +76,7 @@ describe('landing library', () => {
     expect(FRIDAY_LINES.length).toBeGreaterThanOrEqual(6);
   });
 
-  it('keeps the founder north-star line in the morning bucket', () => {
+  it('keeps a maintainer north-star line in the morning bucket', () => {
     expect(LANDING_LINES.morning).toContain('Coffee and coding?');
   });
 

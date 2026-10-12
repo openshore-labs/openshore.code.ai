@@ -1,4 +1,4 @@
-// Opening web pages is a setting (founder, 2026-10-02): ask, always, or never,
+// Opening web pages is a setting (2026-10-02): ask, always, or never,
 // carried to the computer that runs the coding agent and listed under What
 // leaves this device.
 import { readFileSync } from 'node:fs';

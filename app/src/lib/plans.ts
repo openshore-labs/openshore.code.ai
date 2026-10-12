@@ -1,6 +1,6 @@
 // Account plans. A person signs up Personal (free, their own work) or
 // Commercial (an org with employee-band pricing). The bands come straight from
-// the founder; the CFO resolved the boundary overlaps so a band covers up to
+// a maintainer; the CFO resolved the boundary overlaps so a band covers up to
 // and including its top number, and the next band starts at N+1. Prices are
 // per year. No em dashes in any copy a customer reads (house rule).
 export type AccountType = 'personal' | 'commercial';
@@ -17,12 +17,12 @@ export interface PlanTier {
   minEmployees: number;
   maxEmployees: number | null;
   /** One-line copy shown on the plan card: the headcount band, never a price
-   *  (no screen shows a price: team pricing is a Board gate). */
+   *  (no screen shows a price: team pricing is a business gate). */
   blurb: string;
 }
 
 // The default account, for one person: every room, free (open source,
-// founder 2026-10-11; there is no paid plan for a person).
+// 2026-10-11; there is no paid plan for a person).
 export const PERSONAL_TIER: PlanTier = {
   id: 'personal',
   name: 'Personal',

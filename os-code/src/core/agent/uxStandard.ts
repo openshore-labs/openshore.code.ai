@@ -1,6 +1,6 @@
 // The UX standard every coding model builds to, by default. OpenShore is a
 // machine that builds usable software, so what it generates should be premium
-// out of the box: the twenty laws of UX (founder, 2026-09-02) plus the house
+// out of the box: the twenty laws of UX (2026-09-02) plus the house
 // motion and honesty bar, written as build instructions the model can act on,
 // not as names to recite. Injected into the coding agent's system prompt when
 // config.ux.standard is 'premium' (the default). A project can turn it off in

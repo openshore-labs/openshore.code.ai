@@ -1,5 +1,5 @@
 # OpenShore: iOS build to TestFlight.
-# One-time setup lives in docs/TESTFLIGHT.md (App Store Connect app record,
+# One-time setup lives in the maintainer TestFlight runbook (App Store Connect app record,
 # Codemagic App Store Connect API-key integration named "os_code_app_store").
 workflows:
   ios-testflight:
@@ -7,8 +7,8 @@ workflows:
     max_build_duration: 90
     instance_type: mac_mini_m2
     # No store-release switch: the pay gates are off in every iOS build until
-    # after approval (founder, 2026-10-01). Bring the input back from
-    # docs/TESTFLIGHT.md section 7 when Plus is built.
+    # after approval (2026-10-01). Bring the input back from
+    # the maintainer TestFlight runbook section 7 when Plus is built.
     integrations:
       app_store_connect: os_code_app_store
     environment:
@@ -51,7 +51,7 @@ workflows:
       # account, hence "No matching profiles found"). The "Set up code
       # signing" step creates the distribution certificate FROM a supplied
       # private key, which is the piece the earlier attempts were missing.
-    # No `triggering:` block on purpose (founder, 2026-10-01): a push to main
+    # No `triggering:` block on purpose (2026-10-01): a push to main
     # starts nothing here. Every iOS build is started by hand from the
     # Codemagic UI (Start new build) or its Builds API, the way mac-desktop
     # below already runs.
@@ -108,7 +108,7 @@ workflows:
           URL=$(grep -o "https://huggingface.co/[^']*\.gguf" app/src/lib/harborMini.ts | head -1 || true)
           # A build without the weights would download ~105 MB from Hugging Face
           # on first open with no tap, which the privacy list does not allow
-          # (CTO security and privacy review, 2026-10-01). So a failed fetch, or
+          # (tech review security and privacy review, 2026-10-01). So a failed fetch, or
           # a file too small to be the model, fails the build instead.
           if [ -n "$URL" ] && curl -fsSL --retry 5 --retry-all-errors -o "$DEST/harbor-mini.gguf" "$URL"; then
             SIZE=$(wc -c < "$DEST/harbor-mini.gguf")
@@ -158,14 +158,14 @@ workflows:
           # reused every build instead of minting a new one each run (Apple
           # caps how many you can have). Falls back to a fresh one-off key only
           # if that var is not set yet, so this cannot break a build before you
-          # have pasted it in. See docs/TESTFLIGHT.md.
+          # have pasted it in. See the maintainer TestFlight runbook.
           KEY=/tmp/oscode_signing_key
           if [ -n "$CERTIFICATE_PRIVATE_KEY" ]; then
             printf '%s' "$CERTIFICATE_PRIVATE_KEY" > "$KEY"
           else
             echo "WARNING: CERTIFICATE_PRIVATE_KEY is not set. Generating a one-off key," \
                  "which mints a NEW distribution certificate this run. Apple caps how many" \
-                 "you can have. Set CERTIFICATE_PRIVATE_KEY (see docs/TESTFLIGHT.md) before" \
+                 "you can have. Set CERTIFICATE_PRIVATE_KEY (see the maintainer TestFlight runbook) before" \
                  "your next build."
             openssl genrsa -out "$KEY" 2048
           fi
@@ -213,7 +213,7 @@ workflows:
   # signs it ad-hoc automatically (required for the app to even launch on
   # Apple Silicon, unrelated to Gatekeeper), which needs no certificate either.
   # Details and the exact download-page copy to pair with this are in
-  # docs/MAC-DESKTOP.md, including the one OPTIONAL secret (GH_RELEASE_TOKEN):
+  # the maintainer Mac desktop runbook, including the one OPTIONAL secret (GH_RELEASE_TOKEN):
   # gh refuses to run at all without it, even read-only, so it gates both the
   # version-stamp lookup and the publish upload to the same GitHub Release
   # Linux and Windows use (release.yml). Without it this job still succeeds
@@ -237,12 +237,12 @@ workflows:
         # simply unused here. This group already exists, so this workflow needs
         # no new Codemagic setup at all.
         - Harbor-os-code
-        # The Mac release signing key, alone in a group of its own (CTO
+        # The Mac release signing key, alone in a group of its own (tech review
         # ruling 1, 2026-09-29), so nothing else that imports a group can
         # read it: OPENSHORE_MAC_SIGNING_KEY, the private half from
-        # app/scripts/release-keygen.mjs, marked Secure. Until the founder
+        # app/scripts/release-keygen.mjs, marked Secure. Until a maintainer
         # adds it, the signing step below says so and skips
-        # (docs/release-signing.md).
+        # (the maintainer release-signing runbook).
         - openshore-mac-signing
       vars:
         # The GitHub App's public slug, as in the iOS workflow above.
@@ -275,7 +275,7 @@ workflows:
           # in a non-interactive shell even for a public repo's own release
           # list, so the earlier assumption that this lookup needed no token
           # was wrong. Reuses GH_RELEASE_TOKEN, the same secret the publish
-          # step below needs anyway (see docs/MAC-DESKTOP.md), so there is
+          # step below needs anyway (see the maintainer Mac desktop runbook), so there is
           # only ever one credential to set up. Anything that still keeps this
           # from resolving a tag (token missing, gh missing, no releases yet,
           # a network hiccup) warns and leaves the committed version alone
@@ -285,7 +285,7 @@ workflows:
           if [ -z "${GH_RELEASE_TOKEN:-}" ]; then
             echo "GH_RELEASE_TOKEN is not set, and gh refuses to run" \
                  "unauthenticated in CI even for a public repo. Skipping the" \
-                 "version lookup; see docs/MAC-DESKTOP.md. Packaging with" \
+                 "version lookup; see the maintainer Mac desktop runbook. Packaging with" \
                  "whatever version is committed in app/package.json."
             exit 0
           fi
@@ -344,7 +344,7 @@ workflows:
       - name: Package the macOS app
         script: |
           set -euo pipefail
-          # Unsigned by default (the founder's call): with no Developer ID
+          # Unsigned by default (a maintainer's call): with no Developer ID
           # secrets, electron-builder signs ad-hoc on its own (the identity
           # Apple Silicon requires just to launch a binary at all) and there is
           # no notarization, hence the one-time Gatekeeper right-click the
@@ -352,8 +352,8 @@ workflows:
           # electron-builder from touching GitHub; the artifacts are collected
           # below.
           #
-          # Signed and notarized only when the founder adds the secrets (v1
-          # Phase 1, docs/MAC-DESKTOP.md "Signing, when it is time"): CSC_LINK
+          # Signed and notarized only when a maintainer adds the secrets (v1
+          # Phase 1, the maintainer Mac desktop runbook "Signing, when it is time"): CSC_LINK
           # and CSC_KEY_PASSWORD (the Developer ID Application certificate),
           # plus either APPLE_API_KEY, APPLE_API_KEY_ID and APPLE_API_ISSUER, or
           # APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD and APPLE_TEAM_ID. Then the
@@ -375,7 +375,7 @@ workflows:
       - name: Sign the macOS files
         script: |
           set -euo pipefail
-          # CTO ruling 1 (2026-09-29): an installed Mac swaps in a new version
+          # tech review ruling 1 (2026-09-29): an installed Mac swaps in a new version
           # only when the zip or dmg matches its .sig under the key pinned in
           # the app (app/electron/releaseVerify.ts), so a leaked release token
           # cannot put its own build on every Mac. The private key comes from
@@ -386,7 +386,7 @@ workflows:
           if [ -z "${OPENSHORE_MAC_SIGNING_KEY:-}" ]; then
             echo "OPENSHORE_MAC_SIGNING_KEY is not set (the openshore-mac-signing" \
                  "group), so the Mac files ship without .sig files. See" \
-                 "docs/release-signing.md."
+                 "the maintainer release-signing runbook."
             exit 0
           fi
           shopt -s nullglob
@@ -406,7 +406,7 @@ workflows:
           # that skips the blockmap), it drops out of the argument list instead
           # of being passed to `gh` as a literal, nonexistent filename.
           shopt -s nullglob
-          # See docs/MAC-DESKTOP.md for the one-time setup. Codemagic's own
+          # See the maintainer Mac desktop runbook for the one-time setup. Codemagic's own
           # GitHub integration is read-only clone access, not an API token, so
           # publishing needs GH_RELEASE_TOKEN: a fine-grained PAT scoped to just
           # this repo with Contents: Read and write. Reuses MAC_RELEASE_TAG from
@@ -426,7 +426,7 @@ workflows:
           fi
           if [ -z "${GH_RELEASE_TOKEN:-}" ]; then
             echo "GH_RELEASE_TOKEN is not set. Skipping the GitHub Release publish;" \
-                 "see docs/MAC-DESKTOP.md to enable it. The dmg/zip are still" \
+                 "see the maintainer Mac desktop runbook to enable it. The dmg/zip are still" \
                  "attached as Codemagic artifacts on this build."
             exit 0
           fi

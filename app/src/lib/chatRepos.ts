@@ -1,4 +1,4 @@
-// The repositories a chat works with (founder, 2026-09-03: "replace the model
+// The repositories a chat works with (2026-09-03: "replace the model
 // name in the header with a repo dropdown that lets you select multiple repos
 // connected to your account, like Claude Code, in basic chats and in
 // projects"). Two roads bring repos in: the paired computer's workspaces (a
@@ -383,7 +383,7 @@ export function listRemoteRepos(
 //    repositories" or a hand-picked few.
 //  - A GitHub OAuth App sign-in, or a classic token, sees private repositories
 //    only with the `repo` scope; without it GitHub hands over public data
-//    alone. The founder's picker showed exactly the account's four public
+//    alone. A maintainer's picker showed exactly the account's four public
 //    repositories (2026-09-25), which is that shape.
 //  - A fine-grained token sees what it was given on GitHub.
 

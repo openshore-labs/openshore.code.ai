@@ -2,7 +2,7 @@
 // main.ts runs them: which folders a session may work in, which device
 // permissions the window may have, and what the sign-in listener does with
 // each request it hears (the D2 shell package), and the words of the three
-// native confirms (CX cleanup 2).
+// native confirms (UX review cleanup 2).
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -150,7 +150,7 @@ describe('readOAuthCallback: the sign-in listener answers only the redirect', ()
   });
 });
 
-describe("the second key's words (CX cleanup 2)", () => {
+describe("the second key's words (UX review cleanup 2)", () => {
   it('the trust dialog lists each waiting setting as the card does, then the folder', () => {
     const words = trustConfirm(
       ['uses its own check command', 'lets the agent reach api.example.com'],

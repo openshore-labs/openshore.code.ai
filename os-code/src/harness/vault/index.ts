@@ -1,4 +1,4 @@
-// The Vault index (Vault M3, CTO H3): one entry per note, the links between
+// The Vault index (Vault M3, tech review H3): one entry per note, the links between
 // notes, and BM25 search, kept current one write at a time. Pure: hosts own
 // every read, write, listing and file, and feed the index text they already
 // hold. The phone runs this same file, so it imports no Node (harnessPurity).
@@ -51,7 +51,7 @@ import { BODY_STOPWORDS, eachTerm, queryTerms, tokenize } from './tokenize.js';
 /** Bump on any change to what an entry holds or how it is derived (the index,
  *  the tokenizer, or the scanner it is fed). A persisted file with another
  *  version is thrown away and the vault is rebuilt. 2: entries carry the
- *  note's `oscode` marks (Vault M4, CTO I4). */
+ *  note's `oscode` marks (Vault M4, tech review I4). */
 export const CORE_VERSION = 2;
 
 /** Notes indexed at most; above it the first ones in path order are indexed
@@ -65,7 +65,7 @@ export const INDEX_MAX_BODY_TERMS = 20_000;
  *  term vectors (`terms: 'memory'`). */
 export const INDEX_FILE_MAX_BYTES = { desktop: 32 * 1024 * 1024, phone: 16 * 1024 * 1024 };
 
-/** Search results kept by default (CX X2's cap). */
+/** Search results kept by default (UX review X2's cap). */
 export const SEARCH_LIMIT = 50;
 /** Dictionary terms a typed prefix expands to at most (K8). */
 export const PREFIX_EXPANSIONS = 50;

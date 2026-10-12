@@ -233,7 +233,7 @@ describe('which client reaches the scheduler', () => {
   });
 });
 
-describe("the Crew room's clock line (CX cleanup 6)", () => {
+describe("the Crew room's clock line (UX review cleanup 6)", () => {
   const held = { live: false, heldBy: { pid: 4242, since: '2026-09-29T06:00:00Z' } };
 
   it('shows only on the desktop, reading its own engine live, while another OpenShore keeps it', () => {

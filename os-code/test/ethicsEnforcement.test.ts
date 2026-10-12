@@ -175,7 +175,7 @@ describe('the enforcement migration', () => {
   const sql = readFileSync(MIGRATION, 'utf8');
 
   it('has no IP address anywhere: no column, no function, no table', () => {
-    // The founder cut IP capture entirely (2026-09-05, after CTO and CMO
+    // A maintainer cut IP capture entirely (2026-09-05, after tech review and copy review
     // review): enforcement is account termination plus a lawful report, and
     // nothing here may reintroduce an address by any name.
     expect(sql).not.toMatch(/\bip_address\b/i);

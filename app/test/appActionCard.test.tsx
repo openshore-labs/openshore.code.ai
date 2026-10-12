@@ -1,5 +1,5 @@
 // The tap that applies an app action, and the way into the shaping chat
-// (founder, 2026-10-01), mounted in a real DOM (test/support/dom.ts). A
+// (2026-10-01), mounted in a real DOM (test/support/dom.ts). A
 // chat reply's proposal renders as a card, and only Add to Settings writes
 // the setting; the same fence in a note renders as plain code. Settings'
 // "Shape it in a chat" opens a fresh chat with the prompt in the composer.
@@ -83,7 +83,7 @@ describe('a proposal in a chat reply', () => {
     expect(dom.text()).toContain('In Settings, Writing.');
   });
 
-  // CX and CMO, 2026-10-08 (I): the tap replaces a voice already set, so the
+  // UX and copy review, 2026-10-08 (I): the tap replaces a voice already set, so the
   // card says so and where; with none set, it says only that nothing changes.
   it('says the tap replaces a different voice already in Settings, and where', async () => {
     await dom.render(createElement(Markdown, { text: REPLY, actions: ['writingVoice'] }));

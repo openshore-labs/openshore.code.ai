@@ -49,7 +49,7 @@ export interface PlayStep {
   needsTools?: boolean;
   /** A level deeper than the category: a specific model to run this step, by its
    *  stack id (refKey). Set when the reasoning model wants a particular model for
-   *  a particular subject or decision (the founder's parameterized routing).
+   *  a particular subject or decision (a maintainer's parameterized routing).
    *  Falls back to category routing when it names no model in the stack. */
   owner?: string;
 }
@@ -189,7 +189,7 @@ export function mergeReplan(play: Play, done: Set<string>, rawRemaining: unknown
  *  in the chat would go to while nothing is placed for Image reading. The
  *  driver fills `imageReader` with the chat path's own choice (stackDriver's
  *  routeVision); a plan never carries a picture, so an unplaced image step
- *  runs on the Reasoning model from the text whatever it holds (CX and CMO,
+ *  runs on the Reasoning model from the text whatever it holds (UX and copy review,
  *  2026-10-08, E), and `imageReader` says only whether something here reads
  *  images (the working note, and the two-door offer when nothing does).
  *  `reachable` is the driver's reach in this status, so the brief and the
@@ -215,7 +215,7 @@ export interface StepOwner {
   placement?: Placement;
   /** True when no specialist is placed for this category, or the one placed
    *  cannot run the step here (stepRunner), so the reasoning anchor owns it
-   *  (the founder's "the reasoning model takes over"). */
+   *  (a maintainer's "the reasoning model takes over"). */
   fellBack: boolean;
 }
 
@@ -245,7 +245,7 @@ export function ownerFor(step: PlayStep, stack: PlayStack): StepOwner {
     if (member) return { ref: member.ref, placement: member.placement, fellBack: false };
     // Nothing placed for Image reading: a plan never carries a picture, so
     // the step goes to no other model; the Reasoning model works from the
-    // text (CX and CMO, 2026-10-08, E, taking off the founder's 2026-10-07
+    // text (UX and copy review, 2026-10-08, E, taking off a maintainer's 2026-10-07
     // exception), whatever `imageReader` holds.
     return { ref: anchor, placement: undefined, fellBack: true };
   }
@@ -302,7 +302,7 @@ export function briefTodos(
 }
 
 /** A compact text brief for the chat: one line per play in run order, each with
- *  its owner. Deliberately terse (the founder: "as brief as possible"). */
+ *  its owner. Deliberately terse (a maintainer: "as brief as possible"). */
 export function formatBriefTable(play: Play, stack: PlayStack): string {
   const lines = topoOrder(play.steps).map(
     (s, i) => `${i + 1}. ${s.title}  ->  ${ownerLabel(s, stack)}`,
@@ -585,7 +585,7 @@ export function parseReplan(text: string): PlayStep[] | undefined {
 /** How the driver labels the plan step in the chat when it hands off. An image
  *  step with nothing set for Image reading (and no model named for it) runs
  *  on the Reasoning model from the text, since a plan carries no picture, and
- *  its note says so (CX and CMO, 2026-10-08, E). An image step whose model
+ *  its note says so (UX and copy review, 2026-10-08, E). An image step whose model
  *  set for Image reading cannot take it here names that model and the one
  *  that covers it, never "Handing to" a model that does not run it. A step
  *  kept off a model that leaves this network, because the plan draws on a

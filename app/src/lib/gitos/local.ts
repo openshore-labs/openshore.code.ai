@@ -8,10 +8,10 @@
 //   oscode.gitos.index.<resourceId>            -> { files: StoredFileMeta[] }
 //   oscode.gitos.file.<resourceId>.<path>      -> { text, updatedAt, v? }
 //   oscode.gitos.lease.<resourceId>            -> Lease
-//   oscode.gitos.trash.<resourceId>.<id>       -> TrashDoc (Vault M6, CTO K6)
+//   oscode.gitos.trash.<resourceId>.<id>       -> TrashDoc (Vault M6, tech review K6)
 //   oscode.gitos.trashlist.<resourceId>        -> { entries: TrashEntry[] }
 //
-// Compare-and-swap (Vault M2 2.1, CTO G1). A note's version is `v`, a random
+// Compare-and-swap (Vault M2 2.1, tech review G1). A note's version is `v`, a random
 // token made fresh on every write and kept in the body. It is compared with
 // === only. Not updatedAt, since two writes can land in one millisecond; not
 // a counter, since a delete and a re-create would start it over and an old
@@ -21,7 +21,7 @@
 // index is a list hint, written after the body, so it can never claim a
 // version the body does not have.
 //
-// Rename and Trash (Vault M6, CTO K3, K6). A rename is a key move inside the
+// Rename and Trash (Vault M6, tech review K3, K6). A rename is a key move inside the
 // same chain that keeps the body whole, `v` included, so the version at the
 // new name is the version the note had. Trash moves a body (or every body
 // under a folder) into one sealed trash key with its `v`, so a restore puts
@@ -33,7 +33,7 @@
 // folder in device settings and renames a folder note by note), and it keeps
 // notes only, so no attachments.
 //
-// Vault settings (Vault M7, CTO L7, L16). The vault's own settings are one
+// Vault settings (Vault M7, tech review L7, L16). The vault's own settings are one
 // sealed key (`oscode.gitos.config.<resourceId>.vault`), a body like a
 // note's, with its own fresh `v` on every write. `writeConfig` is the
 // settings sheet's compare-and-swap write, in the same chain as the notes.
@@ -403,7 +403,7 @@ export const localProvider: StorageProvider = {
     });
   },
 
-  // ---- Vault M6 (CTO K3, K6) ------------------------------------------------
+  // ---- Vault M6 (tech review K3, K6) ------------------------------------------------
 
   // A key move in the chain: the source's version is checked against its
   // body, the new name must be free by the folded rule (a case-only rename of
@@ -580,7 +580,7 @@ export const localProvider: StorageProvider = {
     return asConfigRead({ ok: true, text: body.text, version: verOf(body) });
   },
 
-  // ---- Vault M7 (CTO L7, L16) ------------------------------------------------
+  // ---- Vault M7 (tech review L7, L16) ------------------------------------------------
 
   // The settings sheet's write, the note write's contract on the sealed key:
   // the guard is checked against the stored body inside the chain, a conflict

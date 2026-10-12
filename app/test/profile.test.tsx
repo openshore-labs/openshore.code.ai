@@ -1,4 +1,4 @@
-// The profile (founder, 2026-10-02): signed in, the sidebar's account card
+// The profile (2026-10-02): signed in, the sidebar's account card
 // names the account and opens the profile sheet, a standard set: what
 // follows you between devices, privacy and help, sign-in, delete.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -147,10 +147,10 @@ describe('signed in', () => {
     ]) {
       expect(sheet, part).toContain(part);
     }
-    // Said once, by the profile's own row (CX, 2026-10-02).
+    // Said once, by the profile's own row (UX review, 2026-10-02).
     const { SIGNED_IN_PERKS } = await import('../src/lib/accountGate.js');
     expect(sheet).not.toContain(SIGNED_IN_PERKS);
-    // Never claims more than the code does (CTO, 2026-10-02). The suite runs
+    // Never claims more than the code does (tech review, 2026-10-02). The suite runs
     // at tier 4, where teams keep rows on our server, so the line claims only
     // the person's own and names what a team keeps (privacy review,
     // 2026-10-08); a Personal build's line is in tierPersonal.test.ts.

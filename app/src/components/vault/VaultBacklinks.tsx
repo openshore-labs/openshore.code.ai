@@ -1,4 +1,4 @@
-// The card under a note (Vault M6, 6.8 and 6.9; CTO K15, CX X16, X17): three
+// The card under a note (Vault M6, 6.8 and 6.9; tech review K15, UX review X16, X17): three
 // quiet sections in one card, in this order. `Linked mentions` (the notes
 // that link here, as before), `Links from this note` (from the index's
 // outlinks; one to a note that does not exist yet is muted and creates it on

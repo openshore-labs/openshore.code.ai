@@ -20,7 +20,7 @@ export function QrScanner({
   open: boolean;
   /** Called with each QR's text. True when it was a pairing code (the
    *  scanner closes itself); false keeps the camera running and says so in
-   *  the sheet, so a wrong QR never ends the scan (CX 2026-10-01). */
+   *  the sheet, so a wrong QR never ends the scan (UX review 2026-10-01). */
   onDecode: (text: string) => boolean;
   onClose: () => void;
 }) {

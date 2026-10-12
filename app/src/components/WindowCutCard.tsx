@@ -1,9 +1,9 @@
-// The server cut the chat to fit (C1, CX 6): a teal card, once per chat per
+// The server cut the chat to fit (C1, UX review 6): a teal card, once per chat per
 // model, saying what fell out of view and, when this computer has the memory,
 // offering one action that states its cost before the tap. After the tap the
 // action gives way to what changed. Built on the context card's teal frame;
 // it arrives the way every transcript card does. Every line is from
-// lib/securityCopy.ts, and the little-room variant's title and body (CTO 6:
+// lib/securityCopy.ts, and the little-room variant's title and body (tech review 6:
 // even the lean prompt fills most of the window) from lib/harnessCopy.ts.
 import type { ThreadItem } from '../state/types.js';
 import { hapticCommit } from '../lib/haptics.js';

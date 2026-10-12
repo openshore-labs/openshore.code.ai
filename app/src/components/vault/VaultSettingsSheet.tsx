@@ -1,5 +1,5 @@
-// Vault settings (Vault M7 7.1; CTO L1 to L4, L7, L11, L13, L15, L16; CX Y1
-// to Y10, Y16): one sheet, seven sections, in CX Y1's order, so what people
+// Vault settings (Vault M7 7.1; tech review L1 to L4, L7, L11, L13, L15, L16; UX review Y1
+// to Y10, Y16): one sheet, seven sections, in UX review Y1's order, so what people
 // change most and what models see come first and where the vault lives comes
 // last:
 //
@@ -59,7 +59,7 @@ import { VAULT_EDITOR_SAMPLE } from '../../lib/vaultCopy.js';
 import { VAULT_PRIVACY_DEFAULTS } from '../../state/types.js';
 
 /** Every line the sheet shows but the editor sample, from stream F's M7
- *  section of lib/vaultCopy.ts (CX Y1 to Y10). */
+ *  section of lib/vaultCopy.ts (UX review Y1 to Y10). */
 export interface VaultSettingsSheetCopy {
   title: string;
   sections: {
@@ -303,7 +303,7 @@ export function vaultTypeAttrs(editor: { font: VaultEditorFont; size: VaultEdito
   };
 }
 
-// Fields Obsidian can set (CTO L2's seed column): in a vault with
+// Fields Obsidian can set (tech review L2's seed column): in a vault with
 // `.obsidian/` and the field unset there, the row says Obsidian keeps its own.
 const OBSIDIAN_SEEDED: ReadonlySet<VaultSettingsField> = new Set<VaultSettingsField>([
   'newNotes.location',

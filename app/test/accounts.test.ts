@@ -1,4 +1,4 @@
-// Accounts (founder + CX, 2026-09-27; docs/accounts-cx-memo.md): chatting needs
+// Accounts (2026-09-27): chatting needs
 // no account, everything else is behind a free sign-in, nothing resets for a
 // signed-out person, and signing in is worth something because a short list
 // of preferences follows the person to every device they sign in on. Pure
@@ -246,7 +246,7 @@ describe('the gate: chat is free, everything else is a free sign-in', () => {
       expect(ROOM_ACCOUNT[view as keyof typeof ROOM_ACCOUNT], view).not.toBeNull();
   });
 
-  // Nothing is sold (open source, founder 2026-10-11): no account copy, guide
+  // Nothing is sold (open source, 2026-10-11): no account copy, guide
   // card or Harbor Lite line talks about buying.
   it('never talks about buying', async () => {
     for (const line of [ACCOUNT_GATE_BODY, ACCOUNT_PITCH, ACCOUNT_NOTICE, ACCOUNT_SIGN_IN_SUB])
@@ -270,7 +270,7 @@ describe('the gate: chat is free, everything else is a free sign-in', () => {
       expect(title).toMatch(/needs? an account/);
     expect(ACCOUNT_GATE_BODY).toMatch(/Signing in is free/);
     expect(ACCOUNT_GATE_BODY).toMatch(/chatting needs no account/);
-    // D19 (founder, 2026-10-07): the pitch names the few that follow, never
+    // D19 (2026-10-07): the pitch names the few that follow, never
     // "your settings", since the writing voice, the app icon, approvals, web
     // search and the vault stay on the device.
     expect(ACCOUNT_PITCH).toMatch(/take your theme and a few preferences to every device/);
@@ -333,7 +333,7 @@ describe('where settings may go', () => {
     );
   });
 
-  // The theme follows a signed-in person (CMO, 2026-10-07), so Appearance
+  // The theme follows a signed-in person (copy review, 2026-10-07), so Appearance
   // says so then, and says it stays here only while signed out.
   it('says Appearance follows a signed-in person, as the theme does', () => {
     expect(SETTINGS_REACH.theme).toBe('follows');

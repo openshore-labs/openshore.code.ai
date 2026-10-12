@@ -31,7 +31,7 @@ import { thisDeviceNoun } from '../deviceNoun.js';
 // PROVIDER_ROSTER: the team vault is reached by the Vault scope switcher, not by
 // moving the personal vault's bytes, so it never appears in the "where it lives"
 // sheet. 'hub' is the paired computer's vault over the daemon's /vault routes
-// (Vault M5, CTO J9; lib/gitos/hub.ts), shown as "Your computer".
+// (Vault M5, tech review J9; lib/gitos/hub.ts), shown as "Your computer".
 export type StorageProviderId =
   'local' | 'files' | 'icloud' | 'dropbox' | 'gdrive' | 'proton' | 'org' | 'hub';
 
@@ -63,7 +63,7 @@ export interface StoredFileMeta {
    *  file of the same name must never overwrite it. */
   evicted?: boolean;
   /** Who last changed this note, when the provider knows (the team vault
-   *  only; Vault M2, CTO G6). `label` is a short display name, never an
+   *  only; Vault M2, tech review G6). `label` is a short display name, never an
    *  email address in full. Absent everywhere else. */
   editedBy?: { id: string; label?: string };
 }
@@ -84,7 +84,7 @@ export function isNotePath(path: string): boolean {
 
 /** The version a write's guard compares against: the provider's own opaque
  *  version where it has one, else its updatedAt. The only way the store
- *  derives a base (Vault M1, CTO F1). */
+ *  derives a base (Vault M1, tech review F1). */
 export function versionOf(f: { version?: string; updatedAt: string }): string {
   return f.version ?? f.updatedAt;
 }
@@ -107,7 +107,7 @@ export type WriteResult =
  *  (versionOf) is still this one. */
 export type RemoveGuard = { ifMatch: string };
 
-/** What a remove did (Vault M2, CTO G7 wave 0). A file already gone is
+/** What a remove did (Vault M2, tech review G7 wave 0). A file already gone is
  *  `{ ok: true }`: the person wanted it gone, and it is. A conflict is a
  *  result, never a throw, and leaves the file where it was: 'changed' (the
  *  version moved since the guard was read; theirs is what is there now, when
@@ -116,7 +116,7 @@ export type RemoveGuard = { ifMatch: string };
 export type RemoveResult =
   { ok: true } | { ok: false; conflict: 'changed' | 'downloading'; theirs?: StoredFile };
 
-// ---- Vault M6 seam results (CTO K2, K3, K5, K6, reconciled R1 to R3) ------
+// ---- Vault M6 seam results (tech review K2, K3, K5, K6, reconciled R1 to R3) ------
 // Every M6 member below is optional, and every conflict is a result, never a
 // throw. A write-shaped member (rename, trash, restore, empty) is lit by
 // `vaultCaps` (lib/vaultCaps.ts) only on a provider with `compareAndSwap`.
@@ -231,12 +231,12 @@ export interface EmptyTrashResult {
 /** A lease marks one writer per resource: a holder id plus TTL, taken while
  *  the person types. On a storage with compare-and-swap it is advisory (the
  *  "Also open on your iPad" line); only a storage without it has the lease
- *  enforced (Vault M2, CTO G5; lib/vaultLease.ts). */
+ *  enforced (Vault M2, tech review G5; lib/vaultLease.ts). */
 export interface Lease {
   holder: string;
   expiresAt: string;
   /** The holder's device kind ("iPhone", "iPad", "Mac"), for the quiet "Also
-   *  open on your iPad" line (Vault M2, CTO G5). Never a personal device
+   *  open on your iPad" line (Vault M2, tech review G5). Never a personal device
    *  name. */
   label?: string;
 }
@@ -275,10 +275,10 @@ export interface StorageProvider {
   /** Take or renew the single-writer lease. Returns the current lease either
    *  way; callers compare holder to know if they won. `label` is this
    *  device's kind (Lease.label), kept with a lease the provider writes
-   *  (Vault M2, CTO G5); a provider that keeps no lease file ignores it. */
+   *  (Vault M2, tech review G5); a provider that keeps no lease file ignores it. */
   acquireLease(resourceId: string, holder: string, ttlMs: number, label?: string): Promise<Lease>;
   releaseLease(resourceId: string, holder: string): Promise<void>;
-  /** Read one of the vault's config files by its logical name (Vault M3, CTO
+  /** Read one of the vault's config files by its logical name (Vault M3, tech review
    *  H5): Obsidian's app, daily-notes and templates settings, or the vault's
    *  own `.oscode/vault.json`. No path crosses the seam; each provider maps a
    *  name through its own allow-list, and anything else answers `refused`
@@ -287,7 +287,7 @@ export interface StorageProvider {
    *  readVaultConfig (lib/gitos/config.ts). Capped at 256 KB of UTF-8. */
   readConfig?(resourceId: string, name: VaultConfigName): Promise<ConfigRead>;
 
-  // ---- Vault M6 (CTO K2). All optional, appended after readConfig so the
+  // ---- Vault M6 (tech review K2). All optional, appended after readConfig so the
   // held branches rebase with the least conflict; a held branch lights its
   // row by adding members, never by a UI change. `providerContract` rows run
   // for any provider that declares a member.
@@ -313,7 +313,7 @@ export interface StorageProvider {
   /** One attachment's bytes, capped at 20 MB (`VAULT_ATTACHMENT_MAX_BYTES`). */
   readBytes?(resourceId: string, path: string, opts?: ReadBytesOptions): Promise<BytesRead>;
 
-  // ---- Vault M7 (CTO L7). Optional, after the K2 members. Lit in the sheet
+  // ---- Vault M7 (tech review L7). Optional, after the K2 members. Lit in the sheet
   // only through `vaultCaps().settingsWrite` (compare-and-swap, writable,
   // not away). No agent path may name it (a grep test in each package).
 
@@ -388,7 +388,7 @@ export const PROVIDER_ROSTER: Array<{
   },
   {
     id: 'hub',
-    // The paired computer's one vault (Vault M5, CTO J9). Readiness is decided
+    // The paired computer's one vault (Vault M5, tech review J9). Readiness is decided
     // at runtime (probeReady('hub'): paired and answering), so ready stays
     // false here. Not offered in the storage sheet until the provider lands
     // (vaultOffersProvider in lib/vaultCopy.ts).

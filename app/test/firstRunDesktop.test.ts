@@ -1,4 +1,4 @@
-// The first ten minutes (build 2026-09-29, package F1; CX ruling 2, CTO ruling
+// The first ten minutes (build 2026-09-29, package F1; UX review ruling 2, tech review ruling
 // 8). A first message typed before anything can answer is held in the store,
 // so a trip to a setup room never loses it. On a signed-out desktop with no
 // model, it waits on the First Seat (never the sign-in sheet) and goes out the
@@ -173,7 +173,7 @@ function reset(): void {
 }
 
 describe('the first run rules (state/firstRunOps.ts)', () => {
-  it("says CX ruling 2's words exactly", () => {
+  it("says UX review ruling 2's words exactly", () => {
     expect(FIRST_SEAT_COPY.held).toBe('Your message is saved. It sends when DeepBlue is ready.');
     const { before, link, after } = FIRST_SEAT_COPY.signIn;
     expect(`${before}${link}${after}`).toBe(
@@ -308,7 +308,7 @@ describe('a held first message in the store', () => {
   });
 });
 
-describe('a signed-out desktop with no model (CX ruling 2, CTO ruling 8)', () => {
+describe('a signed-out desktop with no model (UX review ruling 2, tech review ruling 8)', () => {
   beforeEach(reset);
 
   it('waits on the First Seat, then sends the message as a free chat once the engine is ready', async () => {

@@ -1,5 +1,5 @@
 // What a test needs to run the same on Linux, macOS and Windows (the
-// windows-latest CI job, CTO ruling 10). Each helper names the one difference
+// windows-latest CI job, tech review ruling 10). Each helper names the one difference
 // between the machines it covers, so a test says what it means and never
 // loosens what it checks.
 import { rmSync } from 'node:fs';

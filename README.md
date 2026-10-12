@@ -1,41 +1,53 @@
 # OpenShore
 
-Chat and build with your own stack of local LLMs. A native app for the
-Linux desktop and the iPhone, in the familiar shape of a modern coding
-agent, running on models you download and keys you hold.
+**Your own cloud for AI coding.** OpenShore is an open source coding agent
+that runs on a computer you own, or a server you rent, with a model you
+choose. Use it from the desktop app, from the terminal (`osc`), or from your
+iPhone, which docks to that computer over Tailscale. Your code stays on
+machines you control unless you pick a cloud model, on your own key.
 
-## The idea
+[![CI](https://github.com/openshore-labs/openshore.code.ai/actions/workflows/ci.yml/badge.svg)](https://github.com/openshore-labs/openshore.code.ai/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/@openshore/os-code)](https://www.npmjs.com/package/@openshore/os-code)
+[![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 
-- **Local is the default.** Your stack is built from local models. One
-  model is the quarterback: it plans, reasons, and decides which model gets
-  each play. Specialists plug into industry-standard task categories
-  (coding, writing, analysis, vision, retrieval, fast). Anything missing,
-  the quarterback covers itself.
-- **Cloud is a manual flip.** Connect your own Claude or ChatGPT account if
-  you want; the app never routes to the cloud on its own, and spend always
-  asks first.
-- **The marketplace is a catalog, not a weight host.** Models download
-  straight from their public sources (Hugging Face, Ollama), license flags
-  shown honestly. OpenShore never rehosts weights or proxies inference.
-- **Desktop is home, the phone rides along.** The desktop runs the engine
-  and a private daemon; the iPhone pairs to it over Tailscale, and can also
-  run pocket-class GGUF models fully on-device (llama.cpp on Metal).
+**Status: early release.** The engine, the desktop app, the CLI and the
+iPhone app work today. How well a local model does real coding work is still
+being measured: `osc eval` is the instrument, and we publish only the numbers
+we have measured.
 
-## The pieces
+## Get it
 
-| Path                        | What it is                                                                                           |
-| --------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `os-code/`                  | OS Code: the terminal CLI (`osc`) and the engine behind the apps: agent loop, tools, router, daemon. |
-| `app/`                      | The one React codebase both shells ship.                                                             |
-| `app/electron/`             | Linux desktop shell; the engine runs in-process.                                                     |
-| `app/ios/`                  | Capacitor iOS project (SPM mode, iOS 16+).                                                           |
-| `app/plugins/oscode-llama/` | Swift plugin: on-device GGUF inference via llama.cpp.                                                |
-| `codemagic.yaml`            | CI to TestFlight. Setup walkthrough in `docs/TESTFLIGHT.md`.                                         |
+- **Desktop app** (macOS, Windows, Linux): installers on the
+  [releases page](https://github.com/openshore-labs/openshore-releases/releases/latest).
+  Updates are checked against pinned signing keys before they install. The
+  Mac build is not notarized yet, so open it the first time with right-click,
+  Open.
+- **Terminal**: `npm install -g @openshore/os-code` (below).
+- **iPhone**: see [openshore.ai](https://openshore.ai) for the current way in.
+- **From source**: every piece builds from this repository (below).
 
-## OS Code, in your terminal
+## What it does
 
-OS Code (`osc`) is the same agent as a terminal CLI. With Node 22.12 or newer
-and a local model server such as Ollama:
+- **Any model.** A local server such as Ollama, llama.cpp, vLLM or LM Studio;
+  any server that speaks the OpenAI-compatible or the Anthropic API; or one of
+  eighteen cloud providers on your own key. OpenShore runs no gateway and
+  resells no model.
+- **A harness that helps small models.** It finds the right files first, runs
+  your project's own tests, and sizes every prompt to the window the model is
+  actually served, so a modest model has less to get right on its own.
+- **Your phone, docked to your computer.** The work runs on your machine; the
+  phone sends instructions, shows the work and approves the next step. It
+  works while your computer is on and reachable.
+- **A model Marketplace.** A catalog that points at Hugging Face and Ollama,
+  marks each model as fits, tight or too big for your hardware, and never
+  hosts the weights itself.
+- **Privacy you can check.** Everything the app sends off a device is listed
+  in `app/src/lib/egressManifest.ts`, and a test fails on any new host that
+  is not on the list.
+
+## Quick start: the terminal
+
+With Node 22.12 or newer and a local model server such as Ollama:
 
 ```
 npm install -g @openshore/os-code
@@ -43,32 +55,49 @@ osc init
 cd ~/your-project && osc
 ```
 
-From a checkout instead: `pnpm install && pnpm --filter os-code build`, then
-`cd os-code && pnpm link --global`. More in `os-code/README.md`.
+`osc doctor` checks your setup. More in [`os-code/README.md`](os-code/README.md).
 
-## Running it
+## Quick start: from source
 
-Everything needs Node 22+ (22.12 or newer; `.nvmrc` pins the exact version
-CI and Codemagic use) and pnpm (`corepack enable`).
-
-Desktop (Linux):
+Everything needs Node 22.12 or newer (`.nvmrc` pins the exact version CI
+uses) and pnpm (`corepack enable`).
 
 ```
 pnpm install
-pnpm desktop
+pnpm desktop                 # the desktop app, with the engine in-process
+pnpm --filter os-code build  # the engine and the osc CLI
 ```
 
-Point it at Ollama (or any OpenAI-compatible local server), grab a model in
-the marketplace, pick your quarterback, and chat. Package installers with
-`pnpm --filter oscode-app package:linux`.
-
-iPhone: builds ship through TestFlight; see `docs/TESTFLIGHT.md`.
-
-Checks across the workspace:
+Checks across the workspace, the same ones CI runs:
 
 ```
 pnpm -r build && pnpm -r typecheck && pnpm -r lint && pnpm -r test
 ```
+
+The iPhone app is a Capacitor project in `app/ios/`; `pnpm --filter
+oscode-app ios:sync` builds the web side into it.
+
+## Where to start reading
+
+| If you want to | Read |
+| --- | --- |
+| Understand how the pieces fit | [`ARCHITECTURE.md`](ARCHITECTURE.md) |
+| Make a change and get it merged | [`CONTRIBUTING.md`](CONTRIBUTING.md) |
+| Find a doc on a feature | [`docs/README.md`](docs/README.md) |
+| Use or extend the CLI | [`os-code/README.md`](os-code/README.md) |
+| Report a security problem | [`SECURITY.md`](SECURITY.md) |
+
+## The pieces
+
+| Path | What it is |
+| --- | --- |
+| `os-code/` | The engine and the `osc` CLI: agent loop, tools, harness, daemon, evals. |
+| `app/` | The one React codebase both app shells ship. |
+| `app/electron/` | The desktop shell; the engine runs in-process. |
+| `app/ios/` | The Capacitor iOS project. |
+| `app/plugins/oscode-llama/` | Swift plugin: on-device GGUF inference via llama.cpp. |
+| `supabase/` | The optional account backend: migrations and edge functions. |
+| `docs/` | Feature docs and design history. |
 
 ## Security posture
 

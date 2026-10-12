@@ -37,7 +37,7 @@ const PAIRS = { jokes, trivia, sports, crossword, words } as unknown as Record<
 >;
 const FORTUNES = fortunes as unknown as string[];
 
-// What the founder asked for, per deck.
+// What a maintainer asked for, per deck.
 const SIZES: Record<DeckStyle, number> = {
   jokes: 2000,
   trivia: 2000,

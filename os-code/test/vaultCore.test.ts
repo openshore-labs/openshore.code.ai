@@ -1,4 +1,4 @@
-// The Vault's shared core (Vault M3, CTO H4): the one new-name rule, the note
+// The Vault's shared core (Vault M3, tech review H4): the one new-name rule, the note
 // filter, the pinned resolution order (row by row), the hostile-names table,
 // the dashed-link invariant as a property test, link text, rewriting and
 // excerpts. Every resolution row carries `obsidianChecked: false` until the
@@ -802,7 +802,7 @@ describe('nothing in the vault core serializes YAML (H2)', () => {
   });
 });
 
-describe('the search grammar (K8, CX X1 and X2)', () => {
+describe('the search grammar (K8, UX review X1 and X2)', () => {
   const clause = (kind: string, value: string, negated = false) => ({ kind, value, negated });
   const marked = (text: string, q: string) =>
     highlightRanges(text, parseVaultQuery(q)).map((r) => text.slice(r.start, r.end));
@@ -920,7 +920,7 @@ describe('the search grammar (K8, CX X1 and X2)', () => {
   });
 });
 
-// Vault M7, stream B (CTO L9, L10): provenance as flat `oscode-*` lines,
+// Vault M7, stream B (tech review L9, L10): provenance as flat `oscode-*` lines,
 // merged into the note's text byte for byte.
 describe('M7 stream B: provenance (L9, L10)', () => {
   const SET = {

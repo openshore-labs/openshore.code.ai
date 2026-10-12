@@ -1,7 +1,7 @@
 // The "starting paths": Harbor / your computer / repository / API key on the
 // phone, or local stack / repository / API key on the desktop. The setup page
 // shows them as cards, each idle one a single tap target with a one-line sub
-// (D9, founder 2026-10-07); the explanations live in the rooms they open.
+// (D9, 2026-10-07); the explanations live in the rooms they open.
 // Cards are the one rendering: the Settings rows variant rendered nowhere
 // after D9 and is gone. In onboarding, choosing a path also marks onboarding
 // done; anywhere else it just navigates.
@@ -53,7 +53,7 @@ export function StartingPaths({ context }: { context: 'onboarding' | 'settings' 
     }
   };
 
-  // One idle path is one tap target (D9, founder 2026-10-07): the card is the
+  // One idle path is one tap target (D9, 2026-10-07): the card is the
   // button, its title the verb, one line under it, and the drawn chevron of
   // every card or row that opens something. No inner button.
   const pathCard = (title: string, sub: string, onClick: () => void) => (
@@ -120,7 +120,7 @@ export function StartingPaths({ context }: { context: 'onboarding' | 'settings' 
       {!isDesktop() ? (
         // The built-in guide is the chat a new person opens into, and this page
         // is the optional tier, reached from Harbor Lite's greeting. Creative
-        // Studio "The Standing Light" (2026-09-04; founder 2026-09-23).
+        // Studio "The Standing Light" (2026-09-04; 2026-09-23).
         <>
           {harborCard}
           {pathCard(PATH_COPY.pair.title, PATH_COPY.pair.sub, () => void go('pair'))}

@@ -7,7 +7,7 @@
 // and under reduced motion, the still frame is simply the mark, an honest
 // still. Colors ride the theme so it reads on cream and on ink alike: the
 // horizon in muted ink (cream on cream would vanish), the wave in the teal.
-// Creative Studio direction "Surf", 2026-09-03.
+// design review direction "Surf", 2026-09-03.
 import { useId } from 'react';
 
 export function WaveMark({ width = 24 }: { width?: number }) {

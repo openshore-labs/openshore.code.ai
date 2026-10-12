@@ -1,7 +1,7 @@
 // The keep-both name for a note's second version, shared by the app's store
 // (a stash replay, a move's forks, Keep both) and the desktop's main process
 // (Bring from the previous folder), so both write the same name for the same
-// note and minute (CTO ruling on Bring, item 4). Pure, and on the protocol.
+// note and minute (tech review ruling on Bring, item 4). Pure, and on the protocol.
 import { describe, expect, it } from 'vitest';
 import { vaultConflictCopyPath } from '../src/protocol.js';
 

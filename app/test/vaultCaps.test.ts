@@ -1,4 +1,4 @@
-// What the Vault offers on a storage (Vault M6, CTO K1; R2): one pure
+// What the Vault offers on a storage (Vault M6, tech review K1; R2): one pure
 // `vaultCaps`, lit by the provider's members and never by its id.
 // - Every write-shaped cap needs compareAndSwap, so a provider without it
 //   gets none, whatever members it has.
@@ -160,7 +160,7 @@ describe('vaultCaps', () => {
   });
 });
 
-describe('vaultCaps, Vault M7 (CTO L7, L11)', () => {
+describe('vaultCaps, Vault M7 (tech review L7, L11)', () => {
   const full = fake({ compareAndSwap: true, ...ALL_M6, writeConfig: noop });
 
   it('settingsWrite needs writeConfig and compare-and-swap together', () => {
@@ -218,7 +218,7 @@ describe('vaultCaps, Vault M7 (CTO L7, L11)', () => {
     }
   });
 
-  it('the team vault saves its settings for an admin only (CX Y14)', () => {
+  it('the team vault saves its settings for an admin only (UX review Y14)', () => {
     const team = providerFor('org')!;
     expect(typeof team.writeConfig).toBe('function');
     expect(vaultCaps(team, { readOnly: false, settingsAdmin: true }).settingsWrite).toBe(true);
@@ -245,7 +245,7 @@ const MAIN: Record<string, Record<string, boolean>> = {
     taskWriteBack: true,
     linkRewrite: true,
     today: true,
-    // writeConfig under compare-and-swap (Vault M7, CTO L7).
+    // writeConfig under compare-and-swap (Vault M7, tech review L7).
     settingsWrite: true,
   },
   files: {
@@ -258,7 +258,7 @@ const MAIN: Record<string, Record<string, boolean>> = {
     taskWriteBack: true,
     linkRewrite: true,
     today: true,
-    // writeConfig under compare-and-swap (Vault M7, CTO L7).
+    // writeConfig under compare-and-swap (Vault M7, tech review L7).
     settingsWrite: true,
   },
   hub: {
@@ -271,7 +271,7 @@ const MAIN: Record<string, Record<string, boolean>> = {
     taskWriteBack: true,
     linkRewrite: true,
     today: true,
-    // writeConfig under compare-and-swap (Vault M7, CTO L7).
+    // writeConfig under compare-and-swap (Vault M7, tech review L7).
     settingsWrite: true,
   },
   icloud: {
@@ -347,7 +347,7 @@ describe('vaultCapLine', () => {
       /\bsynced\b|\bsafe\b/i, // K18: never for a move
       /\bfaster\b|\bsmarter\b|\bremembers\b/i, // 8.4
       /\bagents?\b/i, // X4: no agent claim in a capability line
-      /\boops\b|\bsuccessfully\b/i, // CX R3
+      /\boops\b|\bsuccessfully\b/i, // UX review R3
       /\b(?:leaves?|lands?|saved|stays?|kept)\b[^.;\n]*\b(?:in|to|into) (?:your|the) vault\b/i,
     ];
     for (const { provider, cap, line } of lines) {

@@ -1,4 +1,4 @@
-// Vault search, the app side (Vault M6 6.1; CTO K8, K9, K16; CX X1 to X4).
+// Vault search, the app side (Vault M6 6.1; tech review K8, K9, K16; UX review X1 to X4).
 // What these rows hold:
 // - a synthetic 5,000-note vault finds an agent-written note within budget:
 //   title hits under 16 ms a keystroke with zero reads, body BM25 with
@@ -441,7 +441,7 @@ describe('the index state search says (X2)', () => {
   });
 });
 
-describe('the Search copy (CX X1 to X4, R2)', () => {
+describe('the Search copy (UX review X1 to X4, R2)', () => {
   const lines = [
     VAULT_SEARCH_PLACEHOLDER,
     VAULT_SEARCH_LABEL,
@@ -466,7 +466,7 @@ describe('the Search copy (CX X1 to X4, R2)', () => {
     vaultSwitcherNew('Idea '),
   ];
 
-  it('says exactly what CX wrote', () => {
+  it('says exactly what UX review wrote', () => {
     expect(VAULT_SEARCH_PLACEHOLDER).toBe('Search notes');
     expect(VAULT_SEARCH_LABEL).toBe('Search your vault');
     expect(VAULT_SEARCH_HINT).toBe('Try tag:, path:, file:, or "an exact phrase".');

@@ -5,7 +5,7 @@ import { existsSync, rmSync, writeFileSync } from 'node:fs';
 import { join, posix } from 'node:path';
 
 export interface TrayMenuItem {
-  id: 'open' | 'hub' | 'quit';
+  id: 'open' | 'new' | 'hub' | 'quit';
   label: string;
 }
 
@@ -13,6 +13,7 @@ export interface TrayMenuItem {
 export function trayMenuTemplate(state: { hubRunning: boolean }): TrayMenuItem[] {
   return [
     { id: 'open', label: 'Open OpenShore' },
+    { id: 'new', label: 'New chat' },
     { id: 'hub', label: state.hubRunning ? 'Pause phone access' : 'Resume phone access' },
     { id: 'quit', label: 'Quit OpenShore' },
   ];
@@ -83,7 +84,7 @@ export function isHiddenLaunch(argv: readonly string[]): boolean {
 }
 
 /** The person's own Turn off (or the tray's Pause), kept across launches
- *  (pairing review, CX 2026-10-01): a computer someone took off the phone
+ *  (pairing review, UX review 2026-10-01): a computer someone took off the phone
  *  stays off until they turn it back on, never silently reopened by the next
  *  launch. A marker file in userData; present means paused. */
 export const HUB_PAUSED_FILE = 'hub-paused';
@@ -110,6 +111,24 @@ export function readOfflineChosen(userData: string): boolean {
 
 export function writeOfflineChosen(userData: string, chosen: boolean): void {
   writeMarker(join(userData, OFFLINE_CHOSEN_FILE), chosen, 'offline\n');
+}
+
+/** Quit (the tray's, the app menu's, an update's) leaves this marker; the next
+ *  launch takes it and opens fresh, with the full splash and no chat restored
+ *  (lib/resumePoint.ts). A crash or a reboot leaves none, so that launch still
+ *  returns to the open chat. */
+const QUIT_MARKER_FILE = 'quit-clean';
+
+export function writeQuitMarker(userData: string): void {
+  writeMarker(join(userData, QUIT_MARKER_FILE), true, 'quit\n');
+}
+
+/** Whether the last run ended in Quit, removing the marker so it counts once. */
+export function takeQuitMarker(userData: string): boolean {
+  const path = join(userData, QUIT_MARKER_FILE);
+  if (!existsSync(path)) return false;
+  writeMarker(path, false, '');
+  return true;
 }
 
 function writeMarker(path: string, present: boolean, body: string): void {

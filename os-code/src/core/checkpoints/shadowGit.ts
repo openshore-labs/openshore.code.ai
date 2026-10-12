@@ -1,6 +1,5 @@
 // Undo for an agent's work: a checkpoint before every task, kept in a shadow
-// git directory on this machine, outside the project (v1 Phase 1; see
-// docs/v1-direction-review.md "Undo").
+// git directory on this machine, outside the project (v1 Phase 1, "Undo").
 //
 // Why a shadow repository and not the project's own git: it works in a folder
 // that has no git at all (most of a first-time person's folders), it never

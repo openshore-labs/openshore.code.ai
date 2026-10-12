@@ -134,7 +134,7 @@ function resetStore() {
       claudeModel: 'x',
       deviceModels: {},
       // A vault the person placed, so pairing a hub here never repoints it
-      // (CTO J9, pinned in vaultStore.test.ts) with a toast of its own.
+      // (tech review J9, pinned in vaultStore.test.ts) with a toast of its own.
       gitosResources: [PLACED_VAULT],
     },
   });
@@ -356,7 +356,7 @@ describe('entitlement gate (billing A1)', () => {
   });
 
   it('nothing is paid: with no entitlement at all, every room opens', () => {
-    // Open source (founder, 2026-10-11): no paywall, so a room is never
+    // Open source (2026-10-11): no paywall, so a room is never
     // intercepted for money.
     useApp.setState({ entitlement: undefined, view: 'chat' });
     useApp.getState().setView('marketplace');
@@ -972,7 +972,7 @@ describe('an evicted vault note is an existing note (UI-2)', () => {
   });
 });
 
-// Clear conversations takes every handoff with the chats (Vault M5, CTO J13):
+// Clear conversations takes every handoff with the chats (Vault M5, tech review J13):
 // this device's own store, and the paired computer's when this device owns it.
 // A member's device has none to clear there.
 describe('Clear conversations clears handoffs', () => {

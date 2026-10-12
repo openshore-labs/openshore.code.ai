@@ -36,7 +36,7 @@ export type TimeBucket =
 
 // The landing library, by time bucket. Warm maker's-delight, mostly soft
 // questions, held at an even indoor volume so no random pick shouts over its
-// neighbors. Final set from the Creative Studio + CMO voice pass. No em dashes,
+// neighbors. Final set from the design review + copy review voice pass. No em dashes,
 // by policy and by design.
 export const LANDING_LINES: Record<TimeBucket, readonly string[]> = {
   earlyMorning: [

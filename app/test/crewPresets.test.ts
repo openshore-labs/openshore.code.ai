@@ -40,7 +40,7 @@ describe('advisor team crew preset', () => {
     expect(names).toContain('Finance Advisor');
   });
 
-  // The Crew room counts the team in words (CMO, 2026-10-07), so the words
+  // The Crew room counts the team in words (copy review, 2026-10-07), so the words
   // follow the preset: eight in all, one reviewer, three that step in, and
   // four that wait to be asked.
   it("matches the Crew room's offer, member for member", () => {

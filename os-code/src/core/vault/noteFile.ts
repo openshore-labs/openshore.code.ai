@@ -2,7 +2,7 @@
 // written, shared by the engine's vault tools, the routine scheduler, and the
 // Electron main process (which imports it from os-code/dist, the way it
 // imports loadVaultDir). Node-side on purpose, so it lives outside
-// src/harness/, whose purity guard covers that folder. (Vault v1, CTO F1, F2.)
+// src/harness/, whose purity guard covers that folder. (Vault v1, tech review F1, F2.)
 //
 // The version is the bigint lstat token "ino:mtimeNs:size", built only by
 // noteVersion and compared with === only. The inode catches every rename-over

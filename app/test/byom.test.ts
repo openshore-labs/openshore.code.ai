@@ -42,12 +42,12 @@ describe('byom helpers', () => {
     expect(byomHost('http://')).toBeUndefined();
   });
 
-  it('assumes an 8k window when the connection names none (CTO J4)', () => {
+  it('assumes an 8k window when the connection names none (tech review J4)', () => {
     expect(BYOM_DEFAULT_CONTEXT_TOKENS).toBe(8192);
   });
 });
 
-describe('plain http only to your own hosts (CTO review 2026-10-01)', () => {
+describe('plain http only to your own hosts (tech review 2026-10-01)', () => {
   it('refuses plain http to a public server and allows it at home', async () => {
     const { byomPlainHttpToCloud } = await import('../src/lib/byom.js');
     expect(byomPlainHttpToCloud('http://api.example.com/v1')).toBe(true);

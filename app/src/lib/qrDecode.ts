@@ -17,7 +17,7 @@ export function decodeQrFromImageData(img: PixelBuffer): string | undefined {
   return text ? text : undefined;
 }
 
-/** The desktop's pairing QR (pairing review, CX 2026-10-01) is a link,
+/** The desktop's pairing QR (pairing review, UX review 2026-10-01) is a link,
  *  `oscode://pair?u=<address>&c=<claim>`, so the iPhone's own Camera app opens
  *  OpenShore with it, and the in-app scanner reads the same link. The claim is
  *  a one-time code the phone trades at POST /pair/claim for its own

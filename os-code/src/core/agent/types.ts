@@ -18,7 +18,7 @@ export interface ApprovalRequest {
   detail?: string;
   /** Why this card asks when it otherwise would not, in one plain line a
    *  client shows above the detail or diff: a project note change after the
-   *  chat read a private note (CX and CMO, 2026-10-08, A). Additive: an older
+   *  chat read a private note (UX and copy review, 2026-10-08, A). Additive: an older
    *  engine sends none, and a client then shows the card as before. */
   why?: string;
   /** True for a tool that asks every time (vaultWrite): an allow for the
@@ -26,7 +26,7 @@ export interface ApprovalRequest {
    *  only approve and decline. Absent for every other tool. */
   alwaysAsk?: boolean;
   /** True while the session holds the project's secrets (the egress
-   *  lockdown), so a client says why it is asking on every card (CX 7).
+   *  lockdown), so a client says why it is asking on every card (UX review 7).
    *  Additive: absent on every other session. */
   lockdown?: boolean;
   /** For a commit: every file it would stage, each flagged when it may hold a
@@ -119,7 +119,7 @@ export type AgentEvent =
       type: 'task-start';
       input: string;
       /** The task came in marked local-only (a private plan's step, sent
-       *  with POST /sessions/:id/input `localOnly`, CX and CMO 2026-10-08,
+       *  with POST /sessions/:id/input `localOnly`, UX and copy review 2026-10-08,
        *  J): the chat holds a private note's text from its first word, so a
        *  replay marks it again. Additive. */
       localOnly?: true;
@@ -130,7 +130,7 @@ export type AgentEvent =
       model: string;
       providerKind: 'local' | 'cloud';
       /** 'union' when this turn's reply is held to the tool-or-answer schema
-       *  (`harness.decoding.union`, CTO 6), so the eval can tell whether the
+       *  (`harness.decoding.union`, tech review 6), so the eval can tell whether the
        *  switch engaged. Additive: absent on every other turn. */
       decoding?: 'union';
     }
@@ -142,8 +142,8 @@ export type AgentEvent =
       call: ParsedToolCall;
       /** For a handoff to another model (delegate, analyzeImage,
        *  generateImage): the model the step goes to and whether it leaves
-       *  this network, so a client names it and wears the Cloud chip (CX and
-       *  CMO, 2026-10-08, D). Absent offline, where the router picks the
+       *  this network, so a client names it and wears the Cloud chip (UX review and
+       *  copy review, 2026-10-08, D). Absent offline, where the router picks the
        *  model as it runs; absent when no specialist is placed for the role,
        *  so the Reasoning model takes the step itself; and from an older
        *  engine. Additive. */
@@ -156,7 +156,7 @@ export type AgentEvent =
       durationMs: number;
       /** Set when the harness answered this call from the record instead of
        *  running it: the same call again with nothing changed since
-       *  ('exact'), or two calls taking turns ('alternating', CTO 6). The
+       *  ('exact'), or two calls taking turns ('alternating', tech review 6). The
        *  eval counts these as `repeatBreaks`. Additive. */
       repeat?: 'exact' | 'alternating';
     }
@@ -171,7 +171,7 @@ export type AgentEvent =
       dollars: number;
       contextPercent: number;
       /** Prompt tokens read from the provider's prompt cache this turn (Vault
-       *  M5, CTO J17). Additive: absent when the provider reports none. */
+       *  M5, tech review J17). Additive: absent when the provider reports none. */
       cacheReadTokens?: number;
       /** Prompt tokens written to the provider's prompt cache this turn. */
       cacheWriteTokens?: number;
@@ -185,7 +185,7 @@ export type AgentEvent =
   // A handoff is about to go to a model off this network (a placed cloud
   // specialist, a cloud image server): the turn's reach is cloud from here,
   // whatever the model that wrote the call, so a client turns its pill amber
-  // for this turn and keeps the turn's model name (CX and CMO, 2026-10-08,
+  // for this turn and keeps the turn's model name (UX and copy review, 2026-10-08,
   // D). Emitted just before that handoff's tool-start. Additive.
   | { type: 'reach'; model: string; providerKind: 'cloud' }
   | { type: 'task-done'; reason: StopReason; message?: string }
@@ -201,7 +201,7 @@ export type AgentEvent =
       summary: string;
       questions: Array<{ id: string; question: string; options?: string[] }>;
     }
-  // The app's Stack chat (founder, 2026-10-07): a picture came in, or a
+  // The app's Stack chat (2026-10-07): a picture came in, or a
   // plan's image step started, and nothing here can read images. The chat
   // answers with two doors, a local model to source and a cloud model to
   // connect, never an error. `from` says whether a picture went unread
@@ -331,7 +331,7 @@ export type AgentEvent =
       room?: 'more' | 'full';
       gb?: number;
     }
-  // Retrieval before turn one (`harness.retrieval.firstTurn: 'on'`, CTO 6):
+  // Retrieval before turn one (`harness.retrieval.firstTurn: 'on'`, tech review 6):
   // the harness searched the workspace for the task's words and put these
   // excerpts at the head of the task, on a seat that stays on this network.
   // `sources` names each excerpt by file and first line; `tokens` is what the
@@ -350,7 +350,7 @@ export type AgentEvent =
       line: string;
       spend: boolean;
     }
-  // The vault context pack this task's seat was given (Vault M4, CTO I10).
+  // The vault context pack this task's seat was given (Vault M4, tech review I10).
   // Emitted at the task's first render and again only when the sources change
   // (an escalation re-renders for the new seat). `seat` is 'cloud' when the
   // seat's requests leave this network (amber), else 'local' (teal).

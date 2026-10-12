@@ -1,4 +1,4 @@
-// COPY GLOSSARY GUARD (Creative Studio brand sweep, founder 2026-09-24). One
+// COPY GLOSSARY GUARD (design review brand sweep, 2026-09-24). One
 // thing has one name everywhere a person reads it: the room is Stack (never
 // "Your stack" or "My Stack" as a name), the machine is "your computer", a
 // field for an endpoint is an Address, the pairing room is Desktop + phone, and
@@ -7,7 +7,6 @@
 // person can read) and fails on any retired string. It also pins the room
 // names to one exported list (navRooms.ts ROOM_LABELS) that the Sidebar, the
 // BackBar, and Harbor Lite's Menu card all read, so they cannot drift apart.
-// The plan and its glossary: docs/brand-sweep-2026-09-24.md.
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -54,8 +53,8 @@ const RETIRED: Array<{ pattern: RegExp; use: string }> = [
   { pattern: /\bMy Crew\b/, use: 'Crew' },
   { pattern: /\bDesktop and phone\b/, use: 'Computer' },
   { pattern: /\bDesktop connection\b/, use: 'Computer' },
-  // Renamed by CX, 2026-10-01 (one plain word, and "hub" stays out of copy),
-  // then by the founder, 2026-10-07: the room is Computer, and linking a
+  // Renamed by UX review, 2026-10-01 (one plain word, and "hub" stays out of copy),
+  // then by the 2026-10-07: the room is Computer, and linking a
   // device to a machine is docking.
   { pattern: /\bDesktop \+ phone\b/, use: 'Computer' },
   { pattern: /\bHub pairing\b/i, use: 'Computer' },
@@ -125,7 +124,7 @@ describe('retired UI strings', () => {
   });
 });
 
-// Title Case only for proper nouns (founder, 2026-09-24); Sentence case for the
+// Title Case only for proper nouns (2026-09-24); Sentence case for the
 // rest, where only the first word is capitalized (and a proper noun inside it,
 // like Codemagic).
 const PROPER_NOUN_ROOMS = new Set([

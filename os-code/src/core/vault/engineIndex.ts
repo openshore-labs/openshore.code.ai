@@ -1,4 +1,4 @@
-// The engine's Vault index (Vault M4, CTO I7; plan 4.6): one index per vault
+// The engine's Vault index (Vault M4, tech review I7; plan 4.6): one index per vault
 // root, process-wide, keyed by vaultIndexKey (H3) and saved to that root's own
 // file under the engine state folder (oscHome()/vault-index). Two roots never
 // share an index, a file, or a search, so a member's session on a shared hub

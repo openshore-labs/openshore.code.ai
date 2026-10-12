@@ -12,7 +12,7 @@
 // version (compare-and-swap, Vault M1 1.1): a save typed against an older
 // version comes back as a conflict, never a silent overwrite.
 //
-// Vault settings (Vault M7, CTO L7): `writeConfig` is one guarded IPC,
+// Vault settings (Vault M7, tech review L7): `writeConfig` is one guarded IPC,
 // osc:vaultWriteConfig, to main's `writeVaultConfigFile`, which makes
 // `.oscode` if it is missing and writes `vault.json` through the jail without
 // following a link. Only `oscode/vault` is ever sent.
@@ -50,7 +50,7 @@ function fs() {
   return b;
 }
 
-/** The Vault M6 bridge calls (CTO K13), one IPC each. */
+/** The Vault M6 bridge calls (tech review K13), one IPC each. */
 type M6Call =
   | 'vaultRename'
   | 'vaultFolders'
@@ -117,7 +117,7 @@ export async function openDeviceAttachment(path: string): Promise<{ ok: boolean 
  *  VaultIndexSaveResult): it refuses anything over 32 MB. */
 export type VaultIndexSaveAnswer = { ok: true; bytes: number } | { ok: false; reason: 'too-large' };
 
-/** The bridge calls the Vault M3 index and config work adds (CTO H3, H5),
+/** The bridge calls the Vault M3 index and config work adds (tech review H3, H5),
  *  one IPC each: osc:vaultIndexLoad, osc:vaultIndexSave, osc:vaultReadConfig.
  *  Main owns the file and the path (`oscHome()/vault-index/<key>.json`, the
  *  vault's config folder); the renderer sends only a blob or a logical name.

@@ -28,6 +28,8 @@ import { useScrollMemory } from './hooks/useScrollMemory.js';
 import { useDrawerGesture } from './hooks/useDrawerGesture.js';
 import { useKeyboardInset } from './hooks/useKeyboardInset.js';
 import { revealActionOf, revealPlan, scrollParentOf, viewTopOf } from './lib/revealField.js';
+import { stampResumePoint } from './lib/resumePoint.js';
+import { useNewChatDoors } from './hooks/useNewChatDoors.js';
 import { drawerExitMs, drawerWidth } from './lib/motion.js';
 
 // Every room but the chat is its own chunk (review 9: the whole app used to
@@ -135,6 +137,8 @@ export function App() {
   // The keyboard inset listener lives here, from boot, so no screen can
   // mount after the keyboard has already started to rise and miss it.
   useKeyboardInset();
+  // Cmd+N and the tray's and Dock's New chat (lib/newChat.ts).
+  useNewChatDoors();
   // The drawer and the toast stay mounted through their exits (motion standard:
   // everything that animates in animates out). The toast keeps its last text so
   // the fade-out does not empty the pill mid-flight. The drawer's hold is the
@@ -262,10 +266,10 @@ export function App() {
       const inset = root.classList.contains('kb-open')
         ? parseFloat(getComputedStyle(root).getPropertyValue('--kb-inset')) || keyboardHeight
         : keyboardHeight;
-      // Rest the field just above the keyboard (founder, 2026-10-02), not
+      // Rest the field just above the keyboard (2026-10-02), not
       // centred: its own scroller moves, and the kb-open padding gives a field
       // near the foot of a room the room to rise.
-      // A field marked with its commit button rises with it (CX, 2026-10-02).
+      // A field marked with its commit button rises with it (UX review, 2026-10-02).
       const scroller = scrollParentOf(el);
       const box = el.getBoundingClientRect();
       const delta = revealPlan({
@@ -318,6 +322,34 @@ export function App() {
     };
     document.addEventListener('click', onTap, true);
     return () => document.removeEventListener('click', onTap, true);
+  }, []);
+
+  // Leaving the app restarts the resume clock (lib/resumePoint.ts), so "a quick
+  // return" is counted from when the person left, not from their last chat
+  // switch. The web layer's own events cover every platform; iOS adds its
+  // app-state event, which can arrive when visibility does not change.
+  useEffect(() => {
+    let removeNative: (() => void) | undefined;
+    const onHidden = () => {
+      if (document.visibilityState === 'hidden') stampResumePoint();
+    };
+    const onPageHide = () => stampResumePoint();
+    document.addEventListener('visibilitychange', onHidden);
+    window.addEventListener('pagehide', onPageHide);
+    if (platform() === 'ios') {
+      void (async () => {
+        const { App: CapApp } = await import('@capacitor/app');
+        const l = await CapApp.addListener('appStateChange', ({ isActive }) => {
+          if (!isActive) stampResumePoint();
+        });
+        removeNative = () => void l.remove();
+      })();
+    }
+    return () => {
+      document.removeEventListener('visibilitychange', onHidden);
+      window.removeEventListener('pagehide', onPageHide);
+      removeNative?.();
+    };
   }, []);
 
   // When the app returns to the foreground, re-check a commercial org's seat

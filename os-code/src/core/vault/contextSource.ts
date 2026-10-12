@@ -1,4 +1,4 @@
-// The engine's source for a session's vault context pack (Vault M4, CTO I7,
+// The engine's source for a session's vault context pack (Vault M4, tech review I7,
 // I8). Once per task (`prepare`), it gathers what a render needs apart from
 // the seat: the vault index when it is ready in time, the note bodies the
 // widest plan asks for, this project's Current State, the frontmatter pins,
@@ -13,7 +13,7 @@
 // and the build goes on in the background for the next task.
 //
 // Vault M5 adds two inputs the person placed, not the index: the project's own
-// pins (CTO J14), read first, in both modes, with privacy judged from the
+// pins (tech review J14), read first, in both modes, with privacy judged from the
 // note itself; and the latest handoff (J13), read on the session's first
 // prepare only. The handoff stays a full-mode layer, so by default it reaches
 // no seat until the 4.8 eval says it should.
@@ -47,7 +47,7 @@ import { engineVaultIndex, type EngineVaultIndex } from './engineIndex.js';
 import { LIST_CONCURRENCY, eachLimited } from './listNotes.js';
 import { readNote } from './noteFile.js';
 
-// The cold budget moved to the pure core (Vault M5, CTO J1) so the app waits
+// The cold budget moved to the pure core (Vault M5, tech review J1) so the app waits
 // the same; re-exported here for existing importers.
 export { VAULT_PACK_COLD_MS } from '../../harness/vaultContext.js';
 
@@ -71,14 +71,14 @@ export interface VaultContextSourceOptions {
     | Promise<{ path: string; text: string } | undefined>;
   /** The session's lockdown, carried into the host's plan. */
   lockdown?: { egress: boolean; secrets: boolean };
-  /** The project's own pins (`BootstrapOptions.vaultPins`, CTO J14), note
+  /** The project's own pins (`BootstrapOptions.vaultPins`, tech review J14), note
    *  paths in the person's order. Read first by every prepare. */
   projectPins?: readonly string[];
-  /** The latest stored handoff (CTO J13), asked once, on the first prepare
+  /** The latest stored handoff (tech review J13), asked once, on the first prepare
    *  only; undefined or a throw means none. The caller gates it (the
    *  `vault.handoff` key, Memory, a fresh session). */
   handoff?: () => string | undefined | Promise<string | undefined>;
-  /** The vault's resolved settings as last refreshed (Vault M7, CTO L2):
+  /** The vault's resolved settings as last refreshed (Vault M7, tech review L2):
    *  the templates folder and Obsidian's ignore filters are left out of the
    *  retrieval reads. Unset leaves every note a candidate. */
   settings?: () => Pick<ResolvedVaultSettings, 'templates' | 'ignore'> | undefined;

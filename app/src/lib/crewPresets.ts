@@ -1,11 +1,11 @@
 // The advisor team, as a Crew preset: a ready-made set of named perspectives
 // the Reasoning model can bring in, in their own voice, at the right moment.
-// Written to be project-agnostic (founder, 2026-09-15): general advisors any
+// Written to be project-agnostic (2026-09-15): general advisors any
 // person would want for whatever they are building or deciding, not a startup
 // C-suite. The business abilities stay (marketing, finance, strategy); the
 // framing does not assume a company. All advisory: they surface findings and
 // recommendations, the person decides. Activity levels: the Technical Advisor
-// reviews the work; Marketing, Finance, and Creative Studio step in on their
+// reviews the work; Marketing, Finance, and design review step in on their
 // own when a decision needs their view; the rest speak only when asked by name.
 import type { CrewActivityLevel } from '../state/types.js';
 

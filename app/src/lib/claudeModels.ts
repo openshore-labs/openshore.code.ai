@@ -74,7 +74,7 @@ export const DEFAULT_CLAUDE_MODEL = 'claude-opus-5';
 /** The Claude model an image goes to when nothing in the stack reads images:
  *  the last of the current lineup, which runs most-capable to fastest, so the
  *  one that costs the person least. Every Claude model reads images, and
- *  reading one needs no top-tier reasoning. The founder kept it on 2026-10-07
+ *  reading one needs no top-tier reasoning. A maintainer kept it on 2026-10-07
  *  (D13, B) on the condition that it is named: the Stack's Image reading rows,
  *  the approval card and a play's brief all name it through this function,
  *  never a literal (providers.ts, cloudImageReaders). */

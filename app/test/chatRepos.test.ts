@@ -1,4 +1,4 @@
-// The repo picker in the chat header (founder, 2026-09-03: a multi-select of
+// The repo picker in the chat header (2026-09-03: a multi-select of
 // the repositories connected to the account, the Claude Code way, in basic
 // chats and in projects). The pure model is tested outright; the wiring (the
 // header, the first send, the project seed, the context that rides into each
@@ -296,7 +296,7 @@ describe('why a GitHub list can look short', () => {
     private: priv,
     owner: { login: 'openshore-labs' },
   });
-  // The founder's account on 2026-09-25: four public repositories and the
+  // A maintainer's account on 2026-09-25: four public repositories and the
   // rest private; the picker showed exactly the four public ones.
   const PUBLIC = [
     'openshore.code.ai',
@@ -503,11 +503,16 @@ describe('the wiring', () => {
     expect(chat).not.toMatch(/thread\.model\.name\} · \$\{thread\.model\.kind\}/);
     expect(chat).toMatch(/<RepoPicker[\s\S]*?selected=\{conv\.repoIds \?\? \[\]\}/);
     expect(chat).toMatch(/<RepoPicker[\s\S]*?selected=\{pendingRepoIds\}/);
-    expect(chat).toMatch(/newConversation\(source, \{\s*repoIds: pendingRepoIds,/);
+    // Only a project chat has repositories; a plain chat is like claude.ai.
+    expect(chat).toMatch(/projectScope \? \{ repoIds: pendingRepoIds, projectChat: true \}/);
+    expect(chat).toMatch(/\{showRepoPicker \? \(\s*<RepoPicker/);
+    expect(chat).toMatch(/\{projectScope \? \(\s*<RepoPicker/);
   });
 
   it('seeds a chat from its project and lets the chat keep its own list', () => {
-    expect(store).toMatch(/const repoIds = opts\?\.repoIds \?\? project\?\.repoIds \?\? \[\]/);
+    expect(store).toMatch(
+      /const repoIds = isProjectChat \? \(opts\?\.repoIds \?\? project\?\.repoIds \?\? \[\]\) : \[\]/,
+    );
     expect(store).toMatch(/async setConversationRepos\(id, repoIds\)/);
     expect(read('state/types.ts')).toMatch(/repoIds\?: string\[\];/);
   });
@@ -520,7 +525,8 @@ describe('the wiring', () => {
     // The daemon path hands the repo context (instructions) over explicitly,
     // NOT the whole sessionOpts, so a device's project secrets never travel to a
     // remote machine. The repo context still reaches it via instructions.
-    expect(store).toMatch(/daemonCreateSession\(settings\.daemon, cwd, \{/);
+    // On the chat's own machine (lib/runsOn.ts), not just the active one.
+    expect(store).toMatch(/daemonCreateSession\(target, cwd, \{/);
     expect(store).toMatch(/instructions: sessionOpts\.instructions/);
     // Repo context reaches every driver. The shared helper carries it for the
     // on-device and cloud drivers (one definition, no duplication), and the
@@ -587,12 +593,13 @@ describe('the wiring', () => {
 
   it('a started session says where it works and offers a new chat in the picked folder', () => {
     // The folder the session started in is kept on the chat...
-    expect(store).toMatch(/bindSessionId\(conv\.id, sessionId, cwd\)/);
-    expect((store.match(/bindSessionId\(conv\.id, sessionId, cwd\)/g) ?? []).length).toBe(2);
+    // ...with the machine it opened on, so it goes back there (lib/runsOn.ts).
+    const binds = /bindSessionId\(conv\.id, sessionId, cwd, (THIS_COMPUTER|target\.baseUrl)\)/g;
+    expect((store.match(binds) ?? []).length).toBe(2);
     // ...and handed to the picker, which offers a new chat when it differs.
     expect(chat).toMatch(/workingIn=\{[\s\S]{0,120}conv\.source\.cwd/);
     expect(chat).toMatch(
-      /onNewChat=\{\(ids\) => void newConversation\(\{ kind: 'desktop' \}, \{ repoIds: ids \}\)\}/,
+      /onNewChat=\{\(ids\) =>\s*void newConversation\(\{ kind: 'desktop' \}, \{ repoIds: ids, projectChat: true \}\)/,
     );
     const picker = read('components/RepoPicker.tsx');
     expect(picker).toMatch(/firstPicked !== workingIn/);

@@ -1,4 +1,4 @@
-// No dead ends in chat (founder, 2026-09-25): a failed turn always leaves a way
+// No dead ends in chat (2026-09-25): a failed turn always leaves a way
 // to keep talking. These pin the pure choices behind the stopped card.
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';

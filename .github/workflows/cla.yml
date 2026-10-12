@@ -1,4 +1,4 @@
-# The contributor license agreement check (CLA.md, founder 2026-10-11). On a
+# The contributor license agreement check (CLA.md, 2026-10-11). On a
 # pull request from someone who has not signed, it comments with a link to
 # CLA.md and the sentence to reply with; the reply records the signature in
 # signatures/cla.json on the cla-signatures branch, and the check turns green.

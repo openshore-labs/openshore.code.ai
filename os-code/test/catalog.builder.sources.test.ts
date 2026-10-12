@@ -1,6 +1,6 @@
 // Metadata source fetching, pinned with fixtures (no live network: this
 // sandbox blocks huggingface.co on purpose). These tests lock the three bugs
-// the CTO diagnosed after the first live CI run published popularity empty on
+// the tech review diagnosed after the first live CI run published popularity empty on
 // every model:
 //   Bug A  the HF repo id "org/name" must be encoded PER SEGMENT, so the URL
 //          keeps a literal slash, not "%2F" (which 404s every lookup).

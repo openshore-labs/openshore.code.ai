@@ -1,4 +1,4 @@
-// Chain of Thought (Settings, Reasoning; founder 2026-09-25): off by default.
+// Chain of Thought (Settings, Reasoning; 2026-09-25): off by default.
 // On, a model's reasoning streams into the thinking block above its answer and
 // folds when the answer starts; off, no model is asked to think out loud and
 // any reasoning it sends stays out of the chat. The routing rules themselves

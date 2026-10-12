@@ -3,10 +3,10 @@
 // a trip to a setup room (the Stack, pairing, a key) never loses it. On the
 // desktop with nothing set up, the message waits on the First Seat and goes
 // out the moment the engine has a model, as a plain chat that needs no
-// account (CX ruling 2, CTO ruling 8). Signed out, the composer's own default
+// account (UX review ruling 2, tech review ruling 8). Signed out, the composer's own default
 // is that free chat too, so a first message never runs into the sign-in sheet.
 //
-// The rules live here as plain functions a test reads without the store (CTO
+// The rules live here as plain functions a test reads without the store (tech review
 // ruling 9); the store wires them into its hold, its settle, and the
 // composer's default brain. Test: app/test/firstRunDesktop.test.ts.
 import type { ConversationSource } from './types.js';
@@ -15,7 +15,7 @@ import { HARBOR_MASTER_MODEL_NAME } from '../lib/harborMaster.js';
 
 const SEAT = HARBOR_MASTER_MODEL_NAME;
 
-/** CX ruling 2's words on the First Seat. `signIn` is one sentence with its
+/** UX review ruling 2's words on the First Seat. `signIn` is one sentence with its
  *  middle words as the link that opens the plain Sign in sheet. */
 export const FIRST_SEAT_COPY = {
   held: `Your message is saved. It sends when ${SEAT} is ready.`,
@@ -26,7 +26,7 @@ export const FIRST_SEAT_COPY = {
   },
   failed: 'Your message is still saved.',
   sending: `${SEAT} is ready. Sending your message.`,
-  /** The link after the saved line (CX cleanup 8): the words go back into
+  /** The link after the saved line (UX review cleanup 8): the words go back into
    *  the composer, and Send saves them again. */
   edit: 'Edit',
   editLabel: 'Edit your saved message',
@@ -81,6 +81,8 @@ export function waitsOnFirstSeat(s: {
   statusKnown: boolean;
   configured: boolean;
   cloudReady: boolean;
+  /** A new chat here runs on a docked machine (lib/runsOn.ts). */
+  runsElsewhere?: boolean;
 }): boolean {
   if (!s.desktop) return false;
   return firstSeatNeeded({
@@ -90,6 +92,7 @@ export function waitsOnFirstSeat(s: {
     stackReady: false,
     cloudReady: s.cloudReady,
     hubPaired: false,
+    runsElsewhere: s.runsElsewhere,
   });
 }
 

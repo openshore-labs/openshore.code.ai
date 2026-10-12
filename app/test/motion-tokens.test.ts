@@ -27,7 +27,7 @@ const CANON: Record<string, string> = {
   '--dur-5': '320ms',
   '--dur-6': '420ms',
   '--dur-7': '520ms',
-  // The swell (Creative Studio "Swell Line", 2026-09-24): the first open's
+  // The swell (design review "Swell Line", 2026-09-24): the first open's
   // letter and the boot splash rise 0.14em, crest 0.05em above, and settle on
   // this near-symmetric curve, so the crest has zero speed and reads as a
   // swell, not a bounce. index.html mirrors these values literally (it paints

@@ -1,4 +1,4 @@
-// Desktop Offline (founder, 2026-10-07): main's watch on this computer's
+// Desktop Offline (2026-10-07): main's watch on this computer's
 // connection. Two things make the desktop offline: no network (Electron's own
 // net.isOnline(), read here, which makes no request and asks no server; a LAN
 // with no internet beyond it can still read as online), or the person

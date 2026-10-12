@@ -1,5 +1,5 @@
 // The main-process streaming channel for a model seat's reply (build
-// 2026-09-29, CTO ruling 7; electron/chatStream.ts). The renderer is untrusted,
+// 2026-09-29, tech review ruling 7; electron/chatStream.ts). The renderer is untrusted,
 // so the channel is narrow: POST to a chat path only, a header allowlist, no
 // redirects, public https pinned, plain http only on your own network, a cap
 // and two clocks, and teardown when the page goes. These run the real module

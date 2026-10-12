@@ -1,8 +1,8 @@
 // The security package's two transcript cards (D3 and C1), mounted in a real
-// (small) DOM: the secrets safety card (CX 7) says why it asks on every card
+// (small) DOM: the secrets safety card (UX review 7) says why it asks on every card
 // while the lockdown is on, lists a commit's files with the flagged ones
 // unticked, warns on ticking one (naming the platform only when the commit
-// pushes), and answers with the ticked list; the truncated window card (CX 6)
+// pushes), and answers with the ticked list; the truncated window card (UX review 6)
 // renders each room variant with its exact words, and its button calls
 // through the store to the driver.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -117,8 +117,8 @@ const stage: CommitStage = {
   ],
 };
 
-describe('the secrets safety cards (CX 7)', () => {
-  it('uses CX 7 words exactly', () => {
+describe('the secrets safety cards (UX review 7)', () => {
+  it('uses UX review 7 words exactly', () => {
     expect(LOCKDOWN_LINE).toBe(
       "This chat can see your project's Tokens and Secrets, so OpenShore asks before every command and commit.",
     );
@@ -225,8 +225,8 @@ async function showCut(item: Omit<CutItem, 'id' | 'kind'>) {
   return taps;
 }
 
-describe('the truncated window card (CX 6)', () => {
-  it('uses CX 6 words exactly', () => {
+describe('the truncated window card (UX review 6)', () => {
+  it('uses UX review 6 words exactly', () => {
     expect(windowCutTitle('qwen2.5-coder:7b')).toBe(
       'qwen2.5-coder:7b could not see the whole chat',
     );

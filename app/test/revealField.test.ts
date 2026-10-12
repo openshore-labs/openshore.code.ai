@@ -1,4 +1,4 @@
-// A focused field rests just above the on-screen keyboard (founder,
+// A focused field rests just above the on-screen keyboard (maintainer,
 // 2026-10-02: the Cloud Connections key field sat under the keyboard).
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -17,7 +17,7 @@ describe('revealDelta', () => {
   });
 });
 
-// The field and its Save rise together where the form asks (CX, 2026-10-02).
+// The field and its Save rise together where the form asks (UX review, 2026-10-02).
 describe('revealPlan', () => {
   const base = { viewTop: 60, viewportHeight: 852, inset: 336 };
   it('lifts a field with no marked action exactly as before', () => {

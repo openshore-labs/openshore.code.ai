@@ -8,13 +8,22 @@
 #   os-code/scripts/pack-server.sh <version> <out-dir> [node-tarball]
 #
 # Without a node tarball it downloads the .nvmrc version from nodejs.org and
-# checks it against that release's SHASUMS256.txt.
+# checks it against that release's SHASUMS256.txt. The package is for the
+# machine that packs it (x64 or arm64): node-pty is built for this machine's
+# processor on install, so an arm64 package is packed on an arm64 runner.
 set -euo pipefail
 
 VERSION=${1:?version, like 0.1.9}
 OUT=${2:?output directory}
 NODE_TARBALL=${3:-}
-ARCH=x64
+case "$(uname -m)" in
+  x86_64 | amd64) ARCH=x64 ;;
+  aarch64 | arm64) ARCH=arm64 ;;
+  *)
+    echo "pack-server.sh: no server package for $(uname -m)" >&2
+    exit 1
+    ;;
+esac
 NAME="openshore-server-$VERSION-linux-$ARCH"
 NODE_VERSION=$(tr -d 'v[:space:]' <.nvmrc)
 NODE_DIST="node-v$NODE_VERSION-linux-$ARCH"
@@ -51,7 +60,7 @@ WRAP
 chmod 755 "$ROOT/bin/osc"
 printf '%s\n' "$VERSION" >"$ROOT/VERSION"
 
-# Owned by root in the archive, whoever packs it (CTO review 2026-10-08):
+# Owned by root in the archive, whoever packs it (tech review 2026-10-08):
 # the runner's own user id must never own the engine on a server.
 tar --owner=0 --group=0 --numeric-owner -czf "$OUT/$NAME.tar.gz" -C "$STAGE" "$NAME"
 cp os-code/scripts/install-server.sh "$OUT/install-server.sh"

@@ -15,7 +15,7 @@
 // same-name match as a conflict to surface, because Drive (unlike a
 // filesystem) does not enforce unique names within a folder, and a stale or
 // missing cache entry could otherwise fork one logical path into two file
-// ids (CTO must-fix, os-code/DECISIONS.md).
+// ids (tech review must-fix, os-code/DECISIONS.md).
 import { isVaultConfigName, type ConfigRead, type VaultConfigName } from 'os-code/protocol';
 import { gdriveAccessToken } from './gdriveAuth.js';
 import {

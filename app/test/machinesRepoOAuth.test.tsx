@@ -1,4 +1,4 @@
-// Repositories' connect sheet for a one-tap platform (D14, founder
+// Repositories' connect sheet for a one-tap platform (D14, maintainer
 // 2026-10-07): the sheet leads with the sign-in, still offers the access
 // token path, and when the provider refuses the redirect it shows the exact
 // Callback URL to register. Mounted in a real DOM (test/support/dom.ts).
@@ -87,7 +87,7 @@ async function tapRow(label: string): Promise<void> {
 
 describe('a one-tap platform', () => {
   // The row's tap opens the sheet, and the sheet holds both doors, so the
-  // row names both (CMO), never "one tap".
+  // row names both (copy review), never "one tap".
   it('reads Sign in, or paste an access token, and its sheet leads with the sign-in', async () => {
     await dom.render(<ReposScreen />);
     const subs = [...dom.container.querySelectorAll('.settings-row-sub')].map((s) => s.textContent);

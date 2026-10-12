@@ -31,7 +31,7 @@ export function scrollParentOf(el: Element): Element {
 }
 
 /** A field rests with its primary action where its container asks for it
- *  (CX, 2026-10-02): a block marked `data-reveal-with` names its commit
+ *  (UX review, 2026-10-02): a block marked `data-reveal-with` names its commit
  *  button with `data-reveal-primary`, and the two rise together so Save is
  *  never under the keyboard. Unmarked fields rise alone, as before. */
 export function revealActionOf(field: Element): Element | undefined {

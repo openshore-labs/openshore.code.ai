@@ -1,5 +1,5 @@
 // osc key: keep a provider's API key on this machine for its coding sessions
-// (keys on your server, founder 2026-10-09). The key is read from the terminal
+// (keys on your server, 2026-10-09). The key is read from the terminal
 // without echo, or from a pipe, and never from the command line, where ps and
 // the shell history would keep it. It is stored the way the daemon's key
 // routes store it (auth/providerKeys.ts), so a key added over SSH never

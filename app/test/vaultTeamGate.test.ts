@@ -1,4 +1,4 @@
-// What the team vault refuses before any server call (CX Y14, Y15; 0025's
+// What the team vault refuses before any server call (UX review Y14, Y15; 0025's
 // OV402 and OV403): one answer the store asks before every write it can
 // still be handed after the room left the control out (an Undo toast up, a
 // Trash page or a resolve sheet already open when the plan lapsed).

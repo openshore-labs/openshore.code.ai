@@ -1,4 +1,4 @@
-// The phone's accessory bar above the keyboard (Vault M6, 6.7; CTO K14, CX
+// The phone's accessory bar above the keyboard (Vault M6, 6.7; tech review K14, UX review
 // X15). One row that sits on the keyboard: four tools while no link is open
 // (Insert link, Insert tag, Make this line a task, Hide keyboard), and the
 // link suggestions as chips while one is (the screen passes a
@@ -30,7 +30,7 @@ export interface AccessoryEdit {
 }
 
 /** Insert link: `[[]]` with the caret inside, or the selection wrapped.
- *  With the vault's `links.style` on markdown (Vault M7, CTO L2) a selection
+ *  With the vault's `links.style` on markdown (Vault M7, tech review L2) a selection
  *  becomes `[words]()` with the caret in the parentheses; with nothing
  *  selected `[[` still opens the suggestions, whose pick writes markdown. */
 export function linkEdit(

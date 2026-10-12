@@ -34,7 +34,7 @@ export interface DelegatedUsage {
   completionTokens: number;
 }
 
-/** How the router learns this computer is offline (Desktop Offline, founder
+/** How the router learns this computer is offline (Desktop Offline, maintainer
  *  2026-10-07), read at every use so a change applies to the next call. */
 export interface RouterOptions {
   /** True while this computer works offline: only a model whose requests

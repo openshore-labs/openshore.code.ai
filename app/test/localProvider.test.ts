@@ -172,7 +172,7 @@ describe('Local provider lists only notes (0.6)', () => {
     const r = 'vault.filter';
     await localProvider.write(r, 'Note.md', 'n');
     await localProvider.write(r, 'diagram.png', 'not a note');
-    // A dot path is refused on write (Vault M7, CTO L8), so a legacy body is
+    // A dot path is refused on write (Vault M7, tech review L8), so a legacy body is
     // planted straight into the store, as an older build would have left it.
     await expect(localProvider.write(r, '.obsidian/app.json', '{}')).rejects.toThrow(
       /not a note name/,
@@ -245,7 +245,7 @@ describe('a dot-typed note name never truncates the note (0.2, 0.6)', () => {
   });
 });
 
-// Compare-and-swap on Local (Vault M2 2.1, CTO G1). The version is a random
+// Compare-and-swap on Local (Vault M2 2.1, tech review G1). The version is a random
 // token made fresh on every write and stored in the body; a body written
 // before M2 has none, and its version is its updatedAt, which is what
 // versionOf answered in M1, so a draft stashed then still replays.
@@ -404,7 +404,7 @@ describe('storeKeys', () => {
   });
 });
 
-// Vault M6 (CTO K3, K6, R3): a rename is a key move in the chain that keeps
+// Vault M6 (tech review K3, K6, R3): a rename is a key move in the chain that keeps
 // the body whole, `v` included; Trash is one sealed key per entry plus a list
 // doc, and a restore puts back the same version, beside a taken name as
 // "{title} (restored)". The cross-provider cases live in providerContract;

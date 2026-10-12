@@ -683,6 +683,20 @@ import {
   type VaultMoveOfferState,
 } from '../lib/vaultOffer.js';
 import { Llama } from '../lib/llamaPlugin.js';
+import { readResumePoint, saveResumePoint } from '../lib/resumePoint.js';
+import type { DockPlace, MachineFacts } from '../lib/docking.js';
+import {
+  THIS_COMPUTER,
+  deviceWhere,
+  dockedTarget,
+  forgetRunsOn,
+  goneLine,
+  projectWhere,
+  sessionWhere,
+  whereKey,
+  type Where,
+  type WhereContext,
+} from '../lib/runsOn.js';
 import {
   dataUnlockState,
   isDesktop,
@@ -767,7 +781,7 @@ export interface AppSettings {
   searchBackend?: SearchBackend;
   /** Whether the Marketplace intro walkthrough has been shown. */
   libraryIntroSeen?: boolean;
-  /** The person's sidebar order (founder, 2026-10-01): the rooms above the
+  /** The person's sidebar order (2026-10-01): the rooms above the
    *  recent chats and the rooms below them, as last dragged. Settings and the
    *  sign-in card are pinned and never in it. Unset means the default order;
    *  lib/sidebarOrder.ts resolves it against the rooms this build shows. */
@@ -779,9 +793,9 @@ export interface AppSettings {
   /** Web search asks once on this device (the search words go to a search
    *  service, DuckDuckGo unless a key is set): 'allowed' after the person says
    *  yes, 'declined' after they turn it off in Settings; unset until asked
-   *  (founder, 2026-10-02, webSearchOn). */
+   *  (2026-10-02, webSearchOn). */
   webSearchConsent?: 'allowed' | 'declined';
-  /** Opening web pages for the coding agent on the computer (founder,
+  /** Opening web pages for the coding agent on the computer (maintainer,
    *  2026-10-02): ask (unset), always allow, or never. The computer holds the
    *  real value (`tools.webFetch`); this is the app's copy (lib/webFetchMode). */
   webFetchMode?: 'ask' | 'allow' | 'off';
@@ -814,7 +828,7 @@ export interface AppSettings {
   /** Appearance: follow the system (default), or pin light or dark. Follows a
    *  signed-in person to their other devices (lib/settingsReach.ts). */
   theme?: 'system' | 'light' | 'dark';
-  /** The app icon (Settings, Appearance, founder 2026-10-01): the default ink
+  /** The app icon (Settings, Appearance, 2026-10-01): the default ink
    *  tile, turquoise, or white (lib/appIcon.ts). Device-local, since the
    *  Home Screen icon is this device's. Unset is the default. */
   appIcon?: 'default' | 'turquoise' | 'white';
@@ -971,29 +985,29 @@ export interface AppSettings {
   /** When each paired hub last answered this device, keyed by base URL, so a
    *  chat banner can say "Last seen 2h ago" rather than nothing. Device local. */
   hubLastSeen?: Record<string, string>;
-  /** The vault context pack on app seats (Vault M5, CTO J4): 'auto' (the
+  /** The vault context pack on app seats (Vault M5, tech review J4): 'auto' (the
    *  reading while unset) follows the per-class table; 'off' gives no pack.
    *  Device local. */
   vaultContext?: AppVaultContextSetting;
   /** Room for notes on app seats and, through `vaultOverrides`, engine
-   *  sessions (Vault M7, CTO L13): lower-only under the machine's
+   *  sessions (Vault M7, tech review L13): lower-only under the machine's
    *  `vault.packSize`. Unset reads as the machine's. Device local. Wave 0:
    *  declared, not yet read (wave 2 wires it). */
   vaultPackSize?: AppVaultPackSize;
-  /** The Handoff switch (Vault M7, CTO L13, reconciliation 4): `'off'` stops
+  /** The Handoff switch (Vault M7, tech review L13, reconciliation 4): `'off'` stops
    *  handoff writes and reads for new chats; unset leaves the machine and the
    *  project in charge. Device local. Wave 0: declared, not yet read. */
   vaultHandoff?: AppVaultHandoffSetting;
-  /** An unpaired phone's own vault privacy rules (CTO J3): union-only over
+  /** An unpaired phone's own vault privacy rules (tech review J3): union-only over
    *  the source's rules, D5 defaults while unset. No UI until M7. Device
    *  local, never synced. */
   vaultPrivacy?: VaultPrivacySetting;
-  /** Anthropic prompt caching on app seats (CTO J16, J17). Off by default
+  /** Anthropic prompt caching on app seats (tech review J16, J17). Off by default
    *  (undefined means off), no UI in M5; flips only on the J19 number.
    *  Device local. */
   promptCache?: boolean;
   /** Where the personal vault was before pairing pointed it at the computer
-   *  (Vault M5, CTO J9), so unpairing returns it. Device local. */
+   *  (Vault M5, tech review J9), so unpairing returns it. Device local. */
   vaultBeforeHub?: VaultBeforeHub;
   /** The one-time "keep one vault on your computer" card (J9). Device local. */
   vaultHubOffer?: VaultHubOffer;
@@ -1001,12 +1015,12 @@ export interface AppSettings {
    *  first, at most 20 (J15, "Recently from your agent"). Device local. */
   vaultAgentWrites?: string[];
   /** Empty folders made on a storage without real folders (Local, Vault M6
-   *  6.2, CTO K5), per vault (`providerId::resourceId`), kept until a note
+   *  6.2, tech review K5), per vault (`providerId::resourceId`), kept until a note
    *  lands in them. Device local, never project data (K17). */
   vaultEmptyFolders?: Record<string, string[]>;
   /** The notes this device opened or saved, newest first, 20 per vault
    *  (`providerId::resourceId`), for Recent in search and the switcher
-   *  (Vault M6 6.1, CTO K9). Cleared on a repoint and with the chats.
+   *  (Vault M6 6.1, tech review K9). Cleared on a repoint and with the chats.
    *  Device local. */
   vaultRecent?: Record<string, VaultRecentEntry[]>;
 }
@@ -1117,7 +1131,7 @@ const VAULT_OPEN_WAIT_MS = 2000;
 
 /** What a driver build takes besides the chat and its seed. */
 interface BuildExtra {
-  /** A handoff for a desktop agent's first task (CTO J12). */
+  /** A handoff for a desktop agent's first task (tech review J12). */
   handoff?: string;
 }
 
@@ -1185,7 +1199,7 @@ export interface VaultHeldDraft {
    *  only until the app closes. */
   durable: boolean;
   /** The desktop folder only: the folder it was typed in, when that is not
-   *  the one the vault uses now (CTO F7.6), and how it reads. */
+   *  the one the vault uses now (tech review F7.6), and how it reads. */
   folder?: string;
   folderDisplay?: string;
 }
@@ -1269,7 +1283,7 @@ export interface VaultMoveResult {
 /** Every note body vaultReadAll could read, plus the paths it could not (a
  *  read that failed, or a note still downloading). Still an array, so a
  *  caller that only wants the bodies uses it as one. */
-/** A note or folder delete from the Vault room (Vault M6 6.3; CTO K6, R2):
+/** A note or folder delete from the Vault room (Vault M6 6.3; tech review K6, R2):
  *  moved to Trash where it is real, else deleted for good with the bytes
  *  held in memory for a courtesy Undo (absent when they could not be read).
  *  A refusal the store already said (a toast, the resolve path) is
@@ -1287,7 +1301,7 @@ export type VaultDeleteOutcome =
       partial?: TrashPartial;
     }
   // A refusal for good, as the whole line the room says (the team vault's
-  // admins-only delete, CX Y14, or a lapsed plan).
+  // admins-only delete, UX review Y14, or a lapsed plan).
   | { ok: false; reason: 'storage'; line: string }
   // Already gone elsewhere (a teammate deleted or moved it): its gone line.
   | { ok: false; reason: 'missing'; line: string }
@@ -1296,7 +1310,7 @@ export type VaultDeleteOutcome =
   | { ok: false; reason: 'changed'; line: string }
   | { ok: false; reason: 'storage' | 'unsupported' | 'missing' | 'changed' | 'downloading' };
 
-/** Today's note from the room (Vault M6 6.4; CTO K7, CX X11): an existing
+/** Today's note from the room (Vault M6 6.4; tech review K7, UX review X11): an existing
  *  note opens as it is, a new one opens in the editor with its line, and a
  *  vault that cannot start one says why. */
 export type VaultTodayOutcome =
@@ -1340,7 +1354,7 @@ function asSentence(line: string): string {
 // Drivers are module state, keyed by conversation id.
 const drivers = new Map<string, ChatDriver>();
 
-// Nothing a person uses is paid (open source, founder 2026-10-11). The only
+// Nothing a person uses is paid (open source, 2026-10-11). The only
 // billing left is a commercial org's team seats (a later tier), read by
 // refreshEntitlement and checked by growthGatedByBilling.
 
@@ -1427,7 +1441,7 @@ let outboxSyncing = false;
 // Serialize repo reconcile passes: the boot check and a reconnect can otherwise
 // fire at once and push the same clones twice.
 let reconcilingRepos = false;
-// Desktop Offline (founder, 2026-10-07): main's own read of the network
+// Desktop Offline (2026-10-07): main's own read of the network
 // (Electron's net.isOnline()), undefined until main has answered. The window's
 // navigator.onLine and this both count (state/offlineOps.ts desktopOnline).
 let mainNetOnline: boolean | undefined;
@@ -1455,6 +1469,37 @@ export function driverFor(conversationId: string): ChatDriver | undefined {
 export function hubList(settings: AppSettings): DaemonTarget[] {
   if (settings.daemons) return settings.daemons;
   return settings.daemon ? [settings.daemon] : [];
+}
+
+/** Where things can run from this device, for lib/runsOn.ts: this desktop's
+ *  own engine, every docked machine, and the active one. */
+export function whereContextOf(settings: AppSettings): WhereContext {
+  return {
+    desktopLocal: isDesktop() && Boolean(bridge()),
+    preferRemoteHub: settings.preferRemoteHub,
+    hubs: hubList(settings),
+    active: settings.daemon,
+  };
+}
+
+/** Where a conversation's machine work runs (2026-10-12): an
+ *  engine session goes back to the machine it opened on; anything else, and
+ *  a session not yet opened, runs where its project runs. */
+export function conversationWhere(settings: AppSettings, conv: Conversation): Where {
+  const project = conv.projectId
+    ? settings.projects?.find((p) => p.id === conv.projectId)
+    : undefined;
+  const ctx = whereContextOf(settings);
+  return conv.source.kind === 'desktop'
+    ? sessionWhere(conv.source, project, ctx)
+    : projectWhere(project, ctx);
+}
+
+/** Where a new chat in the active project would run, before it exists. */
+export function newChatWhere(settings: AppSettings): Where {
+  const id = settings.activeProjectId ?? settings.projects?.[0]?.id;
+  const project = id ? settings.projects?.find((p) => p.id === id) : undefined;
+  return projectWhere(project, whereContextOf(settings));
 }
 
 /** Crew routines as this device last saw them: the roster of unattended jobs
@@ -1605,7 +1650,7 @@ interface AppState {
     reloaded?: number;
     reloadedFrom?: 'elsewhere' | 'resolve';
     /** Who last saved `text`, when the storage says (the team vault only,
-     *  StoredFileMeta.editedBy, CTO G6). Cleared by this device's own save. */
+     *  StoredFileMeta.editedBy, tech review G6). Cleared by this device's own save. */
     editedBy?: { id: string; label?: string };
     /** Whether the last save of this sitting was set aside under Not saved
      *  (refused for good, a read-only vault, or no copy kept): true, false
@@ -1653,7 +1698,7 @@ interface AppState {
   vaultSaving?: boolean;
   /** True when the lease is enforced on the vault on screen (a storage
    *  without compare-and-swap) and another device holds it live, so this one
-   *  shows read-only and writes nothing to a note (Vault M2 2.5, CTO G5). */
+   *  shows read-only and writes nothing to a note (Vault M2 2.5, tech review G5). */
   vaultLeaseHeldByOther?: boolean;
   /** Another device holds the lease on the vault on screen: 'advisory' (a
    *  storage with compare-and-swap, the quiet "Also open on your iPad") or
@@ -1665,7 +1710,7 @@ interface AppState {
    *  team", until the person leaves it or the same account signs back in.
    *  Nothing else of the team vault shows meanwhile. */
   vaultTeamExpired?: boolean;
-  /** The team's plan as its settings read last said (Vault M7, CX Y14,
+  /** The team's plan as its settings read last said (Vault M7, UX review Y14,
    *  Y15; migration 0025): not entitled is the calm read-only state, every
    *  note still reads and exports; `entitledUntil` is a never-paid team's
    *  notice; `isAdmin` and `deleteRole` decide the settings sheet and who may
@@ -1683,7 +1728,7 @@ interface AppState {
    *  folders the storage lists (empty ones too) and the remembered empty
    *  ones (Vault M6 6.2, K5). */
   vaultFolders?: string[];
-  /** The vault on screen's resolved settings (Vault M7, CTO L3 to L6):
+  /** The vault on screen's resolved settings (Vault M7, tech review L3 to L6):
    *  Obsidian's conventions, then `.oscode/vault.json`, then the defaults.
    *  Undefined before the first read after a repoint. */
   vaultSettings?: ResolvedVaultSettings;
@@ -1746,7 +1791,7 @@ interface AppState {
   /** Whether a Stack chat can read an image right now: a capable model
    *  placed in the stack, or a connected cloud provider that reads images. The
    *  image offer card folds its doors once this turns true; the Stack chat's
-   *  composer takes a picture either way (founder, 2026-10-07). */
+   *  composer takes a picture either way (2026-10-07). */
   stackVisionReady(): boolean;
   /** Re-read the desktop engine's status (Electron only; no-op elsewhere). */
   refreshDesktopStatus(): Promise<void>;
@@ -1760,12 +1805,16 @@ interface AppState {
        *  immediately and seed the model's history, so it knows what was said. */
       seedItems?: ThreadItem[];
       title?: string;
-      /** The repositories the chat starts with; the project's when omitted. */
+      /** The repositories the chat starts with; the project's when omitted
+       *  (a project chat only: a plain chat has none). */
       repoIds?: string[];
+      /** A project chat, the Claude Code side. A coding session on a computer
+       *  is one too. Omitted, the chat is plain, like claude.ai. */
+      projectChat?: boolean;
       /** The first message, parked on the chat before the driver exists so
        *  the bubble is on screen at once and nothing waits on the hub. */
       firstMessage?: { text: string; attachments?: Attachment[] };
-      /** A handoff for a desktop agent's first task (Vault M5, CTO J12): a
+      /** A handoff for a desktop agent's first task (Vault M5, tech review J12): a
        *  chat carried to the computer's agent, which takes no message history,
        *  starts from this summary. Capped at `HANDOFF_MAX_BYTES`. */
       handoff?: string;
@@ -2062,7 +2111,7 @@ interface AppState {
    *  steps back until "Keep setting up" under the hello) or keep setting up. */
   chooseNext(choice: NextChoice): void;
   /** A pairing link opened from outside the app (the iPhone Camera reading
-   *  the computer's QR, CX 2026-10-01): Pairing opens and asks before it
+   *  the computer's QR, UX review 2026-10-01): Pairing opens and asks before it
    *  pairs. Never pairs on its own. */
   pairOffer?: { address: string; claim: string };
   /** Open Computer with the link's offer, or say why it is not one. */
@@ -2204,15 +2253,15 @@ interface AppState {
    *  change, text stashed against the old folder is held under Not saved and
    *  the vault re-lists. Undefined off the desktop. */
   vaultChooseFolder(): Promise<VaultPickResult | undefined>;
-  /** One of the choices a pick's result offered (CX 1.4), then the same. */
+  /** One of the choices a pick's result offered (UX review 1.4), then the same. */
   vaultRefineFolder(choice: VaultRefineChoice): Promise<VaultPickResult | undefined>;
   /** Bring the notes of the folder before the last pick into this one (the
-   *  CTO's ruling): main copies with nothing replaced and nothing removed.
+   *  tech review's ruling): main copies with nothing replaced and nothing removed.
    *  The room holds still meanwhile (vaultMoving), then re-lists. Undefined
    *  off the desktop. */
   vaultBringPrevious(): Promise<VaultBringResult | undefined>;
   /** Whether a chat on this computer's engine is open now, so the storage
-   *  sheet says open chats keep their old folder only when one is (CX 1.4). */
+   *  sheet says open chats keep their old folder only when one is (UX review 1.4). */
   vaultDesktopChatOpen(): boolean;
   /** Whether the one-time desktop move card shows now (Vault M1 1.3). */
   vaultFolderOfferShown(): boolean;
@@ -2234,7 +2283,7 @@ interface AppState {
     shown: { there: StoredFile; moved: StoredFile },
   ): Promise<{ ok: boolean; changed?: boolean; partial?: boolean }>;
   /** Whether the one-time "keep one vault on your computer" card shows now
-   *  (Vault M5, CTO J9): paired, the vault on This device by default, notes
+   *  (Vault M5, tech review J9): paired, the vault on This device by default, notes
    *  in it, and not declined for this computer. */
   vaultHubOfferShown(): boolean;
   /** The card's move: the existing move to the computer (every copy
@@ -2246,7 +2295,7 @@ interface AppState {
    *  the Vault's first list); resolves to what it did. */
   vaultAfterPairing(): Promise<HubPairPlan>;
 
-  // ---- Vault M5: pins, notes to a model, the switch handoff (CTO J12 to J15)
+  // ---- Vault M5: pins, notes to a model, the switch handoff (tech review J12 to J15)
 
   /** Pin notes to a project's context (J14): editors only (a local project,
    *  or `myLevel === 'edit'`), at most `PROJECT_VAULT_PINS_MAX`, deduped.
@@ -2270,7 +2319,7 @@ interface AppState {
   /** Each pinned note's visibility, judged by this device's vault privacy
    *  rules (J3, the judge the pack uses) on the note's own text, or on its
    *  path alone when the text cannot be read, so the pins card can mark a
-   *  private pin and say what it holds (CX and CMO, 2026-10-08, G). */
+   *  private pin and say what it holds (UX and copy review, 2026-10-08, G). */
   vaultPinPrivacy(paths: string[]): Promise<Record<string, VaultVisibility>>;
   /** The personal vault's notes as the picker may show them (J15): hidden
    *  notes never, local-only ones with the lock. Never the team vault. */
@@ -2312,7 +2361,7 @@ interface AppState {
    *  operation writes the pending text first and cancels its timer (a stale
    *  save must never recreate a trashed note). */
   vaultBindAutosave(handle: VaultAutosave<VaultTargetRef> | undefined): void;
-  /** What the Vault may offer on the storage on screen right now (CTO K1):
+  /** What the Vault may offer on the storage on screen right now (tech review K1):
    *  every M6 action's visibility follows this one answer. */
   vaultCapsNow(opts?: { storageOnly?: boolean }): VaultCaps;
   /** Delete a note: to Trash where it is real (one tap), else for good with
@@ -2326,7 +2375,7 @@ interface AppState {
   vaultLoadTrash(): Promise<TrashEntry[] | undefined>;
   /** Restore one Trash entry where it came from, never overwriting. */
   vaultRestoreTrash(id: string): Promise<VaultRestoreResult>;
-  /** An admin sets who may delete team notes (CX Y14; migration 0025):
+  /** An admin sets who may delete team notes (UX review Y14; migration 0025):
    *  'changed' when another admin's save landed first (the sheet shows the
    *  value there now), 'failed' when it could not be written. */
   vaultSetTeamDeleteRole(
@@ -2350,7 +2399,7 @@ interface AppState {
     updateLinks: boolean,
     onProgress?: (i: number, m: number) => void,
   ): Promise<VaultOpsMoveResult | undefined>;
-  /** "Update the rest" on the standing card (CX X7). */
+  /** "Update the rest" on the standing card (UX review X7). */
   vaultUpdateRest(
     preview: VaultMovePreview,
     report: VaultRewriteReport,
@@ -2375,12 +2424,12 @@ interface AppState {
    *  one starts with; vaultOps.openToday writes it only while nothing has
    *  the name (one Today implementation). */
   vaultToday(): Promise<VaultTodayOutcome | undefined>;
-  /** A tick in reading view (6.6; CTO K11, CX X13): `line` is the task's
+  /** A tick in reading view (6.6; tech review K11, UX review X13): `line` is the task's
    *  zero-based line in the whole note, frontmatter counted. Writes the box
    *  back by compare-and-swap; false when it did not land (the box then shows
    *  the file's truth, and a note that changed takes the resolve path). */
   vaultToggleTask(path: string, line: number, checked: boolean): Promise<boolean>;
-  /** The person's own one-note edit (6.8, Link on an unlinked mention; CX
+  /** The person's own one-note edit (6.8, Link on an unlinked mention; UX review
    *  X16): the note read now, `edit` applied, and written back only while it
    *  is still that version. False when it did not land or `edit` declined. */
   // A refusal for good (a team out of free space) answers its line, verb
@@ -2402,7 +2451,7 @@ interface AppState {
       }
     | undefined
   >;
-  /** The vault on screen's settings (Vault M7, CTO L5, L6), through the
+  /** The vault on screen's settings (Vault M7, tech review L5, L6), through the
    *  loader's 60 second cache; `force` reads now (the room became visible,
    *  a watcher hint). Undefined when no vault is reachable. */
   vaultLoadSettings(opts?: { force?: boolean }): Promise<ResolvedVaultSettings | undefined>;
@@ -2413,9 +2462,9 @@ interface AppState {
    *  phone); `machine` undefined when the computer did not say. */
   vaultEngineRoomSource(): Promise<VaultEngineRoomSource | undefined>;
   /** The person's one changed field, written to `.oscode/vault.json` by
-   *  compare-and-swap (CTO L7, CX Y5). Only the settings sheet calls it. */
+   *  compare-and-swap (tech review L7, UX review Y5). Only the settings sheet calls it. */
   vaultSaveSetting(patch: VaultSettingsPatch): Promise<VaultSettingSave>;
-  /** Mark a note reviewed, or not (CX Y12): the person's own compare-and-
+  /** Mark a note reviewed, or not (UX review Y12): the person's own compare-and-
    *  swap write of `oscode-reviewed` through `mergeProvenance`, every other
    *  byte kept. `changed`: the note moved on and the newer version is open. */
   // A refusal for good answers its line, verb first ("Not marked.").
@@ -2423,9 +2472,9 @@ interface AppState {
     path: string,
     reviewed: boolean,
   ): Promise<'ok' | 'changed' | 'failed' | { kind: 'refused'; line: string }>;
-  /** Whether the empty vault's ramp offers the starter layout (CTO L12). */
+  /** Whether the empty vault's ramp offers the starter layout (tech review L12). */
   vaultStarterOffered(): Promise<boolean>;
-  /** Add the starter layout (CX Y13's "Add these"): emptiness re-checked,
+  /** Add the starter layout (UX review Y13's "Add these"): emptiness re-checked,
    *  every write `ifAbsent`. The whole layout toasts here. */
   vaultApplyStarter(): Promise<{ added: number; total: number }>;
   /** Ask the Vault room to open a sheet when it next shows, or clear it. */
@@ -2477,14 +2526,14 @@ interface AppState {
   trustProjectFolder(itemId: string): Promise<void>;
   /** The trust card's "Not now": leave the folder's settings off. */
   dismissProjectTrust(itemId: string): void;
-  /** The truncation card's "Give it more room" (C1, CX 6): the session's
+  /** The truncation card's "Give it more room" (C1, UX review 6): the session's
    *  computer serves that provider's models the larger window from the next
    *  message, in every chat. */
   giveMoreRoom(itemId: string): Promise<void>;
   /** A model asked to search the web and the person has not answered yet
    *  (web search asks once; What leaves this device). The sheet shows it.
    *  `private` is the card for a search a local model wrote after its chat
-   *  read a private note (CX and CMO, 2026-10-08, H): it asks every time,
+   *  read a private note (UX and copy review, 2026-10-08, H): it asks every time,
    *  shows the exact words and why, and its answer is never remembered. */
   webSearchAsk?: WebSearchSheet;
   /** The web search question's answer: allow (remembered on this device) or
@@ -2528,9 +2577,16 @@ interface AppState {
   activeIsAgent(): boolean;
   /** Add a quiet note row to the active transcript (help text, local status). */
   addNote(text: string): void;
-  /** Open a session that lives on the paired desktop but has no chat here yet
-   *  (started from the desktop app, or from another phone). */
-  openDesktopSession(info: { id: string; cwd: string; title?: string }): Promise<void>;
+  /** Open a session that already runs on a docked machine but has no chat
+   *  here yet (started from the desktop app, another phone, or a routine).
+   *  `hub` names the machine it was listed from (lib/runsOn.ts); unset, the
+   *  machine this device runs on now (where Crew's routines run). */
+  openDesktopSession(info: {
+    id: string;
+    cwd: string;
+    title?: string;
+    hub?: string;
+  }): Promise<void>;
   /** Chat-to-terminal bridge: run a command on the connected desktop (only a
    *  desktop-backed conversation has a terminal). Output streams into the
    *  transcript as a command card. */
@@ -2608,6 +2664,16 @@ interface AppState {
   removeHub(baseUrl: string): Promise<HubKeysCleared>;
   /** Give a saved hub a friendly name (blank clears it). */
   renameHub(baseUrl: string, name: string): Promise<void>;
+  /** Say where a docked server lives, at home or rented (lib/docking.ts).
+   *  Only this device keeps it; a server cannot tell. */
+  setHubPlace(baseUrl: string, place: DockPlace): Promise<void>;
+  /** Keep a docked machine's size as its /health last said, when it moved
+   *  (a resized server). */
+  noteMachineFacts(baseUrl: string, machine: MachineFacts): Promise<void>;
+  /** Where a project's coding sessions run (lib/runsOn.ts): a docked
+   *  machine's address, THIS_COMPUTER on a desktop, or undefined to follow
+   *  this device. New chats only: a chat already started stays put. */
+  setProjectRunsOn(projectId: string, runsOn: string | undefined): Promise<void>;
   /** On a desktop, run sessions on the active remote hub instead of this
    *  machine's own engine. Ignored on a phone. */
   setPreferRemoteHub(on: boolean): Promise<void>;
@@ -2928,9 +2994,11 @@ export const useApp = create<AppState>((set, get, api) => {
 
   /** A driver that talks to a paired computer over the network (the daemon
    *  path), as opposed to this machine's own engine or a brain in the app. */
-  function isRemote(driver: ChatDriver): boolean {
+  function isRemote(conversationId: string, driver: ChatDriver): boolean {
     if (driver.kind !== 'desktop') return false;
-    return !(isDesktop() && bridge() && !get().settings.preferRemoteHub);
+    const conv = get().conversations[conversationId];
+    if (!conv) return !(isDesktop() && bridge() && !get().settings.preferRemoteHub);
+    return conversationWhere(get().settings, conv).kind !== 'local';
   }
 
   /** The one way text leaves for a driver (B3). The user bubble is painted
@@ -2971,13 +3039,15 @@ export const useApp = create<AppState>((set, get, api) => {
       });
       return;
     }
-    const paint = isRemote(driver) || driver.kind !== 'desktop';
+    const paint = isRemote(conversationId, driver) || driver.kind !== 'desktop';
     if (paint) {
       set((state) => {
         const c = state.conversations[conversationId];
         if (!c || c.thread.busy) return state;
         const started = reduceEvent(c.thread, { type: 'task-start', input: text });
-        const thread = isRemote(driver) ? { ...started, stepNote: REACHING_COMPUTER } : started;
+        const thread = isRemote(conversationId, driver)
+          ? { ...started, stepNote: REACHING_COMPUTER }
+          : started;
         return {
           conversations: {
             ...state.conversations,
@@ -3262,8 +3332,7 @@ export const useApp = create<AppState>((set, get, api) => {
           }) ??
           decideApproval(event.request, {
             driverKind: driver.kind,
-            desktopLocal: isDesktop() && Boolean(bridge()) && !s.settings.preferRemoteHub,
-            daemon: s.settings.daemon,
+            ...approvalPlace(conversationId),
             control: s.settings.terminalControl,
             canControl: canControlTerminalFor(s.settings.account, isAdmin),
             mode: s.settings.permissionMode ?? DEFAULT_PERMISSION_MODE,
@@ -3322,7 +3391,7 @@ export const useApp = create<AppState>((set, get, api) => {
           );
         }
         // Activation: the first time a model produces a working reply on this
-        // device (once per model, persisted via logOnce). CX's funnel
+        // device (once per model, persisted via logOnce). UX review's funnel
         // denominator, so we can later measure whether the community layer helps
         // a first-run user pick a model that succeeds. Nothing here is sent
         // anywhere the rest of insights is not; it is local telemetry.
@@ -3397,6 +3466,7 @@ export const useApp = create<AppState>((set, get, api) => {
     conversationId: string,
     sessionId: string,
     cwd?: string,
+    hub?: string,
   ): Promise<void> {
     set((state) => {
       const c = state.conversations[conversationId];
@@ -3404,12 +3474,20 @@ export const useApp = create<AppState>((set, get, api) => {
       // The folder the session started in, kept on the source: the engine
       // cannot move a session, so the picker can say where this chat works.
       const at = c.source.cwd ?? cwd;
+      // And the machine it opened on (lib/runsOn.ts), so the chat goes back
+      // there whatever is active later.
+      const on = c.source.hub ?? hub;
       return {
         conversations: {
           ...state.conversations,
           [conversationId]: {
             ...c,
-            source: { ...c.source, sessionId, ...(at ? { cwd: at } : {}) },
+            source: {
+              ...c.source,
+              sessionId,
+              ...(at ? { cwd: at } : {}),
+              ...(on ? { hub: on } : {}),
+            },
           },
         },
       };
@@ -3546,7 +3624,7 @@ export const useApp = create<AppState>((set, get, api) => {
     );
   }
 
-  // Chats named before the smarter names (lib/chatTitle.ts, founder
+  // Chats named before the smarter names (lib/chatTitle.ts, maintainer
   // 2026-10-01) are tidied once at launch: the setup walk's chat becomes
   // "First-time setup", and a name that is still the old 48-character cut of
   // the first message is made again. A chat the person renamed, or one the
@@ -3632,7 +3710,7 @@ export const useApp = create<AppState>((set, get, api) => {
     drivers.get(conversationId)?.recordLine?.({ role: 'user', text });
   }
 
-  // "Help me get set up" (founder, 2026-10-01): the walk moves to the chat it
+  // "Help me get set up" (2026-10-01): the walk moves to the chat it
   // was asked in, as a list of what is not set up yet. Whatever the walk was
   // waiting on in its old chat is closed (its buttons leave with it); what
   // was skipped before is offered again, since the person asked.
@@ -3680,7 +3758,7 @@ export const useApp = create<AppState>((set, get, api) => {
   // Choosing to just chat at the break: the guide's line inks, a short beat
   // lets it land, then Slack Water carries them to the main chat page
   // (components/SlackWater.tsx), the line still readable while the first
-  // rings cross it (founder, 2026-10-02: the old three-second read pause felt
+  // rings cross it (2026-10-02: the old three-second read pause felt
   // like a stall). Reduced motion shows the line whole and keeps the reading
   // pause, then lands there without the water. Nothing moves if they went
   // somewhere else or started chatting where they are.
@@ -3921,11 +3999,28 @@ export const useApp = create<AppState>((set, get, api) => {
   function daemonPushes(conversationId: string): boolean {
     const s = get();
     const conv = s.conversations[conversationId];
-    const daemon = s.settings.daemon;
-    return (
-      conv?.source.kind === 'desktop' &&
-      Boolean(daemon && (s.settings.pushRegisteredDaemons ?? []).includes(daemon.baseUrl))
-    );
+    if (conv?.source.kind !== 'desktop') return false;
+    // The machine this chat's session runs on, not the active one.
+    const daemon = dockedTarget(conversationWhere(s.settings, conv));
+    return Boolean(daemon && (s.settings.pushRegisteredDaemons ?? []).includes(daemon.baseUrl));
+  }
+
+  /** Where a chat's shell approvals are judged (Terminal Control is per
+   *  machine): its own machine, which may not be the active one. */
+  function approvalPlace(conversationId: string): {
+    desktopLocal: boolean;
+    daemon: DaemonTarget | undefined;
+  } {
+    const s = get();
+    const conv = s.conversations[conversationId];
+    if (!conv) {
+      return {
+        desktopLocal: isDesktop() && Boolean(bridge()) && !s.settings.preferRemoteHub,
+        daemon: s.settings.daemon,
+      };
+    }
+    const where = conversationWhere(s.settings, conv);
+    return { desktopLocal: where.kind === 'local', daemon: dockedTarget(where) };
   }
 
   // A tapped notice opens the thing it is about: the chat, the guide, the
@@ -3984,7 +4079,7 @@ export const useApp = create<AppState>((set, get, api) => {
     logEvent(warm.ok ? 'harbor_warm' : 'harbor_warm_failed');
   }
 
-  // Web search asks once (founder, 2026-10-02; What leaves this device). A
+  // Web search asks once (2026-10-02; What leaves this device). A
   // yes is remembered on this device; a "not now" holds until the next launch,
   // so a chat never asks twice in a row. Concurrent searches share one
   // question.
@@ -4018,9 +4113,9 @@ export const useApp = create<AppState>((set, get, api) => {
   // Register this device for completion push with the connected daemon, once per
   // daemon. iOS-only and best-effort (see registerPushForDaemon); a failure just
   // means no push until the next desktop session opens.
-  async function ensureDesktopPush(): Promise<void> {
+  async function ensureDesktopPush(target?: DaemonTarget): Promise<void> {
     const s = get();
-    const daemon = s.settings.daemon;
+    const daemon = target ?? s.settings.daemon;
     const session = s.authSession;
     if (!isPhone() || !daemon || !session) return;
     if ((s.settings.pushRegisteredDaemons ?? []).includes(daemon.baseUrl)) return;
@@ -4076,7 +4171,7 @@ export const useApp = create<AppState>((set, get, api) => {
         .join('\n\n') || undefined;
   }
 
-  // ---- The vault in a chat (Vault M5, CTO J1 to J10) -----------------------
+  // ---- The vault in a chat (Vault M5, tech review J1 to J10) -----------------------
 
   /** One pack per conversation (J1), so a switch keeps its render cache and a
    *  handoff is read on the conversation's first send only. */
@@ -4190,7 +4285,7 @@ export const useApp = create<AppState>((set, get, api) => {
     // device store now, while the driver builds (synchronously, so a reopened
     // chat is never parked on it); the first send finds it there.
     let handoff: string | undefined;
-    // The device's Handoff switch (Vault M7, CTO L13): off asks for none.
+    // The device's Handoff switch (Vault M7, tech review L13): off asks for none.
     if (
       conv.projectId &&
       spokenTurns(conv.thread.items) === 0 &&
@@ -4216,7 +4311,7 @@ export const useApp = create<AppState>((set, get, api) => {
           ? get().settings.projects?.find((p) => p.id === projectId)?.vaultPins
           : undefined) ?? [],
       handoff: () => handoff,
-      // Room for notes and the Handoff switch (Vault M7, CTO L13), read at
+      // Room for notes and the Handoff switch (Vault M7, tech review L13), read at
       // each send; the vault's own settings name what retrieval skips.
       packSize: () => appPackSize(get().settings),
       handoffSetting: () => get().settings.vaultHandoff,
@@ -4275,7 +4370,7 @@ export const useApp = create<AppState>((set, get, api) => {
         return r;
       },
       teamVault: () => get().vaultScope === 'team',
-      // The vault's agent folder (Vault M7, CTO L2), at the offer and again
+      // The vault's agent folder (Vault M7, tech review L2), at the offer and again
       // at approve.
       agentFolder: () => personalSettings()?.agent.folder,
       onWritten: (paths) => {
@@ -4392,7 +4487,7 @@ export const useApp = create<AppState>((set, get, api) => {
           codemagicTarget,
           currents,
           harnessCurrents,
-          // A chat carried to the computer's agent (Vault M5, CTO J12): the
+          // A chat carried to the computer's agent (Vault M5, tech review J12): the
           // handoff opens its first task, since the agent takes no history.
           // Conversation content, so it rides even with Memory off.
           ...(extra?.handoff ? { handoff: capHandoffBytes(extra.handoff) } : {}),
@@ -4401,7 +4496,7 @@ export const useApp = create<AppState>((set, get, api) => {
           ...(project?.vaultPins?.length && memoryOverride(settings) !== false
             ? { vaultPins: [...project.vaultPins] }
             : {}),
-          // Notes in chats, Handoff and Room for notes (Vault M7, CTO L13):
+          // Notes in chats, Handoff and Room for notes (Vault M7, tech review L13):
           // off-only and lower-only, taken at open, so a change applies to
           // new chats.
           ...(Object.keys(appVaultOverrides(settings)).length
@@ -4409,11 +4504,19 @@ export const useApp = create<AppState>((set, get, api) => {
             : {}),
         };
         const cwd = conv.source.cwd ?? firstWorkspace(conv.repoIds ?? []);
-        // A desktop is its own engine, unless the person has pointed it at a
-        // remote hub (a laptop that is not the central computer): then it runs
-        // sessions on that hub over the tailnet, the way the phone does, and
-        // falls through to the daemon path below.
-        if (isDesktop() && bridge() && !settings.preferRemoteHub) {
+        // Where this session runs (lib/runsOn.ts, 2026-10-12): an open
+        // session goes back to the machine it opened on, and a new one opens
+        // where its project runs, else where this device runs. A desktop is
+        // its own engine unless the project or the person points it at a
+        // docked machine; then it runs there over the tailnet, the way the
+        // phone does.
+        const where = sessionWhere(conv.source, project, whereContextOf(settings));
+        if (where.kind === 'gone') {
+          throw new Error(
+            goneLine(where.key, hubList(settings).find((h) => h.baseUrl === where.key)?.name),
+          );
+        }
+        if (where.kind === 'local') {
           let sessionId = conv.source.sessionId;
           let journal: Array<{ seq: number; event: DriverEvent }> | undefined;
           if (!sessionId) {
@@ -4431,7 +4534,7 @@ export const useApp = create<AppState>((set, get, api) => {
               );
             }
             sessionId = created.id;
-            await bindSessionId(conv.id, sessionId, cwd);
+            await bindSessionId(conv.id, sessionId, cwd, THIS_COMPUTER);
           } else {
             // G1: resume returns the journal so the driver can replay it AFTER
             // it has subscribed (IPC does not buffer a pushed replay).
@@ -4440,9 +4543,10 @@ export const useApp = create<AppState>((set, get, api) => {
           }
           return new ElectronDriver(sessionId, journal);
         }
-        if (!settings.daemon) {
+        if (where.kind !== 'docked') {
           throw new Error('Connect to your computer first (Menu, then Computer).');
         }
+        const target = where.target;
         let sessionId = conv.source.sessionId;
         if (!sessionId) {
           // Never hand secrets to a remote daemon: this is a phone driving
@@ -4450,7 +4554,7 @@ export const useApp = create<AppState>((set, get, api) => {
           // model) must not travel. Pass an explicit opts object without
           // projectSecrets, so a future change to the daemon client cannot leak
           // them even by accident.
-          sessionId = await daemonCreateSession(settings.daemon, cwd, {
+          sessionId = await daemonCreateSession(target, cwd, {
             instructions: sessionOpts.instructions,
             // The project's name too, so the hub files project memory in the
             // same folder a desktop-created session does.
@@ -4468,28 +4572,30 @@ export const useApp = create<AppState>((set, get, api) => {
             vaultPins: sessionOpts.vaultPins,
             ...(sessionOpts.vaultOverrides ? { vaultOverrides: sessionOpts.vaultOverrides } : {}),
           });
-          await bindSessionId(conv.id, sessionId, cwd);
+          await bindSessionId(conv.id, sessionId, cwd, target.baseUrl);
         }
         // Opening a desktop session is the walk-away-able moment: the run
         // continues on the daemon while the phone is closed. Register for
         // completion push now (contextual, not at launch), once per daemon.
-        void ensureDesktopPush();
+        void ensureDesktopPush(target);
         // Refresh what this hub says the credential may do, so the composer's
         // terminal affordance tracks the role the hub enforces (P0-1).
-        void refreshHubRole(settings.daemon);
+        void refreshHubRole(target);
         // Replay from zero so the transcript rebuilds exactly. The link
         // callback feeds the chat banner (B4).
-        const hubUrl = settings.daemon.baseUrl;
-        return new RemoteDriver(sessionId, settings.daemon, 0, {
+        const hubUrl = target.baseUrl;
+        return new RemoteDriver(sessionId, target, 0, {
           onLink: (state) => noteHubLink(hubUrl, state),
         });
       }
       case 'desktop-chat': {
         // Free, read-only chat with the computer's local models. No session is
         // created, so this can never become the paid agent. On the desktop
-        // itself it reaches this computer's own engine over IPC (CTO ruling
-        // 8): no tools, no session, and no vault pack.
-        if (isDesktop() && bridge() && !settings.preferRemoteHub) {
+        // itself it reaches this computer's own engine over IPC (tech review ruling
+        // 8): no tools, no session, and no vault pack. Which machine is the
+        // project's (lib/runsOn.ts), else this device's.
+        const chatWhere = conversationWhere(settings, conv);
+        if (chatWhere.kind === 'local') {
           return new DesktopChatDriver(
             ipcFreeChat(bridge()!, get().desktopStatus?.stack.orchestrator?.model),
             conv.source.model,
@@ -4499,7 +4605,8 @@ export const useApp = create<AppState>((set, get, api) => {
           );
         }
         // On the phone, the paired desktop's daemon and its stateless /chat.
-        if (!settings.daemon) {
+        const chatTarget = dockedTarget(chatWhere);
+        if (!chatTarget) {
           throw new Error('Connect to your computer first (Menu, then Computer).');
         }
         // The computer builds this chat's pack itself (J6): the phone names
@@ -4512,7 +4619,7 @@ export const useApp = create<AppState>((set, get, api) => {
           (conv.repoIds?.length ? conv.repoIds : chatProject?.repoIds) ?? [],
         );
         return new DesktopChatDriver(
-          settings.daemon,
+          chatTarget,
           conv.source.model,
           seed,
           chatContext(conv),
@@ -4630,7 +4737,7 @@ export const useApp = create<AppState>((set, get, api) => {
             // A play's engine step opens its own session on the paired
             // computer; the Memory switch rides there the same way.
             memory: memoryOverride(s.settings),
-            // So do Notes in chats, Handoff and Room for notes (CTO L13):
+            // So do Notes in chats, Handoff and Room for notes (tech review L13):
             // off-only and lower-only, the same object a chat's session takes.
             vaultOverrides: appVaultOverrides(s.settings),
             researchOn: s.settings.perplexityResearch === true,
@@ -4641,8 +4748,10 @@ export const useApp = create<AppState>((set, get, api) => {
             // Docked to a computer with a local workspace connected to this chat:
             // a play's repo/tool step runs on the engine there. Absent (not
             // docked, or a GitHub-only / repo-less chat) means such a step is
-            // described instead of executed.
-            daemon: s.settings.daemon,
+            // described instead of executed. A project that runs on a docked
+            // machine sends its steps there (lib/runsOn.ts); otherwise the
+            // active machine, as before.
+            daemon: dockedTarget(conversationWhere(s.settings, conv)) ?? s.settings.daemon,
             repoCwd: firstWorkspace(conv.repoIds ?? []),
             conversationId: conv.id,
             // Prompt caching on Claude, off by default (J16, J19).
@@ -4923,7 +5032,7 @@ export const useApp = create<AppState>((set, get, api) => {
       if (uid) await dropTeamIndexes((m) => m.owner !== uid);
     }
     // Whatever index is still warm (the personal one a chat's pack reads)
-    // closes with the sign-in (Vault M5, CTO J1), its last write saved first,
+    // closes with the sign-in (Vault M5, tech review J1), its last write saved first,
     // and the chats' packs, their Current State, and the notes kept from the
     // computer go with it. The pairing itself is not the account's, so the
     // hub link comes back fresh, holding nothing of the last person's.
@@ -5206,7 +5315,7 @@ export const useApp = create<AppState>((set, get, api) => {
     base?: string;
     /** Legacy, read only: the team server rev an entry stashed before Vault
      *  M2 carried beside an ISO base. The loader turns it into the base once
-     *  the team provider compares revs (CTO G3); nothing writes it now. */
+     *  the team provider compares revs (tech review G3); nothing writes it now. */
     rev?: number;
     /** When it was stashed, on this device's clock (ordering only), always
      *  later than the last (nextStashAt): a save's own entry, and any entry
@@ -5219,7 +5328,7 @@ export const useApp = create<AppState>((set, get, api) => {
     sitting?: number;
     /** The desktop folder only: the folder the text was typed in (its
      *  realpath) and how it reads, so text typed before the vault was
-     *  pointed at another folder never replays into the new one (CTO F7.6). */
+     *  pointed at another folder never replays into the new one (tech review F7.6). */
     folder?: string;
     folderDisplay?: string;
   };
@@ -5239,7 +5348,7 @@ export const useApp = create<AppState>((set, get, api) => {
     let converted = false;
     const st = get();
     const uid = st.authSession?.user.id;
-    // Once the team provider compares revs (compare-and-swap, CTO G3), a team
+    // Once the team provider compares revs (compare-and-swap, tech review G3), a team
     // entry stashed with a numeric rev is converted, once and for good, to
     // base = String(rev), the version that provider reports. One without a
     // rev keeps its ISO base, which never equals a rev, so its replay keeps
@@ -5613,7 +5722,7 @@ export const useApp = create<AppState>((set, get, api) => {
   // After main repointed the vault folder (a pick, or a choice after one):
   // text stashed against the old folder is held under Not saved naming it,
   // the folder's cached bodies are dropped, and the room re-lists from the
-  // new folder, saying it is opening until the list lands (CTO F7.6, CX 1.4).
+  // new folder, saying it is opening until the list lands (tech review F7.6, UX review 1.4).
   async function afterVaultPick(
     result: VaultPickResult,
     before: string | undefined,
@@ -5651,7 +5760,7 @@ export const useApp = create<AppState>((set, get, api) => {
     await get().vaultRefresh();
   }
 
-  // CX 1.3 (b): a desktop personal vault on Local by default, never by the
+  // UX review 1.3 (b): a desktop personal vault on Local by default, never by the
   // person's choice, whose list succeeded empty and which holds no stashed or
   // held text, has nothing to move: it points at the folder with one toast.
   // A failed list never counts as empty. True when it repointed.
@@ -5844,7 +5953,7 @@ export const useApp = create<AppState>((set, get, api) => {
     const missing = landed.filter((p) => !onTarget.has(p));
     if (missing.length) return refused('unverified', missing, await takeBack());
     // Every move is the person's own choice, stamped so a storage they
-    // picked is never repointed or offered a move again (CX 1.3), and any
+    // picked is never repointed or offered a move again (UX review 1.3), and any
     // move ends the desktop move offer.
     const chosenAt = new Date().toISOString();
     const current = get().settings.gitosResources ?? [];
@@ -5977,7 +6086,7 @@ export const useApp = create<AppState>((set, get, api) => {
   }
 
   // Text stashed against the desktop folder while the vault used another one
-  // (CTO F7.6): it never replays into the folder the vault uses now. It goes
+  // (tech review F7.6): it never replays into the folder the vault uses now. It goes
   // under Not saved, naming the folder it was typed in. `all` also takes
   // entries stashed before they carried a folder, which is right at the
   // moment of a repoint, when every such entry belongs to the folder just left.
@@ -6079,14 +6188,14 @@ export const useApp = create<AppState>((set, get, api) => {
     logEvent('vault_note_save_failed');
   }
 
-  // The one place a provider write happens (Vault M1, CTO F4): every save,
+  // The one place a provider write happens (Vault M1, tech review F4): every save,
   // replay, conflict copy, create, and move comes through here, and the guard
   // is required. A provider with compareAndSwap enforces it and answers a
   // conflict as a result; the others accept it and write (M2 adds their
   // check), so their M0 stat-before-write guards stay around the calls.
   // A write to a vault the caller names (a providerId) patches the list and
   // the body cache from its result (patchVaultFiles).
-  // ---- Vault M5: seats, privacy, pins, handoffs, the hub (CTO J9, J12 to J15)
+  // ---- Vault M5: seats, privacy, pins, handoffs, the hub (tech review J9, J12 to J15)
 
   /** The device store the handoffs live in (J13), sealed like the rest. */
   const handoffStorage = {
@@ -6156,7 +6265,7 @@ export const useApp = create<AppState>((set, get, api) => {
   }
 
   /** The vault moved, was repointed or picked, the pairing changed or the
-   *  account signed out (CTO L6): every vault's settings are read again, and
+   *  account signed out (tech review L6): every vault's settings are read again, and
    *  the one on screen shows none until they are. */
   function forgetVaultSettings(): void {
     clearVaultTodayCache();
@@ -6165,7 +6274,7 @@ export const useApp = create<AppState>((set, get, api) => {
   }
 
   /** The seat a source answers from, as the composer and a switch size it
-   *  (CTO J2, J4), judged by `packSeatFor` so the pill, the pack and the
+   *  (tech review J2, J4), judged by `packSeatFor` so the pill, the pack and the
    *  excerpt never disagree. Fails closed: a seat that cannot be judged
    *  leaves the network. A Stack is as private as its least private seat and
    *  as roomy as its smallest, since any of them may answer. */
@@ -6278,7 +6387,7 @@ export const useApp = create<AppState>((set, get, api) => {
    *  own narrowing apply, never no rules. */
   let privacyCache: { at: number; stamp: string; privacy: VaultPrivacy } | undefined;
   async function vaultPrivacyNow(): Promise<VaultPrivacy> {
-    // The vault's own file's version is part of the key (CTO L6): a new
+    // The vault's own file's version is part of the key (tech review L6): a new
     // narrowing compiles the rules again.
     const stamp = vaultNarrowingStamp(personalSettings());
     if (privacyCache && privacyCache.stamp === stamp && Date.now() - privacyCache.at < 60_000) {
@@ -6374,6 +6483,8 @@ export const useApp = create<AppState>((set, get, api) => {
   }
   api.subscribe((state, prev) => {
     if (prev.activeId && prev.activeId !== state.activeId) writeLeftHandoff(prev.activeId);
+    // Remember the open chat so a cold start returns to it (lib/resumePoint.ts).
+    if (state.ready && prev.activeId !== state.activeId) saveResumePoint(state.activeId);
   });
 
   /** Whether any stashed or held text belongs to the vault on `providerId`. */
@@ -6540,10 +6651,10 @@ export const useApp = create<AppState>((set, get, api) => {
    *  so a relink happens only when the pairing changes. */
   let hubLinkKey: string | undefined;
   /** A pairing found the hub vault not linked yet; the link's arrival runs
-   *  the pairing rule once (CTO J9). */
+   *  the pairing rule once (tech review J9). */
   let pairingWaitsForLink = false;
 
-  /** Point the hub vault at the paired computer, or at none (CTO J9). Called
+  /** Point the hub vault at the paired computer, or at none (tech review J9). Called
    *  whenever `settings.daemon` changes, on load, and on sign-out. A pairing
    *  change (another computer, another credential, or none) closes every
    *  index, the warm one too (J1), and forgets what the old link kept on this
@@ -6702,7 +6813,7 @@ export const useApp = create<AppState>((set, get, api) => {
       ? { providerId: t.providerId, resourceId: t.resourceId, owner: t.owner }
       : { providerId: t.providerId, resourceId: t.resourceId };
 
-  /** What the Vault may offer on a storage now (CTO K1). Read-only covers a
+  /** What the Vault may offer on a storage now (tech review K1). Read-only covers a
    *  lease held elsewhere, Drive, an expired team sign-in, a move in flight
    *  and a folder that is gone; Your computer's reach counts only for it. */
   function capsOf(t: VaultTarget): VaultCaps {
@@ -6726,7 +6837,7 @@ export const useApp = create<AppState>((set, get, api) => {
       {
         readOnly,
         ...(t.providerId === 'hub' ? { reach: hubReach() } : {}),
-        // Only an admin saves a team's settings (CX Y14); before the first
+        // Only an admin saves a team's settings (UX review Y14); before the first
         // read, the account's own role says.
         ...(t.providerId === 'org'
           ? { settingsAdmin: st.vaultTeamPlan?.isAdmin ?? isOrgAdmin(st.settings.account) }
@@ -7138,7 +7249,7 @@ export const useApp = create<AppState>((set, get, api) => {
         // A team vault from before compare-and-swap compares revs it learns
         // from a read, and after a relaunch it has forgotten them, so read the
         // note first (which teaches it the rev) and still write only while it
-        // is the same version. The store keeps no rev of its own (CTO G3).
+        // is the same version. The store keeps no rev of its own (tech review G3).
         current = await t.provider.read(t.resourceId, e.path);
         unchanged = current !== undefined && versionOf(current) === e.base;
       }
@@ -7203,7 +7314,7 @@ export const useApp = create<AppState>((set, get, api) => {
   // replay is always a side trip after a success.
   async function replayVaultPending(t: VaultTarget): Promise<void> {
     // While another device holds the enforced lease, nothing replays into
-    // its notes; the stash waits for the lease to come back (CTO G5).
+    // its notes; the stash waits for the lease to come back (tech review G5).
     if (leaseBlocks(t)) return;
     // A team replay runs only for the account signed in now, and only its
     // own drafts (R-19).
@@ -7213,7 +7324,7 @@ export const useApp = create<AppState>((set, get, api) => {
     let mine: VaultPendingEntry[];
     try {
       // A note with a choice open is the person's to settle: its stashed
-      // text never replays under them (CX 1.1).
+      // text never replays under them (UX review 1.1).
       const open = get().vaultConflict;
       mine = await editVaultPending((p) =>
         Object.values(p).filter(
@@ -7314,7 +7425,7 @@ export const useApp = create<AppState>((set, get, api) => {
     }
   }
 
-  // The lease (Vault M2 2.5, CTO G5; lib/vaultLease.ts). Held only while the
+  // The lease (Vault M2 2.5, tech review G5; lib/vaultLease.ts). Held only while the
   // person types: taken on the first keystroke after a quiet spell, renewed
   // at most every VAULT_LEASE_RENEW_MS, expiring VAULT_LEASE_TTL_MS after the
   // last renewal, released on leaving the note or the Vault. Advisory on a
@@ -7666,7 +7777,7 @@ export const useApp = create<AppState>((set, get, api) => {
     }
   }
 
-  // CTO F3: look at the open note once. Same version: nothing. Gone: close a
+  // tech review F3: look at the open note once. Same version: nothing. Gone: close a
   // clean note back to its folder, or ask about a dirty one. Changed: adopt
   // the version silently when the text is what this device loaded (a touch,
   // an identical rewrite) or what the person already typed; reload a clean
@@ -7817,7 +7928,7 @@ export const useApp = create<AppState>((set, get, api) => {
     return 'gone';
   }
 
-  // The team vault's live refresh (Vault M2 2.7, CTO G6; lib/vaultPoll.ts):
+  // The team vault's live refresh (Vault M2 2.7, tech review G6; lib/vaultPoll.ts):
   // one timer, and only while the team vault is on screen with a note open,
   // the page is visible, and the device is online. Hidden, there is no
   // timer at all; the screen starts it again, checking at once, on return.
@@ -8511,7 +8622,7 @@ export const useApp = create<AppState>((set, get, api) => {
       );
       // The team's plan, from each settings read, a write refused with OV402
       // and a delete refused with OV403: only the signed-in org's, so a late
-      // answer for another org never paints this one (CX Y15).
+      // answer for another org never paints this one (UX review Y15).
       onOrgVaultPlan((resourceId, plan, learned) => {
         if (resourceId !== get().settings.account?.org?.serverId) return;
         // A plan learned from a refusal says only part of it: the next
@@ -8656,7 +8767,7 @@ export const useApp = create<AppState>((set, get, api) => {
       // has one per connectivity profile (docked, offshore, offline), chosen
       // automatically from the current status. On the first launch after this
       // shipped, pin the existing stack to the status the user is in right now
-      // and leave the other two at their anchor-only default (founder call: only
+      // and leave the other two at their anchor-only default (call: only
       // the current status inherits the old setup). The legacy `stack` field is
       // kept as the seed and a rollback fallback.
       if (!settings.stacks) {
@@ -8755,7 +8866,7 @@ export const useApp = create<AppState>((set, get, api) => {
       setActiveEffort(settings.effort ?? DEFAULT_EFFORT);
       // And Chain of Thought (off on a fresh device).
       setChainOfThought(settings.chainOfThought === true);
-      // And prompt caching (off until the eval says otherwise, CTO J19).
+      // And prompt caching (off until the eval says otherwise, tech review J19).
       setPromptCache(settings.promptCache === true);
       // The hub vault links to the paired computer before anything lists it.
       await syncHubLink(settings.daemon, { initial: true }).catch(() => false);
@@ -8773,6 +8884,8 @@ export const useApp = create<AppState>((set, get, api) => {
       // purchase stays on the device.
       void storeDelete(RETIRED_ENTITLEMENT_CACHE_KEY).catch(() => {});
       void storeDelete(RETIRED_APPLE_LINK_KEY).catch(() => {});
+      const resumeId = readResumePoint(platform())?.activeId;
+      const resumeOk = resumeId !== undefined && Boolean(conversations[resumeId]);
       set({
         settings,
         conversations,
@@ -8802,6 +8915,9 @@ export const useApp = create<AppState>((set, get, api) => {
         // the page is never a wall in front of the first chat.
         view: 'chat',
       });
+      // A cold start soon after the last use (the system reclaimed the app in
+      // the background) returns to the chat that was open.
+      if (resumeOk) get().openConversation(resumeId!);
       logEvent('app_open', { onboarded: settings.onboarded });
       // Signed in: the account's preferences, if newer, arrive now. Someone
       // signed in already knows what the account opens, so the notice below
@@ -8964,12 +9080,13 @@ export const useApp = create<AppState>((set, get, api) => {
       if (isPhone()) {
         setInterval(() => {
           const s = get();
-          const daemon = s.settings.daemon;
-          if (!daemon || s.view !== 'chat' || !s.activeId) return;
+          if (s.view !== 'chat' || !s.activeId) return;
           if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
           const conv = s.conversations[s.activeId];
           if (conv?.source.kind === 'desktop' && conv.source.sessionId) {
-            void beatDesktopSession(daemon, conv.source.sessionId);
+            // The machine this session runs on, which may not be the active one.
+            const daemon = dockedTarget(conversationWhere(s.settings, conv));
+            if (daemon) void beatDesktopSession(daemon, conv.source.sessionId);
           }
         }, 12000);
       }
@@ -9171,17 +9288,27 @@ export const useApp = create<AppState>((set, get, api) => {
         case 'cloud':
           return signals.cloudReady(source.provider);
         case 'desktop':
-          // The desktop app's engine refuses to start a session until a model
-          // (orchestrator) is configured, so "ready" here means that, not just
-          // "we are on a desktop". A phone is ready when a computer is paired.
-          if (isDesktop()) return Boolean(s.desktopStatus?.stack.configured);
-          return Boolean(st.daemon);
-        case 'desktop-chat':
-          // The free chat answers from a local model only (the engine refuses
-          // one that leaves this network), so on the desktop a cloud
-          // orchestrator is not ready for it.
-          if (isDesktop()) return engineChatReady(s.desktopStatus);
-          return Boolean(st.daemon);
+        case 'desktop-chat': {
+          // Which machine would answer: the open chat's, else the one a new
+          // chat in the active project runs on (lib/runsOn.ts). A docked
+          // machine is ready once docked; this desktop's own engine refuses
+          // a session until a model (orchestrator) is configured, and its
+          // free chat answers from a local model only (the engine refuses
+          // one that leaves this network). A source made for one machine (a
+          // folder listed there) names it.
+          const open = s.activeId ? s.conversations[s.activeId] : undefined;
+          const where =
+            source.kind === 'desktop' && source.hub
+              ? sessionWhere(source, undefined, whereContextOf(st))
+              : open && open.source.kind === source.kind
+                ? conversationWhere(st, open)
+                : newChatWhere(st);
+          if (where.kind === 'docked') return true;
+          if (where.kind !== 'local') return false;
+          return source.kind === 'desktop'
+            ? Boolean(s.desktopStatus?.stack.configured)
+            : engineChatReady(s.desktopStatus);
+        }
         case 'mock':
           return true;
       }
@@ -9255,7 +9382,8 @@ export const useApp = create<AppState>((set, get, api) => {
       const seedItems = opts?.seedItems ?? [];
       // The chat's repositories: what the caller picked, else the project's.
       const project = get().settings.projects?.find((p) => p.id === projectId);
-      const repoIds = opts?.repoIds ?? project?.repoIds ?? [];
+      const isProjectChat = opts?.projectChat === true || source.kind === 'desktop';
+      const repoIds = isProjectChat ? (opts?.repoIds ?? project?.repoIds ?? []) : [];
       // A first message rides in parked on the chat (B3): its bubble is on
       // screen before the driver exists, the attach delivers it, and a hub
       // that never answers leaves it there with the reason and a Retry. The
@@ -9272,6 +9400,7 @@ export const useApp = create<AppState>((set, get, api) => {
         title: opts?.title ?? 'New chat',
         source,
         ...(projectId ? { projectId } : {}),
+        ...(isProjectChat ? { projectChat: true } : {}),
         repoIds,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -9331,7 +9460,7 @@ export const useApp = create<AppState>((set, get, api) => {
         source.kind === 'cloud' ||
         source.kind === 'device' ||
         source.kind === 'desktop-chat';
-      // The computer's agent takes no message history (CTO J12): a chat
+      // The computer's agent takes no message history (tech review J12): a chat
       // carried to it opens a new agent chat whose first task starts from the
       // handoff, and a note there says what came along.
       if (
@@ -9371,7 +9500,7 @@ export const useApp = create<AppState>((set, get, api) => {
         await get().newConversation(source);
         return;
       }
-      // Never swap under a live turn or a pending step (CTO guardrails): that
+      // Never swap under a live turn or a pending step (tech review guardrails): that
       // would abort a stream mid-token or orphan an approval bound to the old
       // driver. Claude does not let you switch mid-stream either.
       if (conv.thread.busy) {
@@ -9388,7 +9517,7 @@ export const useApp = create<AppState>((set, get, api) => {
       const resendItem =
         opts?.resend && lastUserAt >= 0 ? conv.thread.items[lastUserAt] : undefined;
       const carried = resendItem ? conv.thread.items.slice(0, lastUserAt) : conv.thread.items;
-      // The handoff (CTO J12): the whole chat when it fits the new seat's
+      // The handoff (tech review J12): the whole chat when it fits the new seat's
       // window, else a summary of what drops plus the newest turns that fit.
       // Conversation content, so it rides even with Memory off. A core that
       // cannot build one leaves the switch as it was: the whole transcript.
@@ -9714,6 +9843,7 @@ export const useApp = create<AppState>((set, get, api) => {
         statusKnown: s.desktopStatus !== undefined,
         configured: Boolean(s.desktopStatus?.stack.configured),
         cloudReady: s.cloudKeyPresent,
+        runsElsewhere: newChatWhere(s.settings).kind === 'docked',
       });
     },
 
@@ -9789,7 +9919,7 @@ export const useApp = create<AppState>((set, get, api) => {
       }
       try {
         const snap = await client.list();
-        // A routine follows the person's web search switch (founder,
+        // A routine follows the person's web search switch (maintainer,
         // 2026-10-01): when this computer's copy differs, carry it over. A
         // failure leaves routines offline, the safe side.
         const wantSearch = webSearchOn(get().settings.webSearchConsent);
@@ -10151,7 +10281,7 @@ export const useApp = create<AppState>((set, get, api) => {
       // Wipe the project's sealed tokens and secrets so nothing lingers in the
       // device store after the project is gone.
       await writeProjectSecrets(id, '');
-      // And its handoff (CTO J13): nothing of the project lingers here.
+      // And its handoff (tech review J13): nothing of the project lingers here.
       await clearHandoffs(handoffStorage, { projectId: id }).catch(() => {});
       // Chats that lived in the project stay, but drop their now-dead link. Mark
       // them `unfiled` so the init orphan-migration does not re-adopt them into
@@ -10512,7 +10642,7 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     async signOutAccount() {
-      // Only this device's sign-in ends (CX ruling 4), with a live token, and
+      // Only this device's sign-in ends (UX review ruling 4), with a live token, and
       // the sign-out finishes here whatever the server says, offline too.
       const session = get().authSession;
       if (session) await revokeHere(session, { fresh: freshSession, logout: supabaseSignOut });
@@ -11158,7 +11288,7 @@ export const useApp = create<AppState>((set, get, api) => {
           url: HARBOR_MODEL_URL,
           notice: downloadNoticeCopy('Harbor', HARBOR_MODEL_ID),
         });
-        // Warming up is the last step of the download (founder, 2026-10-01):
+        // Warming up is the last step of the download (2026-10-01):
         // Harbor loads into the phone's model slot before it is called ready,
         // so the first message answers without a "Warming up" wait.
         set({ harborDownload: { percent: 100, label: 'Warming up', indeterminate: true } });
@@ -11803,11 +11933,11 @@ export const useApp = create<AppState>((set, get, api) => {
       // Empty folders and the Trash row (Vault M6), each only where the
       // storage has them.
       void refreshVaultFolders(target);
-      // The vault's settings (Vault M7, CTO L5), through the 60 s cache.
+      // The vault's settings (Vault M7, tech review L5), through the 60 s cache.
       void get().vaultLoadSettings();
       void refreshVaultTrash(target);
       // An empty default Local vault on the desktop has nothing to move, so
-      // it simply points at the folder (CX 1.3 b).
+      // it simply points at the folder (UX review 1.3 b).
       if (await repointEmptyLocal(target, files)) return;
       // The list came back, so the provider is reachable: flush any drafts
       // stranded by an earlier offline write, and any words a launch that
@@ -11857,7 +11987,7 @@ export const useApp = create<AppState>((set, get, api) => {
       if (listed?.evicted) {
         // Ask for the bytes, so the download is on its way when the person
         // taps again: a read of an evicted note starts it and answers at once
-        // (CTO G2). Its answer is not awaited and opens nothing here.
+        // (tech review G2). Its answer is not awaited and opens nothing here.
         void target.provider.read(target.resourceId, openPath).catch(() => undefined);
         downloading();
         return;
@@ -11993,7 +12123,7 @@ export const useApp = create<AppState>((set, get, api) => {
       if (reachable) {
         try {
           // Never over anything: a note that appeared under this name since
-          // the stat above is opened, not replaced (ifAbsent, CTO F4).
+          // the stat above is opened, not replaced (ifAbsent, tech review F4).
           const result = await putVaultNote(target, normalized, content, { ifAbsent: true });
           // Taken under another spelling (the team vault matches a name by
           // letter case, 0021): open the note that is there, at its own path,
@@ -12103,7 +12233,7 @@ export const useApp = create<AppState>((set, get, api) => {
         (reason === 'focus' || reason === 'poll' || tree || paths?.includes(open.path))
       ) {
         // A poll never runs while a save for the note is still settling; it
-        // looks again on the next tick (CTO G6).
+        // looks again on the next tick (tech review G6).
         if (reason === 'poll' && vaultSaveChains.has(vaultKey(target, open.path))) {
           return 'skipped';
         }
@@ -12117,7 +12247,7 @@ export const useApp = create<AppState>((set, get, api) => {
         void vaultIndexOf(target)?.watched({ paths, tree: false }, () => listVaultNotes(target));
       }
       // A change under `.oscode/` or the Obsidian config folder reads the
-      // vault's settings again (CTO L6).
+      // vault's settings again (tech review L6).
       if (reason === 'watch' && paths?.length && vaultSettingsHint(foldersKey(target), paths)) {
         void get().vaultLoadSettings({ force: true });
       }
@@ -12330,14 +12460,14 @@ export const useApp = create<AppState>((set, get, api) => {
       const target = vaultTargetFrom(at);
       if (!target) return;
       // A textarea hands CRLF back as LF, so an all-CRLF note keeps its line
-      // endings (M3, CTO H2): the note as loaded, or as last saved.
+      // endings (M3, tech review H2): the note as loaded, or as last saved.
       const open = isActiveVault(target) ? get().vaultNote : undefined;
       const loaded =
         open?.path === path ? open.text : vaultBodyCache.get(vaultKey(target, path))?.text;
       const text = loaded === undefined ? typed : restoreEol(loaded, typed);
       // While a choice about this note is open, nothing typed is written to
       // it: the text goes to the durable stash, stamped with the version it
-      // was typed against (CX 1.1).
+      // was typed against (UX review 1.1).
       const c = get().vaultConflict;
       if (
         c &&
@@ -12350,7 +12480,7 @@ export const useApp = create<AppState>((set, get, api) => {
       }
       // Another device holds the enforced lease: nothing is written to the
       // note. The text waits in the stash with the version it was typed
-      // against, and its replay keeps both if the note moved on (CTO G5).
+      // against, and its replay keeps both if the note moved on (tech review G5).
       if (leaseBlocks(target)) {
         await stashConflictText(target, path, text, vaultBaseOf(target, path));
         return;
@@ -12467,7 +12597,7 @@ export const useApp = create<AppState>((set, get, api) => {
         // text saves later, which is not about a delete, and nothing retries
         // one, so vaultError is left as it was.
         const refusal = vaultRefusal(err);
-        // A refusal that is its own whole line (CX Y14) is said as it is.
+        // A refusal that is its own whole line (UX review Y14) is said as it is.
         if (refusal && (err as { whole?: unknown }).whole === true) {
           get().showToast(refusal);
           return false;
@@ -13111,7 +13241,7 @@ export const useApp = create<AppState>((set, get, api) => {
       const t = vaultTarget();
       if (!t || !capsOf(t).attachments) return undefined;
       // The attachments folder is the vault's resolved setting (Vault M7,
-      // CTO L2): Obsidian's where it sets one, else `.oscode/vault.json`.
+      // tech review L2): Obsidian's where it sets one, else `.oscode/vault.json`.
       const [attachments, settings] = await Promise.all([
         t.provider.listAttachments!(t.resourceId).catch(() => [] as AttachmentMeta[]),
         loadVaultSettings(t.provider, t.resourceId, foldersKey(t)).catch(() => undefined),
@@ -13223,7 +13353,7 @@ export const useApp = create<AppState>((set, get, api) => {
         return { kind: 'refused' as const, line: vaultGoneLine('mark', noteTitle(path)) };
       };
       if (!file) return markGone();
-      // The person's own write (CX Y12): one line, every other byte kept.
+      // The person's own write (UX review Y12): one line, every other byte kept.
       let next: string;
       try {
         const merged = mergeProvenance(file.text, {
@@ -13368,12 +13498,12 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     async vaultMoveTo(providerId) {
-      // The room holds still while notes move (CX 1.3): nothing that writes.
+      // The room holds still while notes move (UX review 1.3): nothing that writes.
       set({ vaultMoving: true });
       try {
         const result = await moveVaultInner(providerId);
         // The vault lives somewhere else now: the warm index belonged to the
-        // old home (Vault M5, CTO J1 closes it on a storage move).
+        // old home (Vault M5, tech review J1 closes it on a storage move).
         if (result.ok) {
           await shutVaultIndex().catch(() => {});
           forgetVaultSettings();
@@ -13405,7 +13535,7 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     async vaultBringPrevious() {
-      // The room holds still while notes arrive, as for a move (CX 1.3).
+      // The room holds still while notes arrive, as for a move (UX review 1.3).
       set({ vaultMoving: true });
       let result: VaultBringResult | undefined;
       try {
@@ -13898,14 +14028,14 @@ export const useApp = create<AppState>((set, get, api) => {
         };
       });
       void persistConversations(get());
-      // A handoff this chat wrote goes with it (CTO J13).
+      // A handoff this chat wrote goes with it (tech review J13).
       handoffWrittenAt.delete(id);
       void clearHandoffs(handoffStorage, { conversationId: id }).catch(() => {});
     },
 
     async clearConversations() {
       for (const id of [...get().order]) get().deleteConversation(id);
-      // Recent is cleared with the chats (CX X4).
+      // Recent is cleared with the chats (UX review X4).
       if (get().settings.vaultRecent) {
         await get()
           .saveSettings({ vaultRecent: undefined })
@@ -14143,7 +14273,7 @@ export const useApp = create<AppState>((set, get, api) => {
     async setWebSearchAllowed(allowed) {
       webSearchDeclinedThisRun = false;
       await get().saveSettings({ webSearchConsent: allowed ? 'allowed' : 'declined' });
-      // Routines on this computer follow the switch (founder, 2026-10-01).
+      // Routines on this computer follow the switch (2026-10-01).
       void get().refreshRoutines();
     },
 
@@ -14159,7 +14289,9 @@ export const useApp = create<AppState>((set, get, api) => {
         get().openAccountGate('coding');
         return;
       }
-      if (!get().sourceReady({ kind: 'desktop' })) {
+      // The sample is made on this computer and runs on its own engine,
+      // whatever the project or the "run on another computer" switch says.
+      if (!get().desktopStatus?.stack.configured) {
         get().showToast('Pick a model for this computer first, then try the sample.');
         get().setView('stack');
         return;
@@ -14173,7 +14305,7 @@ export const useApp = create<AppState>((set, get, api) => {
       // attaches, so it can never land in whatever chat was open before when
       // no chat opens.
       await get().newConversation(
-        { kind: 'desktop', cwd: made.path, repoName: SAMPLE_REPO_NAME },
+        { kind: 'desktop', cwd: made.path, repoName: SAMPLE_REPO_NAME, hub: THIS_COMPUTER },
         { firstMessage: { text: SAMPLE_PROMPT } },
       );
     },
@@ -14462,8 +14594,11 @@ export const useApp = create<AppState>((set, get, api) => {
         return;
       }
       const repoName = info.cwd.split(/[\\/]/).filter(Boolean).pop();
+      // The machine it runs on, recorded now, so opening it never asks
+      // another machine for a session it has never heard of.
+      const hub = info.hub ?? whereKey(deviceWhere(whereContextOf(get().settings)));
       const opened = await get().newConversation(
-        { kind: 'desktop', sessionId: info.id, cwd: info.cwd, repoName },
+        { kind: 'desktop', sessionId: info.id, cwd: info.cwd, repoName, ...(hub ? { hub } : {}) },
         { title: info.title && !/^Session /.test(info.title) ? info.title : undefined },
       );
       // No chat opened (the sign-in sheet): the room stays as it was, trail
@@ -14748,6 +14883,9 @@ export const useApp = create<AppState>((set, get, api) => {
         ...target,
         name: target.name ?? prior?.name,
         kind: target.kind ?? prior?.kind,
+        // Where it lives and how big it is, kept the same way.
+        place: target.place ?? prior?.place,
+        machine: target.machine ?? prior?.machine,
       };
       const others = list.filter((d) => d.baseUrl !== target.baseUrl);
       // The credential goes to the secret store (APP-11); the settings blob
@@ -14768,7 +14906,7 @@ export const useApp = create<AppState>((set, get, api) => {
       const hubBefore = get().settings.daemon?.baseUrl;
       await get().saveSettings({ daemon: merged, daemons: [...others, merged], hubRoles });
       // A pairing (or a pairing to another computer) settles where the
-      // personal vault lives (CTO J9). Never blocks the pairing itself.
+      // personal vault lives (tech review J9). Never blocks the pairing itself.
       if (hubBefore !== merged.baseUrl) void settleVaultForHub();
     },
 
@@ -14800,10 +14938,17 @@ export const useApp = create<AppState>((set, get, api) => {
       const daemon = s.daemon?.baseUrl === baseUrl ? daemons[0] : s.daemon;
       const hubRoles = { ...(s.hubRoles ?? {}) };
       delete hubRoles[baseUrl];
-      await get().saveSettings({ daemons, daemon, hubRoles });
+      // Every project that ran there follows this device again (lib/runsOn.ts).
+      const projects = s.projects ? forgetRunsOn(s.projects, baseUrl) : undefined;
+      await get().saveSettings({
+        daemons,
+        daemon,
+        hubRoles,
+        ...(projects && projects !== s.projects ? { projects } : {}),
+      });
       // The credential leaves with the hub.
       await secretDelete(hubSecretKey(baseUrl));
-      // The vault returns from the computer it pointed at (CTO J9).
+      // The vault returns from the computer it pointed at (tech review J9).
       if (s.daemon?.baseUrl === baseUrl) void settleVaultForHub();
       return leaving?.token ? await leaveHub(leaving, role) : { kind: 'none' };
     },
@@ -14818,6 +14963,49 @@ export const useApp = create<AppState>((set, get, api) => {
 
     async setPreferRemoteHub(on) {
       await get().saveSettings({ preferRemoteHub: on });
+    },
+
+    async setHubPlace(baseUrl, place) {
+      const s = get().settings;
+      const daemons = hubList(s).map((d) => (d.baseUrl === baseUrl ? { ...d, place } : d));
+      const daemon = s.daemon?.baseUrl === baseUrl ? { ...s.daemon, place } : s.daemon;
+      await get().saveSettings({ daemons, daemon });
+    },
+
+    async noteMachineFacts(baseUrl, machine) {
+      const s = get().settings;
+      const prior = hubList(s).find((d) => d.baseUrl === baseUrl);
+      if (!prior) return;
+      const was = prior.machine;
+      if (
+        was &&
+        was.ramGB === machine.ramGB &&
+        was.cpus === machine.cpus &&
+        was.arch === machine.arch
+      )
+        return;
+      const daemons = hubList(s).map((d) => (d.baseUrl === baseUrl ? { ...d, machine } : d));
+      const daemon = s.daemon?.baseUrl === baseUrl ? { ...s.daemon, machine } : s.daemon;
+      await get().saveSettings({ daemons, daemon });
+    },
+
+    async setProjectRunsOn(projectId, runsOn) {
+      const s = get().settings;
+      // Only a machine this device can reach, or this desktop's own engine.
+      const ok =
+        runsOn === undefined ||
+        (runsOn === THIS_COMPUTER && isDesktop() && Boolean(bridge())) ||
+        hubList(s).some((d) => d.baseUrl === runsOn);
+      if (!ok) return;
+      const projects = (s.projects ?? []).map((p) => {
+        if (p.id !== projectId) return p;
+        if (runsOn === undefined) {
+          const { runsOn: _gone, ...rest } = p;
+          return rest;
+        }
+        return { ...p, runsOn };
+      });
+      await get().saveSettings({ projects });
     },
 
     sendCommandStdin(runId, data) {

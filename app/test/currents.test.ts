@@ -1,5 +1,5 @@
 // Agentic Currents and Wayfinding, the pure core and the guards that hold the
-// founder's promise: one current at a time everywhere, the two-part gate
+// maintainer's promise: one current at a time everywhere, the two-part gate
 // (toggle AND probe), every current fills every contribution slot (the
 // mirrored pattern), and with none on the rooms carry no trace of any.
 import { describe, expect, it, vi } from 'vitest';
@@ -102,7 +102,7 @@ describe('the memory switch has a runtime consumer', () => {
 });
 
 describe('the roster', () => {
-  it('lists the five founder-named currents in order', () => {
+  it('lists the five maintainer-named currents in order', () => {
     expect(AGENTIC_CURRENTS.map((c) => c.id)).toEqual([...AGENTIC_CURRENT_IDS]);
     expect(AGENTIC_CURRENTS.map((c) => c.label)).toEqual([
       'Hermes Agent',
@@ -124,7 +124,7 @@ describe('the roster', () => {
     for (const c of AGENTIC_CURRENTS) expect(SETUP_GUIDES[c.guide]).toBeDefined();
   });
 
-  it('carries the BETA line the founder asked for', () => {
+  it('carries the BETA line a maintainer asked for', () => {
     expect(AGENTIC_CURRENTS_BETA_LINE).toMatch(/imperfect addition/i);
     expect(AGENTIC_CURRENTS_BETA_LINE).toMatch(/Off leaves no trace/);
   });

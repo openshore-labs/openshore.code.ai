@@ -1,4 +1,4 @@
-// The Memory switch's one precedence rule (Vault v1, 1.5; CTO F6), shared by
+// The Memory switch's one precedence rule (Vault v1, 1.5; tech review F6), shared by
 // the engine's bootstrap and the app through os-code/protocol. Pure on
 // purpose: projectMemory.ts imports node:path, and the protocol surface must
 // stay free of Node built-ins, so the helper lives here and projectMemory.ts

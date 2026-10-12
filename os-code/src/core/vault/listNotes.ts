@@ -1,4 +1,4 @@
-// The engine's listing of a desktop folder vault (Vault M4, CTO I7): every
+// The engine's listing of a desktop folder vault (Vault M4, tech review I7): every
 // note with the version the index reconciles by. The version is noteVersion's
 // bigint lstat token (F1), the same one Electron main and the vault tools
 // build, so an index saved by either side reconciles here without a read.

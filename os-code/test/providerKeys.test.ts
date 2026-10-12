@@ -1,4 +1,4 @@
-// Keys on your server (founder, 2026-10-09; docs/byok-any-provider-plan.md,
+// Keys on your server (2026-10-09; docs/design/byok-any-provider-plan.md,
 // part 3): the module the daemon's key routes and `osc key` share, the
 // schema's provider-key namespace, and how a stored key reaches a request.
 // A key is put once, listed by provider only, and removed with every stack
@@ -152,7 +152,7 @@ describe('putting a key', () => {
 
   // A server on this network reads as local, so a gateway there passing
   // turns to a cloud would get routines, the free chat and private notes
-  // (CTO 3, D5): the key door takes only an https address off it.
+  // (tech review 3, D5): the key door takes only an https address off it.
   it('takes only an https address off this network', () => {
     expect(cleanBaseUrl('https://api.example.org/v1/')).toBe('https://api.example.org/v1');
     for (const local of [

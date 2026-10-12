@@ -7,7 +7,7 @@
 // to an allowlist. When set, only a listed Origin is echoed back; anything else
 // gets a non-matching origin and the browser blocks the read. Leaving it unset
 // preserves today's behavior exactly, so this can be turned on without a code
-// change when the founder is ready.
+// change when a maintainer is ready.
 const ALLOWED = (Deno.env.get('CORS_ALLOWED_ORIGINS') ?? '')
   .split(',')
   .map((s) => s.trim())

@@ -1,4 +1,4 @@
-// readConfig for the desktop folder vault (Vault M3, CTO H5), the Node side.
+// readConfig for the desktop folder vault (Vault M3, tech review H5), the Node side.
 // Main's `osc:vaultReadConfig(name)` calls readVaultConfigFile with the vault
 // root and the logical name the renderer sent; no path ever crosses.
 //
@@ -9,7 +9,7 @@
 // planted in the vault cannot read outside it. The version is the same lstat
 // token a note carries (noteVersion).
 //
-// The one writer (Vault M7, CTO L7) is writeVaultConfigFile, for the person's
+// The one writer (Vault M7, tech review L7) is writeVaultConfigFile, for the person's
 // settings sheet only: main's `osc:vaultWriteConfig` and the hub's PUT. No
 // agent tool imports it (a grep test holds that), and every agent write path
 // refuses `.oscode/` on its own (L8).
@@ -179,7 +179,7 @@ function checkedGuard(guard: unknown): ConfigWriteGuard | undefined {
 }
 
 /**
- * Write the vault's own settings file, `.oscode/vault.json` (Vault M7, CTO
+ * Write the vault's own settings file, `.oscode/vault.json` (Vault M7, tech review
  * L7), for the person's settings sheet. Every other name (each `obsidian/*`)
  * is `refused`: Obsidian's config is read, never written. `.oscode` is made
  * when missing and must lstat as a real directory (a link is `refused`); the

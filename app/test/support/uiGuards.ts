@@ -1,4 +1,4 @@
-// The UI rules the 2026-10-07 review set (Creative Studio and CMO), written as
+// The UI rules the 2026-10-07 review set (design review and copy review), written as
 // functions over source files. app/test/uiGuards.test.ts holds every file no
 // room package owns, and each room's app/test/uiGuards.<room>.test.ts holds its
 // own files, so a new file nobody lists still falls under a guard. A rule is a
@@ -206,7 +206,7 @@ function lineHits(
 }
 
 // The later tiers' files, each with no door in a Personal build, and the
-// Marketplace, a v1 room since 2026-10-11 (founder) that came back with its
+// Marketplace, a v1 room since 2026-10-11 that came back with its
 // UI polish debt left open for contributors to fix. A rule that skips them
 // says so where it does.
 const LATER_TIER: Record<string, string> = {
@@ -218,12 +218,12 @@ const LATER_TIER: Record<string, string> = {
 };
 
 /** Retired on 2026-10-07, each with what to use instead. Case sensitive and
- *  word-bounded. D2 (founder, 2026-10-07) named the model that runs the show
+ *  word-bounded. D2 (2026-10-07) named the model that runs the show
  *  the Reasoning model, so the acronym retires from copy; Harbor Lite's
  *  lowercase match keywords ('reasoning llm') stay, since a person may still
  *  ask that way. */
 export const RETIRED_2026_10_07: Array<{ pattern: RegExp; use: string }> = [
-  { pattern: /\b[Rr]easoning LLM\b/, use: "'Reasoning model' (D2, founder 2026-10-07)" },
+  { pattern: /\b[Rr]easoning LLM\b/, use: "'Reasoning model' (D2, 2026-10-07)" },
   { pattern: /\blead model\b/, use: "'Reasoning model'" },
   { pattern: /\bPair your computer\b/, use: "'Connect your computer' (the pairing review)" },
   { pattern: /\bSet up pairing\b/, use: "'Connect your computer'" },
@@ -237,7 +237,7 @@ export const RETIRED_2026_10_07: Array<{ pattern: RegExp; use: string }> = [
 
 export const RULES: Array<{ name: string; check(path: string, src: string): string[] }> = [
   {
-    // The large-title ruling (Creative Studio, 2026-10-02): a room whose page
+    // The large-title ruling (design review, 2026-10-02): a room whose page
     // title is an h1 tucks its BackBar title until that h1 scrolls under the
     // bar. A note for the rooms: never share one ref across two returns.
     // BackBar persists across a component's branches, and useTucked

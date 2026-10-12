@@ -1,5 +1,5 @@
 // The empty chat's landing greeting rolls in on the swell once per session
-// (Creative Studio brand sweep, 2026-09-24); later landings and language taps
+// (design review brand sweep, 2026-09-24); later landings and language taps
 // keep the crossfade, and a settled line is plain text.
 import { describe, expect, it } from 'vitest';
 import { createElement } from 'react';

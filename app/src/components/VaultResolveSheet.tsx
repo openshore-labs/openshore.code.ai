@@ -1,4 +1,4 @@
-// The Vault's resolve sheet (Vault M1, 1.1; Creative Studio 1a to 1e, CX 1.1):
+// The Vault's resolve sheet (Vault M1, 1.1; design review 1a to 1e, UX review 1.1):
 // a note changed somewhere else while the person had unsaved edits in it, or
 // was moved or deleted. It shows what happened before it asks, and it never
 // chooses for the person:
@@ -14,7 +14,7 @@
 // - Nothing claims success early: every row waits while a choice runs, the
 //   sheet closes only once it lands, and a failure says so and re-enables.
 //
-// In move mode (Creative Studio 1d) the same sheet steps through a move's
+// In move mode (design review 1d) the same sheet steps through a move's
 // forked pairs, "1 of 3": the one you moved against the one already there.
 // Both files exist, so closing keeps both, and the sheet says so.
 //

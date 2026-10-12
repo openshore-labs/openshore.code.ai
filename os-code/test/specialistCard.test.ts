@@ -1,4 +1,4 @@
-// A placed cloud specialist asks first on the computer (CX and CMO,
+// A placed cloud specialist asks first on the computer (UX and copy review,
 // 2026-10-08, D): before the first handoff to it in each task, per model, on
 // the amber card, for delegate, analyzeImage and generateImage to any target
 // that leaves this network, an Ollama cloud tag included. The approval is

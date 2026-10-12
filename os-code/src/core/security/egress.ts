@@ -41,7 +41,7 @@ export interface EgressDecision {
  * "local" and receive whatever local-only traffic goes to it.
  *
  * The rules live in the pure judge `hostIsLocal` (harness/locality.ts, Vault
- * M5, CTO J2), shared with the app; this machine's own tailnet suffix is the
+ * M5, tech review J2), shared with the app; this machine's own tailnet suffix is the
  * one thing the engine adds, and it is asked for only for a *.ts.net host.
  */
 export function isLocalHost(hostname: string): boolean {

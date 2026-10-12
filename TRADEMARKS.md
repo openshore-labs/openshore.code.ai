@@ -40,7 +40,8 @@ Write to support@openshore.ai. Most reasonable asks get a yes.
 
 Only Open Shore LLC publishes official OpenShore builds: the App Store
 listing, the signed desktop releases, and the update feed. They are signed
-with keys only Open Shore LLC holds (`docs/release-signing.md`). A build you
-make yourself is not an official build, even from unchanged code. If you
-publish one, make your own signing keys (`app/scripts/release-keygen.mjs`)
-and point its update feed at your own releases.
+with keys only Open Shore LLC holds (`app/electron/releaseKeys.ts` pins the
+public halves). A build you make yourself is not an official build, even
+from unchanged code. If you publish one, make your own signing keys
+(`app/scripts/release-keygen.mjs`) and point its update feed at your own
+releases.

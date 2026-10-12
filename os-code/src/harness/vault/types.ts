@@ -1,4 +1,4 @@
-// The Vault's shared core contract (Vault M3, CTO H1 to H5). Every type the M3
+// The Vault's shared core contract (Vault M3, tech review H1 to H5). Every type the M3
 // streams code against lives here, so the core (paths, scan, frontmatter,
 // resolve, rewrite, excerpt, the index), the engine, the desktop's main process
 // and the app all agree on one shape. Types only: no value, no import, so it
@@ -217,7 +217,7 @@ export interface VaultIndexEntry {
   fmState: FmState;
   /** Estimate: ceil(UTF-8 bytes / 4). */
   tokens: number;
-  /** The note's own `oscode:` frontmatter marks (`oscodeMarks`, Vault M4, CTO
+  /** The note's own `oscode:` frontmatter marks (`oscodeMarks`, Vault M4, tech review
    *  I4), set only when it carries at least one. */
   oscode?: OscodeMark[];
   /** Weighted term counts as "id:tf,..." in base36 against the file's shared
@@ -298,7 +298,7 @@ export type ConfigRead =
   { ok: true; text: string; version: string } | { ok: false; reason: ConfigReadRefusal };
 
 // ---------------------------------------------------------------------------
-// privacy.ts (Vault M4, CTO I3 to I5)
+// privacy.ts (Vault M4, tech review I3 to I5)
 
 /** A note's own say over how OpenShore treats it, from frontmatter
  *  `oscode: pin | exclude | local-only` (a string or a list, any case). */
@@ -338,7 +338,7 @@ export interface VaultPrivacy {
 }
 
 // ===========================================================================
-// Vault M6, "Obsidian day one" (CTO K2, K4, K7, K8, K10, K11, K15). Wave 0
+// Vault M6, "Obsidian day one" (tech review K2, K4, K7, K8, K10, K11, K15). Wave 0
 // contracts: the shapes the M6 streams code against. The functions that
 // produce them live in attachments.ts, move.ts, query.ts, dates.ts and
 // markdown.ts (stubs until their stream lands).
@@ -525,7 +525,7 @@ export interface TemplateFill {
 // ---------------------------------------------------------------------------
 // markdown.ts (K10, K11, K15; stream A2)
 
-/** The four callout families (CX X12), each drawn from existing tokens and
+/** The four callout families (UX review X12), each drawn from existing tokens and
  *  never from `--local`, `--cloud` or `--accent`. Unknown types are neutral. */
 export type CalloutFamily = 'neutral' | 'positive' | 'caution' | 'danger';
 
@@ -564,7 +564,7 @@ export interface UnlinkedMention extends TextRange {
 }
 
 // ===========================================================================
-// Vault M7, "The customization surface" (CTO L1 to L14, CX Y1 to Y17). Wave 0
+// Vault M7, "The customization surface" (tech review L1 to L14, UX review Y1 to Y17). Wave 0
 // contracts: the shapes the M7 streams code against. The functions that
 // produce them live in settings.ts (stream A), provenance.ts (stream B) and
 // yamlScalar.ts; the hosts read and write through them (streams C to F).
@@ -577,7 +577,7 @@ export type VaultNewNoteLocation = 'root' | 'current' | 'folder';
 /** The link a `[[` pick or the accessory bar inserts. */
 export type VaultLinkStyle = 'wiki' | 'markdown';
 /** The path a new link carries (Obsidian's `newLinkFormat`; desktop row only,
- *  CX Y1). */
+ *  UX review Y1). */
 export type VaultLinkFormat = 'shortest' | 'relative' | 'absolute';
 /** What a rename does to links (Obsidian's `alwaysUpdateLinks`). */
 export type VaultLinkUpdateRule = 'ask' | 'always';
@@ -627,7 +627,7 @@ export interface VaultSettingsFile {
   localOnly?: { paths?: string[]; tags?: string[] };
 }
 
-/** Every field of the in-vault file, dotted, in CX Y1's sheet order. The
+/** Every field of the in-vault file, dotted, in UX review Y1's sheet order. The
  *  value list is `VAULT_SETTINGS_FIELDS` (settings.ts); L18's table test fails
  *  a field without a runtime consumer. */
 export type VaultSettingsField =
@@ -660,7 +660,7 @@ export type VaultSettingsField =
 export type VaultSettingsSetAsideReason = 'widens' | 'unknown' | 'invalid';
 
 /** One key set aside. `key` is dotted (`pack`, `localOnly.paths[0]`); `plain`
- *  is the CTO-owned fragment CX Y3 wraps ("This vault's settings file also
+ *  is the tech review-owned fragment UX review Y3 wraps ("This vault's settings file also
  *  asks to {plain}. ..."), e.g. `give notes more room in each chat`. */
 export interface VaultSettingsSetAside {
   key: string;
@@ -670,7 +670,7 @@ export interface VaultSettingsSetAside {
 
 /** `parseVaultSettingsFile(text)`: the allow-listed fields and what was set
  *  aside, or `unreadable` for bad JSON or a top level that is not an object
- *  (CX Y5: every row read-only, the last good narrowing kept, never
+ *  (UX review Y5: every row read-only, the last good narrowing kept, never
  *  overwritten). */
 export type VaultSettingsParse =
   { file: VaultSettingsFile; setAside: VaultSettingsSetAside[] } | { unreadable: true };
@@ -689,7 +689,7 @@ export type VaultSettingsFileState = 'absent' | 'ok' | 'unreadable' | 'unavailab
 /** Obsidian's `userIgnoreFilters`, read and never stored in the in-vault
  *  file (L2). Plain paths leave notes out of search, `[[` suggestions,
  *  unlinked mentions and retrieval candidates. NOT privacy: no copy says a
- *  model does not see them (CX Y2). A `/regex/` entry is skipped and counted. */
+ *  model does not see them (UX review Y2). A `/regex/` entry is skipped and counted. */
 export interface VaultIgnoreFilters {
   paths: string[];
   regexSkipped: number;
@@ -717,7 +717,7 @@ export interface ResolvedVaultSettings {
   /** The in-vault file's version when it read `ok`: the `ifMatch` of the next
    *  write, and part of the compiled privacy cache key (L6). */
   fileVersion?: string;
-  /** Any Obsidian config file read `ok` (CX Y2's "Obsidian keeps its own
+  /** Any Obsidian config file read `ok` (UX review Y2's "Obsidian keeps its own
    *  setting for this." sub). */
   obsidian: boolean;
 }
@@ -791,7 +791,7 @@ export type ProvKey =
   | 'oscode-reviewed';
 
 /** Who wrote the note: an agent's new note, an agent's edit to a note it did
- *  not create (CX "Edited by"), a Crew routine, a saved handoff. */
+ *  not create (UX review "Edited by"), a Crew routine, a saved handoff. */
 export type ProvSource = 'agent' | 'agent-edit' | 'crew' | 'handoff';
 /** Where the writing seat ran, judged by address at write time
  *  (`leavesThisNetwork`), never by a provider label. */

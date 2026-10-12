@@ -1,5 +1,5 @@
 // Free, read-only chat with the paired desktop's local models over the daemon's
-// stateless /chat endpoint (the free tier the C-suite approved, built as the CTO
+// stateless /chat endpoint (the free tier the C-suite approved, built as the tech review
 // ruled). No session, no tools, no command lane: this driver only streams a
 // completion, so the surface physically cannot read, edit, run, or commit. It
 // keeps the turn history itself, since /chat is stateless, and re-sends it each
@@ -13,17 +13,17 @@
 // rules (one search, the line never shown, the results kept as one line in
 // history) are drivers/searchTurn.ts.
 //
-// Stop answers at once (CTO ruling 7): the turn closes with whatever streamed
+// Stop answers at once (tech review ruling 7): the turn closes with whatever streamed
 // so far, kept in the chat and in the history this driver re-sends, and any
 // late bytes are dropped.
 //
 // On the desktop itself the same chat reaches this computer's own engine over
-// IPC (CTO ruling 8, `osc:freeChat`): the engine runs the one free chat
+// IPC (tech review ruling 8, `osc:freeChat`): the engine runs the one free chat
 // function the daemon serves the phone, so both get the same local-only rules.
 // No session is created and no vault pack is built there, so a signed-out
 // chat carries no notes; the transport is the only difference.
 //
-// The vault pack (Vault M5, CTO J6) is built on the computer, never here: the
+// The vault pack (Vault M5, tech review J6) is built on the computer, never here: the
 // body names the project (`vaultPack`) or says Memory is off (`memory: false`),
 // the daemon renders the pack over its own vault for the model it serves, and
 // streams the card before the first text. No note text ever leaves the phone
@@ -111,7 +111,7 @@ export function daemonFreeChat(target: DaemonTarget): FreeChatTransport {
 
 let freeChatSeq = 0;
 
-/** This computer's own engine over IPC (CTO ruling 8). Frames arrive on
+/** This computer's own engine over IPC (tech review ruling 8). Frames arrive on
  *  `onFreeChat` under this request's id, so a late frame for an answer that
  *  was stopped is dropped; a Stop, or the reader leaving early, asks main to
  *  stop the model. */
@@ -213,7 +213,7 @@ export class DesktopChatDriver implements ChatDriver {
     private readonly extraSystem?: ChatContext,
     /** Research (default off): search on the connected Perplexity key. */
     private readonly researchOn = false,
-    /** The /chat vault fields (CTO J6): the project the daemon builds the pack
+    /** The /chat vault fields (tech review J6): the project the daemon builds the pack
      *  for, or Memory off. None sends neither, so the daemon builds none. */
     private readonly vault: ChatVaultFields = {},
   ) {

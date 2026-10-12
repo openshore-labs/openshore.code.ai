@@ -1,5 +1,5 @@
 // Keyboard focus stays inside an open dialog. Every sheet in the app renders a
-// `.sheet` inside a `.sheet-scrim` (the model sheet, approvals, the paywall,
+// `.sheet` inside a `.sheet-scrim` (the model sheet, approvals, the sign-in sheet,
 // the vault storage picker, and so on), the confirm variant a `.confirm-card`,
 // and the compact drawer a `.sidebar.drawer`, so one app-level trap covers all
 // of them without threading a ref through each: while a dialog is open and not

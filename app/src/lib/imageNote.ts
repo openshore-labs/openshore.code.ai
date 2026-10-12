@@ -1,6 +1,6 @@
-// The honest note for image reading (founder, 2026-10-07). A plan's image
+// The honest note for image reading (2026-10-07). A plan's image
 // step with nothing set for Image reading runs on the Reasoning model from
-// the text, since a plan carries no picture (CX and CMO, 2026-10-08, E), and
+// the text, since a plan carries no picture (UX and copy review, 2026-10-08, E), and
 // the line the working row shows as the step starts says so. The chat's own
 // status line, after its ask-first card, names the model that reads a
 // picture and what it runs on, and the card itself names a model set for
@@ -131,8 +131,8 @@ export function imageAskDetail(
 }
 
 /** The card's detail when the Local model failed on a picture before
- *  writing anything and the Cloud slot holds a model that reads images (CX
- *  and CMO, 2026-10-08, K), before its stop line: what failed, who would
+ *  writing anything and the Cloud slot holds a model that reads images (UX review
+ *  and copy review, 2026-10-08, K), before its stop line: what failed, who would
  *  read it instead and on what. Nothing is sent until the person approves. */
 export function imageFallbackDetail(
   local: StackModelRef,

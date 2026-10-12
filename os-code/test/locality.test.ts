@@ -1,4 +1,4 @@
-// What counts as this computer's own network (Vault M5, CTO J2): every rule
+// What counts as this computer's own network (Vault M5, tech review J2): every rule
 // of `hostIsLocal`, by address and never by label, the J2 cases (only this
 // person's own tailnet is local; another tailnet's Funnel host, 0.0.0.0,
 // link-local IPv4, fc00::/7 outside fd, and IPv4-mapped IPv6 read remote),

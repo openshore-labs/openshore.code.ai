@@ -1,4 +1,4 @@
-// Slack Water's floor (components/SlackWater.tsx, docs/slack-water.md): one
+// Slack Water's floor (components/SlackWater.tsx, docs/design/slack-water.md): one
 // picture of the app as it is on screen, so the onboarding ripple can bend the
 // app's own words and buttons the way a pond bends what lies under it. A page
 // cannot read its own pixels, so the picture comes from the shell: WebKit's

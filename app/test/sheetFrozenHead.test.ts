@@ -1,4 +1,4 @@
-// Every sheet keeps its top in view (founder, 2026-10-01): the grabber and the
+// Every sheet keeps its top in view (2026-10-01): the grabber and the
 // header row (the round close and the title) are frozen, and only what is under
 // the hairline scrolls, so the way out is always on screen. The offsets ride
 // the sheet's padding, which is the page gutter since D22 (2026-10-07).

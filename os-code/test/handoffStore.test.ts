@@ -1,4 +1,4 @@
-// The engine's handoff store and the desktop agent's seed (Vault M5, CTO J12,
+// The engine's handoff store and the desktop agent's seed (Vault M5, tech review J12,
 // J13): the latest handoff per owner, workspace and project, sealed at rest,
 // read back only while it is at most seven days old, and cleared with the
 // chats; the adapter from engine history never carries thinking or a
@@ -127,7 +127,7 @@ describe('the handoff store', () => {
   });
 });
 
-// CX and CMO, 2026-10-08 (A): a handoff written before the local-only fix
+// UX and copy review, 2026-10-08 (A): a handoff written before the local-only fix
 // (0.1.64) may carry a private note's words. New records carry v: 2, and
 // every record without it is swept once per machine, from bootstrap.
 describe('the sweep of records from before the fix', () => {

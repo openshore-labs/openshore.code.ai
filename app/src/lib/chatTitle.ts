@@ -1,4 +1,4 @@
-// A chat's name from its first message (founder, 2026-10-01: "those convo
+// A chat's name from its first message (2026-10-01: "those convo
 // tags need to be smarter so it's easier and clearer reference"). The old
 // name was the first 48 characters, cut mid-word, with "hey can you please"
 // and all. This keeps what the message is about: the polite lead-in goes, the
@@ -8,7 +8,7 @@
 // comes (store.ts), and a name the person gives by hand always does.
 import { setupHelpIntent } from './guidedSetup.js';
 
-/** The setup walk's chat (founder, 2026-10-01). */
+/** The setup walk's chat (2026-10-01). */
 export const SETUP_CHAT_TITLE = 'First-time setup';
 /** A chat opened by asking for the setup list. */
 export const SETUP_HELP_TITLE = 'Getting set up';

@@ -1,4 +1,4 @@
-# Migration numbers (CTO 11, 2026-09-29). `supabase db push` matches a
+# Migration numbers (tech review 11, 2026-09-29). `supabase db push` matches a
 # migration by its number only, so a branch that reuses a number main or
 # production already gave to another file would have its file skipped, or
 # re-run under a new name. That happened once: production's 0019 and 0020 came

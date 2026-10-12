@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// The founder's preflight before any `supabase db push` to production (CTO 11,
-// 2026-09-29; docs/vault-gate1-runbook.md 4.1 and 6.2). It connects to
+// A maintainer's preflight before any `supabase db push` to production (tech review 11,
+// 2026-09-29; the maintainer gate 1 runbook 4.1 and 6.2). It connects to
 // nothing: its input is the CSV the Supabase SQL editor downloads for
 //
 //   select version, name from supabase_migrations.schema_migrations order by version;
@@ -15,7 +15,7 @@
 //     is a stop);
 //   - every history row's file matches its pinned SHA-256.
 // Then it prints the exact list `supabase db push --linked --dry-run
-// --skip-vault` must show. The push itself stays a command the founder types.
+// --skip-vault` must show. The push itself stays a command a maintainer types.
 import { readFileSync } from 'node:fs';
 import { appliedProblems, git, pendingFiles, readHistory } from './history.mjs';
 

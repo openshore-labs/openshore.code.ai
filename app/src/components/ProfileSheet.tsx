@@ -1,4 +1,4 @@
-// The profile sheet (founder, 2026-10-02): what the signed-in account button
+// The profile sheet (2026-10-02): what the signed-in account button
 // in the sidebar opens. Standard and short: who you are signed in as, what
 // follows you between devices, privacy and help, then signing out and
 // deleting the account. It reuses the same parts Settings does (the sign-in
@@ -56,7 +56,7 @@ export function ProfileSheet() {
             sub={followsLine()}
             onClick={toFollows}
           />
-          {/* True on every platform (CTO, 2026-10-02): a desktop vault can sit
+          {/* True on every platform (tech review, 2026-10-02): a desktop vault can sit
               in a synced folder and Repositories push to git hosts, so the
               claim is only about the account. And in every tier (privacy
               review, 2026-10-08): with teams on, it claims only the

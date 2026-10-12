@@ -48,7 +48,7 @@ describe('Humanize Writing in the direct cloud chats', () => {
 });
 
 // Its explainer claims nothing the reference box has not measured (tenet 2):
-// no "most people", and no speed it has not shown (CMO, 2026-10-07).
+// no "most people", and no speed it has not shown (copy review, 2026-10-07).
 describe('Humanize Writing in Settings', () => {
   it('makes no unmeasured claim about who keeps it on or how fast it answers', () => {
     const settings = readFileSync(

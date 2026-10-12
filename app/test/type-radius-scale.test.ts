@@ -120,7 +120,7 @@ describe('type, radius, and icon scales', () => {
 
   it('styles .sub at the root, so a description never outranks its title', () => {
     // Secondary text under a title steps down wherever it sits, in a card or
-    // not (Creative Studio, 2026-10-07).
+    // not (design review, 2026-10-07).
     expect(THEME).toMatch(/^\.sub \{[^}]*color: var\(--muted\);[^}]*font-size: var\(--text-3\);/m);
     expect(THEME).not.toMatch(/\.card \.sub \{/);
   });

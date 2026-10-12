@@ -1,5 +1,5 @@
 // The status blurbs say only what is true before and after a computer is
-// connected (CMO, 2026-10-07): with none connected, Offshore never speaks of
+// connected (copy review, 2026-10-07): with none connected, Offshore never speaks of
 // a computer out of reach, and Docked names the condition. Its row is
 // disabled before pairing, so it never reads as the Connect your computer door.
 import { readFileSync } from 'node:fs';
@@ -22,9 +22,9 @@ describe('profileBlurb', () => {
   });
 });
 
-// D1 (founder, 2026-10-07, built as recommended, B): the reach pill shows once
-// it can mean something. This narrows CX's "Reach is always visible" on the
-// founder's word: before a computer is connected, only a lone Offline shows.
+// D1 (2026-10-07, built as recommended, B): the reach pill shows once
+// it can mean something. This narrows UX review's "Reach is always visible" on the
+// maintainer's word: before a computer is connected, only a lone Offline shows.
 describe('reachPillShown', () => {
   it('waits while online until a computer is connected', () => {
     expect(reachPillShown('offshore', false)).toBe(false);

@@ -166,7 +166,7 @@ describe('EngineHost (desktop coding path, hermetic)', () => {
   });
 });
 
-// The free chat over IPC (CTO ruling 8): the host runs the engine's one free
+// The free chat over IPC (tech review ruling 8): the host runs the engine's one free
 // chat function and forwards its events to the window. A fake Ollama stands
 // in for the local model, so the test reads what reached it.
 describe('EngineHost free chat (the desktop window, over IPC)', () => {
@@ -329,7 +329,7 @@ describe("EngineHost status: a cloud tag on this computer's Ollama is cloud", ()
   });
 });
 
-// CX and CMO, 2026-10-08 (B): the status the desktop Stack reads says where
+// UX and copy review, 2026-10-08 (B): the status the desktop Stack reads says where
 // every seat answers, as GET /stack does: each specialist's kind by
 // seatLeaves, and On this computer only for a server on this computer itself
 // (hostIsLoopback), never one elsewhere on the LAN, which stays but is not

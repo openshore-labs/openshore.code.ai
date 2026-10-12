@@ -148,7 +148,7 @@ export function platformWord(platform: NodeJS.Platform = process.platform): stri
   }
 }
 
-/** Where a command runs, for the workspace line of the system prompt (CTO
+/** Where a command runs, for the workspace line of the system prompt (tech review
  *  10's one helper): the platform and the shell, as "macOS, bash" or
  *  "Windows, PowerShell". Git for Windows' bash is named "Git Bash", since
  *  that is the bash a Windows model has to write for. */

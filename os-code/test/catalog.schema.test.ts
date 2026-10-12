@@ -1,7 +1,7 @@
 // The catalog is a shipped contract: the bundled sample and any older client
 // must keep validating as the builder adds optional rating/popularity fields.
 // This pins backward compatibility (old sample still parses), the new fields
-// round-tripping, and the two zod-4 gotchas the CTO flagged: perCapability is a
+// round-tripping, and the two zod-4 gotchas the tech review flagged: perCapability is a
 // sparse partialRecord, and stars are 0..5 in 0.5 steps.
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';

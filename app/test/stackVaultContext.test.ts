@@ -1,4 +1,4 @@
-// The Stack's vault pack and prompt order (Vault M5, CTO J5, J16, I5). The
+// The Stack's vault pack and prompt order (Vault M5, tech review J5, J16, I5). The
 // pack is prepared once per send and rendered only after routing and any Jev
 // steer, so it is sized for the seat that actually answers; the fallback to
 // the anchor renders again; each play step renders for its owner; a current
@@ -128,7 +128,7 @@ vi.mock('../src/lib/platform.js', () => ({
 
 // The iPhone streams through the WebView's fetch first; here every server
 // refuses the cross-origin call at the preflight, so each request goes once
-// through the native shim below (the transport's fallback, CTO ruling 7).
+// through the native shim below (the transport's fallback, tech review ruling 7).
 vi.mock('../src/lib/streamingFetch.js', () => ({
   streamingFetch: async () => {
     throw new TypeError('Load failed');
@@ -869,7 +869,7 @@ describe('a reply after a local-only read (I5 in the app)', () => {
     driver.dispose();
   });
 
-  // J (CX and CMO, 2026-10-08): with no word from the computer on what its
+  // J (UX and copy review, 2026-10-08): with no word from the computer on what its
   // agent runs (here, no answer to GET /stack), a private plan's file step is
   // described here; test/stackPrivatePlan.test.ts holds the marked run.
   it('a private plan describes a step that edits files when the computer cannot say', async () => {
@@ -1095,7 +1095,7 @@ describe('a reply after a local-only read (I5 in the app)', () => {
 });
 
 // The sticky reply mark stays, and the person is told once where the context
-// is lost (CX and CMO, 2026-10-08, F): one status line per chat for each
+// is lost (UX and copy review, 2026-10-08, F): one status line per chat for each
 // model that leaves this network, on the first turn it is sent the
 // placeholder for a reply a local model wrote after a private read.
 describe('the placeholder line (F)', () => {

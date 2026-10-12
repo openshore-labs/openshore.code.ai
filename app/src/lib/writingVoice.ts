@@ -1,4 +1,4 @@
-// Your writing voice (founder, 2026-10-01): the person's own words for how a
+// Your writing voice (2026-10-01): the person's own words for how a
 // model should write for them, typed under Settings, Writing. It stands on its
 // own or layers on Humanize Writing: Humanize keeps text free of AI tells, the
 // voice says whose voice it is. Every app-side seat reads it (the Stack and

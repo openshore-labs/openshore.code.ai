@@ -1,4 +1,4 @@
-// The engine's vault context source (Vault M4, CTO I7, I8): prepare reads the
+// The engine's vault context source (Vault M4, tech review I7, I8): prepare reads the
 // bodies the widest plan asks for, within a 250 ms cold budget. The pure
 // planner is injected here, so this tests the adapter alone.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -161,7 +161,7 @@ describe('the engine vault context source', () => {
   });
 });
 
-// Vault M5 (CTO J13, J14): the project's own pins are read first and judged
+// Vault M5 (tech review J13, J14): the project's own pins are read first and judged
 // from the note itself; the stored handoff is the first prepare's alone.
 describe('project pins and the stored handoff (M5)', () => {
   const tagged: VaultPrivacy = {

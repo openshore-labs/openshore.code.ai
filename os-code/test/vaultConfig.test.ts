@@ -1,4 +1,4 @@
-// Vault M7, the customization surface (CTO L1 to L8, L18). One file, fenced by
+// Vault M7, the customization surface (tech review L1 to L8, L18). One file, fenced by
 // owner so the wave 1 streams never touch the same lines: wave 0's guards,
 // stream A's core half (parse, resolve, union, patch, the precedence helpers)
 // and stream C's engine half (settingsFile.ts, the writer, the `.oscode/`
@@ -357,7 +357,7 @@ describe('a .obsidian folder alone configures the vault (L2, L3)', () => {
   });
 });
 
-describe('the file states (L4, CX Y5)', () => {
+describe('the file states (L4, UX review Y5)', () => {
   it('bad JSON or a non-object is unreadable, and nothing of it applies', () => {
     for (const text of ['{', '[]', 'null', '"x"', '7', '']) {
       expect(parseVaultSettingsFile(text), text).toEqual({ unreadable: true });
@@ -395,7 +395,7 @@ describe('the vault file may only narrow (L4)', () => {
     });
   }
 
-  it('gives the pack keys and the handoff their CX plains', () => {
+  it('gives the pack keys and the handoff their UX review plains', () => {
     expect(WIDENING_PLAIN.pack).toBe('give notes more room in each chat');
     expect(WIDENING_PLAIN.packSize).toBe('give notes more room in each chat');
     expect(WIDENING_PLAIN.handoff).toBe('turn the handoff back on');

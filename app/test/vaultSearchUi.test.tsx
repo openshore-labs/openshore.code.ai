@@ -1,5 +1,5 @@
 // The Vault's search field and quick switcher, mounted for real (Vault M6
-// 6.1; CX X1 to X4): the tree swaps for results while searching; titles show
+// 6.1; UX review X1 to X4): the tree swaps for results while searching; titles show
 // at once and text hits follow with excerpts; every match is a <mark>
 // element, never HTML from the note; each honest state says its line; the
 // keys move through one listbox with aria-activedescendant; the switcher

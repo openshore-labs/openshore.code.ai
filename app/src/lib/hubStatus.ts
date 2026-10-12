@@ -1,6 +1,6 @@
 // The Pairing screen's status line for the phone connection, as one
 // pure function so every case is pinned by a test. When the last bind failed
-// (`bindError`), CX cleanup 5 replaces the older line, which blamed Tailscale
+// (`bindError`), UX review cleanup 5 replaces the older line, which blamed Tailscale
 // even when Tailscale was up. The raw error goes to the log, never the screen.
 import type { DaemonInfo } from './electronBridge.js';
 
@@ -10,7 +10,7 @@ export function portTaken(bindError: string | undefined): boolean {
 }
 
 /** How to bring Tailscale up on this computer: the app everywhere, and the
- *  command only on Linux, where there may be no app (CX 2026-10-01: a Mac or
+ *  command only on Linux, where there may be no app (UX review 2026-10-01: a Mac or
  *  Windows person was being shown "sudo"). */
 function signInLine(linux: boolean): string {
   return linux

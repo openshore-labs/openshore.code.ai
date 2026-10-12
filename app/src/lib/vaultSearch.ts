@@ -1,4 +1,4 @@
-// Vault search, the app side (Vault M6 6.1; CTO K8, K9, K16; CX X1 to X4).
+// Vault search, the app side (Vault M6 6.1; tech review K8, K9, K16; UX review X1 to X4).
 // The grammar and the ranking are the pure core's (`parseVaultQuery`,
 // `highlightRanges`, and the index's `titleMatches` and `search`, stream A1);
 // this module only runs them in the order a person reads them: title hits at

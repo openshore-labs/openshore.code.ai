@@ -32,9 +32,9 @@ const ROOT = execFileSync('git', ['rev-parse', '--show-toplevel'], {
 }).trim();
 
 const EXEMPT = new Map<string, string>([
-  ['docs/vault-v1-review-findings.md', 'quotes the claim as the finding'],
-  ['docs/vault-v1-plan.md', 'quotes the claim as the work to do'],
-  ['docs/vault-v1-test-map.md', 'quotes the claim as the finding it maps'],
+  ['docs/design/vault-v1-review-findings.md', 'quotes the claim as the finding'],
+  ['docs/design/vault-v1-plan.md', 'quotes the claim as the work to do'],
+  ['docs/design/vault-v1-test-map.md', 'quotes the claim as the finding it maps'],
   [
     'supabase/migrations/0010_org_vault.sql',
     'orgvault-19: an applied migration is never edited; 0021 revisions supersede its header',

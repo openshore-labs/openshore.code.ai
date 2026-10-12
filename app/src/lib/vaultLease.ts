@@ -1,4 +1,4 @@
-// The vault's single-writer lease (Vault M2 2.5, CTO G5). Pure, so the rule is
+// The vault's single-writer lease (Vault M2 2.5, tech review G5). Pure, so the rule is
 // testable without a store or a device.
 //
 // Compare-and-swap is what keeps two writers apart. A storage that checks the

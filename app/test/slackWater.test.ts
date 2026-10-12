@@ -1,4 +1,4 @@
-// Slack Water's third pass (founder, 2026-10-02; docs/slack-water.md): the
+// Slack Water's third pass (2026-10-02; docs/design/slack-water.md): the
 // water starts a short beat after the guide's line, it is clear (light and
 // shade over the app, no paper), the rings reach the farthest corner, and the
 // old chat is gone before the new page goes in.

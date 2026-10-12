@@ -152,7 +152,7 @@ function resetStore() {
       claudeModel: 'x',
       deviceModels: {},
       // A vault the person placed, so pairing a hub here never repoints it
-      // (CTO J9, pinned in vaultStore.test.ts) with a toast of its own.
+      // (tech review J9, pinned in vaultStore.test.ts) with a toast of its own.
       gitosResources: [PLACED_VAULT],
     },
   });

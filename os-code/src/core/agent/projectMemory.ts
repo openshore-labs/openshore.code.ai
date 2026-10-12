@@ -221,7 +221,7 @@ export function isProjectMemoryFolder(folder: string): boolean {
  *  was given projectMemoryWrite (`write: false` leaves it out), so a lean seat
  *  is still pointed at the top sheet without being told to use a tool it
  *  cannot see. With `inlined: true` the harness already put the top sheet in
- *  the prompt (the vault context pack, CTO I8), so the seat is told it has it
+ *  the prompt (the vault context pack, tech review I8), so the seat is told it has it
  *  rather than sent to open it. */
 export function projectMemoryPrompt(
   segment: string,

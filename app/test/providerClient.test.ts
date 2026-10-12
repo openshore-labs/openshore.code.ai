@@ -1,6 +1,6 @@
 // One provider client for every network seat (build 2026-09-29, B1): the same
 // events (text, thinking, usage, the round's tool calls) from a streamed or a
-// whole reply, on every shell's transport (CTO ruling 7): Electron's guarded
+// whole reply, on every shell's transport (tech review ruling 7): Electron's guarded
 // IPC stream, the iPhone's WebView stream with one fall back to the native
 // shim when a server refuses the cross-origin call (never after the first
 // byte, never after a stop), and the web's streaming fetch.
@@ -401,7 +401,7 @@ describe('the request body', () => {
   it('sends num_ctx only to an Ollama endpoint, and only when it is set', () => {
     expect(isOllamaBase('http://127.0.0.1:11434/v1')).toBe(true);
     expect(isOllamaBase('https://api.openai.com/v1')).toBe(false);
-    // Nothing on the app side sets it today, so no request carries it (CTO 5).
+    // Nothing on the app side sets it today, so no request carries it (tech review 5).
     expect(JSON.parse(openAiBody(seat, [], [], true)).options).toBeUndefined();
     expect(JSON.parse(openAiBody({ ...seat, numCtx: 8192 }, [], [], true)).options).toEqual({
       num_ctx: 8192,

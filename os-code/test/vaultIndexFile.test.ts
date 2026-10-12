@@ -1,4 +1,4 @@
-// The Vault index's Node side (Vault M3, CTO H3 "Persistence" and H5): the
+// The Vault index's Node side (Vault M3, tech review H3 "Persistence" and H5): the
 // per-root index file under oscHome()/vault-index, and the desktop folder's
 // readConfig with its config-folder detection and allow-list.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';

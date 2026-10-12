@@ -16,7 +16,6 @@ const read = (...parts: string[]) => readFileSync(join(ROOT, ...parts), 'utf8');
 
 const edgeEntitlement = () => read('supabase', 'functions', '_shared', 'entitlement.ts');
 const migration0015 = () => read('supabase', 'migrations', '0015_review_2026_09_05.sql');
-const appleNotifications = () => read('supabase', 'functions', 'apple-notifications', 'index.ts');
 // The client's entitled set (org seat billing) lives in lib/entitlement.ts.
 const storeSrc = () => read('app', 'src', 'lib', 'entitlement.ts');
 
@@ -85,27 +84,5 @@ describe('entitled status mirror', () => {
     expect(m).not.toBeNull();
     const sql = [...m![1]!.matchAll(/'([^']+)'/g)].map((x) => x[1]!).sort();
     expect(sql).toEqual(setLiteral(edgeEntitlement(), 'ENTITLED').sort());
-  });
-});
-
-describe('Apple notification type sets', () => {
-  it('ACTIVE_TYPES and REVOKE_TYPES are disjoint and cover the documented events', () => {
-    const src = appleNotifications();
-    const active = setLiteral(src, 'ACTIVE_TYPES');
-    const revoke = setLiteral(src, 'REVOKE_TYPES');
-    expect(active.filter((t) => revoke.includes(t))).toEqual([]);
-    expect(active).toEqual(expect.arrayContaining(['SUBSCRIBED', 'DID_RENEW']));
-    expect(revoke).toEqual(expect.arrayContaining(['EXPIRED', 'REFUND', 'REVOKE']));
-    // The link-state map handles each revoke type by name; a new one must be
-    // added there too (a fallthrough would mislabel it 'expired').
-    for (const t of revoke) {
-      expect(t === 'REFUND' || t === 'REVOKE' || t.endsWith('EXPIRED')).toBe(true);
-    }
-  });
-
-  it('every Apple-written status is one the 0006 CHECK and the entitled set know', () => {
-    const src = appleNotifications();
-    const written = [...src.matchAll(/status = '([a-z_]+)'/g)].map((m) => m[1]!);
-    for (const s of written) expect(['active', 'canceled']).toContain(s);
   });
 });

@@ -1,4 +1,4 @@
-// Vault privacy, the one judge (Vault M4, CTO I3 to I5): exclude and
+// Vault privacy, the one judge (Vault M4, tech review I3 to I5): exclude and
 // local-only globs matched on any case, frontmatter `oscode` marks, `#private`
 // and the tags under it, and the order the decisions take.
 import { describe, expect, it } from 'vitest';

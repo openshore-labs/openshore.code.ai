@@ -1,4 +1,4 @@
-// The engine's handoff store (Vault M5, CTO J13): the latest handoff for one
+// The engine's handoff store (Vault M5, tech review J13): the latest handoff for one
 // owner, workspace and project, kept on this machine in
 // `oscHome()/handoffs/<key>.json`, never in the vault (so no carve-out) and
 // never in the repo. The loop writes one after a compaction and after each
@@ -45,7 +45,7 @@ export interface HandoffRecord {
   /** The record's format: 2 for one written by this engine (0.1.64 on),
    *  whose adapter leaves every local-only message out. A record without it
    *  was written before that fix and may carry a private note's words, so
-   *  `sweepPreFixHandoffs` removes it (CX and CMO, 2026-10-08, A). Stamped on
+   *  `sweepPreFixHandoffs` removes it (UX and copy review, 2026-10-08, A). Stamped on
    *  write; a caller need not set it. */
   v?: 2;
 }

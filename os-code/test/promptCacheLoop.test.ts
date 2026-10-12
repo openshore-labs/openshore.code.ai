@@ -1,4 +1,4 @@
-// The engine's Anthropic prompt cache end to end (Vault M5, CTO J17): the loop
+// The engine's Anthropic prompt cache end to end (Vault M5, tech review J17): the loop
 // marks where the vault pack begins on the system message (`cacheAt`), the
 // Anthropic provider splits `system` there when the endpoint's promptCache is
 // 'auto', and the usage the API reports for cache reads and writes rides the

@@ -1,4 +1,4 @@
-// The Mac in-place update under CTO ruling 1 (the D1 release package,
+// The Mac in-place update under tech review ruling 1 (the D1 release package,
 // 2026-09-29): verify before hdiutil or ditto, open the release page on a
 // missing key or signature, open nothing on a signature that is there and
 // fails (reconciliation 2, the cleanup package), clear quarantine only on a

@@ -1,4 +1,4 @@
-// The chat box review (founder, 2026-09-25: "make sure it's crisp and fully
+// The chat box review (2026-09-25: "make sure it's crisp and fully
 // functional like a premium chat app"). Each guard pins one verified fix, so
 // the seams stay closed.
 import { readFileSync } from 'node:fs';

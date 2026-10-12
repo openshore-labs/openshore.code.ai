@@ -1,4 +1,4 @@
-// The app's half of the handoff (Vault M5, CTO J11 to J13): the adapter from
+// The app's half of the handoff (Vault M5, tech review J11 to J13): the adapter from
 // a chat's transcript to the core's `HandoffTurn`s, the seed a model switch
 // hands the new seat, the honest switch note, and the device store
 // `oscode.handoffs.v1` a switch and a left chat write per project.

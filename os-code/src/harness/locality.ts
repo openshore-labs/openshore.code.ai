@@ -1,4 +1,4 @@
-// What counts as "this computer's own network" (Vault M5, CTO J2). One pure
+// What counts as "this computer's own network" (Vault M5, tech review J2). One pure
 // judge, by address and never by a provider's label, shared by the engine
 // (`isLocalHost` in core/security/egress.ts delegates here) and the app (the
 // BYOM reach pill and the vault pack's seat, `packSeatFor`), so a pill's color
@@ -118,8 +118,8 @@ export function hostIsLocal(hostname: string, options: HostIsLocalOptions = {}):
  * True when a host is this computer itself: `localhost`, a `*.localhost`
  * name, an address in 127.0.0.0/8, or `::1` (bracketed as a URL keeps it, or
  * not). Narrower than `hostIsLocal`, which also passes the LAN and the
- * tailnet: this is the test for words that say "on this computer" (CX and
- * CMO, 2026-10-08), so a server on another machine in the house is never
+ * tailnet: this is the test for words that say "on this computer" (UX review and
+ * copy review, 2026-10-08), so a server on another machine in the house is never
  * called this computer.
  */
 export function hostIsLoopback(hostname: string): boolean {
@@ -146,7 +146,7 @@ export function hostIsLoopback(hostname: string): boolean {
 
 /** The tailnet suffix of a `*.ts.net` host ("mac.tail1234.ts.net" gives
  *  "tail1234.ts.net"), or null for any other host. The app takes its own
- *  tailnet from the paired hub's address this way (CTO J2). */
+ *  tailnet from the paired hub's address this way (tech review J2). */
 export function tailnetSuffixOf(hostname: string): string | null {
   const host = hostname.toLowerCase().replace(/\.$/, '');
   if (!host.endsWith('.ts.net')) return null;

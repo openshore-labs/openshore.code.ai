@@ -212,7 +212,7 @@ describe("the Stack's Image reading rows", () => {
   });
 });
 
-// CX and CMO, 2026-10-08 (K): the Local model reads every picture it can,
+// UX and copy review, 2026-10-08 (K): the Local model reads every picture it can,
 // and when it fails on one, a card asks before the picture goes to the Cloud
 // model. The intro, the Cloud row and the Cloud sheet say exactly that.
 describe('Image reading says who reads first, and when the Cloud model reads (K)', () => {

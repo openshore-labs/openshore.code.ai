@@ -2,7 +2,7 @@
 // home repo the whole system works through, and see anything buffered while you
 // were off-home. Below that, the desktop clone/open flow: point OpenShore at a
 // repo and it reads, edits, tests, and commits there, showing every change.
-// The room is the Settings ledger (D14, founder 2026-10-07): a Connect a
+// The room is the Settings ledger (D14, 2026-10-07): a Connect a
 // platform group whose rows open a connect sheet (or, once connected, ask
 // before they disconnect), then the On your computer rows.
 import { Fragment, useEffect, useRef, useState } from 'react';
@@ -19,6 +19,7 @@ import {
 } from '../lib/gitos/repoOAuth.js';
 import { githubStatus, type GithubStatus } from '../lib/chatRepos.js';
 import { cloneOnComputer, computerFor } from '../lib/repoClone.js';
+import { THIS_COMPUTER } from '../lib/runsOn.js';
 import { bufferHealth, unsyncedCount } from '../lib/repoSync.js';
 import { BackBar } from '../components/BackBar.js';
 import { Sheet } from '../components/Sheet.js';
@@ -33,7 +34,7 @@ import { thisDeviceNoun } from '../lib/deviceNoun.js';
 // lands in HomeRepoEditor below, so the home repo can actually be pointed at an
 // on-desktop clone and Sync is gated on that path. Still hidden by default
 // until an app flow produces buffered commit-intents (the offload producer,
-// CTO ruling FD-1), or the section would only ever show its empty state. Flip
+// tech review ruling FD-1), or the section would only ever show its empty state. Flip
 // this to reveal it, a one-line change; the store actions and the desktop apply
 // engine stay intact.
 const REPO_OUTBOX_ENABLED = false;
@@ -58,13 +59,17 @@ export function ReposScreen() {
   // a model to run it with; otherwise send the person to set one up rather than
   // opening a chat that cannot answer. Returns whether a session was opened.
   const openRepo = async (cwd: string, repoName: string): Promise<boolean> => {
-    if (!sourceReady({ kind: 'desktop' })) {
+    // The folder lives on the machine this room lists (lib/runsOn.ts), so the
+    // chat opens there, whatever the active project runs on.
+    const hub = where === 'local' ? THIS_COMPUTER : settings.daemon?.baseUrl;
+    const source = { kind: 'desktop' as const, cwd, repoName, ...(hub ? { hub } : {}) };
+    if (!sourceReady(source)) {
       showToast('Pick a model for this computer first, then open the repository.');
       setView('stack');
       return false;
     }
     // Undefined when no chat opened (the sign-in sheet stood in the way).
-    return Boolean(await newConversation({ kind: 'desktop', cwd, repoName }));
+    return Boolean(await newConversation(source));
   };
   const [workspaces, setWorkspaces] = useState<Array<{ cwd: string; name: string }>>([]);
   const [url, setUrl] = useState('');

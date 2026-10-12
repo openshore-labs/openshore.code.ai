@@ -143,7 +143,7 @@ export function visionCapable(ref: StackModelRef): boolean {
 }
 
 /** The model that should read an image-bearing turn: a reachable, capable model
- *  placed in the vision category first (the founder's "put a local LLM in
+ *  placed in the vision category first (a maintainer's "put a local LLM in
  *  it"), then the reasoning anchor if it can see, then any reachable capable
  *  model already in the stack. Undefined when nothing in the stack can read an
  *  image, at which point the driver reaches for a connected cloud provider.
@@ -211,7 +211,7 @@ export function visionSlots(
  *  stack (pickVisionRef), or, failing that, a connected cloud provider that
  *  reads images and is reachable in this profile. A Stack chat takes a picture
  *  either way and answers one it cannot read with the two-door offer
- *  (founder, 2026-10-07); the offer card reads this to fold its doors once
+ *  (2026-10-07); the offer card reads this to fold its doors once
  *  something can. */
 export function stackVisionReady(
   stack: AppStack,

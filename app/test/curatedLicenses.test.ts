@@ -1,4 +1,4 @@
-// The three curated models are sellable (founder, 2026-09-30): Harbor Lite,
+// The three curated models are sellable (2026-09-30): Harbor Lite,
 // Harbor, and DeepBlue ride Apache 2.0 weights only. Pinned so a later swap to
 // a research-licensed or non-commercial model fails the build, not a sale.
 import { readFileSync } from 'node:fs';

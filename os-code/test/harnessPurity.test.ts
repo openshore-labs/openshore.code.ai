@@ -27,7 +27,7 @@ const PKG = resolve(HERE, '..');
 const SRC = join(PKG, 'src');
 
 /** Bare packages the pure core may import. Both are browser-safe and carry
- *  no Node imports (CTO, Vault M3 3.0 and H2). */
+ *  no Node imports (tech review, Vault M3 3.0 and H2). */
 const ALLOWED_PACKAGES = new Set(['zod', 'js-yaml']);
 const BUILTINS = new Set(builtinModules.map((m) => m.replace(/^node:/, '')));
 const BANNED_GLOBALS = new Set(['__dirname', '__filename', 'Buffer']);

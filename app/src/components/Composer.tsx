@@ -3,7 +3,7 @@
 // the mode pill (opens the mode sheet), a mic for voice-to-text, and one round
 // button. With nothing to send the round button is voice mode; the first
 // character turns it into send, and a run turns it into queue or stop (D6,
-// founder 2026-10-07, built as recommended, A). Attachments ride along to
+// 2026-10-07, built as recommended, A). Attachments ride along to
 // vision-capable models; the mic uses the platform's speech engine where it
 // exists.
 //
@@ -92,7 +92,7 @@ import {
 } from '../lib/vaultExcerpt.js';
 
 /**
- * The vault, as the composer sees it (Vault M5, CTO J15, "take a note to a
+ * The vault, as the composer sees it (Vault M5, tech review J15, "take a note to a
  * model"). Optional: without it `[[` is plain text and the composer is
  * exactly what it was. The store builds it (the integrator wires it); the
  * composer reads nothing about the vault on its own.
@@ -178,7 +178,7 @@ function FrameRing({ done, total }: { done: number; total: number }) {
 }
 
 export type SlashCommand =
-  'help' | 'clear' | 'compact' | 'model' | 'cost' | 'mode' | 'init' | 'rename';
+  'help' | 'new' | 'clear' | 'compact' | 'model' | 'cost' | 'mode' | 'init' | 'rename';
 
 export const SLASH_COMMANDS: Array<{
   name: SlashCommand;
@@ -189,6 +189,7 @@ export const SLASH_COMMANDS: Array<{
   agentOnly?: boolean;
 }> = [
   { name: 'help', hint: 'What the composer can do' },
+  { name: 'new', hint: 'Start a new chat' },
   { name: 'clear', hint: 'Start a fresh chat' },
   { name: 'compact', hint: 'Fold the history to save context', arg: 'focus', agentOnly: true },
   { name: 'model', hint: 'Switch the model' },
@@ -585,7 +586,7 @@ export function Composer({
   useEffect(() => {
     if (focusSignal) areaRef.current?.focus();
   }, [focusSignal]);
-  // What the last send was made of, so a message handed back (a paywall, a
+  // What the last send was made of, so a message handed back (a sign-in sheet, a
   // dismissed chooser) returns as it was typed: the words in the field and the
   // folded pastes as chips, not one merged wall of text.
   const lastSent = useRef<{ body: string; text: string; pasted: PastedChunk[] } | null>(null);

@@ -8,7 +8,7 @@
 // standing allow at all, only once or skip. The keyboard answers too: y
 // approves, a allows for the session, n declines.
 //
-// While the chat can see the project's secrets, every card says so (CX 7). A
+// While the chat can see the project's secrets, every card says so (UX review 7). A
 // commit card lists the files it would stage with a tick each, and the ones
 // that may hold a secret start unticked (CommitFileList); the answer carries
 // the ticked list, so the commit records exactly those.
@@ -136,7 +136,7 @@ export function ApprovalSheet({
           <h2>{request.summary}</h2>
           {request.lockdown ? <p className="approval-lockdown">{LOCKDOWN_LINE}</p> : null}
           {/* Why this card asks when it otherwise would not (a project note
-              change after the chat read a private note, CX and CMO
+              change after the chat read a private note, UX and copy review
               2026-10-08, A), above the detail or diff. An older engine sends
               none. */}
           {request.why ? <p className="sheet-sub">{request.why}</p> : null}

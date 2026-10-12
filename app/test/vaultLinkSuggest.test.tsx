@@ -1,4 +1,4 @@
-// Linking that feels native (Vault M6, 6.7; CTO K14, CX X15), mounted in a
+// Linking that feels native (Vault M6, 6.7; tech review K14, UX review X15), mounted in a
 // real (small) DOM: the editor's keys drive the list (Up, Down, Enter or Tab
 // picks, Esc closes the list only), the rows are options the editor points at
 // through aria-activedescendant, a pick replaces through an existing `]]` or
@@ -298,7 +298,7 @@ describe('the accessory bar edits', () => {
   });
 });
 
-// The card under the note and the outline (6.8; CTO K15, CX X16, X17) ride
+// The card under the note and the outline (6.8; tech review K15, UX review X16, X17) ride
 // the same stream, so their pure helpers and the skeleton are pinned here.
 describe('outgoing links, unlinked mentions, and the outline', () => {
   it('lists outgoing links once each, a missing note muted, self and files left out', async () => {

@@ -149,7 +149,7 @@ describe('ownerFor / ownerLabel', () => {
 
   it('honors a step owner that targets a specific model in the stack', () => {
     // A step can name a specific model (by refKey) regardless of its category:
-    // the founder's "a particular model called upon for a particular subject."
+    // a maintainer's "a particular model called upon for a particular subject."
     const s: PlayStep = { ...step('s', 'writing'), owner: 'byom:c1' };
     expect(ownerFor(s, stack).ref).toEqual(coder);
     expect(ownerFor(s, stack).fellBack).toBe(false);
@@ -161,8 +161,8 @@ describe('ownerFor / ownerLabel', () => {
   });
 });
 
-// A plan never carries a picture (CX and CMO, 2026-10-08, E, taking off the
-// founder's 2026-10-07 exception): an unplaced vision step runs on the
+// A plan never carries a picture (UX and copy review, 2026-10-08, E, taking off the
+// maintainer's 2026-10-07 exception): an unplaced vision step runs on the
 // Reasoning model from the text, whatever model an image in the chat would go
 // to (the driver's routeVision, carried as the stack's imageReader).
 describe('an unplaced vision step', () => {
@@ -214,8 +214,8 @@ describe('an unplaced vision step', () => {
   });
 });
 
-// An unplaced image step runs on the Reasoning model from the text (CX and
-// CMO, 2026-10-08, E): with something here that reads images, the working
+// An unplaced image step runs on the Reasoning model from the text (UX review and
+// copy review, 2026-10-08, E): with something here that reads images, the working
 // note says nothing is set for Image reading and a plan carries no picture;
 // with nothing that reads images, it says so. No note names a second model.
 describe("an image step's working note", () => {

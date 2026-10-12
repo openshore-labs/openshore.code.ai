@@ -84,7 +84,7 @@ describe('project room repositories', () => {
   });
 });
 
-// The Projects list, in the shape of the Claude app's (founder, 2026-10-02):
+// The Projects list, in the shape of the Claude app's (2026-10-02):
 // flat rows with a quiet line that keeps "when" whole while "what" truncates,
 // and a floating dock (search, New project) that cross-fades, never snaps.
 describe('projects list', () => {
@@ -114,7 +114,7 @@ describe('projects list', () => {
   });
 });
 
-// The project room, in the shape of the Claude app's (founder, 2026-10-02):
+// The project room, in the shape of the Claude app's (2026-10-02):
 // the pill doors, the room's own components at the top, then the chats as one
 // flat list, and the project's own actions behind the "..." menu.
 describe('project room', () => {
@@ -140,8 +140,8 @@ describe('project room', () => {
 });
 
 // Advisor rulings, 2026-10-02: the reach dot stays on a project's chat rows
-// (CX), and the bar's title tucks away while the room's large title shows
-// (Creative Studio), so the name never reads twice.
+// (UX review), and the bar's title tucks away while the room's large title shows
+// (design review), so the name never reads twice.
 describe('project room rulings', () => {
   const detail = src('screens/ProjectDetailScreen.tsx');
   it('wears the ink pill for Active: teal stays for local', () => {
