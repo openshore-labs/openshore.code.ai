@@ -45,6 +45,41 @@ enable_signup = true
 enable_signup = true
 # Never set this to false, even locally: see the header note (P0-4).
 enable_confirmations = true
+# Sign-in without passwords (founder, CTO 2026-10-12): one email carries a
+# 6-digit code and a PKCE link. Ten minutes with the per-address resend limit
+# and GoTrue's verify rate limit keeps a guess out of reach. The app reads the
+# same numbers (app/src/state/emailSignInOps.ts: PENDING_AUTH_TTL_MS,
+# RESEND_WAIT_S, CODE_LENGTH), and app/test/passwordless.test.ts holds them
+# equal.
+otp_length = 6
+otp_expiry = 600
+max_frequency = "60s"
+
+# The one template for a sign-in, a new account's first one included: the
+# code first and large, then a link through the scanner-safe page on
+# openshore.ai (/sign-in/continue/, in OpenShore.ai-marketing-site), so a mail
+# scanner that opens the link cannot use up the token the code shares.
+[auth.email.template.magic_link]
+subject = "Your OpenShore sign-in code"
+content_path = "./supabase/templates/sign-in.html"
+
+[auth.email.template.confirmation]
+subject = "Your OpenShore sign-in code"
+content_path = "./supabase/templates/sign-in.html"
+
+# Passkeys (GoTrue's own, CTO 2026-10-12): the relying party is openshore.ai,
+# and only a native iOS ceremony (or a real browser on openshore.ai) can match
+# it. Production values, because `config push` mirrors this file. Off until
+# the founder's gate in docs/passwordless-runbook.md holds (0028's step-up
+# trigger is on auth.webauthn_credentials, the Apple association file is
+# served); the app's own switch is VITE_PASSKEYS.
+[auth.passkey]
+enabled = false
+
+[auth.webauthn]
+rp_display_name = "OpenShore"
+rp_id = "openshore.ai"
+rp_origins = ["https://openshore.ai"]
 
 # Note: claim_membership is a Postgres RPC (SECURITY DEFINER function), not an
 # edge function, so it has no [functions.*] entry here.
