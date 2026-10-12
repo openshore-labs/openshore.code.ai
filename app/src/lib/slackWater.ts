@@ -1,4 +1,4 @@
-// Slack Water (Creative Studio, 2026-10-01; docs/slack-water.md): the
+// Slack Water (Creative Studio, 2026-10-01; docs/design/slack-water.md): the
 // one-time transition from the setup walk's chat to the main chat page, when
 // the person chooses to just chat at the break. Slack water is the still
 // moment at the turn of the tide, when the current stops pulling either way:

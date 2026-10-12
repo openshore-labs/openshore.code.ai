@@ -3,7 +3,7 @@
 <!--
   Hardened-runtime entitlements for the SIGNED macOS build only (used when the
   Developer ID secrets are present; see codemagic.yaml mac-desktop and
-  docs/MAC-DESKTOP.md). The unsigned default build never reads this file.
+  the maintainer Mac desktop runbook). The unsigned default build never reads this file.
   Electron's V8 needs JIT and writable executable memory; the bundled engine
   loads node-pty, a native module built on the build machine, which library
   validation would otherwise refuse.

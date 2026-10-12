@@ -1,5 +1,5 @@
 // Keys on your server, the app's side (founder, 2026-10-09;
-// docs/byok-any-provider-plan.md, part 3): the daemon calls, the pure choices
+// docs/design/byok-any-provider-plan.md, part 3): the daemon calls, the pure choices
 // and copy, the lifecycle (forgetting a server deletes its keys before this
 // device's credential is revoked, re-pairing only revokes, and a disconnected
 // provider's key leaves every server that keeps it), and Cloud Connections'

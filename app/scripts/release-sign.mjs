@@ -1,5 +1,5 @@
 // Sign release files for OpenShore's updater (CTO rulings 1 and 2,
-// 2026-09-29; docs/release-signing.md). Run by the release builds after
+// 2026-09-29; the maintainer release-signing runbook). Run by the release builds after
 // packaging:
 //
 //   node app/scripts/release-sign.mjs --key-env OPENSHORE_MAC_SIGNING_KEY \

@@ -5,7 +5,7 @@ or how to use it as a new user? Use Obsidian's new-user onboarding and ramp UX
 as a guide for how to make this a dynamic area of the app that draws people in
 to use it and understand how it's used by their models." Same three seats, same
 shape: the read, the direction, what shipped. It shipped to `main`; Vault v1
-(`docs/vault-v1-plan.md`, M0 to M7) has since rebuilt most of the room.
+(`docs/design/vault-v1-plan.md`, M0 to M7) has since rebuilt most of the room.
 
 ## The diagnosis
 
@@ -67,7 +67,7 @@ Settled 2026-10-07 (founder, D20 of `docs/ux-review-2026-10-07.md`): the
 Coding projects card keeps its place above the ramp. On an unpaired phone or
 the web the ramp's agent point says how your models use the vault, and the
 pointer to your computer waits until one is paired, which reverses the
-unpaired pointer of the Vault v1 copy map (`docs/vault-v1-plan.md`, 0.19). The
+unpaired pointer of the Vault v1 copy map (`docs/design/vault-v1-plan.md`, 0.19). The
 ruling is the 2026-10-07 D20 line in `os-code/DECISIONS.md`.
 
 The offline and empty-team states became plain in-flow notice cards too, so they

@@ -10,7 +10,7 @@ of Vault and a plan to get it ready to ship v1: fully functional, a key feature
 for moving between models and for giving them the right context, Obsidian as
 the baseline, great out of the box and fully customizable. Every verified
 finding behind this plan, with its evidence and proposed fix, is in
-`docs/vault-v1-review-findings.md`; the ids in brackets below point there.
+`docs/design/vault-v1-review-findings.md`; the ids in brackets below point there.
 
 ## The short answer
 
@@ -1375,7 +1375,7 @@ steps pass with a plain folder and no Obsidian installed. Closes [truth-22]
 [truth-23].
 
 **8.2 Docs and claims sweep.** Correct the "never lost" claims now that
-revisions exist, "on a branch" in `docs/vault-page-redesign.md`, and the stale
+revisions exist, "on a branch" in `docs/design/vault-page-redesign.md`, and the stale
 CLAUDE.md lines. Record in DECISIONS: the base revision lives in the editor,
 the lease revision (2.5), the trash convention, the pack budgets from 4.8, the
 team vault's permission model, and every founder decision below. Closes
@@ -1388,7 +1388,7 @@ the pgTAP job included. Closes [data-22] [keyask-14].
 Shipped 2026-09-27 (docs): 8.1 is `docs/vault-v1-device-checklist.md`, the
 plan's list merged with the device checks M1, M4, M5 and M6 left in PROGRESS;
 8.2 swept the claims and recorded the M8 entry in DECISIONS; 8.3 is
-`docs/vault-v1-test-map.md` (101 must-fix findings: 96 covered, 2 on the held
+`docs/design/vault-v1-test-map.md` (101 must-fix findings: 96 covered, 2 on the held
 team branch, 2 device-only, 1 missing, orgvault-19). The table lives in its
 own doc with a pointer in PROGRESS, which the line cap would not hold.
 

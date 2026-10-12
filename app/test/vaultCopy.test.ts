@@ -1519,7 +1519,6 @@ describe("the team's free space says what 0023 says (the review, finding 1)", ()
     /raise exception '(this team has used[^']*)'\s+using errcode = 'check_violation'/.exec(
       sql,
     )?.[1];
-  const runbook = readFileSync(resolve(ROOT, '../docs/vault-gate1-runbook.md'), 'utf8');
 
   it('reads the cap and the refusal from the migration', () => {
     expect(bytes).toBe(26214400);
@@ -1529,12 +1528,12 @@ describe("the team's free space says what 0023 says (the review, finding 1)", ()
     expect(FREE_SPACE_REFUSAL).toBe(raised);
   });
 
-  it("says 0023's number and words, and the runbook's month", () => {
+  it("says 0023's number, words and month", () => {
     const [used, freed] = VAULT_TEAM_FULL.split('. ');
     expect(raised!.toLowerCase()).toContain(used!.toLowerCase());
     expect(raised).toContain(`${VAULT_TEAM_FREE_MIB} MiB of free space`);
     expect(raised).toContain(freed!.replace(/\.$/, ''));
-    expect(runbook).toContain('its history is cleared, about a month later');
+    expect(sql).toContain('its history is cleared, about a month later');
     // "About a month" is the weekly purge's window, the Trash lines' number.
     expect(VAULT_TEAM_TRASH_DAYS).toBe(30);
     expect(VAULT_TEAM_FULL).not.toMatch(/try again|\$|price|tier|plan\b|start a plan/i);

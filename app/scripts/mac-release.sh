@@ -57,7 +57,7 @@ pnpm --filter oscode-app rebuild:native
 pnpm exec electron-builder --mac --publish never
 
 shopt -s nullglob
-# Sign for the in-place update (docs/release-signing.md): an installed Mac
+# Sign for the in-place update (the maintainer release-signing runbook): an installed Mac
 # with the Mac key pinned swaps in only a file whose .sig checks, and opens
 # the release page for anything else.
 if [ -n "${OPENSHORE_MAC_SIGNING_KEY:-}" ]; then

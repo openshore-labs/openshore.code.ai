@@ -1,4 +1,4 @@
-// Slack Water's surface (components/SlackWater.tsx, docs/slack-water.md): one
+// Slack Water's surface (components/SlackWater.tsx, docs/design/slack-water.md): one
 // full-screen fragment shader draws the pond over the whole app. Given a
 // picture of the screen (lib/screenSnapshot.ts), that picture is the pond's
 // floor: each ring bends it the way real water shifts what lies under it, and

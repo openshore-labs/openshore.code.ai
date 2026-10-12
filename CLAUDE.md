@@ -6,6 +6,11 @@ App Store notes, `os-code/docs/progress-archive.md` and `parked-ideas.md`)
 live in the private `openshore-labs/openshore-hq` repository under
 `openshore-code/internal-docs/`, at the same path they have below. A doc named
 here that is not in this tree is there. Never copy internal material back in.
+The maintainer runbooks (TestFlight, push setup, release signing, the Mac
+desktop build, the gate 1 runbook and the vault device checklist) live there
+too, under `docs/` (2026-10-12). Public docs are indexed in `docs/README.md`;
+design history sits in `docs/design/`; `ARCHITECTURE.md` is the one-page map
+for contributors. Keep a new doc in one of those three homes.
 
 ## Read PROGRESS at session start (standing rule)
 
@@ -38,8 +43,8 @@ reference only.
 
 ## Vault v1: M0 to M7 BUILT, the M8 ship gate open (2026-09-27)
 
-The plan is `docs/vault-v1-plan.md` (D1 to D15 ruled by the founder); the
-review behind it is `docs/vault-v1-review-findings.md`; each milestone's calls
+The plan is `docs/design/vault-v1-plan.md` (D1 to D15 ruled by the founder); the
+review behind it is `docs/design/vault-v1-review-findings.md`; each milestone's calls
 are in `os-code/DECISIONS.md`. Vault is one local-first plain-markdown vault on
 the gitOS seam that the person, every model seat, Crew routines, and Obsidian
 share: on the desktop the folder (`~/OSCode/Vault` or one the person picks,
@@ -85,7 +90,7 @@ remains): 0021 to 0026 are applied and `delete-account` deployed (2026-09-30);
 the entitlement date; the reference box evals for M4 to M6 before any pack
 default flips; an `xcodebuild test` run; and the device checklist in
 `docs/vault-v1-device-checklist.md`. Every must-fix finding maps to a test in
-`docs/vault-v1-test-map.md`.
+`docs/design/vault-v1-test-map.md`.
 
 ## Crew routines (the botOS brief) are BUILT (2026-09-05)
 
@@ -137,7 +142,7 @@ reads "Your server" everywhere (`app/src/lib/docking.ts`). Venice and
 OpenRouter list no typed model ids: their models load live
 (`liveModels` in `app/src/lib/providers.ts`). Docking is free. Copy never says
 a server is "always on" or private; renting is said plainly once. Plan and
-follow-ups: `docs/connect-anywhere-proposal.md`, `os-code/PROGRESS.md`.
+follow-ups: `docs/design/connect-anywhere-proposal.md`, `os-code/PROGRESS.md`.
 
 **Bring your own keys, any provider (founder, 2026-10-09)** is strictly the
 person's keys: OpenShore runs no gateway, resells no model, rents no server
@@ -153,7 +158,7 @@ provider's key for its coding sessions (Cloud Connections, Keys on your
 server; or `osc key add` over SSH), never checks it with the provider, takes
 only https addresses off its own network, and copy never calls its store
 encrypted (`os-code/src/auth/keyHome.ts`); routines and the free chat run
-only on a local model, so they stop while a cloud model is the server's model. Plan: `docs/byok-any-provider-plan.md`; review:
+only on a local model, so they stop while a cloud model is the server's model. Plan: `docs/design/byok-any-provider-plan.md`; review:
 `docs/security-privacy-review-2026-10-09-byok.md`.
 
 ## Premium UX out of the box (standing rule, founder 2026-09-02)
@@ -375,7 +380,7 @@ payment, a merge, or a say in the roadmap.
 ## The premium build's standing rules (2026-09-29)
 
 Built from a whole-codebase review (`docs/next-build-2026-09-29.md`); every
-package's notes and the advisor rulings are in `docs/build-2026-09-29/`. Each
+package's notes and the advisor rulings are in `docs/design/build-2026-09-29/`. Each
 rule is pinned by tests; keep them:
 
 - **Every model reply streams, and Stop answers at once.** One provider client

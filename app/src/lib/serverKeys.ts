@@ -1,4 +1,4 @@
-// Keys on your server (founder, 2026-10-09; docs/byok-any-provider-plan.md,
+// Keys on your server (founder, 2026-10-09; docs/design/byok-any-provider-plan.md,
 // part 3), the app's pure half: which of this device's providers a docked
 // server can keep a key for, what goes with each key, the models this device
 // knows for a provider the server keeps a key for, and the plain words for

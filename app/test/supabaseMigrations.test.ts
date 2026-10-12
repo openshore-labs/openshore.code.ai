@@ -186,7 +186,7 @@ describe('the Vault secret never reaches a push', () => {
     expect(readFileSync(join(SUPABASE, 'config.toml'), 'utf8')).not.toMatch(/^\s*\[db\.vault\]/m);
   });
 
-  for (const doc of ['supabase/README.md', 'docs/vault-gate1-runbook.md']) {
+  for (const doc of ['supabase/README.md']) {
     it(`every db push command in ${doc} carries --skip-vault`, () => {
       const text = readFileSync(join(process.cwd(), '..', doc), 'utf8');
       const commands: string[] = [];
@@ -213,7 +213,7 @@ describe('the Vault secret never reaches a push', () => {
 });
 
 describe('no file names the old 0019 org vault file', () => {
-  it('supabase/ and the gate 1 runbook say 0021_org_vault_v1', () => {
+  it('supabase/ says 0021_org_vault_v1', () => {
     const stale = '0019_org' + '_vault_v1';
     const hits: string[] = [];
     const walk = (dir: string, rel: string) => {
@@ -225,8 +225,6 @@ describe('no file names the old 0019 org vault file', () => {
       }
     };
     walk(SUPABASE, 'supabase');
-    const runbook = readFileSync(join(process.cwd(), '..', 'docs/vault-gate1-runbook.md'), 'utf8');
-    if (runbook.includes(stale)) hits.push('docs/vault-gate1-runbook.md');
     expect(hits).toEqual([]);
   });
 });

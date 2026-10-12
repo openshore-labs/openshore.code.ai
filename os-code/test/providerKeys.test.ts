@@ -1,4 +1,4 @@
-// Keys on your server (founder, 2026-10-09; docs/byok-any-provider-plan.md,
+// Keys on your server (founder, 2026-10-09; docs/design/byok-any-provider-plan.md,
 // part 3): the module the daemon's key routes and `osc key` share, the
 // schema's provider-key namespace, and how a stored key reaches a request.
 // A key is put once, listed by provider only, and removed with every stack
