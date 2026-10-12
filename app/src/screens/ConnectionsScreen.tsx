@@ -395,7 +395,13 @@ export function ConnectionsScreen() {
                 }
                 value={on ? <span className="pill ok">Connected</span> : undefined}
                 asks={on}
-                onClick={() => (on ? setRemoving({ id: p.id, name: p.name }) : openSheet(p.id))}
+                onClick={() => {
+                  if (!on) return openSheet(p.id);
+                  // Read every docked server first, so the question names each
+                  // one that keeps this key before anything is deleted.
+                  for (const h of servers) void refreshServer(h.baseUrl);
+                  setRemoving({ id: p.id, name: p.name });
+                }}
               />,
               p.id === 'anthropic' && on ? (
                 <SettingsRow
@@ -684,7 +690,16 @@ export function ConnectionsScreen() {
               const target = removing;
               setRemoving(undefined);
               if (!target) return;
-              const onServers = await disconnectProvider(target.id);
+              // Only the servers the question named lose a key; one not read
+              // yet is left alone and gets the note below.
+              const namedHolders = holdersOf(target.id);
+              const unread = servers.filter(
+                (h) =>
+                  !namedHolders.includes(h) &&
+                  !offersNone[h.baseUrl] &&
+                  !Array.isArray(serverViews[h.baseUrl]?.keys),
+              );
+              const onServers = await disconnectProvider(target.id, namedHolders);
               const gone = onServers.removedFrom.length
                 ? `${target.name} disconnected, and its key was deleted from ${named(onServers.removedFrom)}.`
                 : `${target.name} disconnected.`;
@@ -698,11 +713,14 @@ export function ConnectionsScreen() {
               // still keep it: say so, and how to delete it there. One this
               // room last read as keeping no such key, or that offers this
               // device no keys at all, is not worth a word.
-              const mayKeep = onServers.notRemoved.filter((h) => {
-                if (offersNone[h.baseUrl]) return false;
-                const keys = serverViews[h.baseUrl]?.keys;
-                return !Array.isArray(keys) || keys.some((k) => k.id === target.id);
-              });
+              const mayKeep = [
+                ...onServers.notRemoved.filter((h) => {
+                  if (offersNone[h.baseUrl]) return false;
+                  const keys = serverViews[h.baseUrl]?.keys;
+                  return !Array.isArray(keys) || keys.some((k) => k.id === target.id);
+                }),
+                ...unread,
+              ];
               if (mayKeep.length) {
                 setTimeout(
                   () =>

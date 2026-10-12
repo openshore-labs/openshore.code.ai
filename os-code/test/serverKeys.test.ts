@@ -3,7 +3,7 @@
 // an admin device; a key goes in once and never comes back out, in an answer
 // or a log line; removing one clears the stack slots that named it; and a
 // key on the server serves coding sessions only, never a routine or the free
-// chat, which stay on a local model.
+// chat, which run only on a local model.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -297,8 +297,8 @@ describe('the key routes on a server', () => {
     expect(SERVER_NO_MODEL).toContain(
       `${SERVER_ACCOUNT_PREFIX} osc stack use <model> <provider> --context <tokens>`,
     );
-    // The app has no door to a server's model yet, so the line names none.
-    expect(SERVER_NO_MODEL).not.toMatch(/in OpenShore/);
+    // The app's door is named first, the SSH way second.
+    expect(SERVER_NO_MODEL).toMatch(/Cloud Connections, Your server, Model on your server/);
   });
 
   it('a session runs on the key kept here: it asks first, then sends that key to the provider itself', async () => {
@@ -453,6 +453,6 @@ describe('a key on the server serves coding sessions only', () => {
 
   it('the CLI help says so, and names the server account', () => {
     expect(KEY_HELP).toContain(`${SERVER_ACCOUNT_PREFIX} osc key add openrouter`);
-    expect(KEY_HELP).toMatch(/Crew routines and the free chat stay on a local model/);
+    expect(KEY_HELP).toMatch(/Crew routines and the free chat run only on a local model/);
   });
 });

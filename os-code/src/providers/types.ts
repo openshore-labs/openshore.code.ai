@@ -36,6 +36,13 @@ export interface ChatMessage {
    */
   thinkingBlocks?: unknown[];
   /**
+   * The `reasoning_content` a DeepSeek-style server sent with this assistant
+   * turn's tool calls. That server answers 400 when a tool round is replayed
+   * without it, so the OpenAI-compatible provider sends it back, inside the
+   * same user turn only. Never shown, never kept past the turn.
+   */
+  reasoningContent?: string;
+  /**
    * Set on a tool message whose content came from a local-only vault note
    * (Vault M4, CTO I5). The loop swaps its content for a one-line stub
    * (`withholdLocalOnly` in harness/vault/privacy.ts) in what it sends on any
@@ -90,6 +97,9 @@ export type ChatEvent =
   /** The finished thinking blocks of a Claude turn, for replay (see
    *  ChatMessage.thinkingBlocks). Sent once, before done. */
   | { type: 'thinking-blocks'; blocks: unknown[] }
+  /** The whole `reasoning_content` of a turn, for replay with its tool calls
+   *  (see ChatMessage.reasoningContent). Sent once, before done. */
+  | { type: 'reasoning-content'; text: string }
   | { type: 'tool-call'; call: ToolCallRequest }
   | {
       type: 'usage';

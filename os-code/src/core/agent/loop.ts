@@ -1803,6 +1803,7 @@ export class AgentSession {
       // calls. The splitter routes <think> text out of the answer: to the
       // thinking block while Chain of Thought is on, and nowhere while it is off.
       let thinkingBlocks: unknown[] | undefined;
+      let reasoningContent: string | undefined;
       const cot = this.chainOfThought;
       const splitter = new ThinkTagSplitter();
       // A union reply is JSON: only the answer's own words stream, as they
@@ -1866,6 +1867,9 @@ export class AgentSession {
               break;
             case 'thinking-blocks':
               thinkingBlocks = event.blocks;
+              break;
+            case 'reasoning-content':
+              reasoningContent = event.text;
               break;
             case 'tool-call':
               nativeCalls.push(event.call);
@@ -2119,6 +2123,7 @@ export class AgentSession {
             role: 'assistant',
             content: streamedText,
             ...(thinkingBlocks?.length ? { thinkingBlocks } : {}),
+            ...(reasoningContent ? { reasoningContent } : {}),
             toolCalls: [
               ...calls.map((c) => ({
                 id: c.id,

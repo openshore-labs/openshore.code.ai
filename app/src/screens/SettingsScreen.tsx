@@ -510,20 +510,20 @@ export function SettingsScreen() {
               keys or accounts (an Ollama cloud model on your Ollama account), and only when you
               pick one or place it in your Stack. A few things do leave this device, and every one
               is listed under What leaves this device, above: the words of a web search, a web page
-              the agent opens, update checks, the model list, a notification token if you allow
-              notifications, and, while you are signed in, your account, a few preferences, and a
-              record of any request the guardrail blocks. That record carries a category, a time,
-              and a one-way hash, never your prompt and never the name of anyone it was about. No
-              telemetry, no analytics, no advertising.
+              the agent opens, update checks, the model list, a provider key you turn on for a
+              server you dock, a notification token if you allow notifications, and, while you are
+              signed in, your account, a few preferences, and a record of any request the guardrail
+              blocks. That record carries a category, a time, and a one-way hash, never your prompt
+              and never the name of anyone it was about. No telemetry, no analytics, no advertising.
             </p>
             <h3 className="settings-sheet-head">Encrypted on this device</h3>
             <p>
               Your chats, projects, crew, settings, and session journals are sealed at rest with
               AES-256. The key that unlocks them stays on this device, held in its secure store, the{' '}
               {keyStoreLabel()}, whenever one is available, and it never leaves this device. API
-              keys are held the same way. When you send a turn to a cloud provider, that one
-              provider sees that one request on your own account. We do not, and there is nothing in
-              between.
+              keys are held the same way. When you send a turn to a cloud provider, it goes from
+              this device to that provider on your own account, and we do not see it. OpenRouter and
+              Hugging Face pass it on to the model's own provider, as What leaves this device says.
             </p>
             {facts ? <LiveSeal facts={facts} /> : null}
             <h3 className="settings-sheet-head">Local models, honestly</h3>
@@ -1475,7 +1475,9 @@ export function SettingsScreen() {
           model: it asks first, in the confirm grammar (Keep, then danger). */}
       <Sheet open={sheet === 'uninstallHarbor'} onClose={close} variant="confirm">
         <h3>Uninstall Harbor?</h3>
-        <p>It is removed from this device. You can reinstall it any time, and it downloads again.</p>
+        <p>
+          It is removed from this device. You can reinstall it any time, and it downloads again.
+        </p>
         <div className="confirm-row">
           <button type="button" className="btn ghost" onClick={close}>
             Keep it

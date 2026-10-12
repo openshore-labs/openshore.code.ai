@@ -152,8 +152,8 @@ notes never go to it, and never makes one local. A docked server can keep a
 provider's key for its coding sessions (Cloud Connections, Keys on your
 server; or `osc key add` over SSH), never checks it with the provider, takes
 only https addresses off its own network, and copy never calls its store
-encrypted (`os-code/src/auth/keyHome.ts`); routines and the free chat stay
-on a local model. Plan: `docs/byok-any-provider-plan.md`; review:
+encrypted (`os-code/src/auth/keyHome.ts`); routines and the free chat run
+only on a local model, so they stop while a cloud model is the server's model. Plan: `docs/byok-any-provider-plan.md`; review:
 `docs/security-privacy-review-2026-10-09-byok.md`.
 
 ## Premium UX out of the box (standing rule, founder 2026-09-02)

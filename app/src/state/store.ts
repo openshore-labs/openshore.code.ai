@@ -2631,7 +2631,7 @@ interface AppState {
   setAnthropicWorkspace(workspaceId: string): Promise<KeyCheck>;
   /** Disconnect a cloud provider and forget its key, here and on every
    *  docked server that keeps it (best effort; the answer says where). */
-  disconnectProvider(id: string): Promise<KeyRemoval>;
+  disconnectProvider(id: string, onlyServers?: readonly DaemonTarget[]): Promise<KeyRemoval>;
 
   /** Re-check home reachability + internet, updating the connectivity signals. */
   refreshConnectivity(): Promise<void>;
@@ -14885,7 +14885,7 @@ export const useApp = create<AppState>((set, get, api) => {
       return check;
     },
 
-    async disconnectProvider(id) {
+    async disconnectProvider(id, onlyServers) {
       await secretDelete(providerSecretKey(id));
       set((s) => ({
         connectedProviders: { ...s.connectedProviders, [id]: false },
@@ -14903,7 +14903,10 @@ export const useApp = create<AppState>((set, get, api) => {
       if (stacks) await get().saveSettings({ stacks: sweepProviderRefs(stacks, id) });
       // And its key leaves every docked server that keeps one (keys on your
       // server, 2026-10-09; serverKeysOps), best effort.
-      const servers = dockedServers(hubList(get().settings), get().settings.hubRoles);
+      // Only the servers the question named when the caller says so: a key is
+      // never deleted on a server the person was not told about.
+      const servers =
+        onlyServers ?? dockedServers(hubList(get().settings), get().settings.hubRoles);
       const onServers: KeyRemoval = servers.length
         ? await removeKeyFromServers(servers, id)
         : { removedFrom: [], modelClearedOn: [], notRemoved: [] };

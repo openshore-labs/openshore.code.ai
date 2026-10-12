@@ -40,7 +40,7 @@ export const KEY_HELP = [
   `  printf '%s' "$OPENROUTER_API_KEY" | ${SERVER_ACCOUNT_PREFIX} osc key add openrouter`,
   '',
   `Known providers (no --base-url needed): ${Object.keys(KNOWN_PROVIDERS).join(', ')}.`,
-  'Keys serve coding sessions here. Crew routines and the free chat stay on a local model.',
+  "Keys serve coding sessions here. Crew routines and the free chat run only on a local model, so they do not run while a cloud model is this machine's model.",
 ].join('\n');
 
 export interface KeyAddOptions {

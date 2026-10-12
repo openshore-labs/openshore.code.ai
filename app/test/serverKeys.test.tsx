@@ -536,6 +536,20 @@ describe('the lifecycle', () => {
     expect(calls.some((c) => c.url.startsWith(COMPUTER.baseUrl))).toBe(false);
   });
 
+  it('a disconnect that names its servers touches no other server', async () => {
+    const other = { baseUrl: 'http://100.64.0.10:4816', token: 'osc_two', kind: 'server' as const };
+    useApp.setState({
+      connectedProviders: { groq: true },
+      settings: { ...useApp.getState().settings, daemons: [SERVER, other, COMPUTER] },
+    });
+    secrets.set('oscode.secret.groq', 'gsk_x');
+    server.keys = [{ id: 'groq', label: 'Groq', host: 'api.groq.com' }];
+    const result = await useApp.getState().disconnectProvider('groq', [SERVER]);
+    expect(result.removedFrom.map((h) => h.baseUrl)).toEqual([SERVER.baseUrl]);
+    // The server the question did not name is not asked, not even a list.
+    expect(calls.some((c) => c.url.startsWith(other.baseUrl))).toBe(false);
+  });
+
   it('a server that keeps no such key, or offers none to this device, is left alone', async () => {
     server.keys = [{ id: 'openrouter', label: 'OpenRouter', host: 'openrouter.ai' }];
     expect(await ops.removeKeyFromServers([SERVER], 'groq')).toEqual({

@@ -164,12 +164,12 @@ const DEFAULT_IDLE_EVICT_EVERY_MS = 60_000;
 const MEMBER_VAULT_REFUSAL =
   "A member session cannot open in a vault folder or in a folder that holds one, since those hold people's own notes. Pick a project folder.";
 
-/** A session create on a server with no model chosen yet. The command is on
- *  its own paragraph (tenet 9), run as the server's own account. The app has
- *  no door to a server's model yet (its "Use on your server" is the app half
- *  of keys on your server), so the line names only the SSH way. */
+/** A session create on a server with no model chosen yet. The app's door
+ *  comes first (Cloud Connections, Your server, Model on your server, for an
+ *  admin device that holds a key there); the SSH way is the other, and its
+ *  command is on its own paragraph (tenet 9), run as the server's own account. */
 export const SERVER_NO_MODEL =
-  "This server has no model chosen for its sessions yet. Choose one over SSH, as the server's account. For a provider whose key is kept here, give the window its model page lists:\n\nsudo -u openshore env HOME=/var/lib/openshore osc stack use <model> <provider> --context <tokens>\n\nFor a model this server runs itself, leave out --context.";
+  "This server has no model chosen for its sessions yet. In OpenShore, an admin device chooses one under Cloud Connections, Your server, Model on your server. Or choose one over SSH, as the server's account. For a provider whose key is kept here, give the window its model page lists:\n\nsudo -u openshore env HOME=/var/lib/openshore osc stack use <model> <provider> --context <tokens>\n\nFor a model this server runs itself, leave out --context.";
 
 /** The most project pins a session create carries (Project.vaultPins). */
 const SESSION_VAULT_PINS_MAX = 8;

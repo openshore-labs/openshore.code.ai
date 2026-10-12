@@ -510,7 +510,9 @@ export class OpenAICompatibleProvider implements Provider, EmbeddingProvider {
   ): AsyncGenerator<ChatEvent, void, void> {
     const body: Record<string, unknown> = {
       model: request.model,
-      messages: request.messages.map(toOpenAIMessage),
+      messages: request.messages.map((m, i, all) =>
+        toOpenAIMessage(m, i > all.map((x) => x.role).lastIndexOf('user')),
+      ),
       stream: true,
       stream_options: { include_usage: true },
     };
@@ -563,6 +565,7 @@ export class OpenAICompatibleProvider implements Provider, EmbeddingProvider {
     const pending = new Map<number, { id: string; name: string; args: string }>();
     let sawToolCall = false;
     let finish: string | undefined;
+    let reasoningContent = '';
 
     for await (const data of this.sseData(res, signal, guard)) {
       if (data === '[DONE]') break;
@@ -583,11 +586,13 @@ export class OpenAICompatibleProvider implements Provider, EmbeddingProvider {
       if (!choice) continue;
       if (choice.finish_reason) finish = choice.finish_reason;
       const delta = choice.delta ?? {};
-      if (delta.content) yield { type: 'text', delta: String(delta.content) };
+      // Mistral sends content as chunks (a thinking chunk, then text chunks).
+      for (const part of contentParts(delta.content)) yield part;
       // DeepSeek-style servers send reasoning_content; vLLM, OpenRouter, and
       // Ollama's /v1 send reasoning.
       const reasoning = delta.reasoning_content ?? delta.reasoning;
       if (typeof reasoning === 'string' && reasoning) yield { type: 'thinking', delta: reasoning };
+      if (typeof delta.reasoning_content === 'string') reasoningContent += delta.reasoning_content;
       if (Array.isArray(delta.tool_calls)) {
         for (const tc of delta.tool_calls) {
           const idx = tc.index ?? 0;
@@ -608,6 +613,9 @@ export class OpenAICompatibleProvider implements Provider, EmbeddingProvider {
       return;
     }
 
+    if (pending.size && reasoningContent) {
+      yield { type: 'reasoning-content', text: reasoningContent };
+    }
     for (const [, slot] of [...pending.entries()].sort((a, b) => a[0] - b[0])) {
       sawToolCall = true;
       yield {
@@ -769,7 +777,27 @@ function toOllamaMessage(m: ChatMessage): Record<string, unknown> {
   return out;
 }
 
-function toOpenAIMessage(m: ChatMessage): Record<string, unknown> {
+/** A delta's `content` as events: a string is text; Mistral's chunks are text
+ *  chunks (the answer) and thinking chunks (thinking, never replayed). */
+function contentParts(content: unknown): ChatEvent[] {
+  if (typeof content === 'string') return content ? [{ type: 'text', delta: content }] : [];
+  if (!Array.isArray(content)) return [];
+  const out: ChatEvent[] = [];
+  for (const part of content as Array<Record<string, unknown>>) {
+    if (part?.type === 'text' && typeof part.text === 'string' && part.text) {
+      out.push({ type: 'text', delta: part.text });
+    } else if (part?.type === 'thinking' && Array.isArray(part.thinking)) {
+      for (const t of part.thinking as Array<Record<string, unknown>>) {
+        if (t?.type === 'text' && typeof t.text === 'string' && t.text) {
+          out.push({ type: 'thinking', delta: t.text });
+        }
+      }
+    }
+  }
+  return out;
+}
+
+function toOpenAIMessage(m: ChatMessage, thisTurn = false): Record<string, unknown> {
   const out: Record<string, unknown> = { role: m.role };
   if (Array.isArray(m.content)) {
     out.content = m.content.map((p) =>
@@ -789,6 +817,11 @@ function toOpenAIMessage(m: ChatMessage): Record<string, unknown> {
       type: 'function',
       function: { name: c.name, arguments: c.argsText || JSON.stringify(c.args ?? {}) },
     }));
+  }
+  // A DeepSeek-style server wants the reasoning of a tool round back, inside
+  // the same user turn only.
+  if (thisTurn && m.role === 'assistant' && m.toolCalls?.length && m.reasoningContent) {
+    out.reasoning_content = m.reasoningContent;
   }
   if (m.role === 'tool' && m.toolCallId) out.tool_call_id = m.toolCallId;
   return out;
