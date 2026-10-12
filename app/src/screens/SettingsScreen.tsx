@@ -258,7 +258,7 @@ function HarborInstallButton({
   );
 }
 
-type SheetName = 'account' | 'log' | 'search' | 'clear';
+type SheetName = 'account' | 'log' | 'search' | 'clear' | 'uninstallHarbor';
 
 export function SettingsScreen() {
   const {
@@ -967,7 +967,7 @@ export function SettingsScreen() {
                     ready={settings.harborReady}
                     download={harborDownload}
                     onInstall={() => void installHarbor()}
-                    onUninstall={() => void uninstallHarbor()}
+                    onUninstall={() => setSheet('uninstallHarbor')}
                     onCancel={() => cancelHarbor()}
                   />
                 }
@@ -1467,6 +1467,28 @@ export function SettingsScreen() {
             }}
           >
             Clear
+          </button>
+        </div>
+      </Sheet>
+
+      {/* Uninstall sits in a scrolling list, so a stray tap must not remove the
+          model: it asks first, in the confirm grammar (Keep, then danger). */}
+      <Sheet open={sheet === 'uninstallHarbor'} onClose={close} variant="confirm">
+        <h3>Uninstall Harbor?</h3>
+        <p>It is removed from this device. You can reinstall it any time, and it downloads again.</p>
+        <div className="confirm-row">
+          <button type="button" className="btn ghost" onClick={close}>
+            Keep it
+          </button>
+          <button
+            type="button"
+            className="btn danger"
+            onClick={() => {
+              close();
+              void uninstallHarbor();
+            }}
+          >
+            Uninstall
           </button>
         </div>
       </Sheet>

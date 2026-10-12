@@ -76,7 +76,20 @@ describe('the Harbor rows in Settings', () => {
   it('gives Harbor Lite the built-in status and Harbor the install toggle', () => {
     expect(screen).toContain('bundled={HARBOR_MINI_BUNDLED}');
     expect(screen).toContain('onInstall={() => void installHarbor()}');
-    expect(screen).toContain('onUninstall={() => void uninstallHarbor()}');
+    expect(screen).toContain("onUninstall={() => setSheet('uninstallHarbor')}");
+  });
+
+  it('asks before Uninstall removes Harbor, Keep first then a danger button', () => {
+    // A stray tap while scrolling Settings must not remove the model.
+    expect(screen).not.toContain('onUninstall={() => void uninstallHarbor()}');
+    const at = screen.indexOf("sheet === 'uninstallHarbor'");
+    expect(at).toBeGreaterThan(-1);
+    const block = screen.slice(at, screen.indexOf('</Sheet>', at));
+    expect(block).toContain('variant="confirm"');
+    expect(block).toMatch(/<h3>Uninstall Harbor\?<\/h3>/);
+    expect(block.indexOf('btn ghost')).toBeLessThan(block.indexOf('btn danger'));
+    expect(block).not.toMatch(/btn primary/);
+    expect(block).toContain('void uninstallHarbor()');
   });
 });
 
