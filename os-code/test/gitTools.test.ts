@@ -1,7 +1,7 @@
 // The agent's git tools against a real repository: a commit from a workspace
 // that is a subdirectory of the repo stages only that workspace, and an
 // explicit path that leaves the jail is refused, never handed to git.
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import {
   chmodSync,
@@ -46,6 +46,22 @@ function contextFor(cwd: string): ToolContext {
   });
   return { cwd, jail: new Jail(cwd), egress: new EgressPolicy(config.egress), config };
 }
+
+describe('a GIT_ variable in the environment (simple-git 4 refuses them)', () => {
+  const saved = { ...process.env };
+  afterEach(() => {
+    for (const key of Object.keys(process.env)) if (!(key in saved)) delete process.env[key];
+    Object.assign(process.env, saved);
+  });
+
+  it('does not stop a commit: the tools leave every GIT_ name out', async () => {
+    process.env.GIT_SSL_CAINFO = '/etc/ssl/certs/ca-certificates.crt';
+    process.env.GIT_CONFIG_COUNT = '0';
+    const { pkg } = dirtyRepo();
+    const result = await gitCommitTool.execute({ message: 'with git env' }, contextFor(pkg));
+    expect(result.ok).toBe(true);
+  });
+});
 
 describe('gitCommit (ENG-8)', () => {
   it('with no paths stages only the workspace, not the whole repository', async () => {
