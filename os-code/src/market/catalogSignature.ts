@@ -20,7 +20,7 @@
  *  catalog is taken unsigned, as before). Once a key is pinned, every
  *  published catalog must carry a signature from its private half, or
  *  installed apps keep the last catalog they verified. */
-export const CATALOG_PUBLIC_KEY = '';
+export const CATALOG_PUBLIC_KEY = 'FREhNZLahFwz2zY2sm6a+qJXF+DG/OVMTJwhuXWh+nw=';
 
 export const CATALOG_SIGNATURE_CONTEXT = 'openshore-catalog-v1';
 
