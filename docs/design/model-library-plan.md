@@ -197,9 +197,13 @@ counsel before release:
    Gemma 4 license page and it is the Apache License 2.0, as the pick records.
    T5Gemma inside Stable Audio 3 is a separate model under the Gemma Terms of
    Use, and its notice is in `NOTICE`.
-2. **MedGemma** (Health AI Developer Foundations terms): commercial use is
-   allowed, with Google's prohibited use policy passed on to users. Accept the
-   terms, and keep the pick's "not for diagnosing or treating anyone" line.
+2. **MedGemma** (Health AI Developer Foundations terms): the shelf stays
+   (founder, 2026-10-13) with conditions that state the position plainly: the
+   terms and Prohibited Use Policy apply, they bar uses that could make Google
+   a medical-device manufacturer, and the pick is not for diagnosing or
+   treating anyone. Counsel still to answer: the section 4.5 indemnity, and
+   whether linking to a download is "distribution". The Prohibited Use Policy
+   page is not yet read against the shelf's copy.
 3. **SAM 3.1** (SAM License): royalty-free commercial use, but the license
    travels with the model and bars military use and export violations. Accept
    it and approve the shipped text.

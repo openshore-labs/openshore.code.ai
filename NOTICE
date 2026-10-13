@@ -22,6 +22,11 @@ notices travel with the app as the licenses below ask.
 Gemma is provided under and subject to the Gemma Terms of Use found at
 ai.google.dev/gemma/terms. (T5Gemma, the text encoder in Stable Audio 3.)
 
+HAI-DEF is provided under and subject to the Health AI Developer Foundations
+Terms of Use found at
+https://developers.google.com/health-ai-developer-foundations/terms.
+(MedGemma.)
+
 Parakeet TDT 0.6B v3, by NVIDIA, is licensed under CC BY 4.0
 (https://creativecommons.org/licenses/by/4.0/).
 
