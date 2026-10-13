@@ -1,15 +1,17 @@
-// Hosted (cloud) models in the Local Library. A maintainer asked for the new Kimi
-// in the store and "that level of selection": the frontier models next to the
-// downloads. This pins that the list derives from the providers (so the store
-// and Cloud Connections never drift), that the current Kimi lineup is present
-// and no retired id is, that search and capability filters find them, and
-// that the newest lens puts the latest release first.
+// Hosted (cloud) models. A maintainer asked for the new Kimi and "that level
+// of selection": the frontier models, browsable. Since 2026-10-13 (founder)
+// they live in Cloud Connections and only there; the Local Library lists what
+// runs on your own machines. This pins that the list derives from the
+// providers (so the sheet and the provider rows never drift), that the
+// current Kimi lineup is present and no retired id is, that search and
+// capability filters find them, that the newest lens puts the latest release
+// first, and that no cloud model is offered in the Local Library.
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { EMPTY_FACETS } from '../src/components/localLibrary.js';
 import {
   contextLabel,
   filterHosted,
-  hostedFacetsApply,
   hostedIsNew,
   hostedModels,
   newestHosted,
@@ -90,15 +92,6 @@ describe('search and filters', () => {
     expect(coding.some((m) => m.modelId === 'kimi-k2.7-code')).toBe(true);
     expect(coding.every((m) => m.categories.includes('coding'))).toBe(true);
   });
-
-  it('hosted rows show for search and capability facets only', () => {
-    expect(hostedFacetsApply(EMPTY_FACETS)).toBe(true);
-    expect(hostedFacetsApply({ ...EMPTY_FACETS, query: 'kimi', capability: 'coding' })).toBe(true);
-    expect(hostedFacetsApply({ ...EMPTY_FACETS, fits: true })).toBe(false);
-    expect(hostedFacetsApply({ ...EMPTY_FACETS, onDeviceOnly: true })).toBe(false);
-    expect(hostedFacetsApply({ ...EMPTY_FACETS, source: 'ollama' })).toBe(false);
-    expect(hostedFacetsApply({ ...EMPTY_FACETS, capability: 'coding', minStar: 4 })).toBe(false);
-  });
 });
 
 describe('the newest lens', () => {
@@ -125,5 +118,32 @@ describe('contextLabel', () => {
     expect(contextLabel(1_048_576)).toBe('1M');
     expect(contextLabel(262_144)).toBe('256K');
     expect(contextLabel(131_072)).toBe('128K');
+  });
+});
+
+describe('cloud models live in Cloud Connections only (founder, 2026-10-13)', () => {
+  const src = (...p: string[]) => readFileSync(join(process.cwd(), 'src', ...p), 'utf8');
+
+  it('the Local Library offers no cloud model: no frontier shelf, page or search rows', () => {
+    for (const file of [
+      src('screens', 'LocalLibraryScreen.tsx'),
+      src('components', 'LibraryViews.tsx'),
+    ]) {
+      expect(file).not.toMatch(/lib\/hosted\.js|hostedModels|HOSTED_SHELF|installOllamaRef/);
+    }
+  });
+
+  it("the library's Install by name turns a cloud tag away to Cloud Connections", () => {
+    expect(src('components', 'LibraryViews.tsx')).toMatch(/<InstallByName localOnly \/>/);
+    const door = src('components', 'InstallByName.tsx');
+    expect(door).toMatch(
+      /if \(localOnly && isOllamaCloudTag\(ref\)\) \{\s*showToast\(CLOUD_TAG_IN_LIBRARY\);\s*return;/,
+    );
+  });
+
+  it('Cloud Connections lists every frontier model, newest first, each opening its provider', () => {
+    const room = src('screens', 'ConnectionsScreen.tsx');
+    expect(room).toMatch(/sortHostedNewest\(hostedModels\(\)\)/);
+    expect(room).toMatch(/onClick=\{\(\) => pickFrontier\(m\.providerId\)\}/);
   });
 });

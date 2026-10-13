@@ -23,9 +23,6 @@ describe('the way back', () => {
 
   it('the store product pages go back to the Local Library, and take the model name as title', () => {
     const store = src('screens', 'LocalLibraryScreen.tsx');
-    expect(store).toMatch(
-      /\{ title: focusedHosted\.name, back: \{ to: 'Local Library', onBack: closeHosted \} \}/,
-    );
     // A catalog model's page goes back to the library page it was opened
     // from (a category or a collection), or to the Local Library; a category
     // or collection page goes back to the Local Library.

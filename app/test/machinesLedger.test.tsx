@@ -138,6 +138,7 @@ describe('Cloud Connections in the ledger', () => {
     expect(listed.map((r) => r.label)).toEqual([
       'Set up a server',
       ...FAMILIAR.map((p) => p.name),
+      'Frontier models',
       'More providers',
       'Any other provider',
     ]);

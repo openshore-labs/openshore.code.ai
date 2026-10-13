@@ -125,7 +125,7 @@ describe('the store front', () => {
 
   it('shows bring-your-own the way each device has it: Install by name on the desktop, Connect a model elsewhere', () => {
     const views = read('components/LibraryViews.tsx');
-    expect(views).toMatch(/<InstallByName \/>/);
+    expect(views).toMatch(/<InstallByName localOnly \/>/);
     expect(views).toMatch(/tap Connect a\s+model\s+under\s+Bench/);
   });
 

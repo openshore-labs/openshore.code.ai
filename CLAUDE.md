@@ -142,7 +142,11 @@ communal, never a profit-based store. Copy says Local Library (the room id is
 `library`, the screen `LocalLibraryScreen`, the CLI `osc library`); a saved
 sidebar order that names `marketplace` maps to it (`lib/sidebarOrder.ts`).
 `Marketplace` is a retired word in copy (`app/test/support/uiGuards.ts`).
-Founder quotes and applied migrations keep their original words.
+Founder quotes and applied migrations keep their original words. Every model
+in it runs on the person's own machines: cloud models live only in Cloud
+Connections, under Frontier models (`lib/hosted.ts`, rendered by
+`ConnectionsScreen`), and the library's Install by name turns an Ollama cloud
+tag away there (`app/test/hosted.test.ts`).
 
 ## Connect anywhere: docking to a computer or a server (founder, 2026-10-07)
 

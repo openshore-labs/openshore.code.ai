@@ -204,7 +204,7 @@ export function ModelRequestSheet({
                   Install any Ollama model by its name, or a GGUF file from Hugging Face as
                   hf.co/owner/repo. It joins your Bench, ready to place.
                 </p>
-                <InstallByName />
+                <InstallByName localOnly />
               </>
             ) : (
               <>
@@ -257,14 +257,11 @@ export function LibraryFront({
   onCategory,
   onCollection,
   onRequest,
-  hosted,
 }: {
   catalog: Catalog;
   onCategory: (category: LibraryCategory) => void;
   onCollection: (collection: LibraryCollection) => void;
   onRequest: () => void;
-  /** The frontier shelf (cloud models on your key), shown after the sections. */
-  hosted?: ReactNode;
 }) {
   const categories = new Set(filledCategories(catalog).map((c) => c.id));
   const collections = filledCollections(catalog);
@@ -330,8 +327,6 @@ export function LibraryFront({
           </section>
         );
       })}
-
-      {hosted}
 
       <LibraryRequestRow onRequest={onRequest} />
     </div>

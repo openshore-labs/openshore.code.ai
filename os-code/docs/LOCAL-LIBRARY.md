@@ -196,14 +196,15 @@ so be package-ready there; the desktop has the luxury of choice.
    one fact that reorders a phone shopper's instincts in its subtitle: the
    newest small models beat the old 7B class at half the memory, so bigger is
    not better here. Disk space was never the limit; RAM under the iOS cap is.
-4. **Desktop and home servers**: a divider, then the frontier shelf and every
-   other shelf. The install control on those rows never says "Get" on a phone:
-   `installLabel` in `Local Library.ts` reads "On <hub>" when a computer is
+4. **Desktop and home servers**: a divider, then every other shelf. Cloud
+   models are not here: they live in Cloud Connections, under Frontier
+   models (founder, 2026-10-13). The install control on those rows never says "Get" on a phone:
+   `installLabel` in `localLibrary.ts` reads "On <hub>" when a computer is
    paired (the existing tailnet install), or a quiet "Desktop" that explains
    itself on tap.
 
 A product page carries a "Where it runs" row (this iPhone, a laptop, a home
-server; `runsOn` in `Local Library.ts` reads the laptop and workstation homes off
+server; `runsOn` in `localLibrary.ts` reads the laptop and workstation homes off
 the same budget fractions the engine uses) and a link to every size in the
 family. The desktop store front keeps its order and gains the family rail.
 
