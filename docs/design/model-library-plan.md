@@ -235,8 +235,9 @@ counsel before release:
    Lightning LoRA's card says Apache 2.0 (read 2026-10-13), so it is named too
    and Qwen-Image-Edit 2511 is in the library.
 8. **Held, not in the library**: LTX-2.5 (community license under $10M, and a
-   use policy against competing with Lightricks: the founder asks Lightricks
-   for a written OK), and Qwen3.8-Flash-Next. Its license (Qwen Community
+   use policy against competing with Lightricks; Lightricks' only contact is a
+   sales call booking, so the founder skipped asking, 2026-10-13, and it stays
+   out), and Qwen3.8-Flash-Next. Its license (Qwen Community
    License 1.0, read 2026-10-13) is MIT-like with two conditions: show the
    model name on the product's interface above 100M monthly users or $20M a
    month in revenue (neither applies), and a separate license from Qwen before
