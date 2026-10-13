@@ -39,6 +39,13 @@ import { detectHardware, budgetFor } from 'os-code/dist/src/router/resourceBudge
 import { loadCatalog, findModel } from 'os-code/dist/src/market/catalog.js';
 import { installOllamaRef } from 'os-code/dist/src/market/install.js';
 import { comfyModelsDir, getModel } from 'os-code/dist/src/media/install.js';
+import {
+  clearMediaOutputs,
+  mediaOutputs,
+  removableFiles,
+  removeModelFiles,
+} from 'os-code/dist/src/media/upkeep.js';
+import type { MediaJob } from 'os-code/dist/src/media/jobs.js';
 import { computeStackHealth } from 'os-code/dist/src/insights/stackHealth.js';
 import { EgressPolicy, isLocalUrl } from 'os-code/dist/src/core/security/egress.js';
 import { offlineSeatFor } from 'os-code/dist/src/router/router.js';
@@ -930,15 +937,42 @@ export class EngineHost {
     };
   }
 
-  /** Take a media job out of the Stack. */
-  async removeMedia(job: string): Promise<{ ok: boolean; detail: string }> {
+  /** What a job's model could take with it on Remove: the files Get wrote
+   *  for it that no other placed model needs (upkeep.ts). */
+  async mediaRemoval(job: MediaJob): Promise<{ files: number; bytes: number }> {
+    const { config } = loadConfig();
+    const loaded = await loadCatalog(config, new EgressPolicy(config.egress));
+    const { files, bytes } = removableFiles(loaded.catalog, config, job);
+    return { files: files.length, bytes };
+  }
+
+  /** Take a media job out of the Stack, and, when asked, delete the files
+   *  Get wrote for its model that nothing else placed needs. */
+  async removeMedia(job: MediaJob, deleteFiles = false): Promise<{ ok: boolean; detail: string }> {
     const { saveMediaPlacement } = await import('os-code/dist/src/config/load.js');
     try {
+      let freed = '';
+      if (deleteFiles) {
+        const { config } = loadConfig();
+        const loaded = await loadCatalog(config, new EgressPolicy(config.egress));
+        const gone = removeModelFiles(loaded.catalog, config, job);
+        freed = gone.files ? ` Its files are deleted, freeing ${gigabytes(gone.bytes)}.` : '';
+      }
       saveMediaPlacement(job, undefined);
+      return { ok: true, detail: `Taken out of your Stack.${freed}` };
     } catch (err) {
       return { ok: false, detail: err instanceof Error ? err.message : String(err) };
     }
-    return { ok: true, detail: 'Taken out of your Stack.' };
+  }
+
+  /** The pictures, clips and sounds the media jobs saved on this computer. */
+  async mediaOutputs(): Promise<{ files: number; bytes: number }> {
+    return mediaOutputs();
+  }
+
+  /** Delete them. */
+  async clearMediaOutputs(): Promise<{ files: number; bytes: number }> {
+    return clearMediaOutputs();
   }
 
   async disableSpecialist(role: string): Promise<{ ok: boolean; detail: string }> {
@@ -1414,6 +1448,12 @@ export class EngineHost {
  *  Stack's picks are written to: the first OpenAI-compatible endpoint whose
  *  address stays here (isLocalUrl, the judge a provider's own `remote` uses),
  *  so it is the server status() lists. Ollama's default when none is. */
+/** A size for a line: 3.4 GB, or 512 MB under a gigabyte. */
+function gigabytes(bytes: number): string {
+  const gb = bytes / 1e9;
+  return gb >= 1 ? `${Math.round(gb * 10) / 10} GB` : `${Math.max(1, Math.round(bytes / 1e6))} MB`;
+}
+
 function localEndpoint(): { id: string; baseUrl: string } {
   const { config } = loadConfig();
   for (const [id, endpoint] of Object.entries(config.providers)) {

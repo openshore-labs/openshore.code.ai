@@ -33,7 +33,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { Jail } from 'os-code/dist/src/core/security/jail.js';
-import { MEDIA_JOBS } from 'os-code/dist/src/media/jobs.js';
+import { MEDIA_JOBS, type MediaJob } from 'os-code/dist/src/media/jobs.js';
 import { isLocalUrl } from 'os-code/dist/src/core/security/egress.js';
 import {
   parseCurrentsHandles,
@@ -1250,11 +1250,18 @@ guarded('osc:setMediaServer', (runtime: unknown, baseUrl: unknown, modelsDir: un
     ...(dir !== undefined && which === 'comfyui' ? { modelsDir: dir } : {}),
   });
 });
-guarded('osc:removeMedia', (job: unknown) => {
+/** A media job named over IPC, checked against the jobs the engine knows. */
+function mediaJob(job: unknown): MediaJob {
   const name = str(job, 'job');
   if (!(MEDIA_JOBS as readonly string[]).includes(name)) throw new Error('Unknown media job.');
-  return host.removeMedia(name);
-});
+  return name as MediaJob;
+}
+guarded('osc:removeMedia', (job: unknown, deleteFiles: unknown) =>
+  host.removeMedia(mediaJob(job), deleteFiles === true),
+);
+guarded('osc:mediaRemoval', (job: unknown) => host.mediaRemoval(mediaJob(job)));
+guarded('osc:mediaOutputs', () => host.mediaOutputs());
+guarded('osc:clearMediaOutputs', () => host.clearMediaOutputs());
 
 guarded('osc:setAnthropicKey', (key: unknown, workspaceId: unknown) =>
   host.setAnthropicKey(str(key, 'key'), optStr(workspaceId, 'workspaceId')),

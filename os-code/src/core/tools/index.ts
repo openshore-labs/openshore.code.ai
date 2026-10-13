@@ -239,6 +239,11 @@ export interface ToolDef<S extends z.ZodType = z.ZodType> {
    *  session context so a tool whose path is derived from context (not from its
    *  arguments) can still report it; context-free tools ignore the second arg. */
   pathOf?: (args: z.infer<S>, ctx?: ToolContext) => string | undefined;
+  /** Further workspace paths the call reads (an edit's mask): each is
+   *  resolved through the jail and judged by permission rules as pathOf's is,
+   *  and the strictest decision stands, so a deny on any of them denies the
+   *  call. Workspace paths only. */
+  morePathsOf?: (args: z.infer<S>) => string[];
   /** Which root pathOf's path is relative to. 'workspace' (the default) has
    *  the loop resolve it through the workspace jail before any permission
    *  rule sees it, and deny outright when it leaves the jail; 'own' is for

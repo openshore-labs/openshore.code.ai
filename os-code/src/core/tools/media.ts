@@ -156,6 +156,10 @@ export function mediaTools(opts: {
       schema: editSchema,
       risk: risk('editImage'),
       pathOf: (args) => ruled(args.image),
+      morePathsOf: (args) => {
+        const mask = ruled(args.mask);
+        return mask ? [mask] : [];
+      },
       async execute(args, ctx) {
         const media = ctx.media;
         if (!media) return unavailable();

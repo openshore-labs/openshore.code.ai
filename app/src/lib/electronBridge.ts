@@ -469,7 +469,14 @@ export interface OscodeBridge {
     baseUrl?: string,
     modelsDir?: string,
   ): Promise<{ ok: boolean; detail: string }>;
-  removeMedia(job: string): Promise<{ ok: boolean; detail: string }>;
+  /** Take a media job out of the Stack; `deleteFiles` also deletes the
+   *  files Get wrote for its model that nothing else placed needs. */
+  removeMedia(job: string, deleteFiles?: boolean): Promise<{ ok: boolean; detail: string }>;
+  /** What Remove could delete for a job's model. */
+  mediaRemoval(job: string): Promise<{ files: number; bytes: number }>;
+  /** The pictures, clips and sounds the media jobs saved on this computer. */
+  mediaOutputs(): Promise<{ files: number; bytes: number }>;
+  clearMediaOutputs(): Promise<{ files: number; bytes: number }>;
 
   // Connections (keys stay in the engine's credential store on this machine).
   /** Connect Claude to the engine on this machine. An identity-linked key

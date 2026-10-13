@@ -53,6 +53,7 @@ function setup(where: { speech: string; comfy?: string }) {
         transcribe: { runtime: 'speech', catalogId: 'parakeet', model: 'parakeet' },
         speak: { runtime: 'speech', catalogId: 'kokoro-82m', model: 'kokoro' },
         stems: { runtime: 'separator', catalogId: 'htdemucs-ft', model: 'htdemucs_ft.yaml' },
+        remove: { runtime: 'comfyui', catalogId: 'lama', graph: 'lama' },
       },
     },
   });
@@ -68,7 +69,15 @@ function setup(where: { speech: string; comfy?: string }) {
   };
   host.stems = async (path: string) => {
     sent.push(path);
-    return [join(cwd, '.media', 'vocals.wav')];
+    // As the real host does: the file it wrote joins its log.
+    const file = join(cwd, '.media', `vocals-${sent.length}.wav`);
+    put(cwd, `.media/vocals-${sent.length}.wav`, 'stem');
+    (host as unknown as { saved: string[] }).saved.push(file);
+    return [file];
+  };
+  host.remove = async (path: string) => {
+    sent.push(path);
+    return { files: [join(cwd, '.media', 'edited.png')] };
   };
   return { cwd, vault, host, sent };
 }
@@ -77,12 +86,18 @@ function session(
   ctx: ReturnType<typeof setup>,
   turns: ReturnType<typeof textTurn>[],
   approve?: (r: ApprovalRequest) => { approve: boolean },
+  configOverrides?: Record<string, unknown>,
+  cloudSeat = false,
 ): TestSession {
-  const s = makeTestSession(new MockProvider('mock', turns), {
+  const seat = cloudSeat
+    ? new MockProvider('anthropic', turns, { kind: 'cloud' })
+    : new MockProvider('mock', turns);
+  const s = makeTestSession(seat, {
     cwd: ctx.cwd,
     vaultRoot: ctx.vault,
     media: ctx.host,
     ...(approve ? { approve } : {}),
+    ...(configOverrides ? { configOverrides } : {}),
   });
   const holder = vaultPrivacyHolder(vaultPrivacyConfig(s.config), () => s.toolContext.vaultRoot);
   s.toolContext.vaultPrivacy = holder;
@@ -177,5 +192,71 @@ describe('a media server on this computer', () => {
     await s.agent.run('split it');
     expect(cards(s.approvals)).toEqual([]);
     expect(ctx.sent).toHaveLength(1);
+  });
+});
+
+describe('a file made from a private one', () => {
+  it('is never sent to a media server off this network', async () => {
+    // From a cloud seat, which the private-note rule does not stop (it was
+    // only ever sent a stub of what the stems call printed), the file itself
+    // is still refused.
+    const ctx = setup({ speech: 'https://speech.example' });
+    const stem = join(ctx.cwd, '.media', 'vocals-1.wav');
+    const s = session(
+      ctx,
+      [
+        toolTurn('processAudio', { job: 'stems', audio: 'notes/Private/call.wav' }, 'p1'),
+        toolTurn('transcribeAudio', { audio: stem }, 't1'),
+        textTurn('Okay.'),
+      ],
+      undefined,
+      undefined,
+      true,
+    );
+    await s.agent.run('split my call and transcribe the vocals');
+    expect(ended(s.events, 'processAudio')[0]).toMatchObject({ ok: true, localOnly: true });
+    expect(denied(s.events)).toEqual([MEDIA_LOCAL_ONLY_DENIED]);
+    expect(ctx.sent).toEqual([join(ctx.cwd, 'notes', 'Private', 'call.wav')]);
+  });
+
+  it('marks what is read from it on this computer local-only', async () => {
+    const ctx = setup({ speech: 'http://127.0.0.1:8080' });
+    const stem = join(ctx.cwd, '.media', 'vocals-1.wav');
+    const s = session(ctx, [
+      toolTurn('processAudio', { job: 'stems', audio: 'notes/Private/call.wav' }, 'p1'),
+      toolTurn('transcribeAudio', { audio: stem }, 't1'),
+      textTurn('Done.'),
+    ]);
+    await s.agent.run('split my call and transcribe the vocals');
+    expect(ended(s.events, 'transcribeAudio')[0]).toMatchObject({ ok: true, localOnly: true });
+  });
+});
+
+describe('every file an edit reads', () => {
+  it('is judged by permission rules, the mask included', async () => {
+    const ctx = setup({ speech: 'http://127.0.0.1:8080' });
+    put(ctx.cwd, 'photo.png', 'png');
+    put(ctx.cwd, 'secret-masks/m.png', 'png');
+    const s = session(
+      ctx,
+      [
+        toolTurn(
+          'editImage',
+          { job: 'remove', image: 'photo.png', mask: 'secret-masks/m.png' },
+          'e1',
+        ),
+        textTurn('Okay.'),
+      ],
+      undefined,
+      {
+        permissions: {
+          defaults: { write: 'allow', shell: 'ask' },
+          rules: [{ tool: 'editImage', decision: 'deny', pathGlob: 'secret-masks/**' }],
+        },
+      },
+    );
+    await s.agent.run('remove the masked part');
+    expect(ctx.sent).toEqual([]);
+    expect(denied(s.events)).toHaveLength(1);
   });
 });

@@ -1261,12 +1261,14 @@
           {
             "url": "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/text_encoders/qwen_3_4b_fp8_mixed.safetensors",
             "sizeGB": 5.25,
-            "dest": "text_encoders/qwen_3_4b_fp8_mixed.safetensors"
+            "dest": "text_encoders/qwen_3_4b_fp8_mixed.safetensors",
+            "license": "Apache-2.0"
           },
           {
             "url": "https://huggingface.co/Comfy-Org/flux2-dev/resolve/main/split_files/vae/flux2-vae.safetensors",
             "sizeGB": 0.32,
-            "dest": "vae/flux2-vae.safetensors"
+            "dest": "vae/flux2-vae.safetensors",
+            "license": "Apache-2.0"
           }
         ]
       },
@@ -1308,7 +1310,8 @@
           {
             "url": "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/text_encoders/qwen_3_4b_fp8_mixed.safetensors",
             "sizeGB": 5.25,
-            "dest": "text_encoders/qwen_3_4b_fp8_mixed.safetensors"
+            "dest": "text_encoders/qwen_3_4b_fp8_mixed.safetensors",
+            "license": "Apache-2.0"
           },
           {
             "url": "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/vae/ae.safetensors",
@@ -1519,7 +1522,8 @@
           {
             "url": "https://github.com/Sanster/models/releases/download/add_big_lama/big-lama.pt",
             "sizeGB": 0.2,
-            "dest": "inpaint/big-lama.pt"
+            "dest": "inpaint/big-lama.pt",
+            "license": "Apache-2.0"
           }
         ]
       },
@@ -1723,12 +1727,14 @@
           {
             "url": "https://huggingface.co/Comfy-Org/HunyuanVideo_1.5_repackaged/resolve/main/split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors",
             "sizeGB": 8.74,
-            "dest": "text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors"
+            "dest": "text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors",
+            "license": "Apache-2.0"
           },
           {
             "url": "https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/vae/qwen_image_vae.safetensors",
             "sizeGB": 0.24,
-            "dest": "vae/qwen_image_vae.safetensors"
+            "dest": "vae/qwen_image_vae.safetensors",
+            "license": "Apache-2.0"
           },
           {
             "url": "https://huggingface.co/lightx2v/Qwen-Image-Edit-2511-Lightning/resolve/main/Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors",
@@ -1775,7 +1781,8 @@
           {
             "url": "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors",
             "sizeGB": 6.27,
-            "dest": "text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors"
+            "dest": "text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+            "license": "Apache-2.0"
           },
           {
             "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/vae/wan2.2_vae.safetensors",
@@ -1827,7 +1834,8 @@
           {
             "url": "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors",
             "sizeGB": 6.27,
-            "dest": "text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors"
+            "dest": "text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+            "license": "Apache-2.0"
           },
           {
             "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors",
@@ -1879,7 +1887,8 @@
           {
             "url": "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors",
             "sizeGB": 6.27,
-            "dest": "text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors"
+            "dest": "text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+            "license": "Apache-2.0"
           },
           {
             "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors",
@@ -2015,7 +2024,8 @@
           {
             "url": "https://huggingface.co/Comfy-Org/stable-audio-3/resolve/main/text_encoders/t5gemma_b_b_ul2.safetensors",
             "sizeGB": 1.11,
-            "dest": "text_encoders/t5gemma_b_b_ul2.safetensors"
+            "dest": "text_encoders/t5gemma_b_b_ul2.safetensors",
+            "license": "Gemma"
           }
         ]
       },
@@ -2061,7 +2071,8 @@
           {
             "url": "https://huggingface.co/Comfy-Org/stable-audio-3/resolve/main/text_encoders/t5gemma_b_b_ul2.safetensors",
             "sizeGB": 1.11,
-            "dest": "text_encoders/t5gemma_b_b_ul2.safetensors"
+            "dest": "text_encoders/t5gemma_b_b_ul2.safetensors",
+            "license": "Gemma"
           }
         ]
       },

@@ -48,6 +48,7 @@ on:
       - "os-code/src/market/schema.ts"
       - "os-code/src/market/library.ts"
       - "os-code/src/market/sources.ts"
+      - "os-code/src/market/catalogSignature.ts"
       - ".github/workflows/catalog.yml"
   workflow_dispatch:
     inputs:
@@ -183,6 +184,17 @@ jobs:
           CATALOG_ALLOW_LARGE_DROP: ${{ inputs.allow_large_drop == true && '1' || '' }}
         run: pnpm --filter os-code build:catalog
 
+      # The library catalog is signed with the key whose public half the
+      # engine and the app pin (os-code/src/market/catalogSignature.ts), so
+      # whoever holds the publish token cannot change what every download
+      # points at. With no key pinned and no secret this signs nothing; with a
+      # key pinned and no secret (or the wrong one) it fails, and nothing is
+      # published.
+      - name: Sign the library catalog
+        env:
+          CATALOG_SIGNING_KEY: ${{ secrets.CATALOG_SIGNING_KEY }}
+        run: pnpm --filter os-code sign:catalog
+
       - name: Publish to the marketing site
         if: ${{ env.MARKETING_DEPLOY_CONFIGURED == 'true' }}
         env:
@@ -198,8 +210,12 @@ jobs:
             marketing
           install -D os-code/build/catalog.json marketing/src/static/os-code/catalog.json
           install -D os-code/build/catalog.v2.json marketing/src/static/os-code/catalog.v2.json
+          if [ -f os-code/build/catalog.v2.json.sig ]; then
+            install -D os-code/build/catalog.v2.json.sig marketing/src/static/os-code/catalog.v2.json.sig
+          fi
           cd marketing
           git add src/static/os-code/catalog.json src/static/os-code/catalog.v2.json
+          if [ -f src/static/os-code/catalog.v2.json.sig ]; then git add src/static/os-code/catalog.v2.json.sig; fi
           # --cached so a brand-new (untracked) catalog file also counts as a
           # change; a plain git diff would miss it and skip the first publish.
           if git diff --cached --quiet; then
@@ -239,4 +255,8 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: catalog
-          path: os-code/build/catalog.json
+          path: |
+            os-code/build/catalog.json
+            os-code/build/catalog.v2.json
+            os-code/build/catalog.v2.json.sig
+          if-no-files-found: warn

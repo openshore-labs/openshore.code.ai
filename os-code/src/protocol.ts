@@ -115,6 +115,14 @@ export type {
   LibraryPick,
   LibraryDevice,
 } from './market/library.js';
+// The published catalog's signature (security review, 2026-10-12).
+export {
+  CATALOG_PUBLIC_KEY,
+  SIGNED_CATALOG_FILE,
+  olderThanTrusted,
+  verifyCatalogBytes,
+} from './market/catalogSignature.js';
+export type { CatalogVerdict } from './market/catalogSignature.js';
 
 export {
   CAPABILITIES,

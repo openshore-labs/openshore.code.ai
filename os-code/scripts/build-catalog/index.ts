@@ -25,6 +25,7 @@ import {
   HuggingFaceFilePins,
   pinCatalogFiles,
 } from './pinFiles.js';
+import { dropUnlicensedFiles } from './fileLicenses.js';
 import type { BuildInputs, EvalEntries, ModelMetadata, Overlay } from './types.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -106,6 +107,11 @@ async function main(): Promise<void> {
   const pinned = dropUnpinned(seedCatalog);
   for (const drop of pinned.drops) console.log(`dropped ${drop.id}: ${drop.reason}`);
   seedCatalog = pinned.catalog;
+  // And every file a model pulls from another repository names its own
+  // commercial license (fileLicenses.ts).
+  const licensed = dropUnlicensedFiles(seedCatalog);
+  for (const drop of licensed.drops) console.log(`dropped ${drop.id}: ${drop.reason}`);
+  seedCatalog = licensed.catalog;
 
   // Read the previously published catalog as the regression baseline, keeping
   // three cases distinct so the gate can act on them (H3): absent (undefined,

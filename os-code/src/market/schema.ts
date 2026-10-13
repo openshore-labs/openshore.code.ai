@@ -29,6 +29,10 @@ export const CatalogFileSchema = z.object({
     .optional(),
   sizeGB: z.number().positive().optional(),
   dest: z.string(),
+  /** The file's own license id (scripts/build-catalog/licenses.table.ts),
+   *  when it is not the model's: a file from another repository must name
+   *  one, or the builder drops its model (fileLicenses.ts). */
+  license: z.string().optional(),
 });
 
 export const CatalogSourceSchema = z.object({

@@ -6,6 +6,7 @@
 import { CatalogSchema, type Catalog } from '../../src/market/schema.js';
 import { libraryProblems } from '../../src/market/library.js';
 import { filePinned } from '../../src/market/sources.js';
+import { fileLicenseProblem } from './fileLicenses.js';
 import type { GateBreach } from './types.js';
 
 export interface RegressionResult {
@@ -81,6 +82,13 @@ export function regressionGate(
         breaches.push({
           check: 'files are pinned',
           detail: `model "${model.id}" file ${file.url} is not a pinned file from a ${model.source.kind} host`,
+        });
+      }
+      const licenseProblem = fileLicenseProblem(model, file);
+      if (licenseProblem) {
+        breaches.push({
+          check: 'files are licensed',
+          detail: `model "${model.id}": ${licenseProblem}`,
         });
       }
     }

@@ -36,6 +36,7 @@ import type { PullResult } from '../market/pullLine.js';
 import { saveMediaPlacement } from '../config/load.js';
 import { fileHostAllowed } from '../market/sources.js';
 import { MEDIA_JOB_INFO, type MediaJob } from './jobs.js';
+import { ledgerPath, recordDownload } from './downloads.js';
 import { SpeechClient } from './speech.js';
 
 export interface MediaInstallProgress {
@@ -62,6 +63,8 @@ export interface MediaInstallDeps {
   /** Whether a program runs here (tests stand it in). */
   programRuns?: (command: string) => Promise<boolean>;
   sleep?: (ms: number) => Promise<void>;
+  /** Where the record of Get's downloads is kept (tests stand it in). */
+  ledger?: string;
 }
 
 /** Where ComfyUI keeps its models, by install type (the ComfyUI research,
@@ -215,6 +218,8 @@ async function installComfy(
       percent: (i / files.length) * 100,
     });
     await download(file, model, to, egress, deps.fetchImpl, onProgress);
+    // Only a file Get wrote is one Remove may delete later (upkeep.ts).
+    recordDownload(to, model.id, deps.ledger ?? ledgerPath());
   }
   return { ok: true, detail: `${model.name} is in ComfyUI's models folder.`, modelsDir };
 }

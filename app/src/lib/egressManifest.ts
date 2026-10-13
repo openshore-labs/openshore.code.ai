@@ -131,7 +131,7 @@ export const EGRESS: EgressEntry[] = [
   {
     id: 'catalog',
     recipient: 'OpenShore (us)',
-    what: 'A request for the model list. Nothing about you rides along; the server sees your network address, as any website does.',
+    what: 'A request for the model list and the signature published beside it. Nothing about you rides along; the server sees your network address, as any website does.',
     when: 'When you open Stack or the Marketplace, at most once a day.',
     start: 'on',
     hosts: ['openshore.ai'],

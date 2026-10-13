@@ -210,11 +210,12 @@ counsel before release:
    diarization model is OpenMDW-1.1. The attribution lines are in the catalog;
    add them to `NOTICE` or the app's acknowledgements.
 6. **Apache and MIT notices** for every other pick, in the same place.
-7. **Files a pick pulls from another repository**: the builder checks each
-   model's license, not each file's. FLUX.2 klein 4B's VAE comes from
-   Comfy-Org's FLUX.2 dev repack, Qwen-Image-Edit 2511's Lightning LoRA from
-   lightx2v, and several pictures share text encoders from other repacks.
-   Confirm each file's own license before calling every license commercial.
+7. **Files a pick pulls from another repository**: each must now name its own
+   license, or the builder holds its model back
+   (`scripts/build-catalog/fileLicenses.ts`). Two need you: confirm the FLUX.2
+   VAE's Apache 2.0 on its card (named so, as BFL released it), and the
+   lightx2v Lightning LoRA's license, which names none yet, so Qwen-Image-Edit
+   2511 is not published until it does.
 8. **Held for counsel, not in the library**: LTX-2.5 (community license under
    $10M, and a use policy against competing with Lightricks), Qwen3.8-Flash-Next
    (Qwen Community License with an assistant carve-out), and VibeVoice-ASR
@@ -249,9 +250,16 @@ and HunyuanImage, MiniMax H3, SD 3.5 and Krea 2.
   whether to name them is open.
 - A per-pick eval on the reference box before any copy calls a pick faster or
   better (tenet 2). Today the picks rest on published benchmarks.
-- From the security review: sign the published catalog with a pinned key, as
-  desktop releases are; label video and audio outputs, and screen the input
-  picture of an edit or an animation, not only its words; report an edit's
-  mask path to permission rules; mark a file made from a private one (stems of
-  a private recording) as private; clear media outputs with the chats, or
-  offer a Clear; and offer to delete a model's files when it is removed.
+- From the security review, built 2026-10-13: the published catalog is
+  signed in CI and checked against a pinned key
+  (`os-code/src/market/catalogSignature.ts`; you run
+  `node app/scripts/release-keygen.mjs catalog`, save the private half as the
+  `CATALOG_SIGNING_KEY` secret, then pin the public half); every clip and
+  sound is labeled AI-made and edits are marked edited
+  (`os-code/src/core/ethics/mediaProvenance.ts`); an edit's mask is judged by
+  permission rules; a file made from a private one stays private for the
+  session; the desktop Stack shows what the media jobs made, with Clear; and
+  Remove can delete the files Get wrote for a model, never one you had or
+  another model uses. The ethics layer reads text, so an input picture is
+  screened by its file name with the words; no classifier looks at the
+  picture itself.

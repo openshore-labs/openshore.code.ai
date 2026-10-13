@@ -491,6 +491,9 @@ export class AgentSession {
    *  may quote it: its replies are marked `localOnly` too (CTO I5), the same
    *  rule seed.ts applies to a journaled reply. */
   private readLocalOnlyThisTask = false;
+  /** Files a media call made from a local-only file (security review,
+   *  2026-10-12): local-only too, for the rest of the session. */
+  private readonly privateMediaOutputs = new Set<string>();
   /** The active model's window, from the last turn's capabilities; 0 until then. */
   private contextTokens = 0;
   /** The model-class profile for the active model this turn (the discipline
@@ -2357,6 +2360,23 @@ export class AgentSession {
         }
       }
     }
+    // Further paths the call reads (an edit's mask) are jailed and judged the
+    // same way, so a glob rule sees every file the call touches.
+    const morePaths: string[] = [];
+    for (const raw of tool.morePathsOf?.(call.args) ?? []) {
+      try {
+        morePaths.push(realRelativePath(toolContext.jail.resolve(raw), toolContext.jail.root));
+      } catch (err) {
+        if (!(err instanceof JailViolation)) throw err;
+        this.emit({ type: 'tool-denied', call, reason: err.message });
+        this.pushObservation(
+          call,
+          `Denied: ${err.message} Use a path inside the workspace.`,
+          toolMode,
+        );
+        return 'refused';
+      }
+    }
     // A workspace write that lands inside the vault asks every time, the way
     // vaultWrite does: a picked vault can sit inside a project, and the coding
     // tools must not edit its notes quietly (review M1-4). Judged by the
@@ -2429,6 +2449,19 @@ export class AgentSession {
       cwd: toolContext.cwd,
       alwaysAsk,
     });
+    // The strictest decision over every path the call reads stands.
+    const STRICTNESS = { allow: 0, ask: 1, deny: 2 } as const;
+    for (const more of morePaths) {
+      const other = permissions.decide({
+        toolName: call.name,
+        risk: tool.risk,
+        path: more,
+        command,
+        cwd: toolContext.cwd,
+        alwaysAsk,
+      });
+      if (STRICTNESS[other.decision] > STRICTNESS[decision.decision]) decision = other;
+    }
 
     // The permission mode sits on top of the policy, the way Claude Code's
     // does. Plan mode never mutates. Bypass and acceptEdits turn an "ask" into
@@ -2618,6 +2651,7 @@ export class AgentSession {
         : {}),
     });
     const startedAt = Date.now();
+    const mediaBefore = isMediaTool(call.name) ? toolContext.media?.savedCount() : undefined;
     let result;
     try {
       result = approved
@@ -2635,6 +2669,12 @@ export class AgentSession {
     // on this computer: marked before anything records it (D5).
     if (((nearVault && !leavesNow) || image.marked) && !result.localOnly) {
       result = { ...result, localOnly: true as const };
+    }
+    // What a media call made from a local-only file stays local-only.
+    if (image.marked && mediaBefore !== undefined) {
+      for (const file of toolContext.media?.savedAfter(mediaBefore) ?? []) {
+        this.privateMediaOutputs.add(resolve(file));
+      }
     }
     this.emit({ type: 'tool-end', call, result, durationMs });
     // A volatile call takes its place in the cycle watch by what it showed:
@@ -3124,6 +3164,13 @@ export class AgentSession {
     const target = this.mediaTarget(call);
     let marked = false;
     for (const path of callFiles(tool, call.args ?? {})) {
+      // A file an earlier media call made from a local-only file is
+      // local-only too (the stems of a private recording).
+      if (this.privateMediaOutputs.has(resolve(this.deps.toolContext.cwd, path))) {
+        if (target?.leaves) return { refusal: MEDIA_LOCAL_ONLY_DENIED };
+        marked = true;
+        continue;
+      }
       let visibility: VaultVisibility;
       try {
         visibility = this.workspaceFileVisibility(this.deps.toolContext.jail.resolve(path));

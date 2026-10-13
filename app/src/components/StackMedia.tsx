@@ -4,6 +4,9 @@
 // Marketplace is what places one. Media servers says where ComfyUI and the
 // speech server are, and where ComfyUI keeps its models, which Get needs.
 // The engine keeps all of it in this computer's config (machine config).
+// Remove asks first and can delete the files Get wrote for the model; Made
+// here counts and clears the pictures, clips and sounds the jobs saved
+// (security review, 2026-10-12; os-code/src/media/upkeep.ts).
 import { useEffect, useState } from 'react';
 import {
   LIBRARY_CATEGORIES,
@@ -17,6 +20,8 @@ import { SettingsGroup, SettingsRow } from './SettingsRow.js';
 import { Sheet } from './Sheet.js';
 import { SheetHead } from './SheetHead.js';
 import { bridge, type DesktopStatus, type MediaServers } from '../lib/electronBridge.js';
+import { formatBytes } from '../lib/modelStorage.js';
+import { useApp } from '../state/store.js';
 
 type Placed = NonNullable<DesktopStatus['stack']['media']>[number];
 
@@ -41,8 +46,24 @@ export function StackMedia({
   onOpenMarketplace: () => void;
 }) {
   const placed: Placed[] = (status.stack.media ?? []).filter((m) => m.job in MEDIA_JOB_INFO);
+  const { showToast } = useApp();
   const [catalog, setCatalog] = useState<Catalog | undefined>();
   const [serversOpen, setServersOpen] = useState(false);
+  const [removing, setRemoving] = useState<Placed | undefined>();
+  const [removable, setRemovable] = useState<{ files: number; bytes: number } | undefined>();
+  const [made, setMade] = useState<{ files: number; bytes: number } | undefined>();
+  const [clearOpen, setClearOpen] = useState(false);
+
+  // A bridge from before these calls (or a test's) has none: no row then.
+  const readMade = () => {
+    const b = bridge();
+    if (typeof b?.mediaOutputs !== 'function') return;
+    void b
+      .mediaOutputs()
+      .then(setMade)
+      .catch(() => {});
+  };
+  useEffect(readMade, []);
 
   useEffect(() => {
     if (!placed.length) return;
@@ -65,9 +86,34 @@ export function StackMedia({
     m.catalogId ??
     'Placed';
 
-  const remove = async (job: string) => {
-    await bridge()?.removeMedia(job);
+  const askRemove = (m: Placed) => {
+    setRemovable(undefined);
+    setRemoving(m);
+    const b = bridge();
+    if (typeof b?.mediaRemoval !== 'function') {
+      setRemovable({ files: 0, bytes: 0 });
+      return;
+    }
+    void b
+      .mediaRemoval(m.job)
+      .then(setRemovable)
+      .catch(() => setRemovable({ files: 0, bytes: 0 }));
+  };
+
+  const remove = async (deleteFiles: boolean) => {
+    const m = removing;
+    setRemoving(undefined);
+    if (!m) return;
+    const result = await bridge()?.removeMedia(m.job, deleteFiles);
+    if (result) showToast(result.detail);
     onChanged();
+  };
+
+  const clearMade = async () => {
+    setClearOpen(false);
+    const gone = await bridge()?.clearMediaOutputs();
+    if (gone) showToast(gone.files ? `Cleared ${formatBytes(gone.bytes)}.` : 'Nothing to clear.');
+    readMade();
   };
 
   return (
@@ -92,7 +138,7 @@ export function StackMedia({
                     <button
                       type="button"
                       className="btn ghost sm press-fb"
-                      onClick={() => void remove(m.job)}
+                      onClick={() => askRemove(m)}
                     >
                       Remove
                     </button>
@@ -108,6 +154,23 @@ export function StackMedia({
             onClick={onOpenMarketplace}
           />
         )}
+        {made?.files ? (
+          <SettingsRow
+            label="Made here"
+            sub={`${made.files} ${made.files === 1 ? 'file' : 'files'}, ${formatBytes(made.bytes)}: the pictures, clips and sounds your media jobs saved on this computer.`}
+            trailing={
+              canEdit ? (
+                <button
+                  type="button"
+                  className="btn ghost sm press-fb"
+                  onClick={() => setClearOpen(true)}
+                >
+                  Clear
+                </button>
+              ) : undefined
+            }
+          />
+        ) : null}
         {canEdit ? (
           <SettingsRow
             label="Media servers"
@@ -117,6 +180,58 @@ export function StackMedia({
         ) : null}
       </SettingsGroup>
       <MediaServersSheet open={serversOpen} onClose={() => setServersOpen(false)} />
+      <Sheet open={removing !== undefined} onClose={() => setRemoving(undefined)} variant="confirm">
+        {removing ? (
+          <>
+            <h3>Take {nameOf(removing)} out of your Stack?</h3>
+            <p>
+              {removable?.files
+                ? `Get downloaded ${formatBytes(removable.bytes)} of its files into ComfyUI's models folder. Keep them for later, or delete them now. Files another model in your Stack uses stay.`
+                : 'Its program keeps the model where it is. You can place it again from the Marketplace.'}
+            </p>
+            <div className="confirm-row">
+              <button
+                type="button"
+                className="btn ghost press-fb"
+                onClick={() => setRemoving(undefined)}
+              >
+                Keep it
+              </button>
+              <button
+                type="button"
+                className={`btn ${removable?.files ? 'ghost' : 'danger'} press-fb`}
+                onClick={() => void remove(false)}
+              >
+                Take out
+              </button>
+            </div>
+            {removable?.files ? (
+              <button
+                type="button"
+                className="btn danger block press-fb"
+                onClick={() => void remove(true)}
+              >
+                Take out and delete {formatBytes(removable.bytes)}
+              </button>
+            ) : null}
+          </>
+        ) : null}
+      </Sheet>
+      <Sheet open={clearOpen} onClose={() => setClearOpen(false)} variant="confirm">
+        <h3>Clear what your media jobs made?</h3>
+        <p>
+          {made?.files ?? 0} {made?.files === 1 ? 'file' : 'files'} go from this computer. This
+          cannot be undone.
+        </p>
+        <div className="confirm-row">
+          <button type="button" className="btn ghost press-fb" onClick={() => setClearOpen(false)}>
+            Keep them
+          </button>
+          <button type="button" className="btn danger press-fb" onClick={() => void clearMade()}>
+            Clear
+          </button>
+        </div>
+      </Sheet>
     </>
   );
 }

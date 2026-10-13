@@ -58,6 +58,9 @@ export class MediaHost {
   private speechClient?: SpeechClient;
   private readonly programs: MediaPrograms;
   private readonly checked = new Map<string, Promise<string | undefined>>();
+  /** Every file this host has written, in order, so the loop can tell which
+   *  a call made (savedAfter) and keep a private input's outputs private. */
+  private readonly saved: string[] = [];
 
   constructor(private readonly deps: MediaHostDeps) {
     const media = deps.config.media;
@@ -176,12 +179,41 @@ export class MediaHost {
     return placed;
   }
 
+  /** What a job's screen reads for an edit of a person's own file: the
+   *  words, and the file's name, since the ethics layer reads text and a
+   *  name ("ceo-headshot.jpg") says whose picture it may be. The picture
+   *  itself is not classified here; its output is labeled edited. */
+  private withInput(words: string, path?: string): string {
+    return path ? `${words}\n(the file: ${basename(path)})` : words;
+  }
+
+  /** The model a job's output names in its provenance record. */
+  private modelOf(job: MediaJob): string {
+    return (
+      this.placement(job)?.catalogId ??
+      this.placement(job)?.graph ??
+      this.placement(job)?.model ??
+      job
+    );
+  }
+
   private save(job: MediaJob, name: string, bytes: Uint8Array): string {
     const dir = join(this.deps.outRoot, job);
     mkdirSync(dir, { recursive: true });
     const file = join(dir, `${Date.now()}-${basename(name)}`);
     writeFileSync(file, bytes);
+    this.saved.push(file);
     return file;
+  }
+
+  /** How many files this host has written so far. */
+  savedCount(): number {
+    return this.saved.length;
+  }
+
+  /** The files written after the first `count`: what one call made. */
+  savedAfter(count: number): string[] {
+    return this.saved.slice(count);
   }
 
   /** The reason a ComfyUI job cannot run here, or undefined when it can:
@@ -259,7 +291,7 @@ export class MediaHost {
 
   /** Find what is named in a picture and save its mask (white is selected). */
   async select(imagePath: string, what: string, signal?: AbortSignal): Promise<string> {
-    await this.deps.guard.screen(what);
+    await this.deps.guard.screen(this.withInput(what, imagePath));
     // SAM 3 keeps only the best match for a bare word; ":10" asks for every
     // match, up to ten (ComfyUI's SAM3_Detect).
     const prompt = /:\d+$/.test(what.trim()) ? what.trim() : `${what.trim()}:10`;
@@ -288,7 +320,7 @@ export class MediaHost {
       maskPath = mask;
     }
     const screen = await this.deps.guard.screen(
-      `remove ${target.what ?? 'the masked area'} from the picture`,
+      this.withInput(`remove ${target.what ?? 'the masked area'} from the picture`, imagePath),
     );
     const made = await this.comfyJob('remove', { imagePath, maskPath }, signal);
     return {
@@ -299,20 +331,24 @@ export class MediaHost {
 
   /** Cut the subject out onto a clear background. */
   async removeBackground(imagePath: string, signal?: AbortSignal): Promise<string[]> {
-    const screen = await this.deps.guard.screen('remove the background from the picture');
+    const screen = await this.deps.guard.screen(
+      this.withInput('remove the background from the picture', imagePath),
+    );
     const made = await this.comfyJob('background', { imagePath }, signal);
     return made.map((m) => this.saveImage('background', m, screen));
   }
 
   async upscale(imagePath: string, signal?: AbortSignal): Promise<string[]> {
-    const screen = await this.deps.guard.screen('upscale and restore the picture');
+    const screen = await this.deps.guard.screen(
+      this.withInput('upscale and restore the picture', imagePath),
+    );
     const made = await this.comfyJob('upscale', { imagePath }, signal);
     return made.map((m) => this.saveImage('upscale', m, screen));
   }
 
   /** Change a picture the way an instruction says. */
   async instruct(imagePath: string, instruction: string, signal?: AbortSignal): Promise<string[]> {
-    const screen = await this.deps.guard.screen(instruction);
+    const screen = await this.deps.guard.screen(this.withInput(instruction, imagePath));
     const made = await this.comfyJob('instruct', { imagePath, prompt: instruction }, signal);
     return made.map((m) => this.saveImage('instruct', m, screen));
   }
@@ -322,10 +358,11 @@ export class MediaHost {
     made: { file: ComfyFile; bytes: Uint8Array; mediaType: string },
     screen: MediaScreen,
   ): string {
-    const model = this.placement(job)?.catalogId ?? this.placement(job)?.graph ?? 'ComfyUI';
     const bytes = this.deps.guard.labelImage(made.bytes, screen, {
-      model,
+      model: this.modelOf(job),
       mediaType: made.mediaType,
+      // Every job but making a picture from words changes the person's own.
+      ...(job === 'create' ? {} : { edited: true }),
     });
     return this.save(job, made.file.filename, bytes);
   }
@@ -339,14 +376,22 @@ export class MediaHost {
     signal?: AbortSignal,
   ): Promise<string[]> {
     const job: MediaJob = input.imagePath ? 'image-to-video' : 'text-to-video';
-    const screen = await this.deps.guard.screen(input.prompt);
-    this.deps.guard.checkUnlabeled(screen, 'video');
+    const screen = await this.deps.guard.screen(this.withInput(input.prompt, input.imagePath));
     const made = await this.comfyJob(
       job,
       { prompt: input.prompt, ...(input.imagePath ? { imagePath: input.imagePath } : {}) },
       signal,
     );
-    return made.map((m) => this.save(job, m.file.filename, m.bytes));
+    return made.map((m) =>
+      this.save(
+        job,
+        m.file.filename,
+        this.deps.guard.labelMedia(m.bytes, screen, {
+          model: this.modelOf(job),
+          ...(input.imagePath ? { edited: true } : {}),
+        }),
+      ),
+    );
   }
 
   async sound(
@@ -357,7 +402,6 @@ export class MediaHost {
     const screen = await this.deps.guard.screen(
       [input.prompt, input.lyrics].filter(Boolean).join('\n'),
     );
-    this.deps.guard.checkUnlabeled(screen, 'audio');
     const made = await this.comfyJob(
       kind,
       {
@@ -368,7 +412,13 @@ export class MediaHost {
       },
       signal,
     );
-    return made.map((m) => this.save(kind, m.file.filename, m.bytes));
+    return made.map((m) =>
+      this.save(
+        kind,
+        m.file.filename,
+        this.deps.guard.labelMedia(m.bytes, screen, { model: this.modelOf(kind) }),
+      ),
+    );
   }
 
   // -------------------------------------------------------------------------
@@ -415,7 +465,6 @@ export class MediaHost {
       );
     }
     const screen = await this.deps.guard.screen(text);
-    this.deps.guard.checkUnlabeled(screen, 'audio');
     const { audio, mediaType } = await this.speech().speak({
       text,
       model: placed.model ?? '',
@@ -423,7 +472,11 @@ export class MediaHost {
       format: 'mp3',
       ...(signal ? { signal } : {}),
     });
-    return this.save(job, mediaType.includes('wav') ? 'speech.wav' : 'speech.mp3', audio);
+    return this.save(
+      job,
+      mediaType.includes('wav') ? 'speech.wav' : 'speech.mp3',
+      this.deps.guard.labelMedia(audio, screen, { model: this.modelOf(job) }),
+    );
   }
 
   // -------------------------------------------------------------------------
@@ -439,6 +492,7 @@ export class MediaHost {
       vocalsOnly,
       ...(signal ? { signal } : {}),
     });
+    this.saved.push(...result.files);
     return result.files;
   }
 
@@ -449,6 +503,7 @@ export class MediaHost {
       ...(placed.model ? { model: placed.model } : {}),
       ...(signal ? { signal } : {}),
     });
+    this.saved.push(...result.files);
     return result.files;
   }
 }

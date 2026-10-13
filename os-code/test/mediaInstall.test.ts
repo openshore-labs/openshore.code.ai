@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it, onTestFinished } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished } from 'vitest';
 import { ConfigSchema } from '../src/config/schema.js';
 import { globalConfigPath, saveMediaPlacement } from '../src/config/load.js';
 import { CatalogSchema, type Catalog, type CatalogModel } from '../src/market/schema.js';
@@ -18,6 +18,17 @@ import {
   getModel,
   installMediaModel,
 } from '../src/media/install.js';
+
+// Get records what it downloads beside the config: a temporary home here.
+let previousHome: string | undefined;
+beforeEach(() => {
+  previousHome = process.env.OSC_HOME;
+  process.env.OSC_HOME = mkdtempSync(join(tmpdir(), 'osc-home-'));
+});
+afterEach(() => {
+  if (previousHome === undefined) delete process.env.OSC_HOME;
+  else process.env.OSC_HOME = previousHome;
+});
 
 const seed: Catalog = CatalogSchema.parse(
   JSON.parse(readFileSync(join(__dirname, '..', 'catalog.sample.json'), 'utf8')),
