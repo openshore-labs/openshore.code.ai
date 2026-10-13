@@ -47,22 +47,26 @@ describe("a file's own license", () => {
     );
   });
 
-  it('holds back a pick until each of its files is licensed', () => {
-    // The Lightning LoRA's license is the founder's to confirm, so the
-    // workstation edit pick is not published until it names one.
-    const { catalog, drops } = dropUnlicensedFiles(seed);
+  it('holds back a model until each of its files is licensed', () => {
+    // Every model in the seed clears today: each file from another
+    // repository names its license.
+    expect(dropUnlicensedFiles(seed).drops).toEqual([]);
+    // Take the Lightning LoRA's license off, and its model is held back.
+    const strip = (m: CatalogModel): CatalogModel => ({
+      ...m,
+      source: {
+        ...m.source,
+        files: m.source.files!.map(({ license: _license, ...rest }) =>
+          rest.url.includes('/lightx2v/') ? rest : { ...rest, license: _license },
+        ),
+      },
+    });
+    const unlicensed: Catalog = {
+      ...seed,
+      models: seed.models.map((m) => (m.id === 'qwen-image-edit-2511' ? strip(m) : m)),
+    };
+    const { catalog, drops } = dropUnlicensedFiles(unlicensed);
     expect(drops.map((d) => d.id)).toEqual(['qwen-image-edit-2511']);
     expect(catalog.models.some((m) => m.id === 'qwen-image-edit-2511')).toBe(false);
-    const named: CatalogModel = {
-      ...byId('qwen-image-edit-2511'),
-      source: {
-        ...byId('qwen-image-edit-2511').source,
-        files: byId('qwen-image-edit-2511').source.files!.map((f) => ({
-          ...f,
-          license: f.license ?? 'Apache-2.0',
-        })),
-      },
-    };
-    expect(dropUnlicensedFiles({ ...seed, models: [named] }).drops).toEqual([]);
   });
 });
