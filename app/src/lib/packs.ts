@@ -8,7 +8,7 @@
 // ids, so it resolves against whatever catalog is loaded: when the newest pick
 // has not cleared the catalog gate yet, the next one down installs, and a pack
 // never dead-ends on a model the feed does not carry. Pure, unit-tested; the
-// Marketplace screen does the installing and the placing.
+// Local Library screen does the installing and the placing.
 import type { CatalogModel } from 'os-code/protocol';
 import type { ProfileId } from './profiles.js';
 import type { StackCategory } from './stack.js';

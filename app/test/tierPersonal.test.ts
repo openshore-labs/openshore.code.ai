@@ -41,14 +41,14 @@ describe('a Personal build, loaded as one', () => {
       'vault',
       'pair-phone',
       'repositories',
-      'marketplace',
+      'library',
     ]) {
       expect(ids, v1).toContain(v1);
     }
     const text = GUIDE_CARDS.map((c) => c.text).join('\n');
     expect(text).not.toMatch(/Stack Health|Launch with Codemagic|Admin \(|its currents/);
-    // The Marketplace is a v1 room since 2026-10-11, and live, never Coming soon.
-    expect(text).toMatch(/Marketplace/);
+    // The Local Library is a v1 room since 2026-10-11, and live, never Coming soon.
+    expect(text).toMatch(/Local Library/);
     expect(text).not.toMatch(/Coming soon/i);
     // The old claim was false: chats live on the device.
     expect(text).not.toMatch(/syncs your chats/);
@@ -60,7 +60,7 @@ describe('a Personal build, loaded as one', () => {
       '../src/lib/guideKnowledge.js',
     );
     expect(APP_KNOWLEDGE).not.toMatch(/Launch with Codemagic|Currents on the project/);
-    expect(APP_KNOWLEDGE).toMatch(/The Marketplace \(in the Menu\)/);
+    expect(APP_KNOWLEDGE).toMatch(/The Local Library \(in the Menu\)/);
     expect(APP_KNOWLEDGE).not.toMatch(/Coming soon/i);
     expect(APP_KNOWLEDGE).toMatch(/Crew command/);
   });
@@ -92,8 +92,8 @@ describe('a Personal build, loaded as one', () => {
     const { ROOM_LABELS } =
       await asPersonal<typeof import('../src/lib/navRooms.js')>('../src/lib/navRooms.js');
     expect([ROOM_LABELS.stackhealth, ROOM_LABELS.launch]).toEqual(['', '']);
-    // The Marketplace is a v1 room since 2026-10-11.
-    expect(ROOM_LABELS.marketplace).toBe('Marketplace');
+    // The Local Library is a v1 room since 2026-10-11.
+    expect(ROOM_LABELS.library).toBe('Local Library');
     expect(ROOM_LABELS.vault).toBe('Vault');
   });
 
@@ -136,12 +136,12 @@ describe('every later-tier door the store and the screens opened is shut', () =>
     expect(refresh.slice(0, 200)).toContain("if (!featureOn('currents')) return;");
   });
 
-  it('the Harbor download stays in place instead of opening the Marketplace', () => {
+  it('the Harbor download stays in place instead of opening the Local Library', () => {
     for (const name of ['beginHarborMiniWithIntro() {', 'beginHarborWithIntro() {']) {
       const start = store.indexOf(`    ${name}`);
       expect(start, name).toBeGreaterThan(0);
       const body = store.slice(start, store.indexOf('\n    },\n', start));
-      expect(body, name).not.toContain("view: 'marketplace'");
+      expect(body, name).not.toContain("view: 'library'");
       expect(body, name).not.toContain('libraryIntro: true');
     }
   });

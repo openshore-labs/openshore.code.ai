@@ -6,17 +6,17 @@ import { forgetScroll, recallScroll, rememberScroll } from '../src/lib/scrollMem
 
 describe('scroll memory', () => {
   it('remembers an offset per room and keeps it across recalls', () => {
-    rememberScroll('marketplace', 640);
+    rememberScroll('library', 640);
     rememberScroll('settings', 120);
-    expect(recallScroll('marketplace')).toBe(640);
-    expect(recallScroll('marketplace')).toBe(640);
+    expect(recallScroll('library')).toBe(640);
+    expect(recallScroll('library')).toBe(640);
     expect(recallScroll('settings')).toBe(120);
   });
 
   it('reads zero for a room never saved, and zero clears a room', () => {
     expect(recallScroll('vault')).toBe(0);
-    rememberScroll('marketplace', 0);
-    expect(recallScroll('marketplace')).toBe(0);
+    rememberScroll('library', 0);
+    expect(recallScroll('library')).toBe(0);
   });
 
   it('forgets on request', () => {

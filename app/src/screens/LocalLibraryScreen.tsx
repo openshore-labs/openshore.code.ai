@@ -1,4 +1,4 @@
-// The Marketplace: the model library (founder, 2026-10-12), laid out like an
+// The Local Library: the model library (founder, 2026-10-12), laid out like an
 // app store by the Stack it fills. The front shows "Made for" collections and
 // the categories; a category holds shelves, one per job; a shelf offers at most
 // one pick per size of machine, the best fit for the device in hand marked
@@ -86,7 +86,7 @@ import {
   popularityLabel,
   runsOn,
   type FitLabel,
-} from '../components/marketplace.js';
+} from '../components/localLibrary.js';
 import {
   LibraryCategoryPage,
   LibraryCollectionPage,
@@ -181,7 +181,7 @@ type LibReturn = { kind: 'category' | 'collection'; id: string };
 
 const REDUCED_MOTION = '(prefers-reduced-motion: reduce)';
 
-export function MarketplaceScreen() {
+export function LocalLibraryScreen() {
   const {
     settings,
     addDeviceModel,
@@ -361,7 +361,7 @@ export function MarketplaceScreen() {
     // given the shelves their height (the app-level restore ran at mount,
     // against a skeleton that may have been too short to hold the offset).
     if (!catalog || !useApp.getState().arrivedBack) return;
-    const top = recallScroll('marketplace');
+    const top = recallScroll('library');
     if (top && screenRef.current) screenRef.current.scrollTop = top;
   }, [catalog]);
 
@@ -740,7 +740,7 @@ export function MarketplaceScreen() {
     // stalled. The shimmer is killed by the global reduced-motion reset.
     return (
       <div className="screen" ref={screenRef}>
-        <BackBar title="Marketplace" />
+        <BackBar title="Local Library" />
         <div className="screen-inner">
           <h1>Models, in plain language</h1>
           <p className="lead">Curated for what they are actually good at.</p>
@@ -1025,7 +1025,7 @@ export function MarketplaceScreen() {
 
   // A category's page and a collection's are pages inside the room, like a
   // product page: the top bar carries the name and a chevron back to the
-  // Marketplace. Each crossfades in (no tile to carry it) and is the way back
+  // Local Library. Each crossfades in (no tile to carry it) and is the way back
   // from any model opened inside it.
   const openCategory = (id: CategoryId) => {
     fade(() => {
@@ -1996,23 +1996,23 @@ export function MarketplaceScreen() {
   // A page inside the room shows its own name in the top bar and a chevron
   // back where it came from (founder, 2026-09-03, from the Kimi page): a
   // product page goes back to the category or collection it was opened from,
-  // or to the Marketplace; a category or collection page to the Marketplace.
+  // or to the Local Library; a category or collection page to the Local Library.
   const returnName = libReturn
     ? libReturn.kind === 'category'
       ? libraryCategory(libReturn.id as CategoryId).name
       : libraryCollection(libReturn.id)?.name
     : undefined;
   const page = focusedHosted
-    ? { title: focusedHosted.name, back: { to: 'Marketplace', onBack: closeHosted } }
+    ? { title: focusedHosted.name, back: { to: 'Local Library', onBack: closeHosted } }
     : focusedModel
       ? {
           title: focusedModel.name,
-          back: { to: returnName ?? 'Marketplace', onBack: closeModel },
+          back: { to: returnName ?? 'Local Library', onBack: closeModel },
         }
       : category
-        ? { title: category.name, back: { to: 'Marketplace', onBack: closeLibraryPage } }
+        ? { title: category.name, back: { to: 'Local Library', onBack: closeLibraryPage } }
         : collection
-          ? { title: collection.name, back: { to: 'Marketplace', onBack: closeLibraryPage } }
+          ? { title: collection.name, back: { to: 'Local Library', onBack: closeLibraryPage } }
           : undefined;
 
   // What every library view needs to show a pick.
@@ -2026,7 +2026,7 @@ export function MarketplaceScreen() {
   return (
     <>
       <div className="screen" ref={screenRef}>
-        <BackBar title={page?.title ?? 'Marketplace'} back={page?.back} />
+        <BackBar title={page?.title ?? 'Local Library'} back={page?.back} />
         <div className="screen-inner">
           {browsing || query.trim() ? (
             <>

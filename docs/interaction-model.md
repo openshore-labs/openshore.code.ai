@@ -107,7 +107,7 @@ back chevron to where it started, the iOS grammar, at two depths:
 - **Room to room** (Settings to Admin, the store to Cloud Connections): the
   store keeps a `viewTrail`; `setView` pushes, `goBack` pops, and `BackBar`
   shows the chevron with the previous room's name on the desktop.
-- **A page inside a room** (a model's product page in the Marketplace, a note
+- **A page inside a room** (a model's product page in the Local Library, a note
   in the Vault, the embedded site in Launch): the room hands `BackBar` an
   in-room `back` (`{ to, onBack }`), which wins over the trail because the
   nearest step back is the one the eye expects. The title becomes the page's

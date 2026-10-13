@@ -126,14 +126,23 @@ domain-allowlist design. Open follow-ups are in `os-code/PROGRESS.md`.
 
 The `osc` CLI in `os-code/` (parked 2026-08-18) is back as a supported way to
 use OpenShore, keeping the name **OS Code** and every command already built
-(`osc init`, `osc`, `pair`, `serve`, `attach`, `market`, `doctor`, `stack`,
-`key`). It installs with `npm install -g @openshore/os-code` (`.github/workflows/cli-publish.yml`
+(`osc init`, `osc`, `pair`, `serve`, `attach`, `library` (once `market`, still
+an alias), `doctor`, `stack`, `key`). It installs with `npm install -g @openshore/os-code` (`.github/workflows/cli-publish.yml`
 publishes on a `cli-v*` tag once the `NPM_TOKEN` secret is set; the package
 ships only `dist`, the bundled catalog, the example config and `NOTICE`), or
 from source with `pnpm link --global`. The CLI and the apps share one engine,
 so a change to the engine is a change to both; do NOT fork the agent loop for
 the CLI, and keep `osc --help` working in a clean install
 (`npm pack`, then install the tarball, then run it).
+
+## The Local Library, never a market (founder, 2026-10-13)
+
+The room once called the Marketplace is the **Local Library**: free and
+communal, never a profit-based store. Copy says Local Library (the room id is
+`library`, the screen `LocalLibraryScreen`, the CLI `osc library`); a saved
+sidebar order that names `marketplace` maps to it (`lib/sidebarOrder.ts`).
+`Marketplace` is a retired word in copy (`app/test/support/uiGuards.ts`).
+Founder quotes and applied migrations keep their original words.
 
 ## Connect anywhere: docking to a computer or a server (founder, 2026-10-07)
 
@@ -329,7 +338,7 @@ though its server is localhost (privacy review, 2026-10-08).
 
 v1 is **Personal**: one person, their desktop and their own phone. Chats,
 Projects, Terminal, Repositories, Stack, Vault, Crew (routines), Cloud
-Connections, Computer (docking; once Pairing), the Marketplace (v1 since
+Connections, Computer (docking; once Pairing), the Local Library (v1 since
 2026-10-11, founder, so the community can help build it; community reviews
 stay off, `REVIEWS_OPEN` in `lib/reviews.ts`, until a migration grants review
 writes back), and Settings. v2 is Agentic and Harness Currents, Stack Health,

@@ -212,7 +212,7 @@ export async function initCommand(): Promise<void> {
   out();
   out(
     t.muted(
-      'Later, when you want more: osc login connects Claude for the hardest tasks. osc pair puts this on your phone. osc market browses more models. Specialists stay optional.',
+      'Later, when you want more: osc login connects Claude for the hardest tasks. osc pair puts this on your phone. osc library browses more models. Specialists stay optional.',
     ),
   );
 }

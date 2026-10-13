@@ -2066,7 +2066,7 @@ export class AgentSession {
         this.emit({
           type: 'task-done',
           reason: 'error',
-          message: `The model kept producing tool calls that could not be parsed: ${problems[0]}. Try a stronger orchestrator (osc market), or connect cloud escalation (osc login).`,
+          message: `The model kept producing tool calls that could not be parsed: ${problems[0]}. Try a stronger orchestrator (osc library), or connect cloud escalation (osc login).`,
         });
         return;
       }

@@ -1,5 +1,5 @@
 // Where the eye left each room. A room's scroller (`.screen`) is remounted on
-// every room switch, so without this a round trip (Marketplace, Cloud
+// every room switch, so without this a round trip (Local Library, Cloud
 // Connections, back) lands at the top of the store instead of the shelf the
 // person was reading. The store front saves on the way out (useScrollMemory)
 // and a room restores on a back navigation only: a fresh open from the panel

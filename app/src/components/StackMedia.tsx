@@ -1,7 +1,7 @@
 // The Stack's media jobs on the desktop (the model library, 2026-10-12):
 // photo editing, video, transcription, voices, music and sound. Each job
 // placed is one row, its model and where it runs, with Remove; Get in the
-// Marketplace is what places one. Media servers says where ComfyUI and the
+// Local Library is what places one. Media servers says where ComfyUI and the
 // speech server are, and where ComfyUI keeps its models, which Get needs.
 // The engine keeps all of it in this computer's config (machine config).
 // Remove asks first and can delete the files Get wrote for the model; Made
@@ -36,14 +36,14 @@ export function StackMedia({
   canEdit,
   index,
   onChanged,
-  onOpenMarketplace,
+  onOpenLibrary,
 }: {
   status: DesktopStatus;
   canEdit: boolean;
   index: number;
   /** Read the engine's status again after a change. */
   onChanged: () => void;
-  onOpenMarketplace: () => void;
+  onOpenLibrary: () => void;
 }) {
   const placed: Placed[] = (status.stack.media ?? []).filter((m) => m.job in MEDIA_JOB_INFO);
   const { showToast } = useApp();
@@ -150,8 +150,8 @@ export function StackMedia({
         ) : (
           <SettingsRow
             label="Nothing placed yet"
-            sub="Get a photo, video, voice or music model in the Marketplace, and it lands here."
-            onClick={onOpenMarketplace}
+            sub="Get a photo, video, voice or music model in the Local Library, and it lands here."
+            onClick={onOpenLibrary}
           />
         )}
         {made?.files ? (
@@ -187,7 +187,7 @@ export function StackMedia({
             <p>
               {removable?.files
                 ? `Get downloaded ${formatBytes(removable.bytes)} of its files into ComfyUI's models folder. Keep them for later, or delete them now. Files another model in your Stack uses stay.`
-                : 'Its program keeps the model where it is. You can place it again from the Marketplace.'}
+                : 'Its program keeps the model where it is. You can place it again from the Local Library.'}
             </p>
             <div className="confirm-row">
               <button

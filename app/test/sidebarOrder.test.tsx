@@ -81,6 +81,18 @@ describe('the order rules', () => {
     });
   });
 
+  it('keeps a renamed room where the person dragged it (the Local Library, 2026-10-13)', () => {
+    const defaults: NavOrder = { top: DEFAULTS.top, bottom: ['crew', 'library', 'pair'] };
+    const saved = {
+      top: ['marketplace', 'chats', 'projects', 'repos', 'vault'],
+      bottom: ['crew', 'pair'],
+    } as unknown as NavOrder;
+    expect(resolveNavOrder(saved, defaults)).toEqual({
+      top: ['library', 'chats', 'projects', 'repos', 'vault'],
+      bottom: ['crew', 'pair'],
+    });
+  });
+
   it('moves a room across the recent chats like any other slot', () => {
     expect(step(DEFAULTS, 'vault', 1)).toEqual({
       top: ['chats', 'projects', 'repos'],

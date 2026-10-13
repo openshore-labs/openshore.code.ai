@@ -27,9 +27,9 @@ on something that will not land.
 
 ## Where help is wanted
 
-- **The Marketplace**: the catalog of models people can download and run
-  locally (`app/src/screens/MarketplaceScreen.tsx`, the catalog builder in
-  `os-code/scripts/`, and `os-code/docs/MARKETPLACE.md`). New sources, better
+- **The Local Library**: the catalog of models people can download and run
+  locally (`app/src/screens/LocalLibraryScreen.tsx`, the catalog builder in
+  `os-code/scripts/`, and `os-code/docs/LOCAL-LIBRARY.md`). New sources, better
   hardware fit, install flows that work on more machines.
 - **Model servers and providers**: anything that speaks to a local model
   server, or a provider people bring their own key for.

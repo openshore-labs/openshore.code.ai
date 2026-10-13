@@ -127,8 +127,8 @@ const ICON_NODES: Record<NavIconName, JSX.Element> = {
       <path d="M15 15.4a4.3 4.3 0 0 1 5.5 3.2V19" />
     </>
   ),
-  // A storefront with its awning: the marketplace.
-  marketplace: (
+  // A storefront with its awning: the Local Library.
+  library: (
     <>
       <path d="M4 9.6V19a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V9.6" />
       <path d="M3 6.6 4.5 4h15L21 6.6a2.2 2.2 0 0 1-4.35 0 2.2 2.2 0 0 1-4.3 0 2.2 2.2 0 0 1-4.3 0A2.2 2.2 0 0 1 3 6.6Z" />

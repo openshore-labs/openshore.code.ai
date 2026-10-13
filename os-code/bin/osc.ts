@@ -37,7 +37,7 @@ import {
 import { KEY_HELP, keyAddCommand, keyListCommand, keyRemoveCommand } from '../src/commands/key.js';
 import { logger } from '../src/util/log.js';
 
-// Output piped into something that stops reading early (`osc market browse |
+// Output piped into something that stops reading early (`osc library browse |
 // head`) closes the pipe; like any Unix tool, osc then exits quietly rather
 // than crashing on EPIPE.
 process.stdout.on('error', (err: NodeJS.ErrnoException) => {
@@ -172,8 +172,9 @@ stack
   .action(stackDisableCommand);
 
 const market = program
-  .command('market')
-  .description('browse and install models from the curated catalog');
+  .command('library')
+  .alias('market')
+  .description('browse and install models from the Local Library');
 market
   .command('browse', { isDefault: true })
   .description('browse the catalog, rated for this machine')
@@ -193,7 +194,7 @@ market
   .description('curated starter stacks')
   .option('--apply <id>', 'write a preset into your config')
   .action((options: { apply?: string }) => marketPresetsCommand(options.apply));
-program.command('models').description('alias for osc market').action(marketBrowseCommand);
+program.command('models').description('alias for osc library').action(marketBrowseCommand);
 
 program
   .command('eval')

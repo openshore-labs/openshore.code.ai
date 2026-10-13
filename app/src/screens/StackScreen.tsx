@@ -120,7 +120,7 @@ export function StackScreen() {
 
   // Prefab stacks: the catalog's presets, which arrive on the live feed and are
   // rebuilt on a schedule, so they refresh and reassess themselves as models
-  // change. One tap here fills the whole stack without a trip to the Marketplace.
+  // change. One tap here fills the whole stack without a trip to the Local Library.
   const [catalog, setCatalog] = useState<Catalog | undefined>();
   const [prefabBusy, setPrefabBusy] = useState<string | undefined>();
   const [prefabLine, setPrefabLine] = useState<string | undefined>();
@@ -368,7 +368,7 @@ export function StackScreen() {
             canEdit={canEdit}
             index={3}
             onChanged={() => void refresh()}
-            onOpenMarketplace={() => setView('marketplace')}
+            onOpenLibrary={() => setView('library')}
           />
         ) : null}
 

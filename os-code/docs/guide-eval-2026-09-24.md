@@ -68,7 +68,7 @@ stack          with  67%  without  67%  (missing reasoning)
 reasoning-llm  with  67%  without 100%  (missing plan|route|orchestrat)
 specialists    with 100%  without  67%
 bench          with 100%  without  67%
-marketplace    with 100%  without 100%
+Local Library    with 100%  without 100%
 harbor-lite    with 100%  without  67%
 harbor         with 100%  without 100%
 deepblue       with 100%  without  67%
@@ -92,7 +92,7 @@ byom           with 100%  without 100%
 launch         with 100%  without 100%
 web-search-set with 100%  without 100%
 skipped        with 100%  without 100%
-marketplace-soon with  67%  without  67%  (missing coming soon|soon)
+Local Library-soon with  67%  without  67%  (missing coming soon|soon)
 fit-8          with  67%  without  67%  (missing 3b)
 fit-16         with 100%  without  67%
 fit-4090       with  67%  without  67%  (missing 14b)
@@ -134,7 +134,7 @@ stack          with  67%  without  67%  (missing reasoning)
 reasoning-llm  with 100%  without  67%
 specialists    with  67%  without 100%  (missing coding|writing|vision)
 bench          with  67%  without 100%  (missing stack|place)
-marketplace    with 100%  without 100%
+Local Library    with 100%  without 100%
 harbor-lite    with 100%  without 100%
 harbor         with 100%  without  67%
 deepblue       with 100%  without  67%
@@ -158,7 +158,7 @@ byom           with 100%  without 100%
 launch         with 100%  without 100%
 web-search-set with 100%  without 100%
 skipped        with 100%  without 100%
-marketplace-soon with 100%  without  67%
+Local Library-soon with 100%  without  67%
 fit-8          with  67%  without  67%  (missing 3b)
 fit-16         with 100%  without  67%
 fit-4090       with  67%  without  67%  (missing 14b)
@@ -194,7 +194,7 @@ dash in the answer. Everything else that fell short scored 67%.
 
 Short on both runs: `stack`, `fit-8`, `fit-4090`, `fit-mac`, `stretch-code`.
 
-Short on fp16 only: `reasoning-llm`, `pair`, `tailscale`, `marketplace-soon`.
+Short on fp16 only: `reasoning-llm`, `pair`, `tailscale`, `Local Library-soon`.
 
 Short on q4 only: `specialists`, `bench`, `reach`, `web-time`.
 

@@ -20,6 +20,10 @@ export interface NavOrder {
 /** 2: every room in one group under the Vault (2026-10-01). */
 export const NAV_ORDER_VERSION = 2;
 
+/** Rooms renamed since an order may have been saved, so a dragged room
+ *  keeps its place: the Marketplace became the Local Library (2026-10-13). */
+const RENAMED_ROOMS: Record<string, MovableRoom> = { marketplace: 'library' };
+
 /** Where the recent chats sit in the flat list a drag works on. */
 export const DIVIDER = '|' as const;
 export type FlatSlot = MovableRoom | typeof DIVIDER;
@@ -34,11 +38,13 @@ export function resolveNavOrder(saved: NavOrder | undefined, defaults: NavOrder)
   const allowed = new Set<MovableRoom>([...defaults.top, ...defaults.bottom]);
   const seen = new Set<MovableRoom>();
   const keep = (list: readonly string[] | undefined): MovableRoom[] =>
-    (list ?? []).filter((r): r is MovableRoom => {
-      if (!allowed.has(r as MovableRoom) || seen.has(r as MovableRoom)) return false;
-      seen.add(r as MovableRoom);
-      return true;
-    });
+    (list ?? [])
+      .map((r) => RENAMED_ROOMS[r] ?? r)
+      .filter((r): r is MovableRoom => {
+        if (!allowed.has(r as MovableRoom) || seen.has(r as MovableRoom)) return false;
+        seen.add(r as MovableRoom);
+        return true;
+      });
   const out: NavOrder = { top: keep(saved?.top), bottom: keep(saved?.bottom) };
   for (const group of ['top', 'bottom'] as const) {
     const def = defaults[group];

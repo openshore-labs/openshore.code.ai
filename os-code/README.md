@@ -80,7 +80,7 @@ server installer (`scripts/install-server.sh`, published with each release).
   run after a dropped connection with nothing lost. `osc doctor` names the
   exact broken link (desktop asleep, Ollama down, tailnet down, SSH
   unreachable, model not pulled) and the one command that fixes it.
-- **Marketplace catalog.** `osc market` browses a curated catalog described in
+- **Local Library catalog.** `osc library` browses a curated catalog described in
   plain language, rated against your hardware, license shown before any pull.
   Weights come straight from Ollama or Hugging Face; OpenShore never hosts or
   proxies them.
@@ -117,7 +117,7 @@ server installer (`scripts/install-server.sh`, published with each release).
 | `osc serve`        | Run the daemon so sessions survive dropped connections       |
 | `osc attach`       | Reattach to the latest (or a named) session                  |
 | `osc stack`        | View and edit the orchestrator and specialists               |
-| `osc market`       | Browse and install models from the curated catalog           |
+| `osc library`      | Browse and install models from the curated catalog           |
 | `osc eval`         | Probe whether a model holds up as an orchestrator            |
 | `osc attach-image` | Drop a screenshot into the vision inbox                      |
 

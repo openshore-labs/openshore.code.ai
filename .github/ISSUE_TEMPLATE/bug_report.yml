@@ -27,7 +27,7 @@ body:
         - Desktop app
         - iPhone app
         - Docking (phone to computer or server)
-        - Marketplace
+        - Local Library
         - Other
     validations:
       required: true

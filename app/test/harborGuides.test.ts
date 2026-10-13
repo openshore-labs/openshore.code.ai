@@ -336,7 +336,7 @@ describe('the guides say when a cloud model runs, with no exception', () => {
       'under Cloud Connections; it spends on your key only when you pick it or place it.',
     );
     expect(APP_KNOWLEDGE).not.toMatch(EXCEPTION);
-    // A Personal build carries the Marketplace (v1 since 2026-10-11) and
+    // A Personal build carries the Local Library (v1 since 2026-10-11) and
     // still names the plain way to connect a cloud model.
     vi.stubEnv('VITE_RELEASE_TIER', '');
     vi.resetModules();

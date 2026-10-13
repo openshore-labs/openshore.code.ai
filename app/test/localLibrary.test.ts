@@ -1,4 +1,4 @@
-// Pure marketplace logic. The load-bearing contract here is the sort ordering
+// Pure Local Library logic. The load-bearing contract here is the sort ordering
 // for the new optional fields: a missing value always sorts LAST, with
 // curation.rank as the stable tiebreaker, so a partial or old catalog still
 // lands in curated order. Plus fit, search, filters, and license posture.
@@ -18,7 +18,7 @@ import {
   modelMonogram,
   runsOn,
   sortModels,
-} from '../src/components/marketplace.js';
+} from '../src/components/localLibrary.js';
 
 function model(over: Partial<CatalogModel> & { id: string; rank: number }): CatalogModel {
   const { rank, ...rest } = over;

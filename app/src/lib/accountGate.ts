@@ -29,7 +29,7 @@ export type AccountFeature =
   | 'connections'
   | 'pairing'
   | 'health'
-  | 'marketplace'
+  | 'library'
   | 'launch'
   | 'admin';
 
@@ -56,7 +56,7 @@ export const ROOM_ACCOUNT: Record<ViewName, AccountFeature | null> = {
   crewcommand: 'crew',
   connections: 'connections',
   pair: 'pairing',
-  marketplace: 'marketplace',
+  library: 'library',
   launch: 'launch',
   admin: 'admin',
 };
@@ -100,7 +100,7 @@ export const ACCOUNT_GATE_TITLE: Record<AccountFeature, string> = {
   // Folded at build time like navRooms' label, so a Personal bundle carries
   // no later tier's name (scripts/tier-bundle.mjs).
   health: SHIPS_STACKHEALTH ? 'Stack Health needs an account' : 'This needs an account',
-  marketplace: 'The Marketplace needs an account',
+  library: 'The Local Library needs an account',
   launch: 'Launch needs an account',
   admin: 'Admin needs an account',
 };

@@ -13,7 +13,7 @@
 // on. And it never calls a cloud model "greener" (it is not). When a role is a
 // cloud model, the win it names is running a capable local peer instead.
 import type { CapabilityCategory, CatalogModel } from 'os-code/protocol';
-import { fitFor, modelEnergyPer1kTok, osCodeFit, starIn } from '../components/marketplace.js';
+import { fitFor, modelEnergyPer1kTok, osCodeFit, starIn } from '../components/localLibrary.js';
 
 export interface CrewMemberLite {
   role: string;
@@ -76,7 +76,7 @@ function eligible(
 ): boolean {
   // Fit, only when we know the target memory (a leaner-than-current local swap
   // fits by construction; a cloud replacement on an unknown hub is left to the
-  // person to confirm in the Marketplace, which shows fit).
+  // person to confirm in the Local Library, which shows fit).
   if (memoryGB !== undefined && fitFor(candidate.sizeGB, memoryGB) === 'too-big') return false;
 
   const cap = roleCap(role);

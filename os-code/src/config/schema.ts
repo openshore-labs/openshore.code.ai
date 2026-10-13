@@ -127,7 +127,7 @@ export const MediaServersSchema = z.object({
 const RUNTIME_NAME = /^(?![A-Za-z]:[\\/])(?!.*\.\.)[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,199}$/;
 export const MediaPlacementSchema = z.object({
   runtime: z.enum(MEDIA_RUNTIMES),
-  /** The library entry it was placed from, when it came from the Marketplace. */
+  /** The library entry it was placed from, when it came from the Local Library. */
   catalogId: z.string().optional(),
   /** A ComfyUI workflow family OpenShore ships (media/graphs.ts). */
   graph: z.string().regex(RUNTIME_NAME).optional(),

@@ -228,7 +228,7 @@ export function ConnectionsScreen() {
   };
 
   useEffect(() => {
-    // Arrived from a Connect tap elsewhere (the Marketplace's frontier shelf):
+    // Arrived from a Connect tap elsewhere (the Local Library's frontier shelf):
     // open that provider's key sheet, so the person lands on the paste field,
     // not at the top of a list to hunt through.
     // A chat that stopped for Claude's workspace lands on the workspace field.

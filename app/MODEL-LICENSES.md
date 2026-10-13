@@ -52,6 +52,6 @@ Harbor Mini's weights change, update the bundled file too.
 
 ## Everything else
 
-Marketplace models show their license before download and pull from Hugging
+Local Library models show their license before download and pull from Hugging
 Face or the Ollama library. The catalog is honest about each model's terms; the
 app is a catalog and a client, not a weight host.

@@ -4,9 +4,9 @@
 //
 //   v1 Personal: one person, their desktop and their phone. Chats, Projects,
 //      Terminal, Repositories, Stack, Vault, Crew, Cloud Connections,
-//      Pairing, the Marketplace, Settings.
+//      Pairing, the Local Library, Settings.
 //   v2: Agentic and Harness Currents, Stack Health, Launch with Codemagic.
-//   v3: reserved, owns no feature today (the Marketplace, once v3, became a
+//   v3: reserved, owns no feature today (the Local Library, once v3, became a
 //      v1 room on 2026-10-11 so the community can help build it).
 //   v4 Enterprise: Admin, teams (shared projects, the team vault, project
 //      permissions), and shared-hub members.

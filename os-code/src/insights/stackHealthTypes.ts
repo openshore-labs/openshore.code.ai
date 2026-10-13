@@ -138,7 +138,7 @@ export interface StackHealth {
   timeline: StackHealthBucket[];
   /** Per-model turn counts on THIS machine, most-used first, models with zero
    *  turns dropped. Fully local: folded from the session journals on disk, never
-   *  cross-user and never sent anywhere. The marketplace reads this to offer a
+   *  cross-user and never sent anywhere. The Local Library reads this to offer a
    *  "Your most-used" browse axis. */
   modelUsage: Array<{ model: string; turns: number }>;
 }

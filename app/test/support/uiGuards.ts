@@ -206,13 +206,13 @@ function lineHits(
 }
 
 // The later tiers' files, each with no door in a Personal build, and the
-// Marketplace, a v1 room since 2026-10-11 that came back with its
+// Local Library, a v1 room since 2026-10-11 that came back with its
 // UI polish debt left open for contributors to fix. A rule that skips them
 // says so where it does.
 const LATER_TIER: Record<string, string> = {
   'screens/AdminScreen.tsx': 'Admin, v4: no door in Personal',
-  'screens/MarketplaceScreen.tsx':
-    'the Marketplace (v1 since 2026-10-11): known UI polish debt, open for contributors',
+  'screens/LocalLibraryScreen.tsx':
+    'the Local Library (v1 since 2026-10-11): known UI polish debt, open for contributors',
   'screens/StackHealthScreen.tsx': 'Stack Health, v2: no door in Personal',
   'screens/LaunchScreen.tsx': 'Launch with Codemagic, v2: no door in Personal',
 };
@@ -229,6 +229,10 @@ export const RETIRED_2026_10_07: Array<{ pattern: RegExp; use: string }> = [
   { pattern: /\bSet up pairing\b/, use: "'Connect your computer'" },
   { pattern: /\bmain computer\b/, use: "'your computer'" },
   { pattern: /\bcentral computer\b/, use: "'your computer'" },
+  // The room is the Local Library (founder, 2026-10-13): free and communal,
+  // never a market. Lowercase 'marketplace' stays as a match keyword, since a
+  // person may still ask that way.
+  { pattern: /\bMarketplace\b/, use: "'Local Library' (founder, 2026-10-13)" },
   {
     pattern: /\bAbout \$?\{HARBOR_APPROX_LABEL\}/,
     use: "HARBOR_APPROX_LABEL alone: it already starts with 'about'",
@@ -314,7 +318,7 @@ export const RULES: Array<{ name: string; check(path: string, src: string): stri
       const EXEMPT: Record<string, string> = {
         'screens/AdminScreen.tsx': LATER_TIER['screens/AdminScreen.tsx']!,
         'screens/LaunchScreen.tsx': LATER_TIER['screens/LaunchScreen.tsx']!,
-        'screens/MarketplaceScreen.tsx': LATER_TIER['screens/MarketplaceScreen.tsx']!,
+        'screens/LocalLibraryScreen.tsx': LATER_TIER['screens/LocalLibraryScreen.tsx']!,
         'components/AccountSetup.tsx': 'teams and plans, v4: no door in Personal',
       };
       if (!path.endsWith('.tsx') || EXEMPT[path]) return [];
@@ -336,9 +340,9 @@ export const RULES: Array<{ name: string; check(path: string, src: string): stri
     name: 'typedGlyph',
     check(path, src) {
       const EXEMPT: Record<string, string> = {
-        'screens/MarketplaceScreen.tsx': LATER_TIER['screens/MarketplaceScreen.tsx']!,
+        'screens/LocalLibraryScreen.tsx': LATER_TIER['screens/LocalLibraryScreen.tsx']!,
         'components/LibraryIntro.tsx':
-          'the Marketplace library (v1 since 2026-10-11): known UI polish debt, open for contributors',
+          'the Local Library shelves (v1 since 2026-10-11): known UI polish debt, open for contributors',
       };
       if (!path.endsWith('.tsx') || EXEMPT[path]) return [];
       return lineHits(path, stripComments(src), 'typedGlyph', /[▾▸▴›✓↗]/);
@@ -351,9 +355,9 @@ export const RULES: Array<{ name: string; check(path: string, src: string): stri
     name: 'pillLocal',
     check(path, src) {
       const EXEMPT: Record<string, string> = {
-        'screens/MarketplaceScreen.tsx': LATER_TIER['screens/MarketplaceScreen.tsx']!,
+        'screens/LocalLibraryScreen.tsx': LATER_TIER['screens/LocalLibraryScreen.tsx']!,
         'components/Stars.tsx':
-          'the Marketplace ratings (v1 since 2026-10-11): known UI polish debt, open for contributors',
+          'the Local Library ratings (v1 since 2026-10-11): known UI polish debt, open for contributors',
         'components/AccountSetup.tsx': 'teams and plans, v4: no door in Personal',
       };
       const LINES: Array<{ file: string; match: RegExp; why: string }> = [
@@ -387,7 +391,7 @@ export const RULES: Array<{ name: string; check(path: string, src: string): stri
     name: 'reachDot',
     check(path, src) {
       const EXEMPT: Record<string, string> = {
-        'screens/MarketplaceScreen.tsx': LATER_TIER['screens/MarketplaceScreen.tsx']!,
+        'screens/LocalLibraryScreen.tsx': LATER_TIER['screens/LocalLibraryScreen.tsx']!,
       };
       if (!path.endsWith('.tsx') || EXEMPT[path]) return [];
       return lineHits(path, stripComments(src), 'reachDot', /background:\s*[\w.[\]]+\.dot\b/);
@@ -399,9 +403,9 @@ export const RULES: Array<{ name: string; check(path: string, src: string): stri
     check(path, src) {
       const SCALE = new Set([12, 14, 16, 18, 20, 22, 26, 30]);
       const EXEMPT: Record<string, string> = {
-        'screens/MarketplaceScreen.tsx': LATER_TIER['screens/MarketplaceScreen.tsx']!,
+        'screens/LocalLibraryScreen.tsx': LATER_TIER['screens/LocalLibraryScreen.tsx']!,
         'components/LibraryIntro.tsx':
-          'the Marketplace library (v1 since 2026-10-11): known UI polish debt, open for contributors',
+          'the Local Library shelves (v1 since 2026-10-11): known UI polish debt, open for contributors',
       };
       if (!path.endsWith('.tsx') || EXEMPT[path]) return [];
       return openingTags(stripComments(src), 'Icon')

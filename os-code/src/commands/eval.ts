@@ -273,7 +273,7 @@ export async function evalCommand(options: EvalOptions): Promise<void> {
       );
     } else {
       warnLine(
-        `${model} averages ${(report.average * 100).toFixed(0)}%. It will work, with more repair passes; a stronger orchestrator (osc market) will feel much better.`,
+        `${model} averages ${(report.average * 100).toFixed(0)}%. It will work, with more repair passes; a stronger orchestrator (osc library) will feel much better.`,
       );
     }
     out(t.muted(`  Class: ${report.modelClass}. ${classBlurb(report.modelClass)}`));

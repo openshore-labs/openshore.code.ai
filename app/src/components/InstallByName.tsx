@@ -4,7 +4,7 @@
 // runs on this machine's engine. A wrong name, or any pull that fails, comes
 // back as one plain line with the way on (the engine's pullFailedLine), never
 // a fabricated success or Ollama's raw error. Lives in Stack and in the
-// Marketplace.
+// Local Library.
 import { useState } from 'react';
 import { useApp } from '../state/store.js';
 import { bridge } from '../lib/electronBridge.js';

@@ -26,7 +26,7 @@ export const ROOM_NAMES: Record<ViewName, string> = {
 };
 
 /** A way back that lives inside the room: a page the room opened over its own
- *  list (a model's product page in the Marketplace, a note in the Vault, the
+ *  list (a model's product page in the Local Library, a note in the Vault, the
  *  embedded site in Launch). It wins over the room trail, because the nearest
  *  step back is the one the eye expects (2026-09-03: every page or
  *  sheet reached from a main page needs a back to where it started). */

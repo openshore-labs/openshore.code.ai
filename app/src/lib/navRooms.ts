@@ -25,7 +25,7 @@ export type NavRoom =
   | 'stack'
   | 'vault'
   | 'crew'
-  | 'marketplace'
+  | 'library'
   | 'stackhealth'
   | 'launch'
   | 'connections'
@@ -40,7 +40,7 @@ export interface NavEntry {
 /** The one list of room names (brand sweep, 2026-09-24). The Sidebar,
  *  the BackBar, and the guides all read these, so a room is named one way
  *  everywhere. Title Case only for proper nouns (Crew, Stack Health, Cloud
- *  Connections, Vault, Marketplace); Sentence case for the rest. The stack is
+ *  Connections, Vault, Local Library); Sentence case for the rest. The stack is
  *  named "Stack", never "Your stack" or "My Stack". A later tier's room has no
  *  name in a build without it, the way it has no door there, so its name is
  *  not in that build's bundle either (lib/focus.ts, SHIPS_). */
@@ -52,7 +52,7 @@ export const ROOM_LABELS: Record<NavRoom, string> = {
   stack: 'Stack',
   vault: 'Vault',
   crew: 'Crew',
-  marketplace: 'Marketplace',
+  library: 'Local Library',
   stackhealth: SHIPS_STACKHEALTH ? 'Stack Health' : '',
   launch: SHIPS_LAUNCH ? 'Launch with Codemagic' : '',
   connections: 'Cloud Connections',
@@ -69,10 +69,10 @@ const PRIMARY_BASE: NavEntry[] = (['chats', 'projects', 'repos', 'stack', 'vault
 );
 
 // Crew, Cloud Connections and Pairing straight under the day-one rooms
-// (2026-10-01), then the Marketplace (v1 since 2026-10-11) and the
+// (2026-10-01), then the Local Library (v1 since 2026-10-11) and the
 // later tiers' rooms, then Settings.
 const EXPLORE_BASE: NavEntry[] = (
-  ['crew', 'connections', 'pair', 'marketplace', 'stackhealth', 'launch', 'settings'] as const
+  ['crew', 'connections', 'pair', 'library', 'stackhealth', 'launch', 'settings'] as const
 ).map(entry);
 
 /** Whether Terminal belongs in the day-one set on this device. */

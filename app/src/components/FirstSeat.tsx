@@ -166,7 +166,7 @@ export function FirstSeat({
   const setUp = () => {
     if (!desktop) {
       // The phone's own model is Harbor, from Settings; first-run setup
-      // never detours through the Marketplace.
+      // never detours through the Local Library.
       setView('settings');
       return;
     }

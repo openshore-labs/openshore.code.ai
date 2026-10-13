@@ -69,7 +69,10 @@ const TerminalRoomScreen = room(
   'TerminalRoomScreen',
 );
 const SettingsScreen = room(() => import('./screens/SettingsScreen.js'), 'SettingsScreen');
-const MarketplaceScreen = room(() => import('./screens/MarketplaceScreen.js'), 'MarketplaceScreen');
+const LocalLibraryScreen = room(
+  () => import('./screens/LocalLibraryScreen.js'),
+  'LocalLibraryScreen',
+);
 
 // The later tiers' rooms and surfaces (lib/focus.ts ROOM_FEATURE, and the
 // teams sheets) exist only in a build that carries them. The gate is spelled
@@ -123,7 +126,7 @@ const ROOMS: Partial<Record<ViewName, ComponentType | null>> = {
   settings: SettingsScreen,
   stackhealth: StackHealthScreen,
   launch: LaunchScreen,
-  marketplace: MarketplaceScreen,
+  library: LocalLibraryScreen,
   admin: AdminScreen,
 };
 

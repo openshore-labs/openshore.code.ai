@@ -50,7 +50,7 @@ describe('notice copy', () => {
     expect(c.failTitle).toContain('Harbor');
   });
 
-  it('routes a Marketplace model to the Stack', () => {
+  it('routes a Local Library model to the Stack', () => {
     const c = downloadNoticeCopy('Qwen 2.5 Coder 3B');
     expect(decodeTap({ route: c.route })).toEqual({ to: 'view', view: 'stack' });
   });
@@ -106,7 +106,7 @@ describe('the wiring', () => {
 
   it('hands every download its notice copy', () => {
     expect(read('src/state/store.ts').match(/notice: downloadNoticeCopy\(/g)?.length).toBe(2);
-    expect(read('src/screens/MarketplaceScreen.tsx')).toContain('notice: downloadNoticeCopy(');
+    expect(read('src/screens/LocalLibraryScreen.tsx')).toContain('notice: downloadNoticeCopy(');
   });
 
   it('routes a tapped notice back to the web layer', () => {

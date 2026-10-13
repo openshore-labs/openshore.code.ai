@@ -21,7 +21,7 @@
 import type { TieredFeature } from './focus.js';
 import { resolveHarborMaster, harborMasterSizeLine } from './harborMaster.js';
 import type { HardwareRead } from './firstSeat.js';
-import type { FitLabel } from '../components/marketplace.js';
+import type { FitLabel } from '../components/localLibrary.js';
 import type { WebSearchResult } from './webSearch.js';
 import { thisDeviceNoun } from './deviceNoun.js';
 
@@ -309,7 +309,7 @@ const QUESTION =
   /\?\s*$|^(who|what|when|where|why|how|which|is|are|was|were|can|could|does|do|did|will|should|would|has|have|tell me|explain|define)\b/;
 // Words that mean the question is about this app, even when no card matches.
 const APP_TERMS =
-  /\b(openshore|harbor|deepblue|stack|bench|marketplace|vault|crew|currents?|wayfinding|repositor(y|ies)|tailscale|pair(ing)?|settings|reasoning (llm|model)|specialist|composer|offshore|onshore|jev|hermes|byom|codemagic|routine)\b/;
+  /\b(openshore|harbor|deepblue|stack|bench|local library|marketplace|vault|crew|currents?|wayfinding|repositor(y|ies)|tailscale|pair(ing)?|settings|reasoning (llm|model)|specialist|composer|offshore|onshore|jev|hermes|byom|codemagic|routine)\b/;
 
 /** The strongest card score that still counts as "the app facts answer this". */
 const APP_SCORE = 2;

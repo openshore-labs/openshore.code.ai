@@ -5,7 +5,7 @@
 // agent that plans and edits your repositories on the desktop engine, pulled
 // through Ollama and sized to the machine it lands on (Qwen 2.5 Coder 32B where
 // it fits, down to Qwen3 4B on a small box), out of the box and never behind the
-// Marketplace. Docked, the phone reaches it as "Your computer".
+// Local Library. Docked, the phone reaches it as "Your computer".
 //
 // The internal slot keeps the harborMaster / harbor-master identifiers (the
 // stable-slot pattern, like harborMini backing "Harbor Lite"); only the display

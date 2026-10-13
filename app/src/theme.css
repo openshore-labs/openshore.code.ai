@@ -8618,7 +8618,7 @@ button.vault-tag {
 }
 
 /* ---------------------------------------------------------------------------
-   Marketplace. design review delight pass: osCodeFit as the verdict metric
+   Local Library. design review delight pass: osCodeFit as the verdict metric
    set apart above the capability lanes, true half-star tracks, one tinted
    badge per card, a shore-edge accent, and calm spring motion. Motion is
    transform and opacity only, and the global reduced-motion rule above stills
@@ -8886,7 +8886,7 @@ button.vault-tag {
   gap: 10px;
 }
 
-/* ---- Marketplace skeleton ---- */
+/* ---- Local Library skeleton ---- */
 .hero-card.skeleton {
   min-height: 150px;
   border: 1px solid var(--border);
@@ -9858,7 +9858,7 @@ button.vault-tag {
 }
 
 /* ---- The model library (founder, 2026-10-12) ----------------------------
-   The Marketplace as a store of picks by the Stack it fills: "Made for"
+   The Local Library as a store of picks by the Stack it fills: "Made for"
    cards in a sideways row, the categories as tiles in sections, and on a
    category page the shelves, one pick per size of machine. Every surface is
    on the house tokens; teal stays for what runs on the phone itself. */
@@ -10648,7 +10648,7 @@ button.vault-tag {
 }
 
 /* Crew cards: each stack role as a small stat block, shore-edge tinted by
-   where it runs (teal local, amber cloud) to match the Marketplace language. */
+   where it runs (teal local, amber cloud) to match the Local Library language. */
 .sh-crew {
   display: grid;
   gap: 8px;

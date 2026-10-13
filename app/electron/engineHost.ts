@@ -836,7 +836,7 @@ export class EngineHost {
     };
   }
 
-  // ------------------------------------------------------------- marketplace
+  // ------------------------------------------------------------- Local Library
 
   async catalog() {
     const { config } = loadConfig();

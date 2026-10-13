@@ -61,7 +61,7 @@ describe('which tier a build carries', () => {
 });
 
 describe('a Personal build', () => {
-  it('shows the v1 rooms, Crew, Terminal and the Marketplace included, and nothing later', () => {
+  it('shows the v1 rooms, Crew, Terminal and the Local Library included, and nothing later', () => {
     const desk = navRooms({ desktop: true, hubPaired: false }, 1);
     expect(desk.primary.map((r) => r.view)).toEqual([
       'chats',
@@ -75,32 +75,25 @@ describe('a Personal build', () => {
       'crew',
       'connections',
       'pair',
-      'marketplace',
+      'library',
       'settings',
     ]);
     for (const view of ['stackhealth', 'launch', 'admin']) {
       expect(roomOpen(view, 1), view).toBe(false);
     }
-    for (const view of [
-      'chats',
-      'crew',
-      'terminalroom',
-      'vault',
-      'pair',
-      'marketplace',
-      'settings',
-    ]) {
+    for (const view of ['chats', 'crew', 'terminalroom', 'vault', 'pair', 'library', 'settings']) {
       expect(roomOpen(view, 1), view).toBe(true);
     }
-    // The Marketplace is a v1 room since 2026-10-11.
-    expect(
-      visibleRooms([{ view: 'launch' }, { view: 'marketplace' }, { view: 'crew' }], 1),
-    ).toEqual([{ view: 'marketplace' }, { view: 'crew' }]);
+    // The Local Library is a v1 room since 2026-10-11.
+    expect(visibleRooms([{ view: 'launch' }, { view: 'library' }, { view: 'crew' }], 1)).toEqual([
+      { view: 'library' },
+      { view: 'crew' },
+    ]);
   });
 
   it('each later tier opens its own rooms and keeps the next one shut', () => {
     expect(roomOpen('stackhealth', 2)).toBe(true);
-    expect(roomOpen('marketplace', 1)).toBe(true);
+    expect(roomOpen('library', 1)).toBe(true);
     expect(roomOpen('admin', 3)).toBe(false);
     expect(roomOpen('admin', 4)).toBe(true);
     expect(featureOn('currents', 1)).toBe(false);

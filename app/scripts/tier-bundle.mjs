@@ -28,7 +28,7 @@ export const LAZY_ROOM_FILES = [
   'VaultScreen',
   'PairScreen',
   'StackScreen',
-  'MarketplaceScreen',
+  'LocalLibraryScreen',
 ];
 
 /** Heavy libraries that wait for their first use, never load at launch, each

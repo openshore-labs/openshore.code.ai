@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const store = readFileSync(join(process.cwd(), 'src', 'screens', 'MarketplaceScreen.tsx'), 'utf8');
+const store = readFileSync(join(process.cwd(), 'src', 'screens', 'LocalLibraryScreen.tsx'), 'utf8');
 
 describe('the terms at Get', () => {
   it('every Get button goes through the terms gate', () => {

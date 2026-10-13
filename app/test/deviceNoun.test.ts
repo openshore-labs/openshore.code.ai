@@ -45,13 +45,13 @@ describe('thisDeviceNoun', () => {
 describe('copy names the device through the helper', () => {
   // The later tiers' rooms have no door in a Personal build; they keep their
   // own lines until a tier opens them (the review's follow-up says which).
-  // The Marketplace is a v1 room since 2026-10-11: its lines are
+  // The Local Library is a v1 room since 2026-10-11: its lines are
   // known UI polish debt, open for contributors, and stay exempt until fixed.
   const LATER_TIER = new Set([
-    'screens/MarketplaceScreen.tsx',
+    'screens/LocalLibraryScreen.tsx',
     'screens/StackHealthScreen.tsx',
-    // The Marketplace's shelves and bundles (v1 since 2026-10-11, known debt).
-    'components/marketplace.ts',
+    // The Local Library's shelves and bundles (v1 since 2026-10-11, known debt).
+    'components/localLibrary.ts',
     'lib/bundles.ts',
   ]);
   // Lines that say "this iPhone" because nothing else is true there.

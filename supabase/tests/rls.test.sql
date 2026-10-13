@@ -238,9 +238,9 @@ select throws_ok(
 reset role;
 
 -- ------------------------------------------------------------ BE-6 reviews
--- 0027 revokes the app's insert while the Marketplace (v3) is shut, which
+-- 0027 revokes the app's insert while the Local Library (v3) is shut, which
 -- takes the column grants with it, so every insert below is refused; the
--- migration that opens the Marketplace grants the columns back, and these
+-- migration that opens the Local Library grants the columns back, and these
 -- three lines return to BE-6's own rule then.
 select set_config('request.jwt.claims',
   '{"sub":"c3000000-0000-0000-0000-000000000003","email":"stranger@example.com","role":"authenticated"}', true);
@@ -262,7 +262,7 @@ select throws_ok(
   $$ insert into public.model_reviews (user_id, model_id, rating, body)
      values ('c3000000-0000-0000-0000-000000000003', 'qwen', 5, 'fast') $$,
   '42501', null::text,
-  '0027: no new review while the Marketplace is shut');
+  '0027: no new review while the Local Library is shut');
 
 -- 0027 also takes away the report insert, and every write to likeness
 -- consents ("no names on our server, by schema"), from a signed-in caller and
@@ -277,7 +277,7 @@ select throws_ok(
   $$ insert into public.review_reports (review_id, reporter_id, reason)
      values ('0b000000-0000-0000-0000-00000000000b', 'c3000000-0000-0000-0000-000000000003', 'spam') $$,
   '42501', null::text,
-  '0027: no new review report while the Marketplace is shut');
+  '0027: no new review report while the Local Library is shut');
 
 select throws_ok(
   $$ insert into public.likeness_consents (user_id, subject)

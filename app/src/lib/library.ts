@@ -113,7 +113,7 @@ export function pickRuntimeLine(pick: LibraryPick): string | undefined {
 /** A mailto that opens the person's own mail app with a request ready to
  *  fill in. Nothing is sent by OpenShore: the person sends it, or does not. */
 export function modelRequestMailto(): string {
-  const subject = 'Model request for the OpenShore Marketplace';
+  const subject = 'Model request for the OpenShore Local Library';
   const body = [
     'Model:',
     'Where it lives (a link):',

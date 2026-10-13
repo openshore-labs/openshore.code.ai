@@ -36,7 +36,7 @@ beforeEach(() => {
 });
 
 describe('reviews are shut', () => {
-  // Production's 0027 revoked review writes, so the Marketplace (a v1 room
+  // Production's 0027 revoked review writes, so the Local Library (a v1 room
   // since 2026-10-11) shows no review surface until a migration grants them
   // back, even on a build with a backend.
   it('keeps every review surface off while REVIEWS_OPEN is false', () => {

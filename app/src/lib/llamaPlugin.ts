@@ -187,7 +187,7 @@ class LlamaWeb {
 
   async deviceCapacity() {
     // Off a real phone there is no per-app volume to read. Return believable
-    // numbers so the capacity monitor renders in dev and the marketplace demo,
+    // numbers so the capacity monitor renders in dev and the Local Library demo,
     // never a stall; a shipping iPhone reads the real figures natively.
     return {
       freeBytes: 64 * 1e9,
