@@ -17,7 +17,7 @@ files (Camera, Photos, Files), with video folded in.
    (by MIME, or by extension when the picker hands over a blank type, as screen
    recordings do) into the frame pipeline instead of the image path.
 3. **Compress if large.** Over 30MB, the video is compressed toward the 25 to
-   29MB band before framing (founder spec). The target is met natively:
+   29MB band before framing (spec). The target is met natively:
    `fileLengthLimit` on `AVAssetExportSession` (iPhone) and a rate-capped FFmpeg
    pass (desktop). A clip at or under 30MB is framed as-is.
 4. **Frame.** The clip is sampled into up to 12 downscaled JPEG stills (longest
@@ -66,7 +66,7 @@ routes by capability, not by the text classifier
 2. the reasoning anchor if it can read images, else
 3. any reachable capable model already in the stack, else
 4. a connected, reachable cloud provider that reads images (Claude out of the
-   box), the founder's "if there isn't one available and capable it can go to a
+   box), a maintainer's "if there isn't one available and capable it can go to a
    cloud provider."
 
 An on-device model cannot read images on this build (the local runtime is

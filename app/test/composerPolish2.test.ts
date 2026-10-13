@@ -1,4 +1,4 @@
-// The chat box review, second pass (founder, 2026-09-25: "fix all of the
+// The chat box review, second pass (2026-09-25: "fix all of the
 // findings"): hardware keyboards, per-orientation keyboard height, sheets over
 // the keyboard, video that can be stopped and never hangs, colour meaning on
 // the composer pills, and the model sheet's honest favorites.

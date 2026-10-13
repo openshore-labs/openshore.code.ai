@@ -1,7 +1,7 @@
 // A sheet's header in the house shape (RepoPicker's): the round close button,
 // then the title, over a hairline. Every sheet carries one unless its body
 // already ends in a Cancel or Done, so the scrim tap and Escape are never the
-// only way out (founder, 2026-09-03: every page or sheet reached from a main
+// only way out (2026-09-03: every page or sheet reached from a main
 // page needs a way back to where it started).
 // Inside a <Sheet> the title names the dialog: the h2 takes the sheet's title
 // id, so a screen reader announces the sheet by it.
@@ -21,7 +21,7 @@ export function SheetHead({ title, onClose }: { title: string; onClose: () => vo
 }
 
 /** A sheet's title on its own, for a sheet whose way out is its own last
- *  button (the paywall's Not now, the scanner's Cancel) rather than the round
+ *  button (the sign-in sheet's Not now, the scanner's Cancel) rather than the round
  *  close. Inside a <Sheet> it names the dialog. */
 export function SheetTitle({ children }: { children: ReactNode }) {
   const sheet = useContext(SheetTitleContext);

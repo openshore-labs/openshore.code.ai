@@ -27,13 +27,13 @@ const PRICE_BY_TIER: Record<string, string | undefined> = {
   commercial_mid: Deno.env.get('STRIPE_PRICE_GROWTH'),
   commercial_large: Deno.env.get('STRIPE_PRICE_SCALE'),
   // No individual plan: OpenShore sells nothing to a person (open source,
-  // founder 2026-10-11). Only a commercial org's seats are bought here.
+  // 2026-10-11). Only a commercial org's seats are bought here.
 };
 
 // After payment, return the buyer to the checkout-return function, which
 // deep-links back into the app (oscode://checkout-success) so it re-reads the
 // entitlement and unlocks. Defaults derive from this project's own functions
-// base, so checkout returns into the app with zero extra founder config; set
+// base, so checkout returns into the app with zero extra maintainer config; set
 // CHECKOUT_SUCCESS_URL to override. {CHECKOUT_SESSION_ID} is Stripe's own
 // placeholder, filled with the real session id on redirect.
 const FUNCTIONS_BASE = `${Deno.env.get('SUPABASE_URL') ?? ''}/functions/v1`;

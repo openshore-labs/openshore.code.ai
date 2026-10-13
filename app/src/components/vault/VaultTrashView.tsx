@@ -1,4 +1,4 @@
-// The Vault's Trash (Vault M6 6.3; CTO K6, R2, R3; CX X10): a page inside the
+// The Vault's Trash (Vault M6 6.3; tech review K6, R2, R3; UX review X10): a page inside the
 // Vault room, back to Vault by the BackBar. Each row names the note, where it
 // came from and when it was deleted, with one Restore. Empty Trash sits at the
 // bottom behind two taps, the second in danger styling with the count. A team
@@ -175,7 +175,7 @@ export function VaultTrashView({
   );
 }
 
-/** Trash's row, the LAST row at the root of the tree (CX X10), shown only
+/** Trash's row, the LAST row at the root of the tree (UX review X10), shown only
  *  when Trash holds something, with a count pill. */
 export function VaultTrashRow({ count, onOpen }: { count: number; onOpen: () => void }) {
   if (count <= 0) return null;

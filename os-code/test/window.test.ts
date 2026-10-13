@@ -144,7 +144,7 @@ describe('the served window wins over the model own (C1)', () => {
     expect(caps.contextTokens).toBe(2048);
   });
 
-  it('assumes the smaller default for an older or unknown Ollama (CTO 5)', async () => {
+  it('assumes the smaller default for an older or unknown Ollama (tech review 5)', async () => {
     expect(ollamaDefaultNumCtx('0.6.6')).toBe(OLLAMA_OLD_DEFAULT_NUM_CTX);
     expect(ollamaDefaultNumCtx('0.5.13')).toBe(2048);
     expect(ollamaDefaultNumCtx('0.6.7')).toBe(4096);
@@ -359,7 +359,7 @@ const cuts = (events: AgentEvent[]) =>
     Extract<AgentEvent, { type: 'window-cut' }>
   >;
 
-describe('the truncation notice (C1, CTO 5, CX 6)', () => {
+describe('the truncation notice (C1, tech review 5, UX review 6)', () => {
   it('reads a served prompt far under the estimate as a cut, and nothing else', () => {
     expect(TRUNCATION_RATIO).toBe(0.6);
     expect(looksTruncated(4096, 7000)).toBe(true);
@@ -443,7 +443,7 @@ describe('the truncation notice (C1, CTO 5, CX 6)', () => {
   });
 });
 
-describe('giving a model more room (CTO 5)', () => {
+describe('giving a model more room (tech review 5)', () => {
   it('offers the larger window with its memory cost, or says the memory is full', async () => {
     const server = fakeOllama({ version: '0.12.3', native: 32768 });
     const room = await local(server.baseUrl, undefined, 16).moreRoom('qwen2.5-coder:7b');
@@ -663,7 +663,7 @@ describe('only struggling counts toward the cloud offer (C1)', () => {
   });
 });
 
-describe('the platform word (C1, CTO 10)', () => {
+describe('the platform word (C1, tech review 10)', () => {
   it('names the operating system the engine runs on', async () => {
     expect(platformWord('darwin')).toBe('macOS');
     expect(platformWord('win32')).toBe('Windows');
@@ -672,7 +672,7 @@ describe('the platform word (C1, CTO 10)', () => {
     const session = makeTestSession(provider);
     await session.agent.run('hello');
     const system = String(provider.requests[0]!.messages[0]!.content);
-    // The shell rides beside the platform word (CTO 10, the security package).
+    // The shell rides beside the platform word (tech review 10, the security package).
     expect(system).toContain(`(platform: ${platformAndShell()})`);
     expect(system).toContain(`(platform: ${platformWord(process.platform)}, `);
     if (process.platform !== 'linux') expect(system).not.toContain('(platform: linux');

@@ -1,6 +1,6 @@
-// The Delete account row and its sheets (CX ruling 3), mounted in a real
+// The Delete account row and its sheets (UX review ruling 3), mounted in a real
 // (small) DOM: the row shows only while signed in, the confirm sheet asks
-// once with CX's words, "Deleting..." holds both choices while the server
+// once with UX review's words, "Deleting..." holds both choices while the server
 // works, a failure says so and leaves the choice open, a request for a
 // recent sign-in (the live 2026-09-24 function) says what to do and that
 // nothing was deleted, owns_org explains the one step first with a way to
@@ -258,7 +258,7 @@ describe('where the row lives', () => {
       'utf8',
     );
     const sheet = settings.slice(settings.indexOf("<Sheet open={sheet === 'account'}"));
-    const card = sheet.indexOf('<SignInCard variant="sheet" onModeChange={setSignInMode} />');
+    const card = sheet.indexOf('<SignInCard variant="sheet" />');
     const row = sheet.indexOf(
       '<DeleteAccount signedIn={signedIn} onDelete={deleteAccount} onDone={close} />',
     );

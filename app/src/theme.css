@@ -55,7 +55,7 @@
   --cloud: #895008;
   --cloud-soft: rgba(163, 95, 10, 0.13);
 
-  /* Meaning split (Creative Studio brand sweep, 2026-09-24). Teal used to be
+  /* Meaning split (design review brand sweep, 2026-09-24). Teal used to be
      the generic accent too, so a delete button and a "private" chip wore the
      same colour. Now each colour says one thing:
      --accent     UI chrome: primary buttons, focus, active and selected rows
@@ -163,7 +163,7 @@
   /* The composer only: a tall pill that still reads as a pill at two lines. */
   --radius-xl: 26px;
 
-  /* Spacing and depth (D22, founder 2026-10-07): the structural rhythm only,
+  /* Spacing and depth (D22, 2026-10-07): the structural rhythm only,
      each value the one the app already used most, so the look barely moves.
      --gutter       the page's side gutter, and a sheet's padding (a sheet
                     padded 18px against the page's 16px). A full-bleed list
@@ -238,7 +238,7 @@
   /* The glide, for a large surface travelling its own width (the drawer).
      A bezier fit of UIKit's critically damped spring (response 0.5s): a soft
      start, one long even slide, a settle with no overshoot. Stated reason for
-     a curve outside the family (founder, 2026-09-03, with a recording): the
+     a curve outside the family (2026-09-03, with a recording): the
      standard curve front-loads two thirds of its travel into the first fifth
      of the clock, which on a 310px door reads as a pop, not a slide. */
   --ease-glide: cubic-bezier(0.3, 0.1, 0.15, 1);
@@ -250,7 +250,7 @@
   --dur-6: 420ms;
   /* The door's clock: the one duration for a surface that crosses the screen. */
   --dur-7: 520ms;
-  /* The swell (Creative Studio, "Swell Line", 2026-09-24): the first open's
+  /* The swell (design review, "Swell Line", 2026-09-24): the first open's
      scripted lines roll in on a low wave, each character rising a hair,
      cresting, and settling. Near-symmetric, so the crest has zero speed and
      reads as a swell, not a bounce. */
@@ -286,12 +286,12 @@
   color-scheme: light;
 }
 
-/* Nightshore, the dark theme (founder, 2026-10-01: "make dark mode in this
+/* Nightshore, the dark theme (2026-10-01: "make dark mode in this
    theme", from openshore.ai): the site's water-tinted near-black abyss
    (#0b1417) for the ground, its deep-teal cards and hairlines, warm paper text
    (never pure white), and the bright wave (#5bb6cb) for the accent, the same
    tokens as the site's openshore.css. It replaced the warm brown-black of the
-   first Creative Studio ruling. Accents LIFT rather than just swap
+   first design review ruling. Accents LIFT rather than just swap
    (the teal rises toward the wave tone, the amber toward its bright end) so
    they read on dark, and status colors are re-tuned to sit as text on the dark
    ground. Elevation leans on the borders here rather than the ink-tinted
@@ -437,7 +437,7 @@ button {
 }
 
 /* A heading with no class of its own takes the scale's heaviest weight, never
-   the browser's 700 (Creative Studio, 2026-10-07). */
+   the browser's 700 (design review, 2026-10-07). */
 h1,
 h2,
 h3,
@@ -500,7 +500,7 @@ textarea {
 
 /* WebKit is the exception: it treats a TAPPED text field as focus-visible too
    (unlike a tapped button), so the rule above would ring the composer on every
-   touch. Founder preference: no ring there. Scoped to the composer only, so a
+   touch. Maintainer preference: no ring there. Scoped to the composer only, so a
    real keyboard user still sees the ring on every other focusable element. */
 .composer textarea:focus-visible {
   outline: none;
@@ -728,7 +728,7 @@ textarea {
   display: block;
 }
 
-/* The recent chats between the two room groups (founder, 2026-10-01). It
+/* The recent chats between the two room groups (2026-10-01). It
    takes the space the groups leave, and Sidebar fits as many rows as that
    holds cleanly, so the heights here are fixed and mirrored there
    (RECENT_HEAD 30, RECENT_ROW 34, RECENT_FOOT 36). */
@@ -812,7 +812,7 @@ textarea {
   padding-bottom: calc(8px + var(--safe-bottom));
 }
 
-/* The drawer's New chat (Creative Studio, 2026-10-12): a round accent button
+/* The drawer's New chat (design review, 2026-10-12): a round accent button
    floating over the drawer's bottom right, 12px above the foot's hairline so
    it never covers Settings or the sign-in card. It rides the door's row
    entrance (below) and leaves with the door. */
@@ -961,7 +961,7 @@ textarea {
   padding: 8px;
 }
 /* A group with no rows (every room moved up) takes no space and draws no
-   line; a row dragged below Recents fills it again (Creative Studio). */
+   line; a row dragged below Recents fills it again (design review). */
 .sidebar-nav:empty {
   border-top: 0;
   padding: 0;
@@ -1017,7 +1017,7 @@ textarea {
   opacity: 0.9;
 }
 
-/* A room the person can move (founder, 2026-10-01). A long press lifts it
+/* A room the person can move (2026-10-01). A long press lifts it
    (hooks/useNavReorder.ts), so the system's callout and text selection stay
    off it. The rows it passes step aside on the standard curve (a FLIP: the
    hook sets each one's offset with the slide held, then lets it go), and the
@@ -1065,7 +1065,7 @@ textarea {
   animation: fade-in var(--dur-7) var(--ease-glide);
 }
 
-/* The door slides on the glide curve over --dur-7 (founder, 2026-09-03, with
+/* The door slides on the glide curve over --dur-7 (2026-09-03, with
    a recording: the drawer "jumped" in and out; on the standard curve the
    visible travel was about 110ms of a 320ms clock). App holds the unmount
    for the same length (lib/motion.ts drawerExitMs), so the tail is never
@@ -1150,7 +1150,7 @@ textarea {
 /* The drawer plays its exit before unmounting (App.tsx holds it for the
    animation's full length). The panel is a sliding door: solid the whole way,
    it glides off the left edge on the standard curve while only the scrim
-   fades. Never a transparent object (founder, 2026-09-03: "not as a
+   fades. Never a transparent object (2026-09-03: "not as a
    transparent object, just like a sliding door being moved out of the way").
    After a drag-to-close the door keeps going from where the finger left it:
    Sidebar sets --drawer-x and --drawer-scrim from the gesture, and the
@@ -2041,7 +2041,7 @@ textarea {
 /* ---- M6 stream E begin ----
    Reader (6.5, 6.6): callouts in four families (never --local, --cloud or
    --accent), ==highlight== marks, embeds, image skeletons and chips, PDF
-   chips, task lines (CTO K10, K11; CX X12 to X14). */
+   chips, task lines (tech review K10, K11; UX review X12 to X14). */
 
 /* Callouts: a rounded block, a 3px left rule, a tinted fill, a small glyph and
    the title. Four families from the status tokens only; teal and amber mean
@@ -2350,7 +2350,7 @@ textarea {
 
 /* ---- M6 stream F begin ----
    Search UI (6.1): the tree search field, result groups and rows, marks, the
-   switcher sheet, Recent (CTO K8, K9; CX X1 to X4). */
+   switcher sheet, Recent (tech review K8, K9; UX review X1 to X4). */
 
 .vault-search {
   display: flex;
@@ -2494,8 +2494,8 @@ textarea {
 
 /* ---- M6 stream G begin ----
    Organize (6.2, 6.3): the rename sheet, the folder sheet, the Update links
-   sheet and the skipped-notes card, the Trash view, the Undo toast (CTO K3
-   to K6, R1 to R3; CX X5 to X10). */
+   sheet and the skipped-notes card, the Trash view, the Undo toast (tech review K3
+   to K6, R1 to R3; UX review X5 to X10). */
 
 /* The rename sheet's steps (name and folder, the folder list, Update links?)
    settle in on the crossfade clock as each replaces the last. The Folder row
@@ -2537,7 +2537,7 @@ textarea {
 }
 
 /* The standing card on a renamed note while some links still point at the
-   old name (CX X7): the room's card shape, arriving on fade-rise. */
+   old name (UX review X7): the room's card shape, arriving on fade-rise. */
 .vault-links-left {
   animation: fade-rise var(--dur-4) var(--ease-arrive) backwards;
 }
@@ -2559,7 +2559,7 @@ textarea {
   animation: fade-rise var(--dur-3) var(--ease-standard) backwards;
 }
 
-/* Trash (CX X10): an in-room page. Rows arrive one after another on the
+/* Trash (UX review X10): an in-room page. Rows arrive one after another on the
    stagger; titles and sub-labels wrap for Dynamic Type (X18). */
 .vault-trash-lead,
 .vault-trash-team {
@@ -2616,7 +2616,7 @@ textarea {
   flex-shrink: 0;
 }
 
-/* The Undo toast (CX X9): the app toast's pill with an action. The text may
+/* The Undo toast (UX review X9): the app toast's pill with an action. The text may
    ellipsize; the Undo button never does and is at least 44 px tall. It
    arrives and leaves on the plain toast's own motion (.toast, .toast.closing). */
 .toast.vault-undo-toast {
@@ -2647,8 +2647,8 @@ textarea {
 /* ---- M6 stream H begin ----
    Linking and context (6.7, 6.8, 6.4): the link listbox, the phone accessory
    bar (moved by transform only), outgoing and unlinked mentions, the
-   backlinks skeleton, the outline sheet, the Today button (CTO K7, K14, K15;
-   CX X11, X15 to X17). */
+   backlinks skeleton, the outline sheet, the Today button (tech review K7, K14, K15;
+   UX review X11, X15 to X17). */
 
 /* The link listbox. `chips` is the one-row strip the phone shows in the
    accessory bar (the base .vault-link-suggest rule above); `list` is the
@@ -2903,9 +2903,9 @@ textarea {
 
 /* ---- M6 stream W2 begin ----
    Wave 2 integrator (6.9): the tree and note, and read and edit, crossfades
-   on --dur-3 and --ease-standard, and the house + button (CTO K18). */
+   on --dur-3 and --ease-standard, and the house + button (tech review K18). */
 
-/* A folder's crumbs, with its own options button at the end (CX X5). */
+/* A folder's crumbs, with its own options button at the end (UX review X5). */
 .vault-crumbs-row {
   display: flex;
   align-items: center;
@@ -2921,14 +2921,14 @@ textarea {
   flex: none;
 }
 
-/* The header's Today and New note buttons, side by side (CX X11). */
+/* The header's Today and New note buttons, side by side (UX review X11). */
 .vault-head-actions {
   display: flex;
   align-items: center;
   gap: 4px;
 }
 
-/* A #tag in reading view: a small tap that searches tag:x (CX X2). */
+/* A #tag in reading view: a small tap that searches tag:x (UX review X2). */
 .vault-tag {
   display: inline;
   padding: 0 5px;
@@ -2950,7 +2950,7 @@ button.vault-tag {
   min-height: 44px;
 }
 
-/* Tree and note, and read and edit, cross on the tokens (CTO K18, CX X17):
+/* Tree and note, and read and edit, cross on the tokens (tech review K18, UX review X17):
    the view that arrives fades in while the one that left fades out as a
    snapshot (useViewGhost, below), opacity only, never a hard cut. The Trash
    page arrives the same way. */
@@ -3038,7 +3038,7 @@ button.vault-tag {
    Vault settings sheet's sections, segments and read-only rows, the Y2
    expand line (a fade on --dur-3, no height tween), folder chips, the
    provenance chip (teal --local, amber --cloud, outline once reviewed),
-   About this note, the starter preview sheet (CTO L15; CX Y1 to Y13). */
+   About this note, the starter preview sheet (tech review L15; UX review Y1 to Y13). */
 
 /* The note's face and size (7.1, Editor). The room spreads
    `vaultTypeAttrs(settings.editor)` on the note; Default sets no attribute,
@@ -3546,7 +3546,7 @@ button.vault-tag {
 .thread {
   flex: 1;
   overflow-y: auto;
-  /* The transcript scrolls up and down only (founder, 2026-10-02): a long
+  /* The transcript scrolls up and down only (2026-10-02): a long
      link or an unbroken word wraps below, and anything that still bleeds is
      clipped here rather than panning the chat sideways. A code block keeps
      its own sideways scroll inside its frame. */
@@ -3699,7 +3699,7 @@ button.vault-tag {
   border-radius: var(--radius);
   padding: 10px 14px;
 }
-/* The person's own Stop (CX ruling 5): a muted marker under whatever part of
+/* The person's own Stop (UX review ruling 5): a muted marker under whatever part of
    the answer arrived, not a failure card. It fades in over --dur-3, opacity
    only; the global reduced-motion reset zeroes it. */
 .msg-stopped.msg-stopped-own {
@@ -3730,7 +3730,7 @@ button.vault-tag {
   border-radius: 999px;
 }
 
-/* The Claude-style arrival (founder, 2026-09-23). A live reply is split into
+/* The Claude-style arrival (2026-09-23). A live reply is split into
    word spans (lib/fadeWords.ts); each new group mounts light and fades up to
    full ink over --dur-6, while words already on screen keep their nodes and
    never replay. No caret: the arrival is the signal. Opacity only, never
@@ -4499,7 +4499,7 @@ button.vault-tag {
   margin: 0 auto;
   /* Claude-style field: a soft, borderless rounded surface that reads as its own
      card through a gentle fill and a whisper of shadow, never a hard stroke.
-     Founder preference: no border, no focus ring. The caret color signals the
+     Maintainer preference: no border, no focus ring. The caret color signals the
      field is live. */
   background: var(--bg-raised);
   border: none;
@@ -5412,7 +5412,7 @@ button.vault-tag {
   gap: 18px;
 }
 
-/* The desktop opening (D5, founder 2026-10-07, built as recommended, A): on a
+/* The desktop opening (D5, 2026-10-07, built as recommended, A): on a
    fine pointer the greeting and the composer sit together as one group, the
    Claude desktop opening, instead of a greeting floating mid-column with the
    field docked far below it. A spacer above seats the group a little over
@@ -5420,7 +5420,7 @@ button.vault-tag {
    downward as a draft gets longer, so the greeting never moves. When the
    chat fills, the composer glides to the foot (ChatScreen's
    useOpeningGlide). Touch screens keep their own opening, set from the
-   founder's device, untouched. */
+   maintainer's device, untouched. */
 @media (pointer: fine) {
   .chat-body:has(> .greeting)::before {
     content: '';
@@ -5439,7 +5439,7 @@ button.vault-tag {
    math), and a fifth attempt keeping the greeting position: fixed and
    fighting a real WKWebView page scroll with a continuous
    translateY(visualViewport.offsetTop) compensation, each still let the
-   greeting move on the founder's device in some new way. The actual cause
+   greeting move on a maintainer's device in some new way. The actual cause
    was not any of those five detection or compensation strategies: it was
    WKWebView itself performing a native scroll/resize to keep the focused
    composer visible above the keyboard, which no web-layer trick fully
@@ -5455,7 +5455,7 @@ button.vault-tag {
    and so cannot rely on ordinary document flow to clear the header the way
    absolute positioning against .chat-body could.
 
-   The height itself is pixel-measured directly off the founder's own
+   The height itself is pixel-measured directly off a maintainer's own
    confirmed-correct keyboard-up screenshot: the header-to-composer gap there
    is ~34.6% of screen height. Expressed as a vh share so it holds across
    phone sizes, with a px cap so it does not balloon on a tablet.
@@ -5695,7 +5695,7 @@ button.vault-tag {
 }
 
 /* The First Seat: the empty room's center when nothing on this device can
-   answer yet. "The Seat Fills" (Creative Studio): the room resolves into
+   answer yet. "The Seat Fills" (design review): the room resolves into
    readiness. The mark settles on the arrive curve, the line and the more-ways
    list step in on the stagger, and the card seats on the glide over the door
    clock with one soft teal bloom that says "local, and yours." It is
@@ -5816,14 +5816,14 @@ button.vault-tag {
 }
 
 /* The waiting message's line on the card, and the quiet sign-in offer under
-   the button while the download runs (CX ruling 2). */
+   the button while the download runs (UX review ruling 2). */
 .first-seat-held {
   color: var(--ink);
   font-size: var(--text-3);
   margin-bottom: 4px;
 }
 /* The saved line folds shut when the message is taken back to edit or sent
-   (CX cleanup 8): the reveal carries the height, this the fade. */
+   (UX review cleanup 8): the reveal carries the height, this the fade. */
 .first-seat-held-fold .reveal-inner {
   opacity: 0;
   transition: opacity var(--dur-3) var(--ease-standard);
@@ -6014,7 +6014,7 @@ button.vault-tag {
   box-shadow: var(--elev-3);
   /* A sheet is a door from the bottom edge: it slides up solid on the glide
      over the door clock, the drawer's own motion turned ninety degrees
-     (founder, 2026-09-03: "smooth and slow"). */
+     (2026-09-03: "smooth and slow"). */
   animation: sheet-up var(--dur-7) var(--ease-glide);
   /* The exit (added by useSheetExit) transitions this transform; the entrance
      is the one-shot animation above. */
@@ -6172,7 +6172,7 @@ button.vault-tag {
   background: var(--border-strong);
 }
 
-/* The top of every sheet stays put (founder, 2026-10-01): the grabber and the
+/* The top of every sheet stays put (2026-10-01): the grabber and the
    header row (the round close and the title) are frozen, and only what is
    under the hairline scrolls, so the way out and the name of the sheet are
    always in view. The card itself is the scroller, so both are sticky. A
@@ -6232,7 +6232,7 @@ button.vault-tag {
 }
 
 /* A benefit list (the Stack's connect sheet). */
-.paywall-benefits {
+.benefit-list {
   list-style: none;
   margin: 0 0 14px;
   padding: 0;
@@ -6240,14 +6240,14 @@ button.vault-tag {
   flex-direction: column;
   gap: 9px;
 }
-.paywall-benefits li {
+.benefit-list li {
   position: relative;
   padding-left: 22px;
   font-size: var(--text-4);
   line-height: 1.35;
   color: var(--text);
 }
-.paywall-benefits li::before {
+.benefit-list li::before {
   content: '';
   position: absolute;
   left: 2px;
@@ -6356,7 +6356,7 @@ button.vault-tag {
   color: var(--bg);
 }
 
-/* Two sizes beside the default (Creative Studio, 2026-10-07): a compact action
+/* Two sizes beside the default (design review, 2026-10-07): a compact action
    that sits in a row, and a block that fills its column. Rooms pick a size by
    class, never an inline padding or width. */
 .btn.sm {
@@ -6689,7 +6689,7 @@ button.vault-tag {
   margin-bottom: 2px;
 }
 
-/* Secondary text under a title, wherever it sits (Creative Studio,
+/* Secondary text under a title, wherever it sits (design review,
    2026-10-07). Scoped rules (.cc-preset .sub, .vault-resolve .vault-provider
    .sub, and chat's .profile-row .sub) still win. */
 .sub {
@@ -8618,7 +8618,7 @@ button.vault-tag {
 }
 
 /* ---------------------------------------------------------------------------
-   Marketplace. Creative Studio delight pass: osCodeFit as the verdict metric
+   Marketplace. design review delight pass: osCodeFit as the verdict metric
    set apart above the capability lanes, true half-star tracks, one tinted
    badge per card, a shore-edge accent, and calm spring motion. Motion is
    transform and opacity only, and the global reduced-motion rule above stills
@@ -11997,7 +11997,7 @@ button.vault-tag {
   color: var(--muted);
 }
 
-/* The secrets safety cards (D3, CX 7). The lockdown line says why the card
+/* The secrets safety cards (D3, UX review 7). The lockdown line says why the card
    asks; the commit card lists what it would stage, a tick per file, and a
    file that may hold a secret wears a warn pill and its reason. A ticked one
    fades its warning in; opacity only. */
@@ -12070,7 +12070,7 @@ button.vault-tag {
   animation: fade-in var(--dur-2) var(--ease-standard) backwards;
 }
 
-/* The server cut the chat to fit (C1, CX 6): a teal card, the context
+/* The server cut the chat to fit (C1, UX review 6): a teal card, the context
    card's local wash, arriving on msg-in like its neighbours. */
 .window-cut-card {
   padding: 10px 12px;
@@ -12110,7 +12110,7 @@ button.vault-tag {
   margin-top: 8px;
 }
 
-/* Nothing in a Stack chat can read images (founder, 2026-10-07): the
+/* Nothing in a Stack chat can read images (2026-10-07): the
    changed-files card's quiet frame, never an error's, arriving on msg-in
    like its neighbours. Teal marks only the local door and amber only the
    cloud door. The doors fold away on the reveal fold once something can
@@ -12639,7 +12639,7 @@ button.vault-tag {
 }
 
 /* ---------------------------------------------------------------------------
-   Settings, the ledger (Creative Studio, 2026-09-02): serif group heads over
+   Settings, the ledger (design review, 2026-09-02): serif group heads over
    inset cards, one row per thing, value on the right, everything deeper in a
    sheet. Type carries the hierarchy; no icons. Groups arrive staggered.
    --------------------------------------------------------------------------- */
@@ -12870,7 +12870,7 @@ button.settings-row:active {
 
 /* Harbor Lite's setup link: sits right under the seeded greeting in the
    guide's chat, the one door to the setup page for a person who opened
-   straight into chat (founder, 2026-09-23). Arrives with the First Moves
+   straight into chat (2026-09-23). Arrives with the First Moves
    curve, a step after them, and stays for the life of the chat. */
 .guide-setup {
   display: flex;
@@ -12958,7 +12958,7 @@ button.settings-row:active {
   text-wrap: pretty;
 }
 
-/* The switch (D21, founder 2026-10-07): off is an outline, a quiet track
+/* The switch (D21, 2026-10-07): off is an outline, a quiet track
    ringed on the control edge at 3:1, and on fills with the accent, so the
    two read apart at a glance instead of by the knob's side. The knob carries
    a hairline and a soft shadow so it holds on either track, and it slides on
@@ -13038,7 +13038,7 @@ button.settings-row:active {
 }
 
 /* ---------------------------------------------------------------------------
-   The setup page's paths (D9, founder 2026-10-07): each idle path is one tap
+   The setup page's paths (D9, 2026-10-07): each idle path is one tap
    target on the house card-as-button (.card-disclosure, press-fb), its title
    the verb, one muted line under it, and the drawn chevron. Harbor's busy
    states keep their plain cards and controls.
@@ -13072,7 +13072,7 @@ button.settings-row:active {
 }
 
 /* ---------------------------------------------------------------------------
-   The Chats room in the Claude app's shape (Creative Studio, 2026-09-02): a
+   The Chats room in the Claude app's shape (design review, 2026-09-02): a
    search pill, then one flat list of chats sorted by recency, hairline
    separators inset to the text edge, no cards, no captions. On the phone the
    compose icon in the nav bar and a plain first row are the two ways to a new
@@ -13480,7 +13480,7 @@ button.settings-row:active {
   border: 1px solid var(--border);
   box-shadow: var(--elev-2);
 }
-/* The persistent create action (D8, founder 2026-10-07) wears the accent, the
+/* The persistent create action (D8, 2026-10-07) wears the accent, the
    primary's colour, in its Claude shape and place: deep water in light,
    turquoise with abyss text in Nightshore, never a paper slab on a dark
    screen. Ink means text only. The project room's New chat pill shares it. */
@@ -13745,7 +13745,7 @@ button.settings-row:active {
   color: var(--cloud);
 }
 
-/* The one eyebrow over a title or a group, for every room (Creative Studio,
+/* The one eyebrow over a title or a group, for every room (design review,
    2026-10-07). The rooms' own eyebrows fold into it. */
 .eyebrow {
   display: block;
@@ -13835,7 +13835,7 @@ button.settings-row:active {
 }
 
 /* ---------------------------------------------------------------------------
-   The Vault room's new-user ramp (founder, 2026-09-15). An in-flow onboarding
+   The Vault room's new-user ramp (2026-09-15). An in-flow onboarding
    surface that teaches what the vault is and how the agent uses it, in the same
    room family as the project and stack covers. It also fixes a real bug: the
    empty state reused the chat screen's `.greeting`, which on a touch device is
@@ -14411,7 +14411,7 @@ button.settings-row:active {
   margin-right: 4px;
 }
 
-/* The crew, in one line under its head (founder, D17, 2026-10-07): the
+/* The crew, in one line under its head (D17, 2026-10-07): the
    members live in Crew, behind Manage. */
 .cc-crew-count {
   color: var(--ink-soft);
@@ -14716,7 +14716,7 @@ button.settings-row:active {
 }
 
 /* Before a computer is paired, with no routine yet, the door to Crew command
-   is a plain card row (founder, D17, 2026-10-07): the shared disclosure card,
+   is a plain card row (D17, 2026-10-07): the shared disclosure card,
    its title over one line, and the drawn chevron. */
 .crew-command-row {
   margin: 4px 0 14px;
@@ -14730,7 +14730,7 @@ button.settings-row:active {
 
 /* In Nightshore the ghost's surface fill is the door card's own, so the two
    read as twins: there the action is an outline on the page, and the door
-   stays the only card (CMO-11). */
+   stays the only card (copy review-11). */
 :root[data-theme='dark'] .crew-new.btn.ghost {
   background: transparent;
 }
@@ -14740,7 +14740,7 @@ button.settings-row:active {
   }
 }
 
-/* A crew card is the Edit tap, hosted by a swipe row that deletes (founder,
+/* A crew card is the Edit tap, hosted by a swipe row that deletes (maintainer,
    D18, 2026-10-07). The row clips the card's corners and carries its resting
    depth, so the shadow is not cut off by the clip; the card keeps the rest. */
 .crew-card-swipe {
@@ -14788,7 +14788,7 @@ button.settings-row:active {
   }
 }
 
-/* Crew command polish (founder, 2026-09-05: "do all the polish"). */
+/* Crew command polish (2026-09-05: "do all the polish"). */
 /* A row that needs the person breathes a soft attention halo on the same clock as
    the working dot, so the eye lands there first. */
 .cc-row-needs {
@@ -14847,7 +14847,7 @@ button.settings-row:active {
   }
 }
 
-/* Crew command: the docked/away/unpaired control distinction (founder,
+/* Crew command: the docked/away/unpaired control distinction (maintainer,
    2026-09-05: setup and control only while harnessed to the machine; view
    always). The hero badge names the state; away wears the "needs you"
    attention family, in control the teal local family. */
@@ -15161,7 +15161,7 @@ button.settings-row:active {
 }
 
 /* ---------------------------------------------------------------------------
-   The currents layer (Creative Studio, 2026-09-09): the arrival, the water-line,
+   The currents layer (design review, 2026-09-09): the arrival, the water-line,
    the header pill, and the BETA badge. The same water, moving: everything
    rides the flow tokens (no third blue), the door clock and the glide curve
    like the drawer, transform and opacity only, and the global reduced-motion
@@ -15169,7 +15169,7 @@ button.settings-row:active {
    --------------------------------------------------------------------------- */
 
 /* The arrival, a replica of the iOS Siri glow in the brand's own water
-   (founder, 2026-09-14, from a screen recording read frame by frame): a soft
+   (2026-09-14, from a screen recording read frame by frame): a soft
    bloom rises from the edge where the switch sits, then a thick multi-hue ring
    lights the whole border with a blurred glow bleeding inward, and settles into
    a thinner ring whose hues keep drifting around the perimeter. The palette is
@@ -15563,7 +15563,7 @@ button.settings-row:active {
   margin: 0 4px 10px;
 }
 
-/* ---- Slack Water (Creative Studio, 2026-10-01; the third pass 2026-10-02;
+/* ---- Slack Water (design review, 2026-10-01; the third pass 2026-10-02;
    docs/design/slack-water.md): the one-time transition from the setup walk's chat to
    the main chat page when the person chooses to just chat. The water is
    clear: the GPU draws its rings on a canvas over the whole app as light and
@@ -15721,7 +15721,7 @@ button.settings-row:active {
   animation-delay: calc(var(--i, 0) * var(--stagger));
 }
 
-/* Pairing (CX 2026-10-01): a phone that pairs while the desktop's room is
+/* Pairing (UX review 2026-10-01): a phone that pairs while the desktop's room is
    open is named at the top, arriving the way the phone's next step does. */
 .pair-done {
   margin: 0 0 12px;
@@ -15823,6 +15823,27 @@ button.settings-row:active {
   margin-bottom: var(--section-gap);
 }
 
+/* Three ways in share the width evenly and may wrap to two lines, so the
+   choice fits a 320px phone (2026-10-13) instead of running off its edge. */
+.dock-choice.segmented {
+  display: flex;
+  width: 100%;
+}
+
+.dock-choice .seg {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 6px 8px;
+  white-space: normal;
+  text-align: center;
+  line-height: 1.25;
+}
+
+/* Where a coding chat runs, in the chat bar beside its repositories. */
+.chat-runs-on {
+  white-space: nowrap;
+}
+
 .dock-other-head {
   margin-top: var(--section-gap);
 }
@@ -15909,13 +15930,8 @@ button.settings-row:active {
 }
 
 /* What each size of rented server can do (many machines, 2026-10-12). */
-.dock-sizes-head {
-  margin: 14px 0 6px;
-  font-size: 0.95em;
-}
-
 .dock-sizes {
-  margin: 0 0 12px;
+  margin: 8px 0 12px;
 }
 
 .dock-size + .dock-size {
@@ -15980,4 +15996,24 @@ button.settings-row:active {
 
 .live-model-name {
   font-weight: var(--weight-semibold);
+}
+
+/* App Lock's screen (components/AppLockScreen.tsx): the mark, one line, one
+   button, one hint, centred, arriving on the standard fade. Nothing behind it:
+   the rooms unmount while the app is locked. */
+.app-lock {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 24px;
+  text-align: center;
+  animation: fade-rise var(--dur-3) var(--ease-standard) backwards;
+}
+
+.app-lock-title {
+  font-size: var(--text-7);
+  margin: 0;
 }

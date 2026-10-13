@@ -1,4 +1,4 @@
-// Codemagic REST client for the app (on-device). The two safety stages the CTO
+// Codemagic REST client for the app (on-device). The two safety stages the tech review
 // required before any build log is shown to a model (redact secrets, then
 // extract just the error regions) now live in one shared place,
 // 'os-code/protocol', so the engine's codemagic tool applies the identical

@@ -129,7 +129,7 @@ export function DockForm({
         );
       }
       // A desktop that docks keeps running its own sessions: a project
-      // chooses the docked machine under Runs on (founder, 2026-10-12), and
+      // chooses the docked machine under Runs on (2026-10-12), and
       // Computer's "Run on another computer" sends every session there.
       setState(undefined);
       setDocked(health.kind ?? 'yes');

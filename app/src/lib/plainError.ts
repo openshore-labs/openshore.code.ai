@@ -24,23 +24,10 @@ const KNOWN: Array<[RegExp, string]> = [
   ],
   // Sign-in.
   [
-    /invalid login credentials|invalid (email|password)|invalid_grant/i,
-    'That email and password do not match. Check them and try again.',
-  ],
-  [/email not confirmed/i, 'Confirm your email first. The link is in your inbox.'],
-  [
-    /user already registered|already been registered|already exists.*user/i,
-    'That email already has an account. Sign in instead.',
-  ],
-  [
-    /password should be at least|weak password|password is too short/i,
-    'Use a longer password, at least 8 characters.',
-  ],
-  [
     /unable to validate email|invalid email|email address .* is invalid/i,
     'That email address does not look right. Check it and try again.',
   ],
-  [/expired|otp_expired|link is invalid/i, 'That link has expired. Ask for a new one.'],
+  [/expired|otp_expired|link is invalid/i, 'That code or link has expired. Send a new email.'],
   [/sign-in is not configured/i, 'Sign-in is not available on this build.'],
   // Limits and access.
   [

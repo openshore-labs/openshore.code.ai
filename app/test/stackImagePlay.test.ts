@@ -1,8 +1,8 @@
 // A plan's image step when nothing is set for Image reading. A plan never
 // carries a picture, so the step runs on the Reasoning model from the text
-// whatever would read a picture in the chat (CX and CMO, 2026-10-08, E,
-// taking off the founder's 2026-10-07 exception): no second provider gets
-// the chat. When nothing here can read images (founder, 2026-10-07) the step
+// whatever would read a picture in the chat (UX and copy review, 2026-10-08, E,
+// taking off a maintainer's 2026-10-07 exception): no second provider gets
+// the chat. When nothing here can read images (2026-10-07) the step
 // still runs that way, its working note says so, the play finishes, and the
 // turn closes with the two-door offer once, however many image steps the
 // play holds.
@@ -180,7 +180,7 @@ describe('a play whose image step finds no reader', () => {
   });
 });
 
-// The founder's 2026-10-07 exception comes off (CX and CMO, 2026-10-08, E):
+// A maintainer's 2026-10-07 exception comes off (UX and copy review, 2026-10-08, E):
 // with nothing set for Image reading, a plan's image step never goes to the
 // cloud reader a picture in the chat would go to. A plan carries no picture,
 // so that reader would add no image reading, only a second provider.

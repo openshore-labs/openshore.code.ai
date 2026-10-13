@@ -132,7 +132,7 @@ export class AnthropicProvider implements Provider {
       stream: true,
       messages,
     };
-    // Prompt caching (Vault M5, CTO J17), off unless this endpoint says
+    // Prompt caching (Vault M5, tech review J17), off unless this endpoint says
     // 'auto'. Off sends `system` as the one string it always was. On splits it
     // where the stable head ends (`ChatMessage.cacheAt`), marks the head, and
     // turns on automatic caching so the tool loop's growing history is
@@ -364,7 +364,7 @@ export function claudeAcceptsTemperature(model: string): boolean {
 }
 
 /** Whether an endpoint asks for prompt caching. Unset reads off, like
- *  `numCtx`; the default flips only on the eval record (CTO J19). */
+ *  `numCtx`; the default flips only on the eval record (tech review J19). */
 export function promptCacheOn(endpoint: Pick<AnthropicEndpoint, 'promptCache'>): boolean {
   return endpoint.promptCache === 'auto';
 }
@@ -382,7 +382,7 @@ export interface AnthropicSystemBlock {
 }
 
 /**
- * The system prompt as cacheable text blocks (CTO J17). The system messages
+ * The system prompt as cacheable text blocks (tech review J17). The system messages
  * join exactly as `toAnthropicMessages` joins them, so the text the model
  * reads is byte-identical to the string form; the only difference is where
  * the blocks break. Each message's `cacheAt` offsets (relative to that

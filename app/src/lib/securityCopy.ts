@@ -1,9 +1,9 @@
-// The security package's words, each exactly as CX ruled it, in one place so
-// the tests hold them: the secrets safety cards (CX 7) and the truncated
-// window card (CX 6). A card reads its lines from here, never its own copy.
+// The security package's words, each exactly as UX review ruled it, in one place so
+// the tests hold them: the secrets safety cards (UX review 7) and the truncated
+// window card (UX review 6). A card reads its lines from here, never its own copy.
 import type { StageSecret } from 'os-code/protocol';
 
-// ---- the secrets safety cards (CX 7) ----
+// ---- the secrets safety cards (UX review 7) ----
 
 /** On every approval card while the chat can see the project's secrets. */
 export const LOCKDOWN_LINE =
@@ -20,7 +20,7 @@ export const SECRET_REASON: Record<StageSecret, string> = {
   detected: 'Has text that looks like a key or password.',
 };
 
-/** Above the list, when any file is flagged. CX's words are plural; a single
+/** Above the list, when any file is flagged. UX review's words are plural; a single
  *  file reads the same sentence in the singular. */
 export function flaggedLine(n: number): string {
   return n === 1
@@ -34,7 +34,7 @@ export function tickedWarning(pushesTo?: string): string {
   return `This file will be saved in the project's history${pushesTo ? `, and sent to ${pushesTo}` : ''}.`;
 }
 
-// ---- the truncated window card (CX 6) ----
+// ---- the truncated window card (UX review 6) ----
 
 export function windowCutTitle(model: string): string {
   return `${model} could not see the whole chat`;

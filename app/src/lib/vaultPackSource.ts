@@ -1,4 +1,4 @@
-// The app's vault context pack (Vault M5, CTO J1): the exact engine pack
+// The app's vault context pack (Vault M5, tech review J1): the exact engine pack
 // (`planContextPack` and `buildContextPack` from os-code/protocol), prepared
 // once per send and rendered per seat, mirroring core/vault/contextSource.ts
 // and the loop's `renderPack`.
@@ -65,7 +65,7 @@ export interface AppVaultPackDeps {
    *  `HANDOFF_MAX_AGE_DAYS` old (J13); undefined for none. Asked on the
    *  first prepare only. */
   handoff?: () => string | undefined;
-  /** Room for notes in force (Vault M7, CTO L13; CX Y8): the store folds
+  /** Room for notes in force (Vault M7, tech review L13; UX review Y8): the store folds
    *  the machine's `vault.packSize` and `settings.vaultPackSize` through
    *  `vaultPackSize(machine, app)`, so the app may only lower it. Unset is
    *  Normal, and the budget is byte for byte what it was before M7. */
@@ -75,7 +75,7 @@ export interface AppVaultPackDeps {
    *  project and the machine in charge (the store asks `handoff` only when
    *  they allow it). */
   handoffSetting?: () => 'off' | undefined;
-  /** The personal vault's resolved settings (Vault M7, CTO L2): notes under
+  /** The personal vault's resolved settings (Vault M7, tech review L2): notes under
    *  its `templates.folder`, and those Obsidian's ignore filters name, are
    *  no retrieval candidate. The person's own pins still ride. Unset leaves
    *  every note a candidate. */
@@ -89,7 +89,7 @@ export interface AppVaultPackDeps {
 }
 
 /** The pack's budget for a seat (`packBudgetTokens(profile, served, size)`,
- *  CTO L13): a factor on the class's budget, always capped. */
+ *  tech review L13): a factor on the class's budget, always capped. */
 export type PackBudget = (
   profile: ModelClassProfile,
   served: number,
@@ -407,7 +407,7 @@ export function createAppVaultPack(deps: AppVaultPackDeps): AppVaultPack {
       // A local seat's pack may carry a note that stays on this computer; the
       // reply it grounds is marked, so a later leaving seat gets the stub.
       // The mark names the project's own pin when that is all it carries
-      // (CX and CMO, 2026-10-08, G, H).
+      // (UX and copy review, 2026-10-08, G, H).
       const mark =
         text && renderCache.localOnly
           ? {

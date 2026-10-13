@@ -186,7 +186,7 @@ describe('box-run model, reached from the phone', () => {
   });
 });
 
-// CX and CMO, 2026-10-08 (B, J): GET /stack says where each seat answers
+// UX and copy review, 2026-10-08 (B, J): GET /stack says where each seat answers
 // (kind judged by seatLeaves, onThisComputer by a loopback address, never
 // the LAN) and that this daemon takes a local-only turn; POST /input carries
 // that mark to the session.
@@ -352,7 +352,7 @@ describe('POST /sessions/:id/trust (project trust)', () => {
   });
 });
 
-// More room from the truncation card (C1, CTO 5): the owner's tap writes
+// More room from the truncation card (C1, tech review 5): the owner's tap writes
 // `numCtx: 'auto'` for that provider to machine config, never a project file;
 // a member on a shared hub cannot spend the computer's memory.
 describe('POST /sessions/:id/more-room (the truncation card)', () => {
@@ -476,7 +476,7 @@ describe('POST /sessions/:id/rewind', () => {
 // The workspace predicates resolve BOTH sides through realpath, so a symlink
 // planted inside ~/OSCode that points outside it cannot pass as provisioned
 // (the P0-1 escape). HOME is pointed at the scratch dir so ~/OSCode is ours.
-// Each caller works on its own vault root (Vault M5, CTO J8): the owner on the
+// Each caller works on its own vault root (Vault M5, tech review J8): the owner on the
 // machine's vault, a member on oscHome()/vaults/members/<hash>, so a member's
 // agent has the vault tools on its own folder and never the owner's.
 describe('a member session works on its own vault root on a shared hub', () => {
@@ -707,7 +707,7 @@ describe('three callers on one hub, each on their own vault root (J8)', () => {
   });
 });
 
-// Handoffs are cleared with the chats (Vault M5, CTO J13): deleting a session
+// Handoffs are cleared with the chats (Vault M5, tech review J13): deleting a session
 // removes its project's handoff, and the owner can clear every one at once.
 describe('clearing the stored handoffs', () => {
   it("DELETE /sessions/:id takes its handoff; DELETE /handoffs is the owner's alone", async () => {

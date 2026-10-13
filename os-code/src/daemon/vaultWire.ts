@@ -1,4 +1,4 @@
-// The daemon's vault wire (Vault M5, CTO J6 and J7): the shapes the hub serves
+// The daemon's vault wire (Vault M5, tech review J6 and J7): the shapes the hub serves
 // so a paired phone reaches the one vault on the person's computer, and the
 // additive `/chat` fields that let the daemon build the desktop chat's pack.
 // Types and plain constants only, exported through os-code/protocol, so the
@@ -125,13 +125,13 @@ export interface VaultWireError {
 }
 
 // ---------------------------------------------------------------------------
-// /chat (CTO J6)
+// /chat (tech review J6)
 
 /** The `/chat` body's additive vault fields. The daemon builds the pack over
  *  the caller's root; `cwd` gives Current State only when it passes the same
  *  checks a session create does. The phone never ships note bodies. */
 export interface ChatVaultFields {
-  /** `packSize` is the app's Room for notes (Vault M7, CTO L13): it may
+  /** `packSize` is the app's Room for notes (Vault M7, tech review L13): it may
    *  only lower the machine's `vault.packSize`, never raise it. */
   vaultPack?: { cwd?: string; projectName?: string; packSize?: VaultPackSize };
   /** Memory off: no pack, no handoff read. */
@@ -143,7 +143,7 @@ export interface ChatVaultFields {
 export type ChatContextPackEvent = Extract<AgentEvent, { type: 'context-pack' }>;
 
 // ---------------------------------------------------------------------------
-// Session create (CTO J12, J14)
+// Session create (tech review J12, J14)
 
 /** The session create body's additive fields. */
 export interface SessionCreateVaultFields {
@@ -152,13 +152,13 @@ export interface SessionCreateVaultFields {
   handoff?: string;
   /** The project's own pins (`Project.vaultPins`), at most 8 paths. */
   vaultPins?: string[];
-  /** The app's vault switches (Vault M7, CTO L13), off-only and lower-only;
+  /** The app's vault switches (Vault M7, tech review L13), off-only and lower-only;
    *  the daemon validates each value and drops anything else. */
   vaultOverrides?: VaultOverrides;
 }
 
 // ---------------------------------------------------------------------------
-// Vault M6 (CTO K13): rename, folders, Trash and attachments, each on the
+// Vault M6 (tech review K13): rename, folders, Trash and attachments, each on the
 // caller's own root (D9), each path through `isNotePath` or
 // `isAttachmentPath` and the Jail. `.trash` is reached only by the trash
 // routes. No agent tool changes: the agent cannot rename, trash or read
@@ -292,7 +292,7 @@ export interface VaultAttachmentsListResponse {
 }
 
 // ---------------------------------------------------------------------------
-// Vault M7 (CTO L5, L7): the vault settings file over the hub. `GET
+// Vault M7 (tech review L5, L7): the vault settings file over the hub. `GET
 // /vault/config/<name>` (above) already reads it; the one write is `PUT
 // /vault/config/oscode/vault`, on the caller's own root (`vaultRootFor(auth)`,
 // so a member writes only their own), with a compare-and-swap guard. Every

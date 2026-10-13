@@ -335,7 +335,7 @@ export function StackHealthScreen() {
   }, [load]);
 
   const saved = useCountUp(health?.savedDollars ?? 0);
-  // The founder singled out water: it is the count-up beat on the green section.
+  // A maintainer singled out water: it is the count-up beat on the green section.
   // A small lead-in delay lets the number start as the hero slides into its slot
   // rather than counting before the card has arrived.
   const waterAvoided = useCountUp((health?.sustainability.avoided.liters ?? 0) * 1000, 1100, 220);

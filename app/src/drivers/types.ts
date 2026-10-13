@@ -61,7 +61,7 @@ export interface ChatDriver {
    */
   trustFolder?(): Promise<{ ok: true; folder: string } | { error: string }>;
   /**
-   * The truncation card's action (engine-backed drivers only, C1, CTO 5):
+   * The truncation card's action (engine-backed drivers only, C1, tech review 5):
    * serve this provider's models a larger window on the computer the session
    * runs on, from the next message, in every chat. On a shared hub only the
    * owner may, since it spends the computer's memory.
@@ -172,7 +172,7 @@ export function readChatContext(context: ChatContext | undefined): string | unde
   return text?.trim() || undefined;
 }
 
-/** The seat a vault pack is rendered for (Vault M5, CTO J1, J2, J4): its
+/** The seat a vault pack is rendered for (Vault M5, tech review J1, J2, J4): its
  *  class (`deriveModelClass`), the window it is served, and whether its
  *  requests leave this network (judged by address, `hostIsLocal`). Built by
  *  `packSeatFor` (lib/vaultSeat.ts); null there means the seat gets no pack. */
@@ -183,7 +183,7 @@ export interface PackSeat {
 }
 
 /**
- * The app's vault context pack for one conversation (Vault M5, CTO J1), the
+ * The app's vault context pack for one conversation (Vault M5, tech review J1), the
  * exact engine pack (`planContextPack` and `buildContextPack` from
  * os-code/protocol). Built by `createAppVaultPack` (lib/vaultPackSource.ts).
  * A driver calls `prepare` once per send, after `task-start`, then `render`
@@ -206,14 +206,14 @@ export interface AppVaultPack {
     event?: DriverEvent;
     localOnly?: true;
     /** Set with `localOnly` when every note that stays on this computer in
-     *  the text is one of the project's own pins (CX and CMO, 2026-10-08,
+     *  the text is one of the project's own pins (UX and copy review, 2026-10-08,
      *  G, H), so a card can name the pin rather than a read. */
     pinOnly?: true;
   };
 }
 
 /**
- * The local-only mark on a reply (Vault M5, CTO J10, I5 in the transcript):
+ * The local-only mark on a reply (Vault M5, tech review J10, I5 in the transcript):
  * an additive field on `text-final`, set by an app driver when the reply
  * followed a local-only read (a vault tool read, or a pack that carried a
  * local-only note). The store copies it onto the assistant item, and a switch
@@ -293,7 +293,7 @@ function strongerCause(
 
 /**
  * Whether a chat on a seat that stays on this network holds a private note's
- * text, and why (CX and CMO, 2026-10-08, H): the cause names the project's
+ * text, and why (UX and copy review, 2026-10-08, H): the cause names the project's
  * own pin when that is all it holds, the way the engine's `privateCause`
  * does, else a read. A search a model writes then asks every time, and one
  * bound for Perplexity does not run. One per driver instance, in memory.
@@ -349,7 +349,7 @@ export function stubsReply(
 }
 
 /**
- * The placeholder line (CX and CMO, 2026-10-08, F): said once per chat for
+ * The placeholder line (UX and copy review, 2026-10-08, F): said once per chat for
  * each model off this network, on the first turn it is sent the placeholder
  * in place of a marked reply, so a cloud model that seems to forget the chat
  * has a reason on screen. One per driver instance, keyed by seat; it lives in
@@ -368,7 +368,7 @@ export class PlaceholderNotice {
   }
 }
 
-/** The trailing options every chat driver constructor takes (CTO J1). The
+/** The trailing options every chat driver constructor takes (tech review J1). The
  *  store passes none with Memory off or `settings.vaultContext === 'off'`. */
 export interface DriverVaultOptions {
   vaultPack?: AppVaultPack;

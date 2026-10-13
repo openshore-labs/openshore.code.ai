@@ -1,0 +1,19 @@
+{
+  "name": "oscode-passkey",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Native passkeys for OpenShore sign-in: ASAuthorizationPlatformPublicKeyCredentialProvider for openshore.ai, with user verification required, so the ceremony speaks for the relying party that a WKWebView cannot.",
+  "license": "Apache-2.0",
+  "files": [
+    "ios/Sources",
+    "Package.swift"
+  ],
+  "capacitor": {
+    "ios": {
+      "src": "ios"
+    }
+  },
+  "peerDependencies": {
+    "@capacitor/core": ">=8.0.0"
+  }
+}

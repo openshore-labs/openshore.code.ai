@@ -1,5 +1,5 @@
-// Make OpenShore's release signing keys (CTO rulings 1 and 2, 2026-09-29;
-// the maintainer release-signing runbook). One command, run once by the founder:
+// Make OpenShore's release signing keys (tech review rulings 1 and 2, 2026-09-29;
+// the maintainer release-signing runbook). One command, run once by a maintainer:
 //
 //   node app/scripts/release-keygen.mjs            # both key pairs
 //   node app/scripts/release-keygen.mjs mac        # only the Mac pair

@@ -226,7 +226,7 @@ describe('the store assembly (decideApproval)', () => {
     // A Stack plan's step on the computer forwards the engine's cards through
     // the Stack driver (a client brain here). Once the chat holds a private
     // note's text, the engine asks every time before a project note change
-    // or a web search (CX and CMO, 2026-10-08, A and H); Accept edits and
+    // or a web search (UX and copy review, 2026-10-08, A and H); Accept edits and
     // Bypass in the app must not approve those, nor an always-ask vaultWrite.
     const stack = {
       driverKind: 'stack',
@@ -268,7 +268,7 @@ describe('the deny reason', () => {
 // Starting a program that keeps running (P1) runs a command the model wrote,
 // so Terminal Control governs it exactly as it governs runShell; and while the
 // chat holds the project's secrets, On still shows the card for every command
-// (D3, CX 7), since OpenShore asks before each one.
+// (D3, UX review 7), since OpenShore asks before each one.
 describe('startProcess and the secrets lockdown', () => {
   const base = {
     driverKind: 'desktop',

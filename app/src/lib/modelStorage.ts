@@ -5,7 +5,7 @@
 //   2. How much memory does it want to actually run?            (estimatedRamGB)
 //   3. If my machine is too small, what machine would run it?   (recommendMachine)
 //
-// The load-bearing rule, from the founder: nothing here ever returns "blocked."
+// The load-bearing rule, from a maintainer: nothing here ever returns "blocked."
 // A model that will not fit on this device is not forbidden, it is a model you
 // download to iCloud instead and draw from when you are online (defaultTarget).
 // Size decides where the bytes land, never whether you are allowed to have them.

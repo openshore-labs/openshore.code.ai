@@ -1,6 +1,6 @@
 // The repo picker in the chat header, where the model name used to be: a
 // quiet pill that opens a repositories sheet in the Claude app's shape
-// (founder's reference, 2026-09-03): a title with the count, a "Selected"
+// (maintainer's reference, 2026-09-03): a title with the count, a "Selected"
 // card of what is checked, a "Repositories" card of the rest, owner over
 // name with a check on the right, and search pinned at the foot. The paired
 // computer's workspaces and every connected platform's repositories (GitHub,

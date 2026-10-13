@@ -1,4 +1,4 @@
-// The unattended profile's hard line (CTO must-fix for crew routines): a
+// The unattended profile's hard line (tech review must-fix for crew routines): a
 // configured DEFAULT of allow, not just a rule, must never make shell, push,
 // or cloud spend silent on the headless profile. Before this, a user config
 // with permissions.defaults.shell: "allow" would have run shell at 3am with

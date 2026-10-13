@@ -1,6 +1,6 @@
 ---
 name: security-privacy-review
-description: The CTO's security and privacy review for OpenShore, to the Proton standard. Use before an App Store or desktop release, before any change that adds a network call, a stored field, a table, a sign-in, a log line, a third-party service, or a privacy claim, and whenever the founder asks for a security or privacy review.
+description: OpenShore's security and privacy review, to the Proton standard. Use before an App Store or desktop release, before any change that adds a network call, a stored field, a table, a sign-in, a log line, a third-party service, or a privacy claim, and whenever a maintainer asks for a security or privacy review.
 ---
 
 # OpenShore security and privacy review (the Proton standard)
@@ -12,9 +12,10 @@ sweep below; report findings ranked Critical, High, Medium, Low, each with
 file:line, the concrete failure (who, from where, what they get), and the
 smallest fix. Mark must-fix before submission versus follow-up.
 
-The founder's own words (2026-10-01): "I only want to keep the bare minimum
-data required to run the application. Use Proton as a gold standard North
-Star for how we want to keep our users private and secure on the platform."
+The standard, as Open Shore LLC set it (2026-10-01): "I only want to keep the
+bare minimum data required to run the application. Use Proton as a gold
+standard North Star for how we want to keep our users private and secure on
+the platform."
 
 ## 1. What our server keeps (supabase/)
 
@@ -81,13 +82,13 @@ Star for how we want to keep our users private and secure on the platform."
   collect and why, how long, processors (Supabase, Apple, the search
   provider, GitHub, and Stripe only when it sells), rights (access, export,
   deletion), children, contact (`SUPPORT_EMAIL`), and changes.
-- App Store Connect's privacy answers and the App Review notes (in
-  `openshore-hq`, `openshore-code/internal-docs/docs/app-review-notes.md`)
-  match the code on the day of submission.
+- App Store Connect's privacy answers and the App Review notes (kept by the
+  maintainers, outside this repository) match the code on the day of
+  submission.
 
 ## 5. Output
 
 A short verdict (ship / ship with these must-fixes / do not ship), then the
 ranked findings, then a "Data we keep" table (data, where, why, retention,
-keep, minimize, or drop). Record the run in `docs/` with its date, and any
-ruling in `os-code/DECISIONS.md`.
+keep, minimize, or drop). Record any ruling in `os-code/DECISIONS.md`; a
+maintainer keeps the dated run with the company's records.

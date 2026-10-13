@@ -1,5 +1,5 @@
 # Renders the 1024x1024 app icons, one per tile the person can pick in
-# Settings, Appearance (founder, 2026-10-01): the default ink tile
+# Settings, Appearance (2026-10-01): the default ink tile
 # (scripts/brand/osc-tile-icon.svg), the turquoise one from openshore.ai, and
 # an all-white one with the mark in near-black. Each is the exact openshore.ai
 # wave-mark, full-bleed so iOS masks its own corners, written to its iOS icon

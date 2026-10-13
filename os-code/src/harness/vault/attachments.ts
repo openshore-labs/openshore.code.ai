@@ -1,4 +1,4 @@
-// Attachments (Vault M6, CTO K11): which vault files are attachments the Vault
+// Attachments (Vault M6, tech review K11): which vault files are attachments the Vault
 // reads (png, jpg, jpeg, gif, webp, avif, svg, pdf), their type, and how an
 // embed or a markdown link finds one. One order, pinned in
 // test/vaultMarkdownCore.test.ts:

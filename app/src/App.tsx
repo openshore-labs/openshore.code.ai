@@ -4,13 +4,14 @@ import { applyAppIcon } from './lib/appIconApply.js';
 import { Suspense, lazy, useEffect, useRef, type ComponentType } from 'react';
 import { Keyboard } from '@capacitor/keyboard';
 import { useApp, type ViewName } from './state/store.js';
+import { AppLockScreen } from './components/AppLockScreen.js';
+import { configureAppLock, onLockRequired } from './lib/appLock.js';
 import { useAuthDeepLink } from './hooks/useAuthDeepLink.js';
 import { useAutoUpdate } from './hooks/useAutoUpdate.js';
 import { useSheetFocusTrap } from './hooks/useSheetFocusTrap.js';
 import { hapticTick } from './lib/haptics.js';
 import { platform } from './lib/platform.js';
 import { Sidebar } from './components/Sidebar.js';
-import { AuthConfirmSheet } from './components/AuthConfirmSheet.js';
 import { WebSearchAsk } from './components/WebSearchAsk.js';
 import { AccountGateSheet } from './components/AccountGateSheet.js';
 import { ProfileSheet } from './components/ProfileSheet.js';
@@ -129,6 +130,7 @@ const ROOMS: Partial<Record<ViewName, ComponentType | null>> = {
 export function App() {
   const { ready, view, drawerOpen, toast, init, reconcileEntitlementOnForeground, accountChoice } =
     useApp();
+  const appLocked = useApp((s) => s.appLocked);
   const theme = useApp((s) => s.settings.theme);
   const appIcon = useApp((s) => s.settings.appIcon);
   const compact = useCompact();
@@ -264,10 +266,10 @@ export function App() {
       const inset = root.classList.contains('kb-open')
         ? parseFloat(getComputedStyle(root).getPropertyValue('--kb-inset')) || keyboardHeight
         : keyboardHeight;
-      // Rest the field just above the keyboard (founder, 2026-10-02), not
+      // Rest the field just above the keyboard (2026-10-02), not
       // centred: its own scroller moves, and the kb-open padding gives a field
       // near the foot of a room the room to rise.
-      // A field marked with its commit button rises with it (CX, 2026-10-02).
+      // A field marked with its commit button rises with it (UX review, 2026-10-02).
       const scroller = scrollParentOf(el);
       const box = el.getBoundingClientRect();
       const delta = revealPlan({
@@ -376,7 +378,37 @@ export function App() {
     };
   }, [reconcileEntitlementOnForeground]);
 
+  // App Lock (lib/appLock.ts): the native side times each trip to the
+  // background and covers the app; when a return must lock it says so here,
+  // and the lock screen takes the cover down once it is drawn. iPhone and
+  // iPad only.
+  const appLockSetting = useApp((s) => s.settings.appLock);
+  useEffect(() => {
+    if (!ready || platform() !== 'ios') return;
+    void configureAppLock(appLockSetting);
+    if (!appLockSetting?.on) return;
+    let remove: (() => void) | undefined;
+    let gone = false;
+    void onLockRequired(() => useApp.getState().lockApp()).then((r) => {
+      if (gone) r();
+      else remove = r;
+    });
+    return () => {
+      gone = true;
+      remove?.();
+    };
+  }, [ready, appLockSetting]);
+
   if (!ready) return <div className="shell" />;
+
+  // Locked: only the lock screen renders, so no room sits under it.
+  if (appLocked) {
+    return (
+      <div className="shell">
+        <AppLockScreen />
+      </div>
+    );
+  }
 
   // The setup page (reached from Harbor Lite's greeting) and the Personal or
   // Business choice (asked once, right after a new account is created) are
@@ -451,7 +483,6 @@ export function App() {
             dragProps={gesture.drawerProps}
           />
         ) : null}
-        <AuthConfirmSheet />
         {OrgJoinSheet ? (
           <Suspense fallback={null}>
             <OrgJoinSheet />

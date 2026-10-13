@@ -197,7 +197,7 @@ describe('polish standards', () => {
     // under `!gesture.peek`, so the render that followed removed it; a removed
     // element loses its capture, the release handler never fired, the gesture
     // stayed armed, and the drawer's invisible scrim sat over the room eating
-    // every tap until the app was quit (founder, 2026-09-03). Pinned here: the
+    // every tap until the app was quit (2026-09-03). Pinned here: the
     // zone outlives the gesture, and lost capture counts as a release.
     const app = readFileSync(join(SRC, 'App.tsx'), 'utf8').split('\n');
     const at = app.findIndex((line) => line.includes('className="edge-swipe-zone"'));
@@ -322,7 +322,7 @@ describe('polish standards', () => {
     expect(offenders, offenders.join('\n  ')).toEqual([]);
   });
 
-  it('gives every Vault class name a rule in theme.css (CTO K18, 6.9)', () => {
+  it('gives every Vault class name a rule in theme.css (tech review K18, 6.9)', () => {
     // Every `vault-` class the room and its components put on an element has
     // a rule, so a renamed rule or a class nobody styled fails CI. Only
     // className values are read (an id such as vault-rename-name is not a
@@ -668,7 +668,7 @@ describe('polish standards', () => {
   });
 });
 
-// A room scrolls up and down only (founder, 2026-10-02): the Vault's wash
+// A room scrolls up and down only (2026-10-02): the Vault's wash
 // bled 4px past the edge and the whole room panned sideways on the phone.
 describe('rooms never scroll sideways', () => {
   it('clips horizontal overflow on every room', () => {

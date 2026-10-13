@@ -1,7 +1,7 @@
 // gitOS: one seam, many homes for your bytes. This is the registry face of
 // it: resolve a provider by id, and expose the roster the pickers render.
 // "gitOS" is the internal system name; the user-facing surfaces are
-// Repositories (code) and Vault (notes), per the CMO naming ruling.
+// Repositories (code) and Vault (notes), per the copy review naming ruling.
 import { localProvider } from './local.js';
 import { icloudProvider, isIcloudAvailable } from './icloud.js';
 import { gdriveProvider } from './gdrive.js';

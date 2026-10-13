@@ -1,6 +1,6 @@
 // A quick return resumes the open chat behind a short splash; a Quit, a long
 // absence or (on the iPhone) more than half an hour away opens fresh
-// (founder, 2026-10-12).
+// (2026-10-12).
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';

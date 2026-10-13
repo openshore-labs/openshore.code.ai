@@ -1,4 +1,4 @@
-// The harness package's words (CTO 6 and the task-done card), in one place so
+// The harness package's words (tech review 6 and the task-done card), in one place so
 // the tests hold them: the verdict pill on the task-done card, the card for
 // retrieval before turn one, and the little-room card in the truncation
 // card's family. A card reads its lines from here, never its own copy. None

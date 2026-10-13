@@ -1,4 +1,4 @@
-// The harness lifts for 3B and 7B seats (CTO 6): alternating-repeat detection
+// The harness lifts for 3B and 7B seats (tech review 6): alternating-repeat detection
 // (on), retrieval before turn one and union decoding (both off behind config
 // and an eval switch), the lean prompt keyed on the served window, and the
 // headless run that hands no work to another model. Each lift is proven
@@ -78,7 +78,7 @@ function said(text: string): ScriptedTurn {
 // 1. Alternating-repeat detection, on
 // ---------------------------------------------------------------------------
 
-describe('alternating repeats (CTO 6)', () => {
+describe('alternating repeats (tech review 6)', () => {
   it('the watch sees A, B, A, B and counts each call that keeps it going', () => {
     const watch = new AlternatingRepeats();
     expect(['a', 'b', 'a'].map((k) => watch.note(k))).toEqual([0, 0, 0]);
@@ -306,7 +306,7 @@ function retrievalSession(
   return { provider, session };
 }
 
-describe('retrieval before turn one (CTO 6)', () => {
+describe('retrieval before turn one (tech review 6)', () => {
   it('is off by default: the prompt is byte for byte what it was', async () => {
     const unset = retrievalSession([textTurn('42')], undefined);
     await unset.session.agent.run(TASK);
@@ -459,7 +459,7 @@ function unionSession(
   return { provider, session };
 }
 
-describe('union decoding (CTO 6)', () => {
+describe('union decoding (tech review 6)', () => {
   it('is off by default: the request is byte for byte what it was', async () => {
     const unset = unionSession([said('All done.')], undefined);
     await unset.session.agent.run('say hi');

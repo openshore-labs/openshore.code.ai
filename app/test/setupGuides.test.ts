@@ -25,7 +25,7 @@ describe('setup guides', () => {
   });
 });
 
-// Bring your own keys, Part 4 (founder, 2026-10-09): Bedrock, Azure and Vertex
+// Bring your own keys, Part 4 (2026-10-09): Bedrock, Azure and Vertex
 // come through a gateway the person runs, with their own keys, connected at
 // its address with the mark on. OpenShore runs nothing.
 describe('the own-gateway guide', () => {

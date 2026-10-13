@@ -1,4 +1,4 @@
-// A project's own room, in the shape of the Claude app's (founder,
+// A project's own room, in the shape of the Claude app's (maintainer,
 // 2026-10-02): the name, a pair of pill doors (what the project works in,
 // what rides into every chat), then this room's own components at the top
 // (the pinned notes, and in later tiers the currents and the team roster),
@@ -219,7 +219,7 @@ export function ProjectDetailScreen() {
             <InstructionsGlyph />
             <span>{hasInstructions ? 'Instructions' : 'Add instructions'}</span>
           </button>
-          {/* Where its chats run (founder, 2026-10-12): a choice of this
+          {/* Where its chats run (2026-10-12): a choice of this
               device's, so a reader of a shared project still cannot start
               one there. */}
           <RunsOnPill project={project} disabled={!mayWrite} onOpen={() => setRunsOnOpen(true)} />
@@ -274,7 +274,7 @@ export function ProjectDetailScreen() {
                       {conv.title}
                     </span>
                     {/* Teal stayed on the device, amber reached the cloud (tenet
-                        4): a trust signal, so it stays (CX, 2026-10-02). */}
+                        4): a trust signal, so it stays (UX review, 2026-10-02). */}
                     <span className="project-chat-sub">
                       <ReachDot reach={chatReach(conv)} />
                       {relativeTime(conv.updatedAt)}

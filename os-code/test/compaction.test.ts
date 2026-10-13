@@ -99,7 +99,7 @@ describe('trimOldObservations (ENG-13)', () => {
   });
 });
 
-describe('the class sets when compaction runs (Vault M4, CTO I2)', () => {
+describe('the class sets when compaction runs (Vault M4, tech review I2)', () => {
   it('compacts at the given fraction of the window, 0.7 when none is given', async () => {
     // About 660 tokens of history against a 1000-token window, most of it an
     // old tool result the first stage can trim.

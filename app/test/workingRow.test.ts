@@ -1,4 +1,4 @@
-// The wait-then-answer moment (founder, 2026-09-03): the OpenShore mark rolls
+// The wait-then-answer moment (2026-09-03): the OpenShore mark rolls
 // as surf while the app waits on a first token, the word beside it turns over
 // through an honest lexicon, the reply arrives a few words at a time, each group fading
 // in, and finishes its tail instead of snapping, and the row eases out over the first line.
@@ -141,7 +141,7 @@ describe('the seam', () => {
     expect(clip).not.toMatch(/transition/);
   });
 
-  // Founder, 2026-09-23: the reply arrives like Claude's, a few words at a
+  // Maintainer, 2026-09-23: the reply arrives like Claude's, a few words at a
   // time, each group fading up from light to full ink, with no caret.
   it('fades words in while live and holds the split through the last fade', () => {
     // A model reply (not a scripted letter, which rolls in on the swell).

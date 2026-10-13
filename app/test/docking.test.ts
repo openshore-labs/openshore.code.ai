@@ -1,4 +1,4 @@
-// Connect-anywhere (founder, 2026-10-07; docs/design/connect-anywhere-proposal.md):
+// Connect-anywhere (2026-10-07; docs/design/connect-anywhere-proposal.md):
 // docking a device to a computer at home or a server you rent, every way in
 // listed in Computer, a server set up from Cloud Connections too, and two
 // providers whose models load live from their own list on the person's key.

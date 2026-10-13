@@ -1,4 +1,4 @@
-// Drag to reorder the sidebar (founder, 2026-10-01). A row lifts on a long
+// Drag to reorder the sidebar (2026-10-01). A row lifts on a long
 // press with a finger (a short press still opens the room, and a sideways
 // swipe still closes the drawer) or on a short drag with a mouse, follows the
 // pointer 1:1, and the rows it passes step aside on the standard curve

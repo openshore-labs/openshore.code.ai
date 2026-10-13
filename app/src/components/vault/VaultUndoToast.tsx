@@ -1,4 +1,4 @@
-// The Vault's Undo toast (Vault M6 6.3; CTO K6, R2; CX X9). An action variant
+// The Vault's Undo toast (Vault M6 6.3; tech review K6, R2; UX review X9). An action variant
 // of the app toast, local to the Vault room (the app toast is a bare string,
 // and M6 does not change App.tsx): the text may ellipsize, the Undo button
 // never does and is at least 44 px tall. It shows for 6 seconds, the timer
@@ -7,7 +7,7 @@
 // useExitPresence, so it sinks and fades out rather than blinking away.
 //
 // The delete has already landed when this mounts, so the commit haptic fires
-// here, once per toast (CX X19). Undo is a button, so App's capture tick is
+// here, once per toast (UX review X19). Undo is a button, so App's capture tick is
 // its one tick. For VoiceOver the untimed way back is Trash, so the button's
 // description says "Also in Trash." (WCAG 2.2.1) wherever Trash is real.
 import { useEffect, useRef, useState } from 'react';
@@ -15,7 +15,7 @@ import { useExitPresence } from '../../hooks/useExitPresence.js';
 import { hapticCommit } from '../../lib/haptics.js';
 import { VAULT_UNDO, VAULT_UNDO_ALSO_IN_TRASH, vaultUndoLabel } from '../../lib/vaultCopy.js';
 
-/** How long the toast waits for a hand (CX X9: the plain toast's 3.2 s is too
+/** How long the toast waits for a hand (UX review X9: the plain toast's 3.2 s is too
  *  short to read and reach). */
 export const VAULT_UNDO_MS = 6000;
 

@@ -4,7 +4,7 @@
 // a sheet or a draft is not. localStorage on purpose: main.tsx reads it before
 // the store exists, and a blocked or empty store just means a normal opening.
 //
-// Three rules (founder, 2026-10-12):
+// Three rules (2026-10-12):
 // - The clock runs from when the person left, not from the last chat switch:
 //   the point is stamped again every time the app goes to the background.
 // - A deliberate Quit on the desktop opens fresh: the main process marks it

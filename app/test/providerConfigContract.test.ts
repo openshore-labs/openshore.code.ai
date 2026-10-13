@@ -1,4 +1,4 @@
-// readConfig across the seam (Vault M3, CTO H5). Only logical names cross; each
+// readConfig across the seam (Vault M3, tech review H5). Only logical names cross; each
 // provider that implements the method reads an allowed file or answers
 // `absent` by design, and an unknown name, a path, a plugin's data.json and a
 // symlink pointing outside all answer `refused`. readVaultConfig answers

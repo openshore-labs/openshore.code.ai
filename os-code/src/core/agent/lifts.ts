@@ -1,4 +1,4 @@
-// The harness lifts for 3B and 7B seats (CTO 6), the engine's side of
+// The harness lifts for 3B and 7B seats (tech review 6), the engine's side of
 // retrieval before turn one. The budget, the search words and the block are
 // the pure core's (harness/retrieval.ts); this reads the workspace through
 // the keyword search and decides what is never read: a file that may hold a

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Run one Supabase CLI command against the LOCAL stack with a throwaway Vault
-# secret (CTO 11, 2026-09-29).
+# secret (tech review 11, 2026-09-29).
 #
 #   bash supabase/scripts/local-vault.sh supabase db start
 #   bash supabase/scripts/local-vault.sh npx --yes supabase@2.118.0 db start

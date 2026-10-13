@@ -19,8 +19,8 @@ import {
   type WebSearchResult,
 } from './webSearch.js';
 
-/** A model-written search once its chat holds a private note's text (CX and
- *  CMO, 2026-10-08, H): what made the chat private, a read or a project pin
+/** A model-written search once its chat holds a private note's text (UX review and
+ *  copy review, 2026-10-08, H): what made the chat private, a read or a project pin
  *  alone, which the card's lead and a refusal name. */
 export interface AfterPrivate {
   afterPrivate: true;

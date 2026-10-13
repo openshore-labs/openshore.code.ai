@@ -488,7 +488,7 @@ public class OscodeLlamaPlugin: CAPPlugin, CAPBridgedPlugin {
     // ---------------------------------------------------------------- app icon
 
     /// The Home Screen icon the person picked in Settings, Appearance
-    /// (founder, 2026-10-01). `name` is an alternate icon set compiled into
+    /// (2026-10-01). `name` is an alternate icon set compiled into
     /// the app (AppIcon-Turquoise, AppIcon-White; ASSETCATALOG_COMPILER_
     /// ALTERNATE_APPICON_NAMES), or null for the default. iOS itself then
     /// says the icon changed; that alert is the system's and cannot be hidden.

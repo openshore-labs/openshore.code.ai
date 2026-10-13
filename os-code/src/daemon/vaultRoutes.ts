@@ -1,4 +1,4 @@
-// The daemon's vault routes and the desktop chat's pack (Vault M5, CTO J6,
+// The daemon's vault routes and the desktop chat's pack (Vault M5, tech review J6,
 // J7). A handler module: serve.ts authenticates, picks the caller's own root
 // (`vaultRootFor(auth)`), and hands the request here with one dispatch line;
 // every answer comes back as a value serve.ts writes, so a test can drive a
@@ -224,7 +224,7 @@ function readyRoot(root: string): VaultRouteAnswer | undefined {
   }
 }
 
-/** The M6 routes (CTO K13): rename, folders, Trash, attachments and their
+/** The M6 routes (tech review K13): rename, folders, Trash, attachments and their
  *  bytes. Undefined when the request is none of them. */
 async function vaultM6Route(req: VaultRouteRequest): Promise<VaultRouteAnswer | undefined> {
   const [area, ...rest] = req.parts;
@@ -412,7 +412,7 @@ async function vaultM6Route(req: VaultRouteRequest): Promise<VaultRouteAnswer | 
 }
 
 // ---------------------------------------------------------------------------
-// Vault M7 (CTO L7, L13): the settings file write and the session overrides.
+// Vault M7 (tech review L7, L13): the settings file write and the session overrides.
 // One write path for the two hosts that hold a folder: the hub's `PUT
 // /vault/config/oscode/vault` (the caller's own root) and main's
 // `osc:vaultWriteConfig` (the vault root main reads itself). Both call
@@ -727,7 +727,7 @@ export async function vaultRoute(req: VaultRouteRequest): Promise<VaultRouteAnsw
 }
 
 // ---------------------------------------------------------------------------
-// The desktop chat's pack (CTO J6)
+// The desktop chat's pack (tech review J6)
 
 export interface ChatPackOptions {
   /** The caller's own root; undefined (or a folder not there) leaves every
@@ -745,7 +745,7 @@ export interface ChatPackOptions {
   caps: { contextTokens: number; supportsGrammar: boolean; nativeContextTokens?: number };
   /** `vault.context` from the machine's config. */
   setting: VaultContextSetting;
-  /** Room for notes in force (`vaultPackSize(machine, app)`, Vault M7, CTO
+  /** Room for notes in force (`vaultPackSize(machine, app)`, Vault M7, tech review
    *  L13) and the machine's cap; unset is Normal under the default cap. */
   packSize?: VaultPackSize;
   packMaxTokens?: number;

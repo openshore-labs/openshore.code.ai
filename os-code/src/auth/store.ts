@@ -3,7 +3,7 @@
 //   2. An encrypted file at ~/.os-code/credentials (AES-256-GCM, mode 600)
 //      whose key is a random 32-byte file key held by the OS: the macOS
 //      Keychain (`security`), Windows DPAPI for this user (PowerShell), so a
-//      copy of ~/.os-code alone opens nothing (CTO security review 2026-10-01,
+//      copy of ~/.os-code alone opens nothing (tech review security review 2026-10-01,
 //      F2). Where neither exists (Linux without libsecret) the key is derived
 //      from the machine identity, the old scheme, and the docs say so.
 // A file written under the old hostname-derived key is read once and

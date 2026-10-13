@@ -175,7 +175,7 @@ describe('Harbor Lite is optimized for guiding, not building', () => {
     }
   });
 
-  it('routes a coding ask to the upgrades the founder named', () => {
+  it('routes a coding ask to the upgrades a maintainer named', () => {
     const lower = buildHarborMiniSystemPrompt('Write me a Python script').toLowerCase();
     expect(lower).toContain('suggest harbor on the phone or deepblue on their computer');
   });
@@ -212,7 +212,7 @@ describe('the rename to Harbor Lite keeps a stable slot', () => {
   });
 });
 
-describe('the remaining Creative Studio microcopy is wired', () => {
+describe('the remaining design review microcopy is wired', () => {
   it('gives a Harbor Lite chat its "always here" resting prompt', () => {
     expect(HARBOR_MINI_EMPTY_HINT).not.toMatch(NO_EM_DASH);
     const chat = readFileSync(join(process.cwd(), 'src/screens/ChatScreen.tsx'), 'utf8');
@@ -227,7 +227,7 @@ describe('the remaining Creative Studio microcopy is wired', () => {
   });
 });
 
-describe('the delightful first-run (Creative Studio: The Standing Light)', () => {
+describe('the delightful first-run (design review: The Standing Light)', () => {
   it('greets warmly, is honest, offline, and ends by inviting a first move', () => {
     expect(HARBOR_MINI_GREETING).not.toMatch(NO_EM_DASH);
     expect(HARBOR_MINI_GREETING.toLowerCase()).toContain('built into the app');
@@ -251,7 +251,7 @@ describe('the delightful first-run (Creative Studio: The Standing Light)', () =>
     expect(chat).toContain('HARBOR_MINI_MODEL_ID');
   });
 
-  // Founder, 2026-09-23: a new person opens straight into Harbor Lite's chat,
+  // Maintainer, 2026-09-23: a new person opens straight into Harbor Lite's chat,
   // not a setup wall and not a Personal-or-Business question. The setup page
   // is the optional tier, reached from a button under the greeting.
   it('opens a new person into the built-in guide chat, with setup one tap away', () => {
@@ -268,7 +268,7 @@ describe('the delightful first-run (Creative Studio: The Standing Light)', () =>
     const paths = readFileSync(join(process.cwd(), 'src/components/StartingPaths.tsx'), 'utf8');
     expect(paths).not.toContain('Say hello');
     // One lead, on the page itself: the old "go further" label is gone. The
-    // Harbor card is one tap with one line (D9, founder 2026-10-07, which
+    // Harbor card is one tap with one line (D9, 2026-10-07, which
     // replaces the byline's two sentences there): what it is, on the device
     // in hand, and its size.
     expect(paths).not.toContain('paths-further-head');
@@ -287,15 +287,15 @@ describe('the delightful first-run (Creative Studio: The Standing Light)', () =>
     );
     expect(onboarding).not.toContain('AccountSetup');
     const store = readFileSync(join(process.cwd(), 'src/state/store.ts'), 'utf8');
-    const signUp = store.slice(store.indexOf('async signUpAccount('));
+    const signUp = store.slice(store.indexOf('async function signedInByEmail('));
     expect(signUp.slice(0, 800)).toContain('accountChoice: true');
     const setup = readFileSync(join(process.cwd(), 'src/components/AccountSetup.tsx'), 'utf8');
     expect(setup).toContain('<h3>Business</h3>');
   });
 });
 
-// CX and CMO, 2026-10-08 (D, E, K): a plan never carries a picture, so the
-// founder's 2026-10-07 exception is gone from every guide; a cloud model runs
+// UX and copy review, 2026-10-08 (D, E, K): a plan never carries a picture, so the
+// maintainer's 2026-10-07 exception is gone from every guide; a cloud model runs
 // only when the person picks or places it; and with both Image reading slots
 // set, the Cloud model takes a picture the Local one failed on only after a
 // card. The guides say it in the words What leaves this device backs.

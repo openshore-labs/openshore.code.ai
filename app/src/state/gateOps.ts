@@ -1,5 +1,5 @@
 // One door to the coding agent, and the account gate's other seams (build
-// 2026-09-29, package A1). The rules live here, apart from the store (CTO
+// 2026-09-29, package A1). The rules live here, apart from the store (tech review
 // ruling 9), as plain functions a test reads without it; the store wires them
 // into ensureDriver, buildDriver, attachDriver, failOpen, the sign-out, and
 // the launch notice. Test: app/test/accounts.test.ts.

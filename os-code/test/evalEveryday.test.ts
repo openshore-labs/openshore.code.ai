@@ -1,7 +1,7 @@
 // The everyday suite and the head-to-head baseline. The checkers must tell a
 // finished job from an unfinished one by behavior alone (no judge model), the
 // baseline must read Claude Code's own output into the same report shape, and
-// the floor run must plan every with and without pair the founder's box owes.
+// the floor run must plan every with and without pair a maintainer's box owes.
 import { describe, it, expect } from 'vitest';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';

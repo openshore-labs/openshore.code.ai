@@ -93,7 +93,7 @@ describe('launch at login', () => {
   });
 });
 
-describe('Turn off holds across launches (pairing review, CX 2026-10-01)', () => {
+describe('Turn off holds across launches (pairing review, UX review 2026-10-01)', () => {
   it('remembers a pause and forgets it on resume', async () => {
     const { mkdtempSync } = await import('node:fs');
     const { tmpdir } = await import('node:os');

@@ -1,4 +1,4 @@
-// The vault folder watcher (Vault M1, CTO F3), with fs.watch injected: the
+// The vault folder watcher (Vault M1, tech review F3), with fs.watch injected: the
 // path filter keeps only notes (never our own temp files, `.obsidian/`, or an
 // attachment), a change it cannot name becomes a tree change, events are
 // debounced (300 ms trailing, 1 s at most) into one { paths, tree }, a flood

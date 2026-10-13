@@ -1,4 +1,4 @@
-// The app's host for the Vault index (Vault M3, CTO H3 and H6). The index
+// The app's host for the Vault index (Vault M3, tech review H3 and H6). The index
 // itself is the shared pure core (`VaultIndex` in os-code/protocol): one entry
 // per note, the links between notes, and BM25 search. This module owns
 // everything around it that does I/O, so the store only gains call sites:
@@ -122,7 +122,7 @@ export async function vaultIndexKey(target: VaultIndexTarget, rootKey?: string):
 }
 
 // ---------------------------------------------------------------------------
-// The seed hook (Vault M5, CTO J9)
+// The seed hook (Vault M5, tech review J9)
 
 /** A head start for a vault this device has never indexed: the hub's copy of
  *  the engine's own saved index (`GET /vault/index`). Null or a rejection is
@@ -727,7 +727,7 @@ export class VaultIndexHost {
   }
 
   /** Write a pending save now, and keep the index open: leaving the Vault
-   *  room keeps the personal index warm for the chats (Vault M5, CTO J1). */
+   *  room keeps the personal index warm for the chats (Vault M5, tech review J1). */
   async flush(): Promise<void> {
     if (this.closed || this.saveTimer === undefined) return;
     clearTimeout(this.saveTimer);
@@ -855,7 +855,7 @@ export class VaultIndexHost {
 //
 // The Vault room asks for the index of the vault on screen (vaultIndexFor)
 // and closes it when it is left (closeVaultIndex). Chats read the personal
-// vault's index for their context pack (Vault M5, CTO J1), so leaving the room
+// vault's index for their context pack (Vault M5, tech review J1), so leaving the room
 // must not leave them a cold one: closing the PERSONAL index parks it, its
 // last write saved, and the next vaultIndexFor for the same target (the room
 // again, or the pack) takes it back warm. The team vault is never in a
@@ -933,9 +933,9 @@ export async function closeVaultIndex(): Promise<void> {
 }
 
 /** Close every index, the warm one too: a storage move, a sign-out, or a
- *  pairing change (Vault M5, CTO J1). */
+ *  pairing change (Vault M5, tech review J1). */
 export async function shutVaultIndex(): Promise<void> {
-  // The images a vault showed go with it (CTO K11): no blob URL outlives
+  // The images a vault showed go with it (tech review K11): no blob URL outlives
   // the vault it was made from.
   vaultBlobs.revokeAll();
   const hosts = [current, parked];

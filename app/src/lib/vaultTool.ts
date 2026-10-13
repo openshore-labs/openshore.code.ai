@@ -1,9 +1,9 @@
-// The vault tools on app seats that call tools (Vault M5, CTO J10), on the
+// The vault tools on app seats that call tools (Vault M5, tech review J10), on the
 // codemagicTool.ts pattern: Anthropic and OpenAI specs plus one runner. The
 // descriptions are the engine's own (`VAULT_TOOL_TEXT` from os-code/protocol),
 // so both hosts teach search, then one section, then links.
 //
-// Privacy is the one judge (`VaultPrivacy.visibility`, CTO J3): a hidden note
+// Privacy is the one judge (`VaultPrivacy.visibility`, tech review J3): a hidden note
 // is absent from every answer, a local-only note's text reaches only a seat
 // whose requests stay on this network, and such an answer carries `localOnly`
 // so the driver marks the send's replies and a later leaving turn gets
@@ -11,7 +11,7 @@
 // proposal and the driver shows every queued write on one card at the end of
 // the send (D4).
 //
-// Vault M7 (CTO L2, L8): a model never writes under `.oscode/` (the vault's
+// Vault M7 (tech review L2, L8): a model never writes under `.oscode/` (the vault's
 // settings are the person's), refused at propose on the typed path and again
 // at approve on the path the write would really land on
 // (`vaultApproveRefusal`); and where the vault's settings name an agent
@@ -75,7 +75,7 @@ export interface VaultProposal extends VaultProposeInput {
   baseVersion?: string;
   /** The note's text at `baseVersion` (append only, and only when the note
    *  was not hidden), so the exact bytes an approval writes are known before
-   *  the card (Vault M7, CTO L9). */
+   *  the card (Vault M7, tech review L9). */
   baseText?: string;
   /** The exact text an approved append writes, provenance lines included,
    *  computed before the card; the write lands it only while the note is
@@ -100,7 +100,7 @@ export interface VaultToolContext {
    *  [[wikilink]] would (the index's resolver). Absent, only exact paths
    *  read and a miss offers search suggestions. */
   resolve?: (name: string) => Promise<string | undefined>;
-  /** The vault's `agent.folder` (Vault M7, CTO L2): a proposal outside it is
+  /** The vault's `agent.folder` (Vault M7, tech review L2): a proposal outside it is
    *  refused. Absent: anywhere in the vault. */
   agentFolder?: string;
 }
@@ -160,7 +160,7 @@ const SCHEMAS: Record<AppVaultToolName, Record<string, unknown>> = {
 };
 
 /** A tool's description; `vaultPropose` names the agent folder when the
- *  vault's settings set one (CTO L2). */
+ *  vault's settings set one (tech review L2). */
 export function vaultToolDescription(name: AppVaultToolName, agentFolder?: string): string {
   const base = VAULT_TOOL_TEXT[name];
   const folder = agentFolder ? cleanFolder(agentFolder) : undefined;
@@ -369,7 +369,7 @@ function namesSettingsFolder(path: string): boolean {
     .some((seg) => seg.trim().normalize('NFC').toLowerCase() === '.oscode');
 }
 
-/** Why a model may not write at this path, or undefined when it may (CTO
+/** Why a model may not write at this path, or undefined when it may (tech review
  *  L2, L8): anything under `.oscode/` (or any dot folder, or a rooted or
  *  empty path) is refused with the tool card's reason, and a path outside
  *  the vault's agent folder is refused by name. */
@@ -389,7 +389,7 @@ export function vaultAgentWriteRefusal(path: string, agentFolder?: string): stri
   return undefined;
 }
 
-/** The approve step's check (CTO L8), run again right before each approved
+/** The approve step's check (tech review L8), run again right before each approved
  *  write: on the proposal's path and, when the storage can say where the
  *  write would really land (a symlink, a case fold), on that path too. A
  *  refusal writes nothing for that proposal. */

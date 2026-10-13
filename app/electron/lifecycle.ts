@@ -84,7 +84,7 @@ export function isHiddenLaunch(argv: readonly string[]): boolean {
 }
 
 /** The person's own Turn off (or the tray's Pause), kept across launches
- *  (pairing review, CX 2026-10-01): a computer someone took off the phone
+ *  (pairing review, UX review 2026-10-01): a computer someone took off the phone
  *  stays off until they turn it back on, never silently reopened by the next
  *  launch. A marker file in userData; present means paused. */
 export const HUB_PAUSED_FILE = 'hub-paused';

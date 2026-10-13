@@ -31,7 +31,7 @@ export function validateNativeCall(
 ): ValidationResult {
   const tool = registry.get(call.name);
   if (!tool && offline?.has(call.name)) {
-    // A tool this session left out because it works offline (CTO 3): passed
+    // A tool this session left out because it works offline (tech review 3): passed
     // through with whatever arguments came, so the loop refuses it by name
     // and the run's note can say what was tried.
     const parsed = call.args ?? parseJsonLoose(call.argsText || '{}');

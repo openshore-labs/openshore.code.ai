@@ -113,7 +113,7 @@ function stricter(a: VaultVisibility, b: VaultVisibility): VaultVisibility {
  *  computer at the least, since Obsidian's Trash keeps no folder to judge
  *  it by. A file in any other of the vault's dot folders (`.obsidian`, whose
  *  plugins keep caches of notes, `.oscode`, `.git`, any other) or dot file
- *  at its root stays on this computer at the least (CX and CMO, 2026-10-08,
+ *  at its root stays on this computer at the least (UX and copy review, 2026-10-08,
  *  A): the vault tools never reach them, and what they hold can be a note's
  *  words. */
 function judged(

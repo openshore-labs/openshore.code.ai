@@ -11,8 +11,10 @@ Say what you found, how to reproduce it, and what it affects. We will answer,
 keep you posted while we fix it, and credit you when the fix ships unless you
 would rather we did not.
 
-Supported: the latest release of the desktop apps, the iPhone app and the
-`osc` CLI (`@openshore/os-code` on npm), and `main`.
+Supported: the latest desktop release
+([openshore-releases](https://github.com/openshore-labs/openshore-releases/releases/latest)),
+the current iPhone app, the latest `osc` CLI (`@openshore/os-code` on npm),
+and `main`.
 
 ## What is in scope
 

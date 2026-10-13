@@ -1,4 +1,4 @@
-// The Vault's search field and results (Vault M6 6.1; CTO K8, K16; CX X1,
+// The Vault's search field and results (Vault M6 6.1; tech review K8, K16; UX review X1,
 // X2, X4). The field sits at the top of the tree at every folder level, on
 // every platform, and always searches the whole vault (`path:` narrows it).
 // Focusing it swaps the tree for results by crossfade; Esc clears it and

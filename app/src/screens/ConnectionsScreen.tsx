@@ -4,7 +4,7 @@
 // the model menu. Each provider you connect puts its models on your Bench,
 // ready to place in your stack (as the Reasoning model or a specialist). Keys live in this device's
 // Keychain, scoped to the provider, and are spent only with your approval.
-// The room is the Settings ledger (D14, founder 2026-10-07): one row per
+// The room is the Settings ledger (D14, 2026-10-07): one row per
 // provider, a tap opens its key sheet, and a connected row asks before it
 // disconnects. The familiar seven stay at the top; the named providers on
 // your key (2026-10-09) join them once connected, and until then wait under
@@ -66,7 +66,7 @@ export function ConnectionsScreen() {
     clearConnectionsFocus,
     connectivity,
   } = useApp();
-  // Desktop Offline (founder, 2026-10-07): offline, these models wait for a
+  // Desktop Offline (2026-10-07): offline, these models wait for a
   // connection, said once at the top. Keys stay saved, and disconnecting
   // stays one tap (it removes a key from this device, no request). A new key
   // is checked with its provider before it is kept, so with the network down

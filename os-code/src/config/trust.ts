@@ -1,4 +1,4 @@
-// Project trust, the machine half (v1 Phase 0; docs/zed-proposal.md "Fix now").
+// Project trust, the machine half (v1 Phase 0).
 //
 // Which folders the person trusts, and their "always allow in this project"
 // grants, live in ~/.os-code/trust.json on this machine, never in the repo: a

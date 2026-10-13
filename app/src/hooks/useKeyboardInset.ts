@@ -10,7 +10,7 @@
 // addListener is async), so the event was missed and the composer sat under
 // the keyboard. At the shell the listener exists from boot.
 //
-// Belt and braces (founder, 2026-09-03, a recording of the keyboard rising
+// Belt and braces (2026-09-03, a recording of the keyboard rising
 // clean over the text box after Chats, then a chat, then a tap, on the same
 // build where the plain path had just worked): the lift no longer hangs on
 // one event arriving with one good number.

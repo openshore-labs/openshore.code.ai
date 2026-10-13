@@ -1,4 +1,4 @@
-// The premium harness, the first Harness Current: Jev (founder, 2026-09-23).
+// The premium harness, the first Harness Current: Jev (2026-09-23).
 //
 // Jev is TypeSafe AI's System One decision model. It does not chat: a call
 // sends `state` plus a map of typed `questions` and gets back a typed answer

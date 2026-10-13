@@ -1,4 +1,4 @@
-// The free chat (CTO ruling 8, 2026-09-29): one answer from the person's own
+// The free chat (tech review ruling 8, 2026-09-29): one answer from the person's own
 // LOCAL model, and nothing else. It builds a provider and streams a single
 // completion. There is no AgentSession, no LocalDriver, no ToolRegistry, no
 // command lane, no outbox, no journal and no cloud escalation here, so this
@@ -76,7 +76,7 @@ export type FreeChatEvent =
   | { type: 'done' }
   | { type: 'error'; message: string };
 
-/** What a host's pack builder is handed (Vault M5, CTO J6). */
+/** What a host's pack builder is handed (Vault M5, tech review J6). */
 export interface FreeChatPackContext {
   config: OscConfig;
   model: string;
@@ -200,7 +200,7 @@ export async function* freeChat(
       : {};
     let systemText =
       cot && !reasonsNatively(model) ? `${system}\n\n${chainOfThoughtPrompt()}` : system;
-    // The pack is the last system part (CTO J16): volatile, so it trails.
+    // The pack is the last system part (tech review J16): volatile, so it trails.
     if (chatPack.text) systemText = `${systemText}\n\n${chatPack.text}`;
     const messages: ChatMessage[] = [{ role: 'system', content: systemText }, ...turns];
     // The card goes before the first text, like the engine's event.

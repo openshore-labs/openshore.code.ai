@@ -5,7 +5,7 @@
 // for every account.
 //
 // There is no IP-ban queue here. Enforcement is account termination plus this
-// report queue, and nothing else (2026-09-05, founder call after CTO and CMO
+// report queue, and nothing else (2026-09-05, maintainer call after tech review and copy review
 // review): OpenShore does not collect, store, or act on an IP address.
 import { useCallback, useEffect, useState } from 'react';
 import { useApp } from '../state/store.js';

@@ -32,7 +32,7 @@ describe('sourceShortLabel', () => {
   });
 });
 
-// CX cleanup 4: the computer is "This computer" in the desktop app and "Your
+// UX review cleanup 4: the computer is "This computer" in the desktop app and "Your
 // computer" on the phone; "chat" tells the free chat from the agent, and the
 // pill, the Chats list, and the model sheet use the same words.
 describe('naming the computer, the free chat, and the agent', () => {

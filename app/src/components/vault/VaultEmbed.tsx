@@ -1,5 +1,5 @@
 // `![[Note]]`, `![[Note#Heading]]` and `![[Note#^id]]` in reading view (Vault
-// M6 6.5, CTO K11, CX X14): a card with a quiet `From "{title}"` header that
+// M6 6.5, tech review K11, UX review X14): a card with a quiet `From "{title}"` header that
 // opens the note, then the note's body, one level deep. The body renders
 // through the same reader at depth 1, where a further embed is a link chip,
 // so an embed can never recurse. A body over 256 KB is a chip too.

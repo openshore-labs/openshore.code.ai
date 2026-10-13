@@ -5,7 +5,7 @@
 // same events, text, thinking, usage and the round's tool calls, and each
 // stops the moment the person presses Stop.
 //
-// The transport is chosen per shell (CTO ruling 7):
+// The transport is chosen per shell (tech review ruling 7):
 // - Electron: a main-process streaming channel (electron/chatStream.ts), since
 //   these servers send no CORS headers and httpFetch cannot stream or reach a
 //   server on your own network.
@@ -319,7 +319,7 @@ export interface OpenAiSeat {
   model: string;
   extraHeaders?: Record<string, string>;
   /** Ollama's num_ctx, sent only to an Ollama endpoint and only when set.
-   *  Nothing on the app side sets it today, so no request carries it (CTO
+   *  Nothing on the app side sets it today, so no request carries it (tech review
    *  ruling 5: the served window's default flips only on an eval). */
   numCtx?: number;
   /** Ask a streamed reply to report its usage in its last chunk
@@ -762,15 +762,15 @@ async function openIpc(b: OscodeBridge, spec: ChatStreamSpec): Promise<OpenedCha
 // ---- the wait before the first word ------------------------------------------
 
 /** How long a local model may sit silent before the chat says it can be slow
- *  to start (CX ruling 5). */
+ *  to start (UX review ruling 5). */
 export const SLOW_START_MS = 30_000;
 
-/** The working row's line while a model on your computer loads (CX 5). */
+/** The working row's line while a model on your computer loads (UX review 5). */
 export function warmingLine(model: string): string {
   return `Warming up ${model} on your computer.`;
 }
 
-/** Said once, after SLOW_START_MS with no word from a local model (CX 5). */
+/** Said once, after SLOW_START_MS with no word from a local model (UX review 5). */
 export const SLOW_START_LINE =
   'Models on your own computer can be slow to start. You can stop it any time.';
 

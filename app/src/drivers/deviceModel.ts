@@ -62,7 +62,7 @@ export function fitDeviceHistory<M extends { role: 'user' | 'assistant'; content
   replyTokens: number,
   contextTokens: number = DEVICE_CONTEXT_TOKENS,
 ): M[] {
-  // One fitting rule for the device and a switch (CTO J11): the core's
+  // One fitting rule for the device and a switch (tech review J11): the core's
   // fitSeed, with the app's estimator and the trimmed-history opener.
   return fitSeed({
     system,

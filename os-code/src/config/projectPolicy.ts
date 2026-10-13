@@ -1,4 +1,4 @@
-// Project trust, the policy half (v1 Phase 0; docs/zed-proposal.md "Fix now").
+// Project trust, the policy half (v1 Phase 0).
 //
 // A repository's own os-code.config.json is read as a proposal, not as the
 // person's settings. Every key it can carry is classified here, once:
@@ -63,13 +63,13 @@ export const PROJECT_POLICY: Record<keyof OscConfig, KeyPolicy> = {
   catalog: 'machine',
   ui: 'project',
   // Whether a Crew routine may search the web is the person's own switch,
-  // never a repo's (founder, 2026-10-01).
+  // never a repo's (2026-10-01).
   routines: { webSearch: 'machine' },
   // The vault folder and which notes are hidden or stay on this computer are
   // the person's own (a repo never names their private folders); the context
-  // pack may only be turned off from a project (Vault M4, CTO I3), and so may
-  // the handoff (Vault M5, CTO J18). Room for notes, its ceiling and
-  // provenance are the machine's own (Vault M7, CTO L14): a repo never sends
+  // pack may only be turned off from a project (Vault M4, tech review I3), and so may
+  // the handoff (Vault M5, tech review J18). Room for notes, its ceiling and
+  // provenance are the machine's own (Vault M7, tech review L14): a repo never sends
   // more of the person's notes, and never hides who wrote one.
   vault: {
     dir: 'machine',
@@ -88,7 +88,7 @@ export const PROJECT_POLICY: Record<keyof OscConfig, KeyPolicy> = {
   // on is a loosening; turning it off applies from any folder.
   memory: { enabled: 'off-only' },
   sync: { autoPush: 'off-only', autoPushDefaultBranch: 'trusted' },
-  // The two harness lifts (CTO 6) cost time on this computer (prefill, and
+  // The two harness lifts (tech review 6) cost time on this computer (prefill, and
   // grammar sampling on a CPU), so like Chain of Thought a project may turn
   // them off from any folder and on only once trusted.
   harness: {

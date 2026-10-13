@@ -1,4 +1,4 @@
-// The app's vault privacy rules (Vault M5, CTO J3): which notes are hidden and
+// The app's vault privacy rules (Vault M5, tech review J3): which notes are hidden and
 // which stay on this computer, compiled with the core's `compileVaultPrivacy`
 // so the app judges every note exactly as the engine does.
 //
@@ -8,7 +8,7 @@
 // defaults. The device setting only ever narrows, and nothing loaded means the
 // D5 defaults, never no rules at all (fail closed).
 //
-// The vault's own `.oscode/vault.json` (Vault M7, CTO L4) narrows too: its
+// The vault's own `.oscode/vault.json` (Vault M7, tech review L4) narrows too: its
 // lists join the device setting's through the core's `unionNarrowing`, so
 // the rules are `compileVaultPrivacy(source, unionNarrowing(device, file))`.
 // Union only: an empty list in the file can never drop a D5, machine or

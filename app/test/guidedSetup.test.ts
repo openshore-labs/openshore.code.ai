@@ -1,4 +1,4 @@
-// Guided setup (founder, 2026-09-23): a new person's first chat is Harbor Lite
+// Guided setup (2026-09-23): a new person's first chat is Harbor Lite
 // walking them through setup, one step at a time, with the buttons to do each
 // one. A step's page brings them back to the chat once the connection lands,
 // questions can be asked off script, and the walk ends by inviting questions
@@ -258,7 +258,7 @@ vi.mock('../src/drivers/onDeviceDriver.js', () => ({
   },
 }));
 
-// CX ruling (2026-09-24), from reading Zed's first-run page: of its eight
+// UX review ruling (2026-09-24), from reading Zed's first-run page: of its eight
 // options only the trust question fits OpenShore, and as one narrow choice
 // about edits at the moment there is code to edit, not a blanket switch.
 describe('the edit choice at the end of the repository step', () => {
@@ -267,7 +267,7 @@ describe('the edit choice at the end of the repository step', () => {
     const repo = Object.values(STEP_COPY.repo).join(' ');
     expect(repo).not.toMatch(/every edit/i);
     // The repository step says what Settings, Approvals and Repositories say:
-    // commands ask first unless the person allows them (CX line, aligned in
+    // commands ask first unless the person allows them (UX review line, aligned in
     // the 2026-10-07 review's chat package).
     expect(repo).toContain('Every command asks before it runs, unless you allow it.');
     expect(repo).not.toMatch(/commands always ask/i);
@@ -305,7 +305,7 @@ describe('the edit choice at the end of the repository step', () => {
   });
 });
 
-// Founder, 2026-09-25: once the guide has offered Harbor, it asks whether to
+// Maintainer, 2026-09-25: once the guide has offered Harbor, it asks whether to
 // start chatting or keep setting up, so anyone can step past setup.
 describe('the fork after Harbor', () => {
   it('asks to chat or keep setting up, naming the steps still ahead', () => {
@@ -343,7 +343,7 @@ describe('the fork after Harbor', () => {
   it('answers each choice: an open invitation, or straight into the next step', () => {
     const chat = nextChoiceMessage('chat', 'computer', NONE);
     expect(chat).toMatch(/^Let's chat\./);
-    // D4 (founder, 2026-10-07): the way back in reads the fork's own label,
+    // D4 (2026-10-07): the way back in reads the fork's own label,
     // Keep setting up, so one choice goes by one name, and never "setup" as a
     // noun on a button.
     expect(chat).toContain(

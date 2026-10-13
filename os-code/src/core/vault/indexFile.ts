@@ -1,6 +1,6 @@
-// The desktop folder vault's persisted index (Vault M3, CTO H3 "Persistence"):
+// The desktop folder vault's persisted index (Vault M3, tech review H3 "Persistence"):
 // one file per vault root under oscHome()/vault-index, named by a hash of the
-// root's real path, so the renderer never names a path (CTO F7) and the engine
+// root's real path, so the renderer never names a path (tech review F7) and the engine
 // can reuse the same file for the same folder (4.6). The blob is whatever
 // serializeIndex wrote; this module only stores it. Node-side on purpose, so
 // it lives outside src/harness/, whose purity guard covers that folder.

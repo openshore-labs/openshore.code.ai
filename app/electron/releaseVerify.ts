@@ -1,4 +1,4 @@
-// Release integrity for every desktop update (CTO rulings 1 and 2,
+// Release integrity for every desktop update (tech review rulings 1 and 2,
 // 2026-09-29). A release file is trusted only when its detached Ed25519
 // signature checks against a public key pinned in the app (releaseKeys.ts).
 // The token that uploads release files (a GitHub PAT on Codemagic, the
@@ -80,7 +80,7 @@ export type AssetVerdict =
  * A signature was there and the download failed it: the file changed after it
  * was signed, another key signed it, or it is a signed build of another
  * version. The download itself is suspect, so nothing opens it, the app or
- * the person by hand (CX cleanup 1, reconciled): on a Mac the release page
+ * the person by hand (UX review cleanup 1, reconciled): on a Mac the release page
  * stays shut, since its download button serves the same file. A missing
  * `.sig`, an empty or broken pinned key, or a file that cannot be read says
  * nothing about the download, and keeps the older paths.
@@ -183,7 +183,7 @@ export interface DownloadedUpdate {
  * `quitAndInstall`. With a desktop key pinned, the downloaded file installs
  * only when its `.sig` from the same release checks; a missing or bad one is
  * refused. With no key pinned, it installs as before and says so in the log,
- * since the founder has not run the keygen yet (the maintainer release-signing runbook).
+ * since a maintainer has not run the keygen yet (the maintainer release-signing runbook).
  */
 export async function installIfVerified(opts: {
   downloaded: DownloadedUpdate | undefined;

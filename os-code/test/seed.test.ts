@@ -65,7 +65,7 @@ describe('unresolvedApprovalIds (TS-P2-6)', () => {
   });
 });
 
-// Vault M4 (CTO I5): a daemon restart must not unprotect a private note. The
+// Vault M4 (tech review I5): a daemon restart must not unprotect a private note. The
 // tool results are not seeded, but a reply written after a local-only read
 // may quote the note, so it comes back marked and a leaving seat gets a stub.
 describe('seedHistoryFromEvents keeps the local-only mark (Vault M4)', () => {

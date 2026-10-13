@@ -142,7 +142,7 @@ export interface ConfirmWords {
 }
 
 /**
- * Trusting a folder (CX cleanup 2). The dialog is the one check the page
+ * Trusting a folder (UX review cleanup 2). The dialog is the one check the page
  * cannot fake, so it says what trusting does: each setting that would apply,
  * worded as the trust card words it, then the folder. `waiting` comes from
  * the engine in main (`EngineHost.trustWaiting`), never from the page.

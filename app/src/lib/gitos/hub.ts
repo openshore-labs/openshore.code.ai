@@ -1,4 +1,4 @@
-// The hub provider (Vault M5, CTO J9): the paired computer's one vault, over
+// The hub provider (Vault M5, tech review J9): the paired computer's one vault, over
 // the daemon's /vault routes (os-code/protocol's vault wire), shown as "Your
 // computer". Compare-and-swap replaces a lease: every write carries the
 // version it was typed against and the computer checks it where the bytes
@@ -714,7 +714,7 @@ export function createHubProvider(opts: HubProviderOptions): HubProvider {
       throw await errorOf(res);
     },
 
-    // ---- Vault M6 (CTO K2, K3, K5, K6, K13) ----------------------------------
+    // ---- Vault M6 (tech review K2, K3, K5, K6, K13) ----------------------------------
     // Each is one route on the caller's own root, with the same folderFs code
     // that serves This folder on the desktop. A tree change while the
     // computer is away is refused in plain words (HUB_AWAY_READ_ONLY), marked
@@ -931,7 +931,7 @@ export function createHubProvider(opts: HubProviderOptions): HubProvider {
       }
     },
 
-    // The settings sheet's write (Vault M7, CTO L7): `PUT
+    // The settings sheet's write (Vault M7, tech review L7): `PUT
     // /vault/config/oscode/vault` with exactly one guard, on the caller's own
     // root there, so a member writes only their own. A 409 carries the file
     // there now (or it is read once more), an old computer answers 404, and

@@ -1,8 +1,8 @@
-// The Vault's search grammar (Vault M6, CTO K8): whitespace-separated clauses;
+// The Vault's search grammar (Vault M6, tech review K8): whitespace-separated clauses;
 // `"a phrase"`; `tag:x` or `tag:#x` (matches `x` and `x/...`); `path:x`;
 // `file:x` (`.md` optional); a quoted value; a leading `-` negates any clause.
 // Anything else, `foo:bar` included, is plain terms. `#idea` means `tag:idea`
-// (CX X1). No OR, parentheses, regex, `line:`, `section:` or `task:` in v1.
+// (UX review X1). No OR, parentheses, regex, `line:`, `section:` or `task:` in v1.
 //
 // The index (index.ts) runs the query: terms AND together and rank by BM25,
 // the last bare term is a prefix while typing, filters narrow. Phrases are a

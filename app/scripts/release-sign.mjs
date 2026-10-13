@@ -1,4 +1,4 @@
-// Sign release files for OpenShore's updater (CTO rulings 1 and 2,
+// Sign release files for OpenShore's updater (tech review rulings 1 and 2,
 // 2026-09-29; the maintainer release-signing runbook). Run by the release builds after
 // packaging:
 //

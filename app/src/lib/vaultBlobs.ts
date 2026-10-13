@@ -1,4 +1,4 @@
-// Blob URLs for the Vault's images (Vault M6, CTO K11). A note never names the
+// Blob URLs for the Vault's images (Vault M6, tech review K11). A note never names the
 // URL an image loads from: the reader resolves the attachment path, asks this
 // registry for it, and the registry reads the bytes through the provider and
 // hands back a `blob:` URL it made itself. So a note cannot point an image at a

@@ -1,4 +1,4 @@
-// The web search sheet after a private read (CX and CMO, 2026-10-08, H).
+// The web search sheet after a private read (UX and copy review, 2026-10-08, H).
 // Once a chat on a model that stays on this network holds a private note's
 // text, every search that model writes asks here, every time, whatever the
 // person allowed before: the card shows the exact words and why, offers

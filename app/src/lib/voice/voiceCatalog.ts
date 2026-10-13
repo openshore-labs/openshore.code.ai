@@ -1,10 +1,10 @@
-// The voices OpenShore offers (founder, 2026-10-01): the best-sounding
+// The voices OpenShore offers (2026-10-01): the best-sounding
 // English voices only, by name, split into female and male, ten at most. A
 // device carries dozens of system voices, most of them other languages,
 // novelty sounds (Bubbles, Bad News, Zarvox) or the old robotic set; the raw
 // list read as low quality. Pure, so the rules are tested.
 //
-// The founder asked for the Siri voices, since they sound the best. Apple
+// A maintainer asked for the Siri voices, since they sound the best. Apple
 // keeps them for Siri and the system: a third-party app's speech synthesizer
 // is not given them. Where a device does list one to the app it leads here,
 // under its own name. Otherwise the best on offer are Apple's premium (neural)

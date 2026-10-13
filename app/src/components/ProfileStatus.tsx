@@ -1,7 +1,7 @@
 // The connectivity status: a colored bubble and the active profile, tappable
 // to see all three and to step down manually. Green Docked (your computer
 // reachable), ink Offshore (cloud and this device), a hollow ring for Offline
-// (this device only). It shows once it can mean something (D1, founder
+// (this device only). It shows once it can mean something (D1, maintainer
 // 2026-10-07): with no computer connected to this device, only a lone Offline
 // shows (lib/profiles.ts reachPillShown), and the pill arrives and leaves on
 // its own fade rather than popping. The sheet portals to the body so its

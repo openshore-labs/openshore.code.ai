@@ -136,7 +136,7 @@ export interface BootstrapOptions {
    *  the person set. Only tightening is honored: the profile's hard step
    *  ceiling still applies on top. */
   caps?: { wallClockSeconds?: number; maxSteps?: number };
-  /** Where this session's vault context pack comes from (Vault M4, CTO I7,
+  /** Where this session's vault context pack comes from (Vault M4, tech review I7,
    *  I8): the engine's source prepares Current State, the index and the
    *  planned note bodies once per task, and the loop renders the pack per
    *  turn for the seat that answers. Undefined builds the engine's own
@@ -145,20 +145,20 @@ export interface BootstrapOptions {
    *  The loop leaves it out with Memory off (the switch folded in above) or
    *  `vault.context: 'off'`, so a caller need not gate it. */
   vaultContext?: VaultContextSource;
-  /** This session's own vault root (Vault M5, CTO J8): a path gives the
+  /** This session's own vault root (Vault M5, tech review J8): a path gives the
    *  vault tools and the pack on that root (the daemon passes
    *  `vaultRootFor(auth)` at create and `vaultRootForOwner(ownerUserId)` at
    *  rehydrate, so a member's agent works on its own root, never the
    *  owner's); null gives no vault tools. Undefined keeps the machine's
    *  vault (the CLI and the desktop). */
   vaultRoot?: string | null;
-  /** A handoff from the chat this session continues (CTO J12), prepended to
+  /** A handoff from the chat this session continues (tech review J12), prepended to
    *  the first task's preamble only (never on a revived session that already
    *  ran one). Conversation content, so it rides even with Memory off. At
    *  most `HANDOFF_MAX_BYTES`: a longer one is left out with a warning, never
    *  cut mid-line. */
   handoff?: string;
-  /** The project's own pins (`Project.vaultPins`, CTO J14), at most 8 note
+  /** The project's own pins (`Project.vaultPins`, tech review J14), at most 8 note
    *  paths, read first by the pack's prepare. Never a config key. */
   vaultPins?: string[];
   /** Whether the person allowed web search on the device that opened this
@@ -181,7 +181,7 @@ export interface BootstrapOptions {
    *  reads as yes. A headless run never gets them, and config's
    *  `tools.processes: 'off'` turns them off everywhere. */
   processes?: boolean;
-  /** The app's vault switches for this session (Vault M7, CTO L13): each
+  /** The app's vault switches for this session (Vault M7, tech review L13): each
    *  only ever narrows, the `humanize` and `memory` shape. `context: 'off'`
    *  gives no pack, `handoff: 'off'` writes and reads no handoff (the
    *  `handoff` field above is the handoff TEXT, so the switch rides here),
@@ -190,7 +190,7 @@ export interface BootstrapOptions {
    *  into the config by `applyVaultOverrides`. */
   vaultOverrides?: VaultOverrides;
   /** This computer's offline state, read before every turn (Desktop Offline,
-   *  founder 2026-10-07). Not a per-session choice from a client: it is the
+   *  2026-10-07). Not a per-session choice from a client: it is the
    *  computer's own state, which the desktop's main process sets, so every
    *  session this process hosts (the desktop's own, and a paired phone's
    *  through the daemon) reads the one machine flag. Defaults to it
@@ -199,7 +199,7 @@ export interface BootstrapOptions {
 }
 
 /**
- * Fold the app's vault switches into this session's config (Vault M7, CTO
+ * Fold the app's vault switches into this session's config (Vault M7, tech review
  * L13), the way `humanize` and `memory` fold, so the loop, the pack and the
  * handoff read one value: `vault.context` and `vault.handoff` become `off`
  * when the app turned them off, and `vault.packSize` takes the app's size
@@ -241,7 +241,7 @@ export interface BootstrapResult {
   orchestratorKind: 'local' | 'cloud';
   /** The tools an offline (headless) session left out that it would
    *  otherwise have, by name; empty for every other session. The run's note
-   *  names them (CTO 3). */
+   *  names them (tech review 3). */
   offlineTools: string[];
 }
 
@@ -306,7 +306,7 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     config = { ...config, chainOfThought: { ...config.chainOfThought, enabled: cot } };
   }
 
-  // The app's vault switches (Vault M7, CTO L13), the same way: off-only for
+  // The app's vault switches (Vault M7, tech review L13), the same way: off-only for
   // the pack and the handoff, lower-only for the pack size, taken at open.
   config = applyVaultOverrides(config, options.vaultOverrides);
 
@@ -414,7 +414,7 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     // the run, so it keeps the vault reads and drops the write.
     vaultWrite: options.profile !== 'headless',
     memory: config.memory?.enabled !== false,
-    // Headless means offline (CTO 3): nothing that reaches the network is
+    // Headless means offline (tech review 3): nothing that reaches the network is
     // registered, and the profile denies a network step outright.
     offline: options.profile === 'headless',
     offlineSearch: options.profile === 'headless' && options.routineSearch === true,
@@ -443,7 +443,7 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     offline: () => offline().offline,
     // The caller's own root replaces the machine's. The privacy rules are the
     // machine's (projectPolicy classes them machine) unioned with that root's
-    // own settings file, which only narrows (Vault M7, CTO L4).
+    // own settings file, which only narrows (Vault M7, tech review L4).
     ...(typeof vaultRoot === 'string' ? { vaultRoot } : {}),
   });
 
@@ -451,7 +451,7 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
   // never reads a summary cut off mid-sentence.
   // Handoff off (the machine, the project, or the app's switch folded in
   // above) means no handoff at all: the text the switch passed is dropped
-  // too, not only the stored one (Vault M7, CTO reconciliation 4).
+  // too, not only the stored one (Vault M7, tech review reconciliation 4).
   let handoff =
     options.handoff?.trim() && config.vault?.handoff !== 'off' ? options.handoff : undefined;
   if (handoff && Buffer.byteLength(handoff, 'utf8') > HANDOFF_MAX_BYTES) {
@@ -582,7 +582,7 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
   // you left off" on the same project, whatever owner key it would carry.
   // A handoff written before the local-only fix (0.1.64) may carry a private
   // note's words: every such record is removed once per machine, before any
-  // session reads one (CX and CMO, 2026-10-08, A). A no-op after the first.
+  // session reads one (UX and copy review, 2026-10-08, A). A no-op after the first.
   sweepPreFixHandoffs();
   const handoffOn =
     options.profile !== 'headless' &&
@@ -594,7 +594,7 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     projectName,
   });
 
-  // The vault context pack's source (Vault M4, CTO I7, I8). A session with no
+  // The vault context pack's source (Vault M4, tech review I7, I8). A session with no
   // vault root (a member's on a shared hub) still gets this project's Current
   // State; the privacy rules are the tools' own compiled machine config, so the
   // pack and the tools judge a note the same way. The project's pins ride in
@@ -694,7 +694,7 @@ function stillRunnable(currents: CurrentsHandles | undefined): CurrentsHandles |
 }
 
 /** The engine's pack source, reading the vault's own settings again (forced)
- *  before each task's prepare (Vault M7, CTO L5, L6), so the pack and the
+ *  before each task's prepare (Vault M7, tech review L5, L6), so the pack and the
  *  tools judge a note by the same fresh union. A read that fails keeps the
  *  last good settings; the prepare runs either way. */
 function refreshedSource(

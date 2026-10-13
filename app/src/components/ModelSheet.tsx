@@ -8,9 +8,9 @@
 // one-tap use and swipes there to unpin. On a phone the very top row is the
 // model on this phone: Harbor once it is downloaded, else Harbor Lite (with
 // Harbor's download progress under it while it comes down). Harbor replaces
-// Harbor Lite there, since the better model makes the guide moot (founder,
+// Harbor Lite there, since the better model makes the guide moot (maintainer,
 // 2026-09-25). On the desktop the top rows are this computer's engine: its
-// agent and, beside it, the free chat with its own model (CTO ruling 8); Local
+// agent and, beside it, the free chat with its own model (tech review ruling 8); Local
 // models there lists that free chat, or the way to DeepBlue in the Stack,
 // never the phone's own download.
 import { useEffect, useRef, useState } from 'react';
@@ -212,7 +212,7 @@ export function ModelSheet({
     connectivity,
   } = useApp();
   // Offline (the connection's or the person's choice), cloud models wait for
-  // a connection: listed, never picked (Desktop Offline, founder 2026-10-07).
+  // a connection: listed, never picked (Desktop Offline, 2026-10-07).
   const offline = offlineNow(connectivity, settings.profileOverride);
   const [stage, setStage] = useState<'root' | 'effort' | 'cloud' | 'local' | 'more'>(initialStage);
   // Play the exit before a pick propagates (UI-4): the parent unmounts this
@@ -312,7 +312,7 @@ export function ModelSheet({
     desktopStatus && desktopStatus !== 'error'
       ? desktopStatus.stack.orchestrator?.model
       : undefined;
-  // The free chat with that model (CTO ruling 8): no tools, no session, no
+  // The free chat with that model (tech review ruling 8): no tools, no session, no
   // account. Only a local model, since the free chat refuses one that leaves
   // this network.
   const engineChat =

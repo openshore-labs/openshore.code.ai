@@ -1,4 +1,4 @@
-// The Vault's M6 operations (CTO K3 to K7, K11, reconciled R1 to R3): rename
+// The Vault's M6 operations (tech review K3 to K7, K11, reconciled R1 to R3): rename
 // and move with links following, folders, Trash, restore, Undo, Today, and the
 // checkbox write-back. They live here, apart from the store, so the
 // orchestration is testable with a fake provider and a fake index and without
@@ -114,7 +114,7 @@ export type VaultOpFailure = 'storage' | 'unsupported';
 /** A storage's refusal that trying again cannot fix (`permanent`: the team
  *  vault out of free space, migration 0023, or its plan not active, 0025), as
  *  a result carries it: the storage's line, and `whole` when that line
- *  already names what did not happen (the admins-only delete, CX Y14). The
+ *  already names what did not happen (the admins-only delete, UX review Y14). The
  *  store says it with the verb first (vaultRefusedLine), never as "try
  *  again". */
 export interface VaultRefusal {
@@ -203,12 +203,12 @@ function indexedPaths(deps: VaultOpsDeps): string[] {
 }
 
 /** Where a restored note lands when its name is taken: "{title} (restored)"
- *  beside it (R3, CX X10). */
+ *  beside it (R3, UX review X10). */
 export function restoredPath(path: string): string {
   return joinPath(noteFolder(path), `${noteTitle(path)} (restored).md`);
 }
 
-// ---- names (CX X5) ----------------------------------------------------------
+// ---- names (UX review X5) ----------------------------------------------------------
 
 /** Why a new name or place for a note cannot be used. */
 export type VaultRenameRefusal =
@@ -241,7 +241,7 @@ export function checkRenameTarget(
   return { ok: true, to };
 }
 
-// ---- rename and move (K3, K4 with R1; CX X5 to X7) --------------------------
+// ---- rename and move (K3, K4 with R1; UX review X5 to X7) --------------------------
 
 /** One source the rewrite pass writes: where it was before the moves, where
  *  it is after, and what the plan read. */
@@ -251,7 +251,7 @@ interface RewriteSource {
 }
 
 /** A rename or move, planned but not yet run. The sheet asks "Update links?"
- *  only when `links` is above zero (CX X6). */
+ *  only when `links` is above zero (UX review X6). */
 export interface VaultMovePreview {
   kind: 'note' | 'folder';
   /** The note or folder as it is now, and where it goes. */
@@ -500,7 +500,7 @@ async function renameOne(
 /** Run a planned rename or move (K3, K4 with R1): the move lands first, and a
  *  failure there ends the flow with nothing changed; then, with
  *  `updateLinks`, the rewrite pass. `onProgress(i, m)` reports each note the
- *  pass reaches (CX X6's "Updating links, {i} of {M}"). */
+ *  pass reaches (UX review X6's "Updating links, {i} of {M}"). */
 export async function applyMove(
   deps: VaultOpsDeps,
   preview: VaultMovePreview,
@@ -924,7 +924,7 @@ async function rewritePass(
  *  find a linking note another writer moved while the sheet was open. */
 const MOVED_LOOKUPS = 10;
 
-/** "Update the rest" on the standing card (CX X7): re-plan the notes the
+/** "Update the rest" on the standing card (UX review X7): re-plan the notes the
  *  last pass skipped or never reached, from fresh reads, and run the pass
  *  over them again. */
 export async function updateTheRest(
@@ -1019,7 +1019,7 @@ export async function createFolder(
   return r.value.ok ? { ok: true, remembered: false } : { ok: false, reason: 'exists' };
 }
 
-// ---- delete, Trash and Undo (K6 with R2 and R3; CX X8 to X10) ---------------
+// ---- delete, Trash and Undo (K6 with R2 and R3; UX review X8 to X10) ---------------
 
 /** What Undo puts back: a Trash entry where Trash is real, else the bytes
  *  held in memory (a courtesy only, never what makes one tap safe, R2). */
@@ -1043,7 +1043,7 @@ export type VaultDeleteResult =
       reason: 'changed' | 'downloading' | 'missing' | VaultOpFailure;
       theirs?: StoredFile;
       /** A refusal for good (VaultRefusal): its line, and `whole` when it is
-       *  the whole line to say (the admins-only delete, CX Y14). */
+       *  the whole line to say (the admins-only delete, UX review Y14). */
       line?: string;
       whole?: true;
       /** A folder that moved nothing because every note in it changed while
@@ -1240,7 +1240,7 @@ export async function emptyTrash(
   return r.ok ? { ok: true, ...r.value } : { ok: false, reason: 'storage' };
 }
 
-// ---- Today (K7; CX X11) -----------------------------------------------------
+// ---- Today (K7; UX review X11) -----------------------------------------------------
 
 /** Today's note as lib/vaultToday.ts (stream H) works it out: the path from
  *  the daily-notes settings and the text a new one starts with. */
@@ -1277,7 +1277,7 @@ export async function openToday(
   return { ok: false, reason: 'storage' };
 }
 
-// ---- checkbox write-back (K11; CX X13) --------------------------------------
+// ---- checkbox write-back (K11; UX review X13) --------------------------------------
 
 export type VaultTickResult =
   | { ok: true; file: StoredFile; status: string }

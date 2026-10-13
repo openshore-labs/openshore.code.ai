@@ -1,4 +1,4 @@
-// The Vault's resolve sheet (Vault M1, 1.1; Creative Studio 1b, 1e; CX 1.1),
+// The Vault's resolve sheet (Vault M1, 1.1; design review 1b, 1e; UX review 1.1),
 // mounted in a real (small) DOM: it shows what happened before it asks, Keep
 // both comes first and commits on one tap, the two choices that drop a side
 // each take two taps (and arming one disarms the other, and a tab switch

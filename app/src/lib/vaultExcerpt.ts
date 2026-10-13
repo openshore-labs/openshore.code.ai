@@ -1,4 +1,4 @@
-// A note taken to a model from the composer (Vault M5, CTO J15): the `[[`
+// A note taken to a model from the composer (Vault M5, tech review J15): the `[[`
 // picker and "Ask about this note" insert a trimmed excerpt with a cost line.
 // Pure: the store hands in the notes, the privacy judge and the seat, and the
 // composer (stream I) renders what comes back.
@@ -119,7 +119,7 @@ function approx(n: number): string {
   return v.toLocaleString('en-US');
 }
 
-/** The cost line under an excerpt, in words a person uses (CX, jargon
+/** The cost line under an excerpt, in words a person uses (UX review, jargon
  *  rewrites): the share of the model's room it takes, "Takes about 9% of
  *  this model's room", or, when that room is not known, its length, "About
  *  280 words" (counted from the text when there is one). */

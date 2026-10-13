@@ -209,7 +209,7 @@ describe('a pull that fails with the network up says so plainly', () => {
   });
 });
 
-// CX and CMO, 2026-10-08 (B): a cloud tag's pull says where it runs, on both
+// UX and copy review, 2026-10-08 (B): a cloud tag's pull says where it runs, on both
 // success returns; a local ref keeps its plain line.
 describe('a pull says where the model runs', () => {
   const CLOUD_LINE =

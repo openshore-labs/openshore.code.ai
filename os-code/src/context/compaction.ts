@@ -102,7 +102,7 @@ export interface CompactionResult {
  * fails (offline, mid-restart) the fallback is dropping oldest turns with a
  * marker, which is honest and cheap. `fraction` is the share of the window the
  * history may fill before it is compacted: the seat's class sets it
- * (`compactAtContextFraction`, CTO I2), 0.7 when no class is known.
+ * (`compactAtContextFraction`, tech review I2), 0.7 when no class is known.
  * `fixedTokens` is what the request carries besides these messages (the tool
  * specs, `estimateToolSpecs`), counted against the same budget. `compacted` is
  * true only when something was actually trimmed or folded: a history already

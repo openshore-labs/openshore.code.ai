@@ -1,5 +1,5 @@
-# Publish OS Code, the terminal CLI (`osc`), to npm as `os-code`, so anyone
-# can install it with `npm install -g @openshore/os-code` (founder, 2026-10-11).
+# Publish OS Code, the terminal CLI (`osc`), to npm as `@openshore/os-code`,
+# so anyone can install it with `npm install -g @openshore/os-code`.
 # npm refused the bare name `os-code` as too close to `ts-node`, so the registry
 # name is scoped; the product, the `osc` command and the workspace name stay OS Code.
 #

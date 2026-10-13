@@ -1,7 +1,7 @@
 # Voice mode
 
 A spoken conversation over the same chat you code in, native and offline, with a
-premium voice you pick. It is the founder's ask (2026-09-06): "a voice mode like
+premium voice you pick. It is a maintainer's ask (2026-09-06): "a voice mode like
 in Claude, but because it is coding and text based, keep the natural breaks where
 a decision or a picker comes up. Leave voice, show the picker, and reopen after
 you choose. All of it still lives in the chat as text."
@@ -51,7 +51,7 @@ the overlay.
 ## The natural breaks
 
 Voice mode watches the live thread and, at each pause, consults one policy table
-(`app/src/lib/voice/voiceBreaks.ts`, `VOICE_BREAK_POLICY`). The founder's call
+(`app/src/lib/voice/voiceBreaks.ts`, `VOICE_BREAK_POLICY`). A maintainer's call
 (2026-09-06): keep the conversation flowing where it is safe, hand back to the
 screen where a choice needs eyes or authorizes something.
 
@@ -79,7 +79,7 @@ actually surfaced.
 
 ## Access inherits the chat
 
-Voice mode gets exactly the access the chat already has (founder, 2026-09-06: "if
+Voice mode gets exactly the access the chat already has (2026-09-06: "if
 access is turned on for the chat, voice control gets the same access"). There is
 no separate voice preset or capability toggle. Voice is always available for chat
 and dictation, offline; its ability to drive your machine lights up precisely when

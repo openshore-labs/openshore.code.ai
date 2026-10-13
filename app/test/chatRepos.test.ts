@@ -1,4 +1,4 @@
-// The repo picker in the chat header (founder, 2026-09-03: a multi-select of
+// The repo picker in the chat header (2026-09-03: a multi-select of
 // the repositories connected to the account, the Claude Code way, in basic
 // chats and in projects). The pure model is tested outright; the wiring (the
 // header, the first send, the project seed, the context that rides into each
@@ -296,7 +296,7 @@ describe('why a GitHub list can look short', () => {
     private: priv,
     owner: { login: 'openshore-labs' },
   });
-  // The founder's account on 2026-09-25: four public repositories and the
+  // A maintainer's account on 2026-09-25: four public repositories and the
   // rest private; the picker showed exactly the four public ones.
   const PUBLIC = [
     'openshore.code.ai',

@@ -1,4 +1,4 @@
-// Obsidian wikilinks for the Vault's reader (Vault M3, CTO H2 and H6). A remark
+// Obsidian wikilinks for the Vault's reader (Vault M3, tech review H2 and H6). A remark
 // plugin that splits mdast `text` nodes with the core's scanInlineLinks, so a
 // [[link]] becomes a real link node carrying a vault: href and the renderer
 // never touches code: fenced and indented code are `code` nodes and code spans
@@ -42,7 +42,7 @@ export function wikilinkDestination(
 
 /** The vault: href the reader's anchor override intercepts. A heading or
  *  block subpath (`[[Note#Goals]]`, `[[Note#^id]]`) rides after `#`, so the
- *  reader can scroll to it once the note is open (CX X12). */
+ *  reader can scroll to it once the note is open (UX review X12). */
 export function vaultHref(dest: WikilinkDestination, subpath?: string): string {
   const sub = subpath?.trim();
   return `vault:${encodeURIComponent(dest.path)}${dest.isNew ? '?new' : ''}${
@@ -67,7 +67,7 @@ export interface RemarkWikilinksOptions {
    *  from it. */
   sourcePath?: string;
   /** The vault's attachment paths, so `![[img.png]]` and `![](img.png)` find
-   *  their file (CTO K11). Left out, the reader has no way to load one, and
+   *  their file (tech review K11). Left out, the reader has no way to load one, and
    *  an attachment embed shows as a chip that says so. */
   attachments?: readonly string[];
   /** Obsidian's `attachmentFolderPath`, when the vault sets one. */
@@ -121,7 +121,7 @@ function baseName(path: string): string {
 }
 
 /** The alt text an image shows: its alias, else the file name without its
- *  extension (CX X14). */
+ *  extension (UX review X14). */
 function altFor(target: string, alias?: string): string {
   const a = alias?.trim();
   if (a) return a;
@@ -175,7 +175,7 @@ function attachmentEmbed(
   });
 }
 
-/** One `![[...]]` as the node the reader renders (CX X14). */
+/** One `![[...]]` as the node the reader renders (UX review X14). */
 function wikiEmbed(l: LinkToken, opts: RemarkWikilinksOptions, count: EmbedCounter): MdNode {
   const target = l.target.trim();
   const label = l.alias?.trim() || target || l.subpath?.trim() || '';

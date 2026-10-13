@@ -1,5 +1,5 @@
-// The Vault's view swaps are true crossfades (motion standard, rule 3; CTO
-// K18, CX X17): tree and note, read and edit, and the Trash page each way
+// The Vault's view swaps are true crossfades (motion standard, rule 3; tech review
+// K18, UX review X17): tree and note, read and edit, and the Trash page each way
 // (Vault M8, the M6 follow-up: leaving Trash used to cut). The arriving view fades in
 // while a snapshot of the leaving one fades out, inert and aria-hidden, on the
 // tokens, and reduced motion leaves no snapshot at all. Pinned two ways: the

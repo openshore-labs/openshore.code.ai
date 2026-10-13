@@ -1,14 +1,13 @@
-// What leaves this device (v1 Phase 2, docs/v1-direction-review.md "What
-// leaves this device"): one list, in plain words, of everything OpenShore
+// What leaves this device (v1 Phase 2): one list, in plain words, of everything OpenShore
 // sends off this device, who receives it, and when. Settings renders it (a
 // row under Privacy, grouped by recipient, OpenShore first); the egress test
 // (app/test/egressManifest.test.ts) reads the same list and fails on any host
 // in the source that is not on it, so the list cannot fall behind the code.
 //
 // Every entry is true of the code today. The v1 review's four privacy calls
-// are made (founder, 2026-09-27, DECISIONS): web search asks once (on by
+// are made (2026-09-27, DECISIONS): web search asks once (on by
 // default for a day, 2026-10-01, then asks once again from 2026-10-02 on the
-// CTO's recommendation), desktop updates ask before downloading, the guardrail
+// tech review's recommendation), desktop updates ask before downloading, the guardrail
 // record never uploads a named person, and the repository sign-in exchange
 // keeps no copy of the token.
 
@@ -39,15 +38,15 @@ export interface EgressEntry {
   platforms?: readonly Platform[];
 }
 
-/** Crew routines follow the web search switch, and only search (founder,
- *  2026-10-01, replacing CTO 3's "never"): the one sentence the search entry
+/** Crew routines follow the web search switch, and only search (maintainer,
+ *  2026-10-01, replacing tech review 3's "never"): the one sentence the search entry
  *  and the Settings row both carry. Nothing else a routine does reaches the web. */
 export const ROUTINES_SEARCH_LINE =
   'Crew routines follow this switch while your computer is on, and only search; they never open pages.';
 
 /** Once a chat on a seat that stays holds a private note's text (a read, a
  *  marked turn, or a private pin), every search a model writes shows its
- *  words and asks first, every time, past a standing allow (CX and CMO,
+ *  words and asks first, every time, past a standing allow (UX and copy review,
  *  2026-10-08, H). The search entry carries it. */
 export const PRIVATE_SEARCH_LINE =
   'Once a local model in a chat has read a private note, or its project pins one, each search it writes shows its words and asks first.';
@@ -72,7 +71,7 @@ export const EGRESS: EgressEntry[] = [
   {
     id: 'account',
     recipient: 'OpenShore (us)',
-    what: 'Your email and password to sign in, then what your account needs to work: its sign-in renewed, and, for a team account, its plan.',
+    what: 'Your email address to send you a sign-in code and link, then the code or link itself, or, if you add a passkey, a signature from it (the passkey itself stays on your device and in your keychain or password manager). Then what your account needs to work: its sign-in renewed, and, for a team account, its plan.',
     when: 'Only once you sign in, and then each time the app opens while you are signed in. Chatting needs no account; building, Projects, Vault, Crew, Terminal, and pairing do.',
     start: 'off',
     hosts: ['env:VITE_SUPABASE_URL'],
@@ -239,7 +238,7 @@ export const EGRESS: EgressEntry[] = [
     hosts: [],
   },
   {
-    // Keys on your server (founder, 2026-10-09): the person's own key, sent
+    // Keys on your server (2026-10-09): the person's own key, sent
     // once to the person's own server over the docked link, never to us.
     id: 'server-keys',
     recipient: 'Services you connect',

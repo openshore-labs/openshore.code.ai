@@ -59,7 +59,7 @@ describe('QR pairing decode', () => {
     expect(parsePairingQr(JSON.stringify({ u: 'http://x', t: 'osc_x' }))).toBeUndefined();
   });
 
-  // Pairing review (CX, 2026-10-01): the QR is a link the iPhone Camera app
+  // Pairing review (UX review, 2026-10-01): the QR is a link the iPhone Camera app
   // opens, and only an address on the person's own network is ever paired.
   it('round-trips the pairing link through pixels, so the Camera app can open it too', () => {
     const link = pairingLink('http://100.101.102.103:4816', 'pc_abcdef123456');

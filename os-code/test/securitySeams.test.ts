@@ -57,7 +57,7 @@ function git(cwd: string, ...args: string[]): string {
   return execFileSync('git', args, { cwd, encoding: 'utf8' });
 }
 
-describe('headless means offline (CTO 3)', () => {
+describe('headless means offline (tech review 3)', () => {
   it('the headless profile denies a network step, never asks, whatever allows it', () => {
     const allowAll = new PermissionEngine(
       {
@@ -115,7 +115,7 @@ describe('headless means offline (CTO 3)', () => {
     expect(networkToolsLeftOut(base)).toEqual([]);
   });
 
-  it('when the person allowed web search, a routine keeps webSearch and nothing else (founder, 2026-10-01)', () => {
+  it('when the person allowed web search, a routine keeps webSearch and nothing else (2026-10-01)', () => {
     const everything = {
       ...base,
       hasCodemagic: true,
@@ -352,7 +352,7 @@ function committed(root: string): string[] {
   return git(root, 'show', '--name-only', '--format=', 'HEAD').trim().split('\n').sort();
 }
 
-describe('a commit leaves out what may hold a secret (D3, CX 7)', () => {
+describe('a commit leaves out what may hold a secret (D3, UX review 7)', () => {
   it('flags .env, *.pem, id_* and detected keys, by name before content', () => {
     const none = () => undefined;
     expect(stageSecretOf('.env', none)).toBe('env');
@@ -659,7 +659,7 @@ describe('the check command runs with no key (D3, shell note)', () => {
   });
 });
 
-describe('the prompt names the platform and the shell (CTO 10)', () => {
+describe('the prompt names the platform and the shell (tech review 10)', () => {
   it('says which shell a command runs in', () => {
     expect(platformAndShell({ platform: 'win32', shell: 'powershell' })).toBe(
       'Windows, PowerShell',

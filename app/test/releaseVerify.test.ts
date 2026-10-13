@@ -1,4 +1,4 @@
-// Release integrity for every desktop update (the D1 release package, CTO
+// Release integrity for every desktop update (the D1 release package, tech review
 // rulings 1 and 2, 2026-09-29). One verifyAsset in app/electron checks a
 // detached Ed25519 signature over "openshore-release-v1\n<name>\n<sha256>"
 // against a key pinned in the app; the release builds sign with
@@ -186,7 +186,7 @@ describe('verifyAsset', () => {
 });
 
 describe('the pinned keys', () => {
-  it('are each empty (the founder has not run the keygen) or a real key', () => {
+  it('are each empty (has not run the keygen) or a real key', () => {
     for (const key of [MAC_RELEASE_PUBLIC_KEY, DESKTOP_RELEASE_PUBLIC_KEY]) {
       expect(key === '' || isReleasePublicKey(key), key).toBe(true);
     }
@@ -328,7 +328,7 @@ describe('Windows and Linux: the check before quitAndInstall', () => {
     expect(r.result).toBe('refused');
     expect(r.install).not.toHaveBeenCalled();
     // A signature that was there and failed: the bar says it failed its
-    // safety check (CX cleanup 1).
+    // safety check (UX review cleanup 1).
     expect(r.refuse).toHaveBeenCalledWith(
       expect.stringContaining('does not match its signature'),
       true,

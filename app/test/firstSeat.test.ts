@@ -1,7 +1,7 @@
 // The First Seat's pure core: one fit model shared with the engine, a starter
 // that resolves against this computer, a phone pick that reads real memory,
 // and the one rule for when the empty chat shows the seat at all. The load-
-// bearing case is the founder's box: 8 GB, no GPU, where the 7B must read
+// bearing case is a maintainer's box: 8 GB, no GPU, where the 7B must read
 // "too big" (the engine's own verdict) and the 3B must be the pick.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -56,7 +56,7 @@ describe('hardwareFromSummary (the fallback parser over the engine summary)', ()
 });
 
 describe('fitVerdict mirrors the engine budget exactly', () => {
-  it('the founder box: 4.7 GB on 8 GB CPU reads too-big, on 16 GB it fits', () => {
+  it('a maintainer box: 4.7 GB on 8 GB CPU reads too-big, on 16 GB it fits', () => {
     expect(fitVerdict(4.7, cpu(8))).toBe('too-big');
     expect(fitVerdict(4.7, cpu(16))).toBe('fits');
     // The 3B fits the floor machine with room.
@@ -160,7 +160,7 @@ describe('resolveStarter is a preference list resolved by fit', () => {
   });
 
   it('falls to the 4B on the reference box because the 7B is too big, and says so honestly', () => {
-    // The 8 GB CPU box is the founder's floor: the 7B is the engine's own
+    // The 8 GB CPU box is a maintainer's floor: the 7B is the engine's own
     // "too big" there (it swaps), so the starter falls to the 4B and reports
     // the 4B's real verdict, never the 7B's.
     expect(fitVerdict(4.7, cpu(8))).toBe('too-big');
@@ -197,8 +197,8 @@ describe('the class line comes from the engine, never invented on the card', () 
     expect(classLineFor('qwen2.5-coder:32b')).toBe('Plans and hands off whole tasks.');
   });
 
-  it('speaks in words a person reads (D3, founder 2026-10-07)', () => {
-    // The CMO's plain rewrite, mirrored from the engine: OpenShore, never "the
+  it('speaks in words a person reads (D3, 2026-10-07)', () => {
+    // The copy review's plain rewrite, mirrored from the engine: OpenShore, never "the
     // harness", and no seat, tools or subagents on the card.
     const engine = readFileSync(
       join(process.cwd(), '..', 'os-code', 'src', 'harness', 'profile.ts'),

@@ -5,7 +5,7 @@
 // it knows, and the question comes back after the next launch.
 //
 // Once a chat on a model that stays on this network has read a private note
-// (CX and CMO, 2026-10-08, H), every search that model writes asks here, every
+// (UX and copy review, 2026-10-08, H), every search that model writes asks here, every
 // time, on a card with the exact words and why: the approval sheet's always-ask
 // words, Approve once and No, skip it, and nothing remembered, so no Settings
 // hint either.

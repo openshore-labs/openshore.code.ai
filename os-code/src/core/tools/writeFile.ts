@@ -20,7 +20,7 @@ export const writeFileTool: ToolDef<typeof schema> = {
   pathOf: (args) => args.path,
   async preview(args, ctx) {
     const abs = ctx.jail.resolve(args.path);
-    // A vault's settings folder is the person's alone (Vault M7, CTO L8).
+    // A vault's settings folder is the person's alone (Vault M7, tech review L8).
     if (workspaceWriteHitsVaultSettings(abs, ctx.vaultRoot)) throw new Error(VAULT_SETTINGS_DENY);
     const before = existsSync(abs) ? readFileSync(abs, 'utf8') : '';
     const { text, stats } = unifiedDiff(before, args.content, args.path);

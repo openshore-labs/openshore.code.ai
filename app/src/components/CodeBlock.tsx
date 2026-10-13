@@ -1,4 +1,4 @@
-// A fenced code block, shared by the chat's Markdown and (Vault M6, CTO K10)
+// A fenced code block, shared by the chat's Markdown and (Vault M6, tech review K10)
 // the Vault's reading view. It carries a Copy control, and a Run control when
 // the chat is desktop-backed and the block looks like a shell command, so a
 // suggested command goes to the connected terminal with one tap (the

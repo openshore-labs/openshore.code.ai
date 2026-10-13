@@ -15,6 +15,17 @@ iPhone app work today. How well a local model does real coding work is still
 being measured: `osc eval` is the instrument, and we publish only the numbers
 we have measured.
 
+## Get it
+
+- **Desktop app** (macOS, Windows, Linux): installers on the
+  [releases page](https://github.com/openshore-labs/openshore-releases/releases/latest).
+  Updates are checked against pinned signing keys before they install. The
+  Mac build is not notarized yet, so open it the first time with right-click,
+  Open.
+- **Terminal**: `npm install -g @openshore/os-code` (below).
+- **iPhone**: see [openshore.ai](https://openshore.ai) for the current way in.
+- **From source**: every piece builds from this repository (below).
+
 ## What it does
 
 - **Any model.** A local server such as Ollama, llama.cpp, vLLM or LM Studio;

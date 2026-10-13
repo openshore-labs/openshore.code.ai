@@ -39,7 +39,7 @@ export interface ReleaseInfo {
 /** The release's file for this Mac. electron-builder names them
  *  `OpenShore-<v>-arm64-mac.zip` / `OpenShore-<v>-mac.zip` (x64) and
  *  `OpenShore-<v>-arm64.dmg` / `OpenShore-<v>.dmg`. The zip is preferred (no
- *  disk image to mount), but a release built on the founder's own Mac may
+ *  disk image to mount), but a release built on a maintainer's own Mac may
  *  carry only the dmg, so that works too. */
 export function pickMacAsset(assets: ReleaseAsset[], arch: string): ReleaseAsset | undefined {
   const forArch = (re: RegExp, arm: RegExp) => {

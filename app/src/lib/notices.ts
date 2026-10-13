@@ -23,6 +23,12 @@ import type { StopReason } from 'os-code/protocol';
 import { Llama, type DownloadNoticeCopy, type NoticePermission } from './llamaPlugin.js';
 import { isPhone } from './platform.js';
 import { thisDeviceNoun } from './deviceNoun.js';
+import {
+  LOCKED_APPROVAL_BODY,
+  LOCKED_NOTICE_TITLE,
+  LOCKED_REPLY_BODY,
+  type AppLockSetting,
+} from './appLock.js';
 
 export type NoticeKind = 'download' | 'reply' | 'approval';
 
@@ -31,6 +37,19 @@ export type NoticeKind = 'download' | 'reply' | 'approval';
 export interface NoticePrefs {
   noticeDownloads?: boolean;
   noticeReplies?: boolean;
+  /** App Lock (lib/appLock.ts): while it is on, a notice names no chat. */
+  appLock?: AppLockSetting;
+}
+
+/** A chat notice with nothing about the chat in it, for while App Lock is on
+ *  (CX, 2026-10-12): the lock screen and the banner show only that something
+ *  is ready. The route stays, so a tap still opens the chat after the unlock. */
+export function lockedNotice(kind: 'reply' | 'approval', message: NoticeMessage): NoticeMessage {
+  return {
+    ...message,
+    title: LOCKED_NOTICE_TITLE,
+    body: kind === 'reply' ? LOCKED_REPLY_BODY : LOCKED_APPROVAL_BODY,
+  };
 }
 
 export function noticeEnabled(kind: NoticeKind, prefs: NoticePrefs): boolean {
@@ -185,7 +204,8 @@ export async function postChatNotice(
   // notices on or off in iOS Settings since the app last asked.
   const permission = await noticePermission();
   if (!shouldNotice(kind, { prefs, permission, visible: appVisible() })) return;
-  await Llama.postNotice(message).catch(() => {});
+  const said = prefs.appLock?.on ? lockedNotice(kind, message) : message;
+  await Llama.postNotice(said).catch(() => {});
 }
 
 /** Hand the Downloads toggle to the native side, which reads it on a

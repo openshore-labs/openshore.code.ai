@@ -1,4 +1,4 @@
-// The storage seam's write contract (Vault M1, 1.1; CTO F4). Every provider's
+// The storage seam's write contract (Vault M1, 1.1; tech review F4). Every provider's
 // write takes an optional guard and answers with a WriteResult; a conflict is
 // a result, never a throw. A provider that declares `compareAndSwap` enforces
 // the guard, and every such provider must pass the cases below: a stale
@@ -9,23 +9,23 @@
 // Enrolled now: the desktop folder, through its real client and its real
 // Electron transport, with the bridge routed straight to main's handlers
 // (electron/vaultFs.ts) over a temp folder, so the engine's writeNote does the
-// file work exactly as it does in the app; and This device (Vault M2 2.1, CTO
+// file work exactly as it does in the app; and This device (Vault M2 2.1, tech review
 // G1), over the mocked sealed store, where another writer is a body stored
 // with a fresh version token. The providers not yet enrolled accept the guard
 // and ignore it until their M2 stream lands; they are held to the result
 // shape here and must not claim compareAndSwap.
 //
-// The team vault (Vault M2 2.1 and 2.3, CTO G3) is enrolled through a fake of
+// The team vault (Vault M2 2.1 and 2.3, tech review G3) is enrolled through a fake of
 // its server half (test/fixtures/fakeOrgVaultServer.ts), which answers the
 // two guarded RPCs of migration 0021 by their decision table; another writer
 // is a teammate's save with a fresh rev.
 //
-// Your computer (Vault M5, CTO J9) is enrolled too, through its real provider
+// Your computer (Vault M5, tech review J9) is enrolled too, through its real provider
 // against a fake of the daemon's /vault routes (test/support/fakeHubDaemon.ts),
 // where another writer is a note replaced on the computer with a fresh
 // version.
 //
-// Remove joined the contract in Vault M2 wave 0 (CTO G7): it answers with a
+// Remove joined the contract in Vault M2 wave 0 (tech review G7): it answers with a
 // RemoveResult, a stale ifMatch is 'changed' and leaves the file, and a file
 // already gone is ok.
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -89,10 +89,10 @@ vi.mock('../src/lib/electronBridge.js', async () => {
       fs.writeVaultFile(h.root, p, t, fs.parseVaultGuard(g)),
     vaultRemove: (p: string, g?: unknown) =>
       fs.removeVaultFile(h.root, p, fs.parseVaultRemoveGuard(g)),
-    // Vault M6 (CTO K13): main's handlers over the same folderFs code, each
+    // Vault M6 (tech review K13): main's handlers over the same folderFs code, each
     // wired only once stream B's function exists, as `(root, ...args)`.
     ...m6Bridge(fs as unknown as Record<string, unknown>),
-    // Vault M3 and M7 (CTO H5, L7): main's config read, and its one config
+    // Vault M3 and M7 (tech review H5, L7): main's config read, and its one config
     // write, the real writer through main's own handler code.
     ...(await configBridge()),
   };
@@ -101,7 +101,7 @@ vi.mock('../src/lib/electronBridge.js', async () => {
 
 /** osc:vaultReadConfig and osc:vaultWriteConfig over the temp folder, as
  *  main answers them: its read, and its one write, `putVaultSettingsFile`
- *  over the guard main parses, so the real engine writer (Vault M7, CTO L7)
+ *  over the guard main parses, so the real engine writer (Vault M7, tech review L7)
  *  runs end to end with no stand-in. */
 async function configBridge(): Promise<Record<string, unknown>> {
   const { readVaultConfigFile } = await import('os-code/dist/src/core/vault/configFile.js');
@@ -330,7 +330,7 @@ for (const p of enforcing) {
   });
 }
 
-// ---- Vault M6 (CTO K2, K3, K6; R3) -----------------------------------------
+// ---- Vault M6 (tech review K2, K3, K6; R3) -----------------------------------------
 // Rows run for every enrolled provider that declares the member, so a held
 // branch enrolls itself by adding it. The desktop folder declares them all
 // through its transport; its rows run once main's folderFs functions exist
@@ -577,7 +577,7 @@ for (const p of enforcing) {
   });
 }
 
-// ---- Vault M7 (CTO L7, L16): writeConfig, the settings sheet's write ------
+// ---- Vault M7 (tech review L7, L16): writeConfig, the settings sheet's write ------
 // Every provider with writeConfig holds the note write's contract on the
 // vault's own settings file: ifAbsent never replaces, a stale ifMatch is
 // `changed` with theirs (the file there now, as readConfig reads it) and
@@ -799,7 +799,7 @@ describe('providers that do not enforce the guard yet (M2) return the new shape'
   }
 });
 
-// The folder client's M6 half (CTO K2, K19): it declares a seam member only
+// The folder client's M6 half (tech review K2, K19): it declares a seam member only
 // when its transport has it, so the iPhone folder lights the same rows by
 // adding transport members; it checks every path on this side first; and it
 // holds a transport's answer to the seam's shapes (the byte cap, the allowed

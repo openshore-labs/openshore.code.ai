@@ -44,6 +44,7 @@ export function CommandRow({ command, label }: { command: string; label: string 
 export function ServerSetup({ place = 'rented' }: { place?: DockPlace }) {
   const [again, setAgain] = useState(false);
   const [several, setSeveral] = useState(false);
+  const [sizes, setSizes] = useState(false);
   const rented = place === 'rented';
   return (
     <div className="card">
@@ -64,15 +65,26 @@ export function ServerSetup({ place = 'rented' }: { place?: DockPlace }) {
           <p className="hint" style={{ marginTop: 10 }}>
             {SERVER_RENTED_LINE}
           </p>
-          <h4 className="dock-sizes-head">What each size can do</h4>
-          <dl className="dock-sizes">
-            {SERVER_SIZES.map((row) => (
-              <div key={row.size} className="dock-size">
-                <dt className="dock-step-title">{row.size}</dt>
-                <dd className="sub">{row.detail}</dd>
-              </div>
-            ))}
-          </dl>
+          {/* What each size can do, folded: detail for the person choosing
+              a plan, not the first read (2026-10-13). */}
+          <button
+            type="button"
+            className="linklike press-fb dock-several"
+            aria-expanded={sizes}
+            onClick={() => setSizes((v) => !v)}
+          >
+            {sizes ? 'Hide sizes' : 'Which size do I need?'}
+          </button>
+          {sizes ? (
+            <dl className="dock-sizes">
+              {SERVER_SIZES.map((row) => (
+                <div key={row.size} className="dock-size">
+                  <dt className="dock-step-title">{row.size}</dt>
+                  <dd className="sub">{row.detail}</dd>
+                </div>
+              ))}
+            </dl>
+          ) : null}
         </>
       ) : null}
       <button

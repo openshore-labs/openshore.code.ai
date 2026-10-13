@@ -6,7 +6,7 @@
 // The lease is a file in the container (like the Local provider), so
 // single-writer semantics ride the same bytes iCloud already syncs. iCloud is
 // not a real locking service, so this is best-effort coordination for v1, the
-// honest limit the CTO flagged for cloud-drive backends.
+// honest limit the tech review flagged for cloud-drive backends.
 import { Icloud } from './icloudPlugin.js';
 import { thisDeviceNoun } from '../deviceNoun.js';
 import {
@@ -58,7 +58,7 @@ export const icloudProvider: StorageProvider = {
   },
 
   // The guard is accepted and not yet enforced (M2 2.1 moves the check into
-  // the native CoordinatedTree, CTO G2), so a stale remove still removes.
+  // the native CoordinatedTree, tech review G2), so a stale remove still removes.
   async remove(resourceId, path, _guard?: RemoveGuard): Promise<RemoveResult> {
     await Icloud.remove({ resourceId, path });
     return { ok: true };
@@ -95,7 +95,7 @@ export const icloudProvider: StorageProvider = {
 };
 
 /** Runtime probe: is iCloud usable on this device right now? */
-/** iCloud Drive is held out of the first App Store build (CTO security and
+/** iCloud Drive is held out of the first App Store build (tech review security and
  *  privacy review, 2026-10-01): its writes are not yet compare-and-swap
  *  (vault-m2-icloud holds that), and it is not on What leaves this device.
  *  While held, nothing offers it: no vault provider, no model download target. */

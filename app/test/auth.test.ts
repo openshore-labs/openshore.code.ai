@@ -3,10 +3,11 @@
 // place (APP-2), a purchase that Apple confirmed but the server never linked is
 // kept and retried (UI-10), a server org is adopted only when it is mine or
 // after an explicit yes (BE-1 client half), sign-out leaves no authority behind
-// (APP-7), and a sign-in link is bound to the request that asked for it,
-// across a cold start, or confirmed by hand when nothing asked (APP-6). Sign
+// (APP-7), and a sign-in link is PKCE, so it signs in only on the device
+// that asked, across a cold start, while the 6-digit code works anywhere
+// (APP-6, passwordless 2026-10-12). Sign
 // out ends this device's sign-in only, finishes here offline too, and "Sign
-// out everywhere" says plainly when nothing changed (finding 20, CX 4); the
+// out everywhere" says plainly when nothing changed (finding 20, UX review 4); the
 // guardrail record rides the store's one refresh (the refresh race).
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -58,17 +59,28 @@ const sb = {
   rpc: vi.fn(),
   invokeFunction: vi.fn(),
   getUser: vi.fn(),
-  signInWithPassword: vi.fn(),
-  signInWithOtp: vi.fn(),
+  verifyEmailCode: vi.fn(),
+  sendEmailSignIn: vi.fn(),
+  exchangeAuthCode: vi.fn(),
   signOut: vi.fn(),
   update: vi.fn(),
   insert: vi.fn(),
   del: vi.fn(),
-  updatePassword: vi.fn(),
 };
 vi.mock('../src/lib/supabase.js', async (importOriginal) => {
   const real = await importOriginal<typeof import('../src/lib/supabase.js')>();
   return { ...real, isConfigured: () => true, ...sb };
+});
+
+const pk = {
+  addPasskey: vi.fn(),
+  signInWithPasskey: vi.fn(),
+  listPasskeys: vi.fn(),
+  removePasskey: vi.fn(),
+};
+vi.mock('../src/lib/passkeys.js', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../src/lib/passkeys.js')>();
+  return { ...real, ...pk };
 });
 
 const { SupabaseRequestError } = await import('../src/lib/supabase.js');
@@ -80,9 +92,12 @@ const { SIGNED_OUT_EVERYWHERE, SIGNED_OUT_HERE, SIGN_OUT_EVERYWHERE_FAILED } =
 type Session = import('../src/lib/supabase.js').Session;
 
 const SESSION_KEY = 'oscode.auth.session.v1';
-const PENDING_AUTH_KEY = 'oscode.auth.pending.v1';
-const CALLBACK = 'oscode://auth-callback#access_token=at&refresh_token=rt&expires_in=3600';
-const RECOVERY = `${CALLBACK}&type=recovery`;
+const PENDING_AUTH_KEY = 'oscode.auth.pending.v2';
+const CALLBACK = 'oscode://auth-callback?code=one-time';
+const IMPLICIT = 'oscode://auth-callback#access_token=at&refresh_token=rt&expires_in=3600';
+const { LINK_ELSEWHERE, LINK_EXPIRED, CODE_REFUSED } =
+  await import('../src/state/emailSignInOps.js');
+const { codeChallengeOf } = await import('../src/lib/pkce.js');
 
 const user = { id: 'u1', email: 'a@b.c' };
 const live = (): Session => ({
@@ -125,7 +140,7 @@ async function resetAll() {
   sb.rpc.mockResolvedValue(null);
   sb.invokeFunction.mockResolvedValue({});
   sb.signOut.mockResolvedValue(undefined);
-  sb.signInWithOtp.mockResolvedValue(undefined);
+  sb.sendEmailSignIn.mockResolvedValue(undefined);
   sb.refreshSession.mockResolvedValue(live());
   sb.select.mockImplementation(async (table: string, _token: string, query: string) => {
     if (table === 'org_members' && query.includes('select=org_id')) return memberships;
@@ -153,8 +168,6 @@ async function resetAll() {
     authSession: undefined,
     serverRole: undefined,
     entitlement: undefined,
-    passwordRecovery: undefined,
-    authConfirm: undefined,
     orgJoin: undefined,
     toast: undefined,
     settings: { onboarded: true, claudeModel: 'x', deviceModels: {} },
@@ -204,7 +217,7 @@ describe('a dead refresh token signs the device out (APP-2)', () => {
 describe('adopting a server org (BE-1 client half)', () => {
   beforeEach(async () => {
     await resetAll();
-    sb.signInWithPassword.mockResolvedValue(live());
+    sb.verifyEmailCode.mockResolvedValue(live());
   });
 
   it('pulls memberships in creation order and prefers the org this device already references', async () => {
@@ -229,7 +242,7 @@ describe('adopting a server org (BE-1 client half)', () => {
         },
       },
     });
-    await useApp.getState().signIn('a@b.c', 'pw');
+    await useApp.getState().verifySignInCode('a@b.c', '123456');
     const membershipQuery = sb.select.mock.calls.find(
       (c) => c[0] === 'org_members' && String(c[2]).includes('select=org_id'),
     );
@@ -242,26 +255,26 @@ describe('adopting a server org (BE-1 client half)', () => {
   it('adopts silently when I own the org', async () => {
     memberships = [{ org_id: 'org1' }];
     ownerOf = { org1: 'u1' };
-    await useApp.getState().signIn('a@b.c', 'pw');
+    await useApp.getState().verifySignInCode('a@b.c', '123456');
     expect(useApp.getState().settings.account?.org?.serverId).toBe('org1');
     expect(useApp.getState().orgJoin).toBeUndefined();
   });
 
   it("asks before joining someone else's org, remembers a decline, and joins on a yes", async () => {
     memberships = [{ org_id: 'org1' }];
-    await useApp.getState().signIn('a@b.c', 'pw');
+    await useApp.getState().verifySignInCode('a@b.c', '123456');
     expect(useApp.getState().settings.account?.org).toBeUndefined();
     expect(useApp.getState().orgJoin?.org.name).toBe('One');
 
     await useApp.getState().declineOrg();
     expect(useApp.getState().orgJoin).toBeUndefined();
     expect(useApp.getState().settings.declinedOrgIds).toEqual(['org1']);
-    await useApp.getState().signIn('a@b.c', 'pw');
+    await useApp.getState().verifySignInCode('a@b.c', '123456');
     expect(useApp.getState().orgJoin).toBeUndefined();
     expect(useApp.getState().settings.account?.org).toBeUndefined();
 
     await useApp.getState().saveSettings({ declinedOrgIds: undefined });
-    await useApp.getState().signIn('a@b.c', 'pw');
+    await useApp.getState().verifySignInCode('a@b.c', '123456');
     expect(useApp.getState().orgJoin?.org.serverId).toBe('org1');
     await useApp.getState().joinOrg();
     expect(useApp.getState().orgJoin).toBeUndefined();
@@ -273,15 +286,14 @@ describe('adopting a server org (BE-1 client half)', () => {
 describe('sign-out leaves nothing behind (APP-7)', () => {
   beforeEach(async () => {
     await resetAll();
-    sb.signInWithPassword.mockResolvedValue(live());
+    sb.verifyEmailCode.mockResolvedValue(live());
   });
 
   it('drops the roster, the identity, local admin authority, and the pending flags', async () => {
     memberships = [{ org_id: 'org1' }];
     ownerOf = { org1: 'u1' };
-    await useApp.getState().signIn('a@b.c', 'pw');
+    await useApp.getState().verifySignInCode('a@b.c', '123456');
     await useApp.getState().saveSettings({ declinedOrgIds: ['org9'] });
-    useApp.setState({ passwordRecovery: true });
     expect(await useApp.getState().authorizeAdmin()).toBe(true);
 
     await useApp.getState().signOutAccount();
@@ -292,85 +304,127 @@ describe('sign-out leaves nothing behind (APP-7)', () => {
     expect(st.settings.account?.org?.serverId).toBe('org1');
     expect(st.settings.account?.selfEmail).toBeUndefined();
     expect(st.settings.declinedOrgIds).toBeUndefined();
-    expect(st.passwordRecovery).toBeFalsy();
   });
 });
 
-describe('a sign-in link is bound to the request that asked for it (APP-6)', () => {
+describe('a sign-in link is PKCE, bound to the device that asked (APP-6)', () => {
   beforeEach(resetAll);
 
-  it('signs in silently when the link matches the address we sent it to', async () => {
-    sb.getUser.mockResolvedValue(user);
-    await useApp.getState().sendMagicLink('A@b.c');
-    expect(mem.get(PENDING_AUTH_KEY)).toContain('a@b.c');
-    expect(await useApp.getState().completeAuthCallback(CALLBACK)).toBe(true);
-    expect(useApp.getState().authSession?.user.email).toBe('a@b.c');
-    expect(useApp.getState().authConfirm).toBeUndefined();
+  const pending = () =>
+    JSON.parse(secrets.get(PENDING_AUTH_KEY)!) as { email: string; verifier: string };
+
+  it('sends only the challenge, keeping the verifier in the secret store', async () => {
+    await useApp.getState().sendSignInEmail(' A@b.c ');
+    const row = pending();
+    expect(row.email).toBe('a@b.c');
+    expect(row.verifier).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    const [email, , challenge] = sb.sendEmailSignIn.mock.calls[0]!;
+    expect(email).toBe('A@b.c');
+    expect(challenge).toBe(await codeChallengeOf(row.verifier));
+    expect(challenge).not.toBe(row.verifier);
     expect(mem.has(PENDING_AUTH_KEY)).toBe(false);
   });
 
-  it('refuses a link for a different account than the one we asked for', async () => {
-    sb.getUser.mockResolvedValue({ id: 'u2', email: 'x@y.z' });
-    await useApp.getState().sendMagicLink('a@b.c');
-    expect(await useApp.getState().completeAuthCallback(CALLBACK)).toBe(false);
-    expect(useApp.getState().authSession).toBeUndefined();
-    expect(useApp.getState().toast).toBe(
-      'That link is for a different account. Request a new one from here.',
-    );
+  it('trades the link code with this device verifier, then forgets the request', async () => {
+    sb.exchangeAuthCode.mockResolvedValue(live());
+    await useApp.getState().sendSignInEmail('a@b.c');
+    const { verifier } = pending();
+    expect(await useApp.getState().completeAuthCallback(CALLBACK)).toBe(true);
+    expect(sb.exchangeAuthCode).toHaveBeenCalledWith('one-time', verifier);
+    expect(useApp.getState().authSession?.user.email).toBe('a@b.c');
+    expect(secrets.has(PENDING_AUTH_KEY)).toBe(false);
   });
 
-  it('keeps the binding across a cold start, for fifteen minutes', async () => {
-    await useApp.getState().sendMagicLink('a@b.c');
+  it('a link with no request here signs nobody in and points to the code', async () => {
+    expect(await useApp.getState().completeAuthCallback(CALLBACK)).toBe(false);
+    expect(sb.exchangeAuthCode).not.toHaveBeenCalled();
+    expect(useApp.getState().authSession).toBeUndefined();
+    expect(useApp.getState().toast).toBe(LINK_ELSEWHERE);
+  });
+
+  it('keeps the request across a cold start, for ten minutes', async () => {
+    sb.exchangeAuthCode.mockResolvedValue(live());
+    await useApp.getState().sendSignInEmail('a@b.c');
+    const row = pending();
     // The app is killed and relaunched by the link from Mail: a fresh store.
     vi.resetModules();
     const { useApp: relaunched } = await import('../src/state/store.js');
-    sb.getUser.mockResolvedValue({ id: 'u2', email: 'x@y.z' });
+    expect(await relaunched.getState().completeAuthCallback(CALLBACK)).toBe(true);
+    expect(sb.exchangeAuthCode).toHaveBeenCalledWith('one-time', row.verifier);
+    // Past the TTL the request is forgotten, so a link has nothing to trade.
+    sb.exchangeAuthCode.mockClear();
+    await relaunched.getState().signOutAccount();
+    secrets.set(PENDING_AUTH_KEY, JSON.stringify({ ...row, at: Date.now() - 11 * 60_000 }));
     expect(await relaunched.getState().completeAuthCallback(CALLBACK)).toBe(false);
-    expect(relaunched.getState().authConfirm).toBeUndefined();
-    expect(relaunched.getState().toast).toBe(
-      'That link is for a different account. Request a new one from here.',
+    expect(sb.exchangeAuthCode).not.toHaveBeenCalled();
+    expect(secrets.has(PENDING_AUTH_KEY)).toBe(false);
+  });
+
+  it('never takes session tokens from a link address (the old implicit flow)', async () => {
+    await useApp.getState().sendSignInEmail('a@b.c');
+    expect(await useApp.getState().completeAuthCallback(IMPLICIT)).toBe(false);
+    expect(sb.getUser).not.toHaveBeenCalled();
+    expect(useApp.getState().authSession).toBeUndefined();
+  });
+
+  it('says plainly when the link expired or was used', async () => {
+    await useApp.getState().sendSignInEmail('a@b.c');
+    const refused =
+      'oscode://auth-callback?error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid+or+has+expired';
+    expect(await useApp.getState().completeAuthCallback(refused)).toBe(false);
+    expect(useApp.getState().toast).toBe(LINK_EXPIRED);
+    sb.exchangeAuthCode.mockRejectedValue(
+      new Error('invalid flow state, no valid flow state found'),
     );
-    // Past the TTL the request is forgotten, so the link is treated as unsolicited.
-    mem.set(PENDING_AUTH_KEY, JSON.stringify({ email: 'a@b.c', at: Date.now() - 16 * 60_000 }));
-    expect(await relaunched.getState().completeAuthCallback(CALLBACK)).toBe(false);
-    expect(relaunched.getState().authConfirm).toEqual({ email: 'x@y.z', recovery: false });
-  });
-
-  it('asks before signing in on a link nothing here requested', async () => {
-    sb.getUser.mockResolvedValue(user);
     expect(await useApp.getState().completeAuthCallback(CALLBACK)).toBe(false);
-    expect(useApp.getState().authSession).toBeUndefined();
-    expect(useApp.getState().authConfirm).toEqual({ email: 'a@b.c', recovery: false });
-    useApp.getState().dismissAuthCallback();
-    expect(useApp.getState().authConfirm).toBeUndefined();
-    expect(useApp.getState().authSession).toBeUndefined();
-
-    await useApp.getState().completeAuthCallback(CALLBACK);
-    await useApp.getState().confirmAuthCallback();
-    expect(useApp.getState().authConfirm).toBeUndefined();
-    expect(useApp.getState().authSession?.user.email).toBe('a@b.c');
-  });
-
-  it('a recovery link sets the password prompt only once confirmed', async () => {
-    sb.getUser.mockResolvedValue(user);
-    expect(await useApp.getState().completeAuthCallback(RECOVERY)).toBe(false);
-    expect(useApp.getState().authConfirm).toEqual({ email: 'a@b.c', recovery: true });
-    expect(useApp.getState().passwordRecovery).toBeFalsy();
-    await useApp.getState().confirmAuthCallback();
-    expect(useApp.getState().passwordRecovery).toBe(true);
-    expect(useApp.getState().authSession?.user.email).toBe('a@b.c');
+    expect(useApp.getState().toast).toBe(LINK_EXPIRED);
   });
 
   it('refuses a link for another account while someone is signed in', async () => {
     useApp.setState({ authSession: live() });
-    sb.getUser.mockResolvedValue({ id: 'u2', email: 'c@d.e' });
+    await useApp.getState().sendSignInEmail('c@d.e');
+    sb.exchangeAuthCode.mockResolvedValue({
+      ...live(),
+      accessToken: 'refused-token',
+      user: { id: 'u2', email: 'c@d.e' },
+    });
     expect(await useApp.getState().completeAuthCallback(CALLBACK)).toBe(false);
+    // The session the server made for the other account is ended there.
+    expect(sb.signOut).toHaveBeenCalledWith('refused-token', 'local');
     expect(useApp.getState().toast).toBe(
-      'You are signed in as a@b.c. Sign out first to use a link for c@d.e.',
+      'You are signed in as a@b.c. Sign out first to sign in as c@d.e.',
     );
     expect(useApp.getState().authSession?.user.email).toBe('a@b.c');
-    expect(useApp.getState().authConfirm).toBeUndefined();
     await tick();
+  });
+});
+
+describe('the 6-digit code signs in from anywhere', () => {
+  beforeEach(resetAll);
+
+  it('takes the digits however they were pasted, for the address as the account knows it', async () => {
+    sb.verifyEmailCode.mockResolvedValue(live());
+    await useApp.getState().verifySignInCode(' A@b.c', '123 456');
+    expect(sb.verifyEmailCode).toHaveBeenCalledWith('a@b.c', '123456');
+    expect(useApp.getState().authSession?.user.email).toBe('a@b.c');
+  });
+
+  it('refuses a short code without asking the server, and a wrong one in one plain line', async () => {
+    await expect(useApp.getState().verifySignInCode('a@b.c', '12345')).rejects.toThrow(
+      CODE_REFUSED,
+    );
+    expect(sb.verifyEmailCode).not.toHaveBeenCalled();
+    sb.verifyEmailCode.mockRejectedValue(new Error('Token has expired or is invalid'));
+    await expect(useApp.getState().verifySignInCode('a@b.c', '654321')).rejects.toThrow(
+      CODE_REFUSED,
+    );
+    expect(useApp.getState().authSession).toBeUndefined();
+  });
+
+  it('the first sign-in marks the passwords line done', async () => {
+    sb.verifyEmailCode.mockResolvedValue(live());
+    await useApp.getState().verifySignInCode('a@b.c', '123456');
+    expect(useApp.getState().settings.passwordsGoneSeen).toBe(true);
   });
 });
 
@@ -448,7 +502,7 @@ describe('sign-out ends this device only (finding 20)', () => {
   });
 });
 
-describe('sign out everywhere (CX 4)', () => {
+describe('sign out everywhere (UX review 4)', () => {
   beforeEach(resetAll);
 
   it('ends the sign-in on every device with a live token, then here', async () => {
@@ -518,5 +572,57 @@ describe('the guardrail record rides the store session (the refresh race)', () =
     useApp.setState({ authSession: undefined });
     await recordEthicsEvent(blocked);
     expect(sb.insert).not.toHaveBeenCalled();
+  });
+});
+
+describe('passkeys in the store', () => {
+  beforeEach(async () => {
+    await resetAll();
+    for (const fn of Object.values(pk)) fn.mockReset();
+  });
+
+  const token = (amr: object[]) => `h.${btoa(JSON.stringify({ amr })).replace(/=+$/, '')}.s`;
+  const withToken = (amr: object[]): Session => ({ ...live(), accessToken: token(amr) });
+
+  it('asks for a fresh code before adding a passkey to an old sign-in', async () => {
+    const old = Math.floor(Date.now() / 1000) - 20 * 60;
+    useApp.setState({ authSession: withToken([{ method: 'otp', timestamp: old }]) });
+    expect(await useApp.getState().addPasskey()).toBe('confirm');
+    expect(pk.addPasskey).not.toHaveBeenCalled();
+  });
+
+  it('adds one straight after an email sign-in, and remembers this device used one', async () => {
+    const fresh = Math.floor(Date.now() / 1000) - 60;
+    useApp.setState({ authSession: withToken([{ method: 'otp', timestamp: fresh }]) });
+    pk.addPasskey.mockResolvedValue(undefined);
+    expect(await useApp.getState().addPasskey()).toBe('added');
+    expect(pk.addPasskey).toHaveBeenCalledTimes(1);
+    expect(useApp.getState().settings.passkeyUsedHere).toBe(true);
+  });
+
+  it('a code renews this session only, never another account', async () => {
+    useApp.setState({ authSession: live() });
+    sb.verifyEmailCode.mockResolvedValue({ ...live(), accessToken: 'renewed' });
+    await useApp.getState().confirmByCode('123456');
+    expect(sb.verifyEmailCode).toHaveBeenCalledWith('a@b.c', '123456');
+    expect(useApp.getState().authSession?.accessToken).toBe('renewed');
+    // The renewed session's predecessor is ended, so one sign-in is live.
+    expect(sb.signOut).toHaveBeenCalledWith('fresh-token', 'local');
+
+    sb.verifyEmailCode.mockResolvedValue({ ...live(), user: { id: 'u2', email: 'a@b.c' } });
+    await expect(useApp.getState().confirmByCode('123456')).rejects.toThrow(CODE_REFUSED);
+    expect(useApp.getState().authSession?.accessToken).toBe('renewed');
+  });
+
+  it('signs in with a passkey and leads with it here next time', async () => {
+    pk.signInWithPasskey.mockResolvedValue({
+      access_token: 'pk-token',
+      refresh_token: 'pk-refresh',
+      expires_in: 3600,
+      user,
+    });
+    await useApp.getState().signInWithPasskey();
+    expect(useApp.getState().authSession?.accessToken).toBe('pk-token');
+    expect(useApp.getState().settings.passkeyUsedHere).toBe(true);
   });
 });

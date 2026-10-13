@@ -1,6 +1,6 @@
 // Harness Currents, the pure core and the guards. A second, independent group
 // above Agentic Currents: it layers a cheap decision method (Jev) into the
-// harness. The founder's promises, held in code: one on at a time WITHIN the
+// harness. A maintainer's promises, held in code: one on at a time WITHIN the
 // harness group, coexisting with an agentic current (one of each may be on);
 // the two-part gate (toggle AND probe); a harness current fills no room slot
 // (it is not a model or an agent); and with none on the rooms carry no trace.

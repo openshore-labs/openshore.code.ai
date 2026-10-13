@@ -1,4 +1,4 @@
-// The Vault's note scanner (Vault M3, CTO H1): one hand-rolled, flat pass over
+// The Vault's note scanner (Vault M3, tech review H1): one hand-rolled, flat pass over
 // a note that finds the frontmatter block, links, tags, headings and block ids,
 // and the ranges it skipped (code, math, comments). Not remark: remark builds a
 // full tree (too slow for a 5,000-note vault on the reference box), has no

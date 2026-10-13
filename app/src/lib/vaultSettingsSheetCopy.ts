@@ -1,4 +1,4 @@
-// The Vault settings sheet's words (Vault M7 wave 2; CX Y1 to Y10): stream
+// The Vault settings sheet's words (Vault M7 wave 2; UX review Y1 to Y10): stream
 // F's M7 lines in lib/vaultCopy.ts, mapped onto the sheet's copy shape
 // (stream G's `VaultSettingsSheetCopy`), so the sheet stays presentational
 // and every string still lives in vaultCopy.ts under its guards. One mapper,

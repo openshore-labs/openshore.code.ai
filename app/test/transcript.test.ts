@@ -165,7 +165,7 @@ describe('transcript reducer', () => {
     expect(stop?.kind).toBe('stopped');
   });
 
-  // CX ruling 5 (build 2026-09-29): the person's own Stop leaves the partial
+  // UX review ruling 5 (build 2026-09-29): the person's own Stop leaves the partial
   // answer where it is and a muted marker under it, never a failure card.
   it("marks the person's own stop, with or without words, and keeps the partial", () => {
     const partway = feed([
@@ -412,7 +412,7 @@ describe('the Vault context pack', () => {
   });
 });
 
-// A placed cloud specialist on the computer (CX and CMO, 2026-10-08, D): the
+// A placed cloud specialist on the computer (UX and copy review, 2026-10-08, D): the
 // handoff's row names the model it goes to and wears the Cloud chip when it
 // leaves this network, and an additive reach event turns the turn cloud. An
 // older engine sends neither, and its rows keep their words.

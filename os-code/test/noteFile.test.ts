@@ -1,4 +1,4 @@
-// The one note file module (Vault v1, CTO F1 and F2): the version token, the
+// The one note file module (Vault v1, tech review F1 and F2): the version token, the
 // guarded write, and the read with the torn-read guard, shared by the engine's
 // vault tools, the routine scheduler, and the Electron main process. Each case
 // is a way a note on a shared folder could be lost or silently replaced.

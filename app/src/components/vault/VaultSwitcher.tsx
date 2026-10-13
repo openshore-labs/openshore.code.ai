@@ -1,4 +1,4 @@
-// The quick switcher (Vault M6 6.1; CTO K9; CX X3, X4): Cmd or Ctrl+O while
+// The quick switcher (Vault M6 6.1; tech review K9; UX review X3, X4): Cmd or Ctrl+O while
 // the Vault room is shown opens a top-anchored Sheet with one field. It is a
 // desktop overlay (an iPad with a hardware keyboard gets it too); the phone
 // has none, since the tree's own search field is its switcher.

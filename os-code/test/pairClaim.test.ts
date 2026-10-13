@@ -200,7 +200,7 @@ describe('POST /pair/claim (per-device pairing)', () => {
 
   it('a claim is labeled honestly: the name is trimmed, bounded, and never empty', async () => {
     const { claim: code } = daemon.mintPairClaim();
-    const res = await pair({ claim: code, deviceName: `  ${'x'.repeat(80)}  ` });
+    const res = await pair({ claim: code, deviceName: `  ${'x'.repeat(80)}\u0007  ` });
     expect(res.status).toBe(200);
     const { label } = (await res.json()) as { label: string };
     expect(label).toBe('x'.repeat(40));
@@ -236,7 +236,7 @@ describe('POST /pair/claim (per-device pairing)', () => {
   });
 });
 
-// Pairing review (CX, 2026-10-01): a phone that forgets its computer revokes
+// Pairing review (UX review, 2026-10-01): a phone that forgets its computer revokes
 // its own credential, so the desktop's Paired devices list never fills with
 // rows nothing uses. Only the presented credential goes; never another.
 describe('DELETE /pair/self (a phone forgetting its computer)', () => {
@@ -266,7 +266,7 @@ describe('DELETE /pair/self (a phone forgetting its computer)', () => {
   });
 });
 
-describe('revoking a device cuts its open streams (CX 2026-10-01)', () => {
+describe('revoking a device cuts its open streams (UX review 2026-10-01)', () => {
   it('every keepalive re-checks the credential the stream opened with', async () => {
     const { readFileSync } = await import('node:fs');
     const src = readFileSync(join(__dirname, '../src/daemon/serve.ts'), 'utf8');

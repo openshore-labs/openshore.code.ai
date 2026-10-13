@@ -1,7 +1,7 @@
 // Materialize a buffered commit-intent from a phone into a real git commit and
 // push it, on the desktop the daemon serves. This is the server counterpart to
-// the client protocol in app/src/lib/repoSync.ts, and it holds the line the CTO
-// drew: it NEVER touches the live working tree or index (the founder may be
+// the client protocol in app/src/lib/repoSync.ts, and it holds the line the tech review
+// drew: it NEVER touches the live working tree or index (may be
 // sitting at this machine editing), it confines every write inside the repo,
 // it is idempotent on clientOpId via a durable receipts log, and a conflict
 // lands on a rescue branch rather than force-pushing over anyone.
@@ -239,7 +239,7 @@ export async function applyOutboxItem(req: OutboxApplyRequest): Promise<OutboxAp
   // We chose the overlay-onto-branchTip approach over routing all forward-moved
   // tips to rescue: it preserves intervening commits' content (the report's bar)
   // while keeping the common "meanwhile-edit touched a different file" case a
-  // clean fast-forward instead of a rescue branch the founder must merge by hand.
+  // clean fast-forward instead of a rescue branch a maintainer must merge by hand.
   const seedCommit = baseIsAncestor ? branchTip : req.baseCommit;
   const indexFile = tmp('oscidx');
   const blobFiles: string[] = [];

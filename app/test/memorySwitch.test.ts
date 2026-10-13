@@ -1,4 +1,4 @@
-// The Wayfinding Memory switch reaches the engine (plan 1.5, CTO F6). Off, it
+// The Wayfinding Memory switch reaches the engine (plan 1.5, tech review F6). Off, it
 // rides as `memory: false` into every engine session the app opens: the
 // desktop's own in-process engine over the Electron bridge, a session a phone
 // opens on its paired computer, and a Stack play's engine step. On (the

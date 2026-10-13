@@ -3,7 +3,7 @@
 // carry for the seat, which failed calls
 // count toward the cloud escalation offer, the notice that a server cut
 // the prompt without a word, when a seat runs lean for its window, and the
-// notice that even the lean prompt leaves little room (CTO 6).
+// notice that even the lean prompt leaves little room (tech review 6).
 import type { MoreRoom, Provider } from '../../providers/types.js';
 import { looksTruncated } from '../../context/compaction.js';
 import {
@@ -75,8 +75,8 @@ export function crowds(fixedTokens: number, windowTokens: number, fraction: numb
 
 /**
  * Watches each turn's served prompt against the loop's estimate and says,
- * once per chat per model, when the server cut it (CX 6). The card offers
- * more room when the provider can serve it (CTO 5).
+ * once per chat per model, when the server cut it (UX review 6). The card offers
+ * more room when the provider can serve it (tech review 5).
  */
 export class WindowWatch {
   private noticed = new Set<string>();
@@ -169,7 +169,7 @@ export function retrievalLine(event: Extract<AgentEvent, { type: 'retrieval' }>)
 
 /** The truncation card in plain lines, for the terminal clients (the app has
  *  its own card, with the action as a button). The words are the card's
- *  (CX 6); the action names the setting, since a terminal has no button. */
+ *  (UX review 6); the action names the setting, since a terminal has no button. */
 export function windowCutLines(event: Extract<AgentEvent, { type: 'window-cut' }>): string[] {
   const lines = [
     `${event.model} could not see the whole chat.`,

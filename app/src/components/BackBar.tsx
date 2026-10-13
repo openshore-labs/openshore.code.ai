@@ -28,7 +28,7 @@ export const ROOM_NAMES: Record<ViewName, string> = {
 /** A way back that lives inside the room: a page the room opened over its own
  *  list (a model's product page in the Marketplace, a note in the Vault, the
  *  embedded site in Launch). It wins over the room trail, because the nearest
- *  step back is the one the eye expects (founder, 2026-09-03: every page or
+ *  step back is the one the eye expects (2026-09-03: every page or
  *  sheet reached from a main page needs a back to where it started). */
 export interface InRoomBack {
   /** The name of what the chevron returns to, shown beside it with room. */
@@ -47,7 +47,7 @@ export function BackBar({
   back?: InRoomBack;
   /** A room's own large title: the bar's title stays tucked away while that
    *  one is on screen and fades in once it scrolls under the bar, the iOS
-   *  large-title grammar, so a name never shows twice (Creative Studio). */
+   *  large-title grammar, so a name never shows twice (design review). */
   titleHiddenUntil?: RefObject<HTMLElement | null>;
 }) {
   const { setDrawer, goBack, viewTrail, drawerOpen } = useApp();

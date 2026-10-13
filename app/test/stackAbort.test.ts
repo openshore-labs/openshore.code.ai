@@ -1,5 +1,5 @@
 // Stop answers at once, on every seat and every shell (build 2026-09-29, B1;
-// CTO ruling 7). abort() closes the turn itself, now: task-done arrives within
+// tech review ruling 7). abort() closes the turn itself, now: task-done arrives within
 // 250 ms whatever the seat is waiting on (a stream, the iPhone's native shim
 // that cannot be cancelled, the Electron channel, Claude, a pocket model, a
 // model load, a card, the search consent, the framing call), the partial
@@ -438,7 +438,7 @@ describe('a turn that fails after it began keeps what it wrote', () => {
   });
 });
 
-// CX ruling 5: before the first word a model on your computer is named as
+// UX review ruling 5: before the first word a model on your computer is named as
 // warming up (its first request in the chat), and after 30 seconds with no
 // word the chat says, once, that it can be slow to start and Stop works.
 describe('the wait before the first word, on your computer', () => {

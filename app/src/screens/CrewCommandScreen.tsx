@@ -122,7 +122,7 @@ export function CrewCommandScreen() {
   const crew = useMemo(() => crewList ?? [], [crewList]);
   const { routines, runs } = state;
 
-  // The control distinction (founder, 2026-09-05): set up and control only
+  // The control distinction (2026-09-05): set up and control only
   // while docked to the machine (or on it); view always. Computed live from
   // connectivity so a reconnect flips the room from view-only to in-control
   // without a reload.
@@ -417,7 +417,7 @@ export function CrewCommandScreen() {
               ? 'Every routine runs on your own models, while your computer is on. It works, then asks: anything risky waits for you.'
               : controlBlurb(where, machine)}
           </p>
-          {/* Another OpenShore here keeps the schedule (CX cleanup 6). It
+          {/* Another OpenShore here keeps the schedule (UX review cleanup 6). It
               folds open and shut on the reveal, since this app takes the
               clock over on its own once that one closes. */}
           {where === 'desktop' ? (
@@ -537,7 +537,7 @@ export function CrewCommandScreen() {
                 Manage
               </button>
             </div>
-            {/* One line, not a second roster (founder, D17, 2026-10-07): the
+            {/* One line, not a second roster (D17, 2026-10-07): the
                 members live in Crew, behind Manage, and each routine below
                 names its member and its presence. */}
             {crew.length === 0 && routines.length === 0 ? (

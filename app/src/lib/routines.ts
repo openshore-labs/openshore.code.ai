@@ -4,7 +4,7 @@
 // with. The model and the schedule math come from the engine's protocol
 // module so both sides agree on every shape.
 //
-// The founder's brief (botOS, the always-on-agents clone, local-first): this
+// A maintainer's brief (botOS, the always-on-agents clone, local-first): this
 // is the same thing, honestly named. "Always on" here means while your
 // computer is on; the copy below never says otherwise.
 import type { DaemonTarget } from '../drivers/remoteDriver.js';
@@ -46,7 +46,7 @@ export interface RoutinesSnapshot {
   webSearch?: boolean;
 }
 
-/** The Crew room's clock line (CX cleanup 6). A passive scheduler takes the
+/** The Crew room's clock line (UX review cleanup 6). A passive scheduler takes the
  *  clock over once the other process closes, so the line says what happens
  *  then, with no process number and no time. */
 export const CLOCK_ELSEWHERE_LINE =
@@ -64,7 +64,7 @@ export function clockKeptElsewhere(state: {
   return state.where === 'desktop' && state.live && state.clock?.live === false;
 }
 
-// The one distinction the founder drew (2026-09-05): a routine is a continuous
+// The one distinction a maintainer drew (2026-09-05): a routine is a continuous
 // deployment that lives on the person's own machine. You set it up and control
 // it only while you are HARNESSED to that machine, the same "docked" reach the
 // big models need over Tailscale. Away from home you still see everything, the
@@ -375,7 +375,7 @@ export function crewHeadline(
     : 'Quiet. Waiting for the next run.';
 }
 
-/** Custom routines unlock after the first routine finishes on its own (CX:
+/** Custom routines unlock after the first routine finishes on its own (UX review:
  *  ship one preset, gate the rest behind a first successful run). */
 export function customRoutinesUnlocked(runs: RoutineRun[]): boolean {
   return runs.some((r) => r.state === 'done');

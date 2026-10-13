@@ -170,7 +170,7 @@ describe('the copy keeps the honesty bar', () => {
     expect(HARBOR_MASTER_ATTRIBUTION).toContain('Qwen 2.5 Coder');
     expect(HARBOR_MASTER_ATTRIBUTION).toContain('Apache License 2.0');
     expect(HARBOR_MASTER_ATTRIBUTION).toContain('Qwen3 4B');
-    // Every size is sellable (founder, 2026-09-30): no research-licensed weights.
+    // Every size is sellable (2026-09-30): no research-licensed weights.
     expect(HARBOR_MASTER_ATTRIBUTION).not.toMatch(/Research License|3B/);
   });
 });

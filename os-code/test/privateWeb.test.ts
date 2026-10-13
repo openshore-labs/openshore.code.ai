@@ -1,4 +1,4 @@
-// Web search and page fetch after a private note, in a chat (CX and CMO,
+// Web search and page fetch after a private note, in a chat (UX and copy review,
 // 2026-10-08, H). Once a chat on a seat that stays holds a private note's
 // text (a read, a marked turn, or a private pin), every model-written search
 // on a result-only backend and every page fetch asks first, every time, on a

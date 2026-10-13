@@ -12,7 +12,7 @@
 
 /** Statuses that grant access. Everything else (past_due, unpaid, canceled,
  *  incomplete, incomplete_expired, paused) is revoked. past_due is strict
- *  (money-safe); flip it into ENTITLED for a grace window if the founder asks. */
+ *  (money-safe); flip it into ENTITLED for a grace window if a maintainer asks. */
 export const ENTITLED: ReadonlySet<string> = new Set(['active', 'trialing']);
 
 export interface EntitlementLike {
@@ -58,86 +58,9 @@ export function tierCoversSeats(tierId: string, seatCount: number): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Rail writes (review 2026-09-05, BE-3 and BE-8). Two payment rails (Stripe on
-// the web, Apple on iOS) write the same user_entitlements row. Every writer
-// runs the SAME decision before it touches the row, so no rail can clobber the
-// other's paid coverage and no stale delivery can move the row backwards.
+// Id lists.
 
-/** The existing user_entitlements row, as read by a writer. */
-export interface RailRow {
-  source: string;
-  status: string;
-  valid_until?: string | null;
-  last_event_at?: string | null;
-}
-
-/** The write a rail wants to make. */
-export interface RailWrite {
-  source: string;
-  validUntil: string | null;
-  /** The event's own timestamp (UNIX ms): Stripe event.created, Apple signedDate. */
-  eventMs: number;
-}
-
-function untilMs(iso: string | null | undefined): number {
-  return iso ? new Date(iso).getTime() : Infinity;
-}
-
-/** Should this rail's write be applied over the existing row?
- *
- *  1. Ordering: an event at or before the recorded last_event_at is stale (a
- *     late or duplicate delivery) and is dropped. The apply_* RPCs enforce
- *     the same rule atomically in their WHERE; this is the cheap pre-check.
- *  2. Cross-rail: never let one rail revoke or shorten an ENTITLED row the
- *     other rail wrote, while that row's paid window runs at least as long as
- *     the incoming one. An old Stripe subscription's period-end `deleted`
- *     event must not lock out someone who since bought Personal on Apple, and
- *     an Apple notification must not shorten a live Stripe year. The rail with
- *     the longer coverage wins; same-rail writes always pass this check. */
-export function shouldApplyRailWrite(
-  existing: RailRow | null | undefined,
-  incoming: RailWrite,
-): boolean {
-  if (!existing) return true;
-  if (existing.last_event_at && new Date(existing.last_event_at).getTime() >= incoming.eventMs) {
-    return false;
-  }
-  if (
-    existing.source !== incoming.source &&
-    isEntitled({ status: existing.status, validUntil: existing.valid_until }) &&
-    untilMs(existing.valid_until) >= untilMs(incoming.validUntil)
-  ) {
-    return false;
-  }
-  return true;
-}
-
-// ---------------------------------------------------------------------------
-// Apple transactions (BE-9). Shared by link-apple-purchase and
-// apple-notifications so both derive status the same way and both refuse a
-// transaction that is not the Personal subscription.
-
-/** Derive an entitlement status from a decoded transaction. A refund or
- *  revocation ends access now; a lapsed expiry ends it too. Apple's "expired"
- *  maps to 'canceled' because the 0006 CHECK has no 'expired' status. Everything
- *  else is 'active' (StoreKit intro offers still grant access; validUntil gates
- *  the window). `nowMs` is injectable for tests. */
-export function statusFromTransaction(
-  txn: { expiresDate?: number; revocationDate?: number },
-  nowMs: number = Date.now(),
-): string {
-  if (txn.revocationDate) return 'canceled';
-  if (txn.expiresDate && txn.expiresDate <= nowMs) return 'canceled';
-  return 'active';
-}
-
-/** The only StoreKit transaction type that is a subscription. A consumable or
- *  non-consumable has no expiresDate, which would otherwise read as lifetime
- *  Personal. */
-export const APPLE_SUBSCRIPTION_TYPE = 'Auto-Renewable Subscription';
-
-/** Parse a comma-separated id list secret (APPLE_PRODUCT_IDS,
- *  STRIPE_IGNORED_PRICES). Blank entries are dropped; unset is empty. */
+/** Parse a comma-separated id list secret (STRIPE_IGNORED_PRICES). Blank entries are dropped; unset is empty. */
 export function parseIdList(raw: string | undefined | null): Set<string> {
   return new Set(
     (raw ?? '')
@@ -147,23 +70,8 @@ export function parseIdList(raw: string | undefined | null): Set<string> {
   );
 }
 
-/** The APPLE_PRODUCT_IDS secret, parsed. */
-export const parseProductIds = parseIdList;
-
-/** May this transaction grant Personal? Fail closed: an empty allowlist (the
- *  secret unset) accepts nothing, so a deploy that forgot the secret cannot
- *  hand out entitlements for an unknown product. */
-export function appleTransactionAccepted(
-  txn: { productId?: string; type?: string },
-  allowedProductIds: ReadonlySet<string>,
-): boolean {
-  if (allowedProductIds.size === 0) return false;
-  if (!txn.productId || !allowedProductIds.has(txn.productId)) return false;
-  return txn.type === APPLE_SUBSCRIPTION_TYPE;
-}
-
 // ---------------------------------------------------------------------------
-// Checkout (BE-7, CTO ruling 2026-09-05). Checkout lists the customer's
+// Checkout (BE-7, tech review ruling 2026-09-05). Checkout lists the customer's
 // subscriptions with status 'all' and decides once, here:
 //   - any sub in a LIVE state (active, trialing, past_due under Smart Retries,
 //     unpaid, paused) routes to the billing portal: a second checkout would
@@ -201,54 +109,8 @@ export function checkoutDecision<T extends { status: string }>(
 // Stripe prices (BE-13). An unmapped price used to throw, which is right for a
 // paid buyer (a 500 keeps Stripe retrying and emails the owner) but wrong for
 // a price this backend is told to ignore: one such price wedged the whole
-// endpoint until Stripe disabled it for every org. The founder names the
+// endpoint until Stripe disabled it for every org. A maintainer names the
 // ignorable prices in STRIPE_IGNORED_PRICES; everything else still throws.
 export function isIgnoredPrice(priceId: string, ignored: ReadonlySet<string>): boolean {
   return ignored.has(priceId);
-}
-
-// ---------------------------------------------------------------------------
-// Apple link freshness (BE-4, CTO ruling: option (a)). The link row keeps the
-// subscription's live state, written by apple-notifications. A JWS posted to
-// link-apple-purchase is accepted only when it is newer than the last event
-// Apple told us about, the link is not revoked or refunded, and the JWS was
-// signed within the last 48 hours (a captured purchase-time JWS replayed after
-// a refund is the attack this closes).
-export const APPLE_JWS_MAX_AGE_MS = 48 * 60 * 60 * 1000;
-
-export interface AppleLinkState {
-  status?: string | null;
-  last_event_at?: string | null;
-}
-
-export type LinkRefusal = 'stale' | 'revoked' | 'too-old';
-
-/** Why this JWS must not be linked, or undefined when it may proceed. */
-export function appleLinkRefusal(
-  link: AppleLinkState | null | undefined,
-  jwsSignedMs: number,
-  nowMs: number = Date.now(),
-): LinkRefusal | undefined {
-  if (nowMs - jwsSignedMs > APPLE_JWS_MAX_AGE_MS) return 'too-old';
-  if (!link) return undefined;
-  if (link.status === 'revoked' || link.status === 'refunded') return 'revoked';
-  if (link.last_event_at && new Date(link.last_event_at).getTime() >= jwsSignedMs) {
-    return 'stale';
-  }
-  return undefined;
-}
-
-// ---------------------------------------------------------------------------
-// appAccountToken (2026-09-30, the Personal paid gate). The app passes the
-// signed-in account's id as the purchase's appAccountToken, and Apple signs it
-// into every transaction. A notification for a subscription nobody linked yet
-// (Ask to Buy approved later, the app closed before the link) falls back to
-// it: the token names the account the buyer was signed in as. Only a UUID is
-// read; anything else is no account.
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/** The account a transaction's appAccountToken names, lowercased, or
- *  undefined when there is none or it is not a UUID. */
-export function appAccountTokenUser(token: unknown): string | undefined {
-  return typeof token === 'string' && UUID_RE.test(token) ? token.toLowerCase() : undefined;
 }

@@ -1,5 +1,5 @@
 // The offload-then-reset protocol, as pure decisions so it can be tested to
-// death away from the network. The rules are the CTO's, and they are the whole
+// death away from the network. The rules are the tech review's, and they are the whole
 // point: nobody ever loses work.
 //
 //  - Apply buffered items in ULID order (their id is monotonic).

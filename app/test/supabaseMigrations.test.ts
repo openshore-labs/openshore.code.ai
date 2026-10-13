@@ -1,4 +1,4 @@
-// The Supabase migrations as a list (CTO ruling 4, then CTO 11, 2026-09-29).
+// The Supabase migrations as a list (tech review ruling 4, then tech review 11, 2026-09-29).
 // `supabase db push` records a migration by its number, so two files with one
 // prefix would leave one of them silently unapplied (0016 was once edited in
 // place for the same reason, 0017's header). Production's history decides what
@@ -165,7 +165,7 @@ describe('the newest record_enforcement', () => {
     expect(body).toMatch(/v_operator_terminated := v_operator_terminated or v_tombstoned/);
   });
 
-  it('names the published appeal address (founder decision F1)', () => {
+  it('names the published appeal address (decision F1)', () => {
     // The same address as the app's SUPPORT_EMAIL: app/test/contactAddress.test.ts.
     expect(body).toMatch(/write to support@openshore\.ai\./);
     expect(body).not.toMatch(/os-code@openshorellc\.com/);

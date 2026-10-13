@@ -1,4 +1,4 @@
-// Notes pinned to a project's context (Vault M5, CTO J14). The person places
+// Notes pinned to a project's context (Vault M5, tech review J14). The person places
 // them (tenet 4), so they ride the pack in both modes, trimmed to fit a small
 // seat, with privacy applied: a hidden note never goes, a note that stays on
 // this computer never reaches a cloud seat. Pins name the person's own notes,
@@ -8,7 +8,7 @@
 // ProjectCurrents pattern: rendered by ProjectDetailScreen when the person may
 // edit. The picker is a Sheet; every row answers the finger (press-fb).
 //
-// A private pin holds every cloud handoff in its project (CX and CMO,
+// A private pin holds every cloud handoff in its project (UX and copy review,
 // 2026-10-08, G), so its row and the picker wear the lock and "Private", and
 // a line under the list says what it does while the coding agent's pack
 // carries it (Memory and Notes in chats on, within the pack's pin count).

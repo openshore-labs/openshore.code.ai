@@ -97,88 +97,51 @@ async function requestError(res: Response): Promise<SupabaseRequestError> {
   );
 }
 
-/** Email + password sign-in. */
-export async function signInWithPassword(email: string, password: string): Promise<Session> {
-  const res = await fetch(`${base()}/auth/v1/token?grant_type=password`, {
+/** Email the person a sign-in: one message carrying a link and a 6-digit
+ *  code (the template is supabase/templates/magic_link.html). OpenShore has no
+ *  passwords (founder, 2026-10-12): the first email to a new address makes the
+ *  account. The link is PKCE: only the challenge goes out, so the link signs
+ *  in only on the device that holds the verifier; the code works anywhere.
+ *  GoTrue reads the return address from the query string, never the body. */
+export async function sendEmailSignIn(
+  email: string,
+  redirectTo: string,
+  codeChallenge: string,
+): Promise<void> {
+  const res = await fetch(`${base()}/auth/v1/otp?redirect_to=${encodeURIComponent(redirectTo)}`, {
     method: 'POST',
     headers: authHeaders(),
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({
+      email,
+      create_user: true,
+      code_challenge: codeChallenge,
+      code_challenge_method: 's256',
+    }),
+  });
+  if (!res.ok) throw new Error(await readError(res));
+}
+
+/** Trade the 6-digit code from the sign-in email for a session. */
+export async function verifyEmailCode(email: string, code: string): Promise<Session> {
+  const res = await fetch(`${base()}/auth/v1/verify`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({ type: 'email', email, token: code }),
   });
   if (!res.ok) throw new Error(await readError(res));
   return toSession((await res.json()) as GoTrueSession);
 }
 
-/** Create an account with email + password. Returns a session when the project
- *  does not require email confirmation, otherwise null (confirm, then sign in).
- *  redirectTo is where the confirmation link returns; passing the app's own
- *  deep-link origin means the link lands back in the app, not on a generic
- *  dashboard page. */
-export async function signUp(
-  email: string,
-  password: string,
-  redirectTo?: string,
-): Promise<Session | null> {
-  const url = redirectTo
-    ? `${base()}/auth/v1/signup?redirect_to=${encodeURIComponent(redirectTo)}`
-    : `${base()}/auth/v1/signup`;
-  const res = await fetch(url, {
+/** Trade a PKCE link's one-time code, with this device's verifier, for a
+ *  session. */
+export async function exchangeAuthCode(authCode: string, codeVerifier: string): Promise<Session> {
+  const res = await fetch(`${base()}/auth/v1/token?grant_type=pkce`, {
     method: 'POST',
     headers: authHeaders(),
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ auth_code: authCode, code_verifier: codeVerifier }),
   });
   if (!res.ok) throw new Error(await readError(res));
-  const body = (await res.json()) as Partial<GoTrueSession>;
-  return body.access_token ? toSession(body as GoTrueSession) : null;
-}
-
-/** Send a password-reset email. The link returns to redirectTo with a recovery
- *  session in the URL, which the callback signs in so the user can set a new
- *  password (see updatePassword). */
-export async function sendPasswordReset(email: string, redirectTo: string): Promise<void> {
-  const res = await fetch(
-    `${base()}/auth/v1/recover?redirect_to=${encodeURIComponent(redirectTo)}`,
-    {
-      method: 'POST',
-      headers: authHeaders(),
-      body: JSON.stringify({ email }),
-    },
-  );
-  if (!res.ok) throw new Error(await readError(res));
-}
-
-/** Set a new password for the signed-in user (used to finish a recovery, or to
- *  change a password while signed in). */
-export async function updatePassword(accessToken: string, password: string): Promise<void> {
-  const res = await fetch(`${base()}/auth/v1/user`, {
-    method: 'PUT',
-    headers: authHeaders(accessToken),
-    body: JSON.stringify({ password }),
-  });
-  if (!res.ok) throw new Error(await readError(res));
-}
-
-/** Resend the sign-up confirmation email, for a link that was lost or expired. */
-export async function resendConfirmation(email: string, redirectTo: string): Promise<void> {
-  const res = await fetch(
-    `${base()}/auth/v1/resend?redirect_to=${encodeURIComponent(redirectTo)}`,
-    {
-      method: 'POST',
-      headers: authHeaders(),
-      body: JSON.stringify({ type: 'signup', email }),
-    },
-  );
-  if (!res.ok) throw new Error(await readError(res));
-}
-
-/** Send a magic-link / OTP email. The link returns to redirectTo (the app's own
- *  deep-link origin), where handleAuthCallback parses the tokens. */
-export async function signInWithOtp(email: string, redirectTo: string): Promise<void> {
-  const res = await fetch(`${base()}/auth/v1/otp`, {
-    method: 'POST',
-    headers: authHeaders(),
-    body: JSON.stringify({ email, create_user: true, options: { email_redirect_to: redirectTo } }),
-  });
-  if (!res.ok) throw new Error(await readError(res));
+  return toSession((await res.json()) as GoTrueSession);
 }
 
 /** Exchange a refresh token for a fresh session. */
@@ -208,39 +171,33 @@ export async function signOut(accessToken: string, scope: SignOutScope): Promise
   if (!res.ok) throw new SupabaseRequestError(await readError(res), res.status);
 }
 
-/** Parse the tokens a magic-link callback URL carries (hash or query). */
-export function parseAuthCallback(url: string): Session | null {
+/** What a sign-in link brought back: a PKCE code to trade with this device's
+ *  verifier, or GoTrue's refusal (an expired or used link). A link that
+ *  carries session tokens in its address (the old implicit flow) is neither:
+ *  the app never asks for one, and accepting one would let anything that can
+ *  open an oscode:// link sign this device in. */
+export type AuthCallback = { kind: 'code'; code: string } | { kind: 'refused'; reason: string };
+
+export function readAuthCallback(url: string): AuthCallback | null {
   try {
     const u = new URL(url);
-    const params = new URLSearchParams(u.hash.startsWith('#') ? u.hash.slice(1) : u.search);
-    const access_token = params.get('access_token');
-    const refresh_token = params.get('refresh_token');
-    const expires_in = Number(params.get('expires_in') ?? '3600');
-    if (!access_token || !refresh_token) return null;
-    return {
-      accessToken: access_token,
-      refreshToken: refresh_token,
-      expiresAt: Date.now() + expires_in * 1000,
-      user: { id: '', email: undefined }, // filled by getUser after the callback
-    };
+    const query = new URLSearchParams(u.search);
+    const hash = new URLSearchParams(u.hash.startsWith('#') ? u.hash.slice(1) : '');
+    const code = query.get('code');
+    if (code) return { kind: 'code', code };
+    const error =
+      query.get('error_code') ?? hash.get('error_code') ?? query.get('error') ?? hash.get('error');
+    if (error) {
+      const said = query.get('error_description') ?? hash.get('error_description') ?? error;
+      return { kind: 'refused', reason: said };
+    }
+    return null;
   } catch {
     return null;
   }
 }
 
-/** The GoTrue link type a callback URL carries ('recovery', 'signup', ...), so
- *  a recovery link can be told apart from an ordinary sign-in. */
-export function authCallbackType(url: string): string | null {
-  try {
-    const u = new URL(url);
-    const params = new URLSearchParams(u.hash.startsWith('#') ? u.hash.slice(1) : u.search);
-    return params.get('type');
-  } catch {
-    return null;
-  }
-}
-
-/** The signed-in user (used to fill id/email after a magic-link callback). */
+/** The signed-in user, read from the auth server. */
 export async function getUser(accessToken: string): Promise<{ id: string; email?: string } | null> {
   const res = await fetch(`${base()}/auth/v1/user`, { headers: authHeaders(accessToken) });
   if (!res.ok) return null;

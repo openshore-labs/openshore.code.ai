@@ -1,4 +1,4 @@
-// Project pins and notes taken to a model (Vault M5, CTO J14, J15). Pins are
+// Project pins and notes taken to a model (Vault M5, tech review J14, J15). Pins are
 // set by editors only, at most eight, deduped, and device local: they never
 // ride an org RPC, a pulled row never sets them, and a merge keeps the
 // device's own. A rename moves them; a pin the vault no longer holds reads as
@@ -7,8 +7,8 @@
 // the seat leaves the network. The picker never lists a hidden note, and
 // "Recently from your agent" is the crew notes and the agent's own writes.
 // A private pin wears the lock and "Private", and while Memory carries the
-// pins to the coding agent the card says what a private pin does (CX and
-// CMO, 2026-10-08, G), mounted in a real DOM (test/support/dom.ts).
+// pins to the coding agent the card says what a private pin does (UX review and
+// copy review, 2026-10-08, G), mounted in a real DOM (test/support/dom.ts).
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -430,7 +430,7 @@ describe('the store answers the composer', () => {
 
 // The pin list stays on this device; the pinned notes themselves ride the
 // pack to any seat, private ones excepted (D5), so the copy never says the
-// notes stay here (CMO, 2026-10-07).
+// notes stay here (copy review, 2026-10-07).
 describe('pinned notes copy', () => {
   it('never says the pinned notes stay on this device', () => {
     const pins = readFileSync(join(process.cwd(), 'src/components/ProjectVaultPins.tsx'), 'utf8');
@@ -442,7 +442,7 @@ describe('pinned notes copy', () => {
   });
 });
 
-// G (CX and CMO, 2026-10-08): a private pin keeps holding every cloud
+// G (UX and copy review, 2026-10-08): a private pin keeps holding every cloud
 // handoff in its project, so the card says which pins are private, judged by
 // the pack's own privacy rules on each note's text, and what that does.
 describe('a private pin says so', () => {

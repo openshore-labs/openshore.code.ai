@@ -1,6 +1,6 @@
 // The engine's credential file is sealed under a key the OS holds (the macOS
 // Keychain, Windows DPAPI), not one derived from the hostname, so a copy of
-// ~/.os-code alone opens nothing (CTO security review 2026-10-01, F2). An old
+// ~/.os-code alone opens nothing (tech review security review 2026-10-01, F2). An old
 // file moves under the OS-held key on first read, and a locked keychain never
 // reads as "absent" or clobbers the file.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';

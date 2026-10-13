@@ -1,4 +1,4 @@
-// Founder, 2026-09-25: after downloading Harbor there was no way to pick it.
+// Maintainer, 2026-09-25: after downloading Harbor there was no way to pick it.
 // A finished download sets a ready flag (not a deviceModels entry), so the
 // model sheet listed it nowhere but inside the Stack. Now, on a phone, the
 // top row is the model on this phone: Harbor once it is ready, replacing

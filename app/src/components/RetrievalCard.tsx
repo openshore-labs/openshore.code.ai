@@ -1,4 +1,4 @@
-// Retrieval before turn one (CTO 6): the places in the code the harness gave
+// Retrieval before turn one (tech review 6): the places in the code the harness gave
 // a local seat before it started, "Started from 2 places in your code", each
 // by file and first line. Built on the Vault context card's teal frame, since
 // it only runs for a seat that stays on this network, and it arrives the way

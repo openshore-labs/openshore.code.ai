@@ -1,4 +1,4 @@
-// Vault M7, the customization surface (CTO L5 to L7, L11 to L13, L18; CX Y1 to
+// Vault M7, the customization surface (tech review L5 to L7, L11 to L13, L18; UX review Y1 to
 // Y17). One file, fenced by owner so the wave 1 streams never touch the same
 // lines: wave 0's guards, stream E's providers, stream F's settings loader,
 // sheet logic and starter, and wave 2's room wiring.
@@ -280,7 +280,7 @@ describe('writeConfig on each provider (stream E)', () => {
       expect(lit('local')).toBe(true);
       expect(lit('files')).toBe(true);
       expect(lit('hub')).toBe(true);
-      // The held team branch (0025): the settings row, admins only (CX Y14).
+      // The held team branch (0025): the settings row, admins only (UX review Y14).
       expect(lit('org')).toBe(true);
       expect(
         m.caps.vaultCaps(m.gitos.providerFor('org')!, { readOnly: false, settingsAdmin: false })
@@ -304,7 +304,7 @@ describe('writeConfig on each provider (stream E)', () => {
 // ---- M7 stream E end ----
 
 // ---- M7 stream F begin ----
-// Settings (L5, L6, L11 to L13, L18; CX Y2, Y3, Y5, Y13, Y17): no files
+// Settings (L5, L6, L11 to L13, L18; UX review Y2, Y3, Y5, Y13, Y17): no files
 // equals VAULT_SETTINGS_DEFAULTS and today's behavior; a `.obsidian` field
 // renders read-only with "From Obsidian"; a widening ask yields one set-aside
 // line and changes nothing; a bad file writes nothing; a same-field conflict
@@ -704,7 +704,7 @@ describe('the last good narrowing (L4)', () => {
   });
 });
 
-describe('the sheet rows (CX Y2, Y3, Y5)', () => {
+describe('the sheet rows (UX review Y2, Y3, Y5)', () => {
   it('a .obsidian field is read-only "From Obsidian"; a field it leaves unset says Obsidian keeps its own', async () => {
     const { provider } = storage({ 'obsidian/daily-notes': ok({ folder: 'Daily' }) });
     const s = await load(provider);
@@ -763,7 +763,7 @@ describe('the sheet rows (CX Y2, Y3, Y5)', () => {
   });
 });
 
-describe('saving a setting (L7, CX Y5)', () => {
+describe('saving a setting (L7, UX review Y5)', () => {
   const deps = (provider: ReturnType<typeof storage>['provider']) => ({
     provider,
     resourceId: 'vault',
@@ -1065,7 +1065,7 @@ describe('the tree sort (L2 tree.sort)', () => {
   });
 });
 
-describe('the starter layout (L12, CX Y13)', () => {
+describe('the starter layout (L12, UX review Y13)', () => {
   function starterVault(
     over: {
       notes?: string[];
@@ -1212,7 +1212,7 @@ describe('the starter layout (L12, CX Y13)', () => {
   });
 });
 
-describe('Notes in chats says only what the pack does (CX Y7)', () => {
+describe('Notes in chats says only what the pack does (UX review Y7)', () => {
   it('names matching notes if and only if some class retrieves', () => {
     const retrieves = Object.values(PACK_BY_CLASS).some((m) => m === 'full');
     expect(/notes that match the task/.test(vaultNotesInChatsSub(PACK_BY_CLASS))).toBe(retrieves);
@@ -1289,7 +1289,7 @@ describe('the settings sheet copy (wave 2)', () => {
   });
 });
 
-describe('the device switches ride into sessions (wave 2, CTO L13)', () => {
+describe('the device switches ride into sessions (wave 2, tech review L13)', () => {
   it('sends only what turns something off or lowers it', async () => {
     const { appVaultOverrides, appPackSize, appHandoffOn, vaultDevicePatch, vaultDeviceView } =
       await import('../src/lib/vaultDevice.js');
@@ -1384,7 +1384,7 @@ describe('the device switches ride into sessions (wave 2, CTO L13)', () => {
   });
 });
 
-describe('the sheet picks (wave 2, CX Y1, Y9)', () => {
+describe('the sheet picks (wave 2, UX review Y1, Y9)', () => {
   it('a New notes folder also says new notes go to a folder; lists add a glob', async () => {
     const { vaultPickPatches, vaultFolderChoices } =
       await import('../src/lib/vaultSettingsPick.js');
@@ -1416,7 +1416,7 @@ describe('the sheet picks (wave 2, CX Y1, Y9)', () => {
   });
 });
 
-describe('links follow the vault (wave 2, CTO L2)', () => {
+describe('links follow the vault (wave 2, tech review L2)', () => {
   it('a markdown pick writes a markdown link, and the format picks the path', async () => {
     const { markdownLinkFor, wikiTargetFor, relativeNotePath } =
       await import('../src/components/vault/VaultLinkSuggest.js');
@@ -1450,7 +1450,7 @@ describe('links follow the vault (wave 2, CTO L2)', () => {
   });
 });
 
-describe("a model's note carries its provenance (wave 2, CTO L9, L10)", () => {
+describe("a model's note carries its provenance (wave 2, tech review L9, L10)", () => {
   it('the seat names its model, where it ran, its class, and a cloud provider only', async () => {
     const { seatProvenance, withProvenance } = await import('../src/drivers/stackDriver.js');
     const local = seatProvenance(
@@ -1486,7 +1486,7 @@ describe("a model's note carries its provenance (wave 2, CTO L9, L10)", () => {
   });
 });
 
-describe('the room places the entry points (wave 2, CX Y4, Y7)', () => {
+describe('the room places the entry points (wave 2, UX review Y4, Y7)', () => {
   it('Options, the storage sheet and Settings open the one sheet', () => {
     const room = readFileSync(join(SRC, 'screens/VaultScreen.tsx'), 'utf8');
     expect(room).toMatch(/onSettings=\{/);

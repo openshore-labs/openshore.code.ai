@@ -1,4 +1,4 @@
-// YAML scalars written by hand (Vault M7, CTO L10). The vault core serializes
+// YAML scalars written by hand (Vault M7, tech review L10). The vault core serializes
 // no YAML with a library (H2), so the few values OpenShore writes into a
 // note's frontmatter (a Crew run note's block, the provenance lines) go
 // through this one helper. Moved here from routines/runNote.ts so the pure

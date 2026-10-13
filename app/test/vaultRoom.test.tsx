@@ -562,7 +562,7 @@ describe('the Vault screen with a choice open (1.1)', () => {
   });
 });
 
-// Vault M1 1.3 (Creative Studio 2, 1d; CX 1.3): the one-time desktop move
+// Vault M1 1.3 (design review 2, 1d; UX review 1.3): the one-time desktop move
 // card, and the move-mode sheet for a move's forked pairs.
 describe('the desktop move card (1.3)', () => {
   let dom: TestDom;
@@ -755,7 +755,7 @@ describe('a move whose forked pair cannot be shown (review M1-2)', () => {
   });
 });
 
-// Vault M1 1.4 (Creative Studio 3a): the desktop folder rows.
+// Vault M1 1.4 (design review 3a): the desktop folder rows.
 describe('the desktop folder rows in Where it lives (1.4)', () => {
   let dom: TestDom;
   const FOLDER = {
@@ -875,7 +875,7 @@ describe('the desktop folder rows in Where it lives (1.4)', () => {
     expect(app.toasts).toEqual([]);
   });
 
-  // The CTO's Bring: after a pick, the notes of the folder before can be
+  // The tech review's Bring: after a pick, the notes of the folder before can be
   // copied in, nothing replaced, and the originals left where they are.
   const pickFrom = (notes: number | undefined) => {
     app.state.vaultFolder = { ...FOLDER };
@@ -1363,7 +1363,7 @@ describe('Linked mentions come from the index (M3 3.2)', () => {
     expect(bodies).toEqual(['Idea.md']);
     expect(readAll).toBe(0);
     // Leaving the Vault keeps the personal index warm for a chat's pack
-    // (Vault M5, CTO J1); the store closes it on a move, a sign-out, or a
+    // (Vault M5, tech review J1); the store closes it on a move, a sign-out, or a
     // pairing change.
     await dom.unmount();
     expect(currentVaultIndex()).toBeDefined();

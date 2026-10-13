@@ -42,7 +42,7 @@ export type ThreadItem =
       /** A scripted guide line that writes itself on its first showing
        *  (lib/introWalk.ts). A settled item never replays it. */
       paced?: 'greeting' | 'walk';
-      /** The reply drew on a note that stays on this computer (Vault M5, CTO
+      /** The reply drew on a note that stays on this computer (Vault M5, tech review
        *  J10): it never rides a handoff, and a seat that leaves the network
        *  gets the stub in its place. */
       localOnly?: true;
@@ -108,7 +108,7 @@ export type ThreadItem =
       detailKind?: 'diff' | 'output';
       /** A handoff to another model (delegate, analyzeImage, generateImage):
        *  the model the step went to, and whether it leaves this network, so
-       *  the row names it and wears the Cloud chip (CX and CMO, 2026-10-08,
+       *  the row names it and wears the Cloud chip (UX and copy review, 2026-10-08,
        *  D). Absent from an older engine. */
       handoff?: { model: string; leaves: boolean };
     }
@@ -117,7 +117,7 @@ export type ThreadItem =
       kind: 'note';
       id: string;
       text: string;
-      /** A model switch's handoff (Vault M5, CTO J12), kept on the note so its
+      /** A model switch's handoff (Vault M5, tech review J12), kept on the note so its
        *  card can offer "Save to Vault", the person's own one-tap write. */
       handoff?: NoteHandoff;
     }
@@ -134,10 +134,10 @@ export type ThreadItem =
        *  computer that could not be reached), in plain words. */
       error?: string;
     }
-  // A turn that ended short. `byYou` marks the person's own Stop (CX ruling
+  // A turn that ended short. `byYou` marks the person's own Stop (UX review ruling
   // 5): a quiet marker, never a failure card, and nothing to rescue.
   | { kind: 'stopped'; id: string; message: string; byYou?: true }
-  // The server cut the chat to fit a window smaller than the prompt (C1, CX
+  // The server cut the chat to fit a window smaller than the prompt (C1, UX review
   // 6): once per chat per model, teal. `room` is what the card may offer:
   // 'more' (the "Give it more room" action, about `gb` more memory when the
   // model says), 'full' (no memory to spare), absent (a server whose window
@@ -152,12 +152,12 @@ export type ThreadItem =
       state?: 'giving' | 'given';
       /** Why the tap did not go through, in plain words. */
       error?: string;
-      /** The little-room variant (CTO 6): even the lean prompt fills most of
+      /** The little-room variant (tech review 6): even the lean prompt fills most of
        *  the window before the chat starts. Same card, same action; its own
        *  title and body. */
       tight?: true;
     }
-  // Retrieval before turn one (CTO 6): the places in the code the harness
+  // Retrieval before turn one (tech review 6): the places in the code the harness
   // gave a local seat before its first turn, by file and first line. Teal,
   // since it only runs for a seat that stays on this network.
   | {
@@ -178,7 +178,7 @@ export type ThreadItem =
       withheld: number;
       cold: boolean;
     }
-  // Nothing in a Stack chat can read images (founder, 2026-10-07): what is
+  // Nothing in a Stack chat can read images (2026-10-07): what is
   // missing, a local model to source and a cloud model to connect, each door
   // opening its step-by-step guide. A calm card, never a failed turn, and
   // never part of a model's history (seedEntries reads spoken turns only).
@@ -210,7 +210,7 @@ export type ThreadItem =
       truncated?: boolean;
     };
 
-/** The handoff a switch note carries (CTO J12). */
+/** The handoff a switch note carries (tech review J12). */
 export interface NoteHandoff {
   /** The extractive handoff text, never thinking. */
   text: string;
@@ -321,7 +321,7 @@ export type ConversationSource =
     }
   // Free, read-only chat with the paired desktop's local models (no repo, no
   // tools, no agent). A distinct kind, not a flag on 'desktop', so it can never
-  // reach the session-creating path that opens the full paid agent (CTO ruling).
+  // reach the session-creating path that opens the full paid agent (tech review ruling).
   | { kind: 'desktop-chat'; model?: string }
   | { kind: 'device'; modelId: string; modelName: string }
   | { kind: 'cloud'; provider: string; model: string }
@@ -381,7 +381,7 @@ export interface Project {
   /** Standing instructions/context injected into every chat in the project. */
   instructions?: string;
   /** The Agentic Current selected for THIS project, or none. Currents are a
-   *  per-project workflow choice (founder, 2026-09-23): different projects run
+   *  per-project workflow choice (2026-09-23): different projects run
    *  simultaneously with different currents. One at a time within the project.
    *  The selection may sync with a shared project; the connection (endpoint +
    *  key) stays device-local (connect once, in Settings), so a teammate picks
@@ -392,14 +392,14 @@ export interface Project {
   harnessCurrent?: HarnessCurrentId | null;
   /** Repos attached to this project (shareable across projects). */
   repoIds: string[];
-  /** Where this project's coding sessions run (founder, 2026-10-12; copy
+  /** Where this project's coding sessions run (2026-10-12; copy
    *  says Runs on): a docked machine's address, or THIS_COMPUTER on a
    *  desktop (lib/runsOn.ts). Unset follows the device's own choice. Device
    *  local: it names an address on the person's own network, so it never
    *  syncs with a shared project (orgProjects.ts syncs name, instructions
    *  and repoIds only) and forgetting the machine clears it. */
   runsOn?: string;
-  /** Vault notes pinned to this project's context (Vault M5, CTO J14): note
+  /** Vault notes pinned to this project's context (Vault M5, tech review J14): note
    *  paths in the personal vault, at most `PROJECT_VAULT_PINS_MAX`, set by
    *  editors only (a local project, or `myLevel === 'edit'`). Device-local:
    *  they name the person's own notes, so they never sync with a shared
@@ -430,25 +430,25 @@ export interface Project {
   createdAt: string;
 }
 
-/** The most notes one project may pin (CTO J14). */
+/** The most notes one project may pin (tech review J14). */
 export const PROJECT_VAULT_PINS_MAX = 8;
 
-/** The app's vault context setting (Vault M5, CTO J4): `'auto'` follows the
+/** The app's vault context setting (Vault M5, tech review J4): `'auto'` follows the
  *  per-class table, `'off'` gives no pack. `'full'` stays machine config for
  *  eval and is never an app value. */
 export type AppVaultContextSetting = 'auto' | 'off';
 
-/** Room for notes on this device (Vault M7, CTO L13, L14; CX Y8): the app may
+/** Room for notes on this device (Vault M7, tech review L13, L14; UX review Y8): the app may
  *  only LOWER the machine's `vault.packSize` (`vaultPackSize(machine, app)`).
  *  Unset reads as the machine's size. Device local, never in the vault. */
 export type AppVaultPackSize = 'small' | 'normal' | 'large';
 
-/** The Handoff switch on this device (Vault M7, CTO L13, L14; CX Y7): only
+/** The Handoff switch on this device (Vault M7, tech review L13, L14; UX review Y7): only
  *  ever `'off'`; unset leaves machine config and the project in charge
  *  (`vaultHandoffOn`). Device local, never in the vault. */
 export type AppVaultHandoffSetting = 'off';
 
-/** An unpaired phone's own privacy rules (CTO J3), with no UI until M7. They
+/** An unpaired phone's own privacy rules (tech review J3), with no UI until M7. They
  *  may only narrow: the effective rules are the union of the source's rules
  *  and these. Absent reads as the D5 defaults. */
 export interface VaultPrivacySetting {
@@ -602,7 +602,7 @@ export interface LaunchState {
 }
 
 /**
- * What the app calls the computer the engine runs on (CX cleanup 4): "This
+ * What the app calls the computer the engine runs on (UX review cleanup 4): "This
  * computer" in the desktop app, where the person sits at it, and "Your
  * computer" on the phone, the name Vault and the error messages use for the
  * paired machine. Read the way lib/platform.ts reads it, without importing
@@ -621,7 +621,7 @@ export function sourceLabel(source: ConversationSource): string {
     case 'desktop':
       return `${computerName()} · ${source.repoName ?? 'Stack'}`;
     case 'desktop-chat':
-      // "chat" tells the free chat from the agent (CX cleanup 4).
+      // "chat" tells the free chat from the agent (UX review cleanup 4).
       return `${computerName()} · chat`;
     case 'device':
       if (isHarborMini(source.modelId)) return 'Harbor Lite · built-in guide';
@@ -689,13 +689,13 @@ function isProbablyPhone(): boolean {
 export interface SeedTurn {
   role: 'user' | 'assistant';
   text: string;
-  /** The turn drew on a local-only note (CTO J10), so a seat that leaves the
+  /** The turn drew on a local-only note (tech review J10), so a seat that leaves the
    *  network gets the stub, never the text. Absent for most turns. */
   localOnly?: true;
 }
 
 /** A seed turn with the index of the transcript item it came from, so a
- *  switch can say which items a handoff covers (CTO J12). */
+ *  switch can say which items a handoff covers (tech review J12). */
 export interface SeedEntry extends SeedTurn {
   at: number;
 }
@@ -744,7 +744,7 @@ export function clarifyText(item: Extract<ThreadItem, { kind: 'clarify' }>): str
 }
 
 // Can this brain actually see an attached image? Resolved at send time, per the
-// CTO's ruling: default false everywhere, opt in only where vision genuinely
+// tech review's ruling: default false everywhere, opt in only where vision genuinely
 // works, so an image is never silently dropped into a text-only model. Today
 // that is Claude on its own driver (every current Claude 5 model reads images).
 // Extend here when a direct BYOM/OpenAI/Gemini vision chat or a vision pocket

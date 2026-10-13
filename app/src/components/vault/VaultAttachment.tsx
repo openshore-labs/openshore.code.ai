@@ -1,4 +1,4 @@
-// An image or a PDF in a note (Vault M6 6.6, CTO K11, CX X14). Read-only.
+// An image or a PDF in a note (Vault M6 6.6, tech review K11, UX review X14). Read-only.
 //
 // An image never takes its `src` from the note: the reader resolved the
 // attachment path against the vault's own attachment list, and this component

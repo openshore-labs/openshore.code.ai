@@ -224,7 +224,7 @@ export const PROVIDERS: ProviderInfo[] = [
     // and the stack router treat it like any other openai-compatible provider,
     // and a Sonar model places into a stack slot like the rest.
     //
-    // Two honesty notes carried from the CTO review:
+    // Two honesty notes carried from the tech review:
     //   1. Sonar returns its sources as top-level `citations`/`search_results`
     //      fields outside the OpenAI schema, which the plain openai-compatible
     //      driver path drops. Threading those through the driver event stream
@@ -270,7 +270,7 @@ export const PROVIDERS: ProviderInfo[] = [
     ],
   },
   {
-    // Venice: open models behind one OpenAI-compatible key (founder,
+    // Venice: open models behind one OpenAI-compatible key (maintainer,
     // 2026-10-07, "my buddy uses Venice"). Its policy says it keeps no prompts
     // or outputs, and that some models are served through other providers it
     // binds not to train on them. We cannot check either, so copy only ever
@@ -296,7 +296,7 @@ export const PROVIDERS: ProviderInfo[] = [
     models: [],
     liveModels: true,
   },
-  // Named providers on your own key (founder, 2026-10-09: bring your own keys,
+  // Named providers on your own key (2026-10-09: bring your own keys,
   // any provider; OpenShore runs no gateway and resells nothing). Each one's
   // OpenAI-compatible base is the one its own documentation gives (read
   // 2026-10-09). Not every model list's shape is confirmed there: DeepSeek's,
@@ -575,7 +575,7 @@ export function parseLiveModels(providerId: string, body: unknown): LiveModel[] 
 
 /** One honest line per live model: whose words a privacy claim is, never ours. */
 function liveTagline(providerId: string): string {
-  // No privacy words for Venice yet (CTO review 2026-10-08): the field they
+  // No privacy words for Venice yet (tech review 2026-10-08): the field they
   // would read is unconfirmed until a real /models answer is pinned as a
   // fixture, and a saved tagline would go stale when Venice changes a model.
   if (providerId === 'venice') return 'On Venice, on your key.';
@@ -740,7 +740,7 @@ export interface CloudImageReader {
 
 /** The cloud models an image may go to when nothing in the stack reads it, in
  *  the order they are tried: Claude's image reader first (the least costly
- *  Claude model, visionFallbackClaudeModel, kept and named by the founder on
+ *  Claude model, visionFallbackClaudeModel, kept and named by a maintainer on
  *  2026-10-07, D13), then each other provider's first model that reads images.
  *  The chat path takes the first one it can reach with a stored key, and the
  *  Stack's Image reading rows name the first one connected, so the row and the
@@ -835,7 +835,7 @@ export async function validateProviderKey(
       if (!res.ok) return 'unverifiable';
       // Listing models can pass where a chat is refused: an identity-linked
       // key reads /v1/models without a workspace, then every message asks for
-      // one (founder's phone, 2026-10-08). Counting tokens takes the message
+      // one (maintainer's phone, 2026-10-08). Counting tokens takes the message
       // path's auth and costs nothing, so the check asks it too.
       const probe = await nativeFetch('https://api.anthropic.com/v1/messages/count_tokens', {
         method: 'POST',

@@ -1,4 +1,4 @@
-// A stable prefix in the app's Claude requests (Vault M5, CTO J16). The system
+// A stable prefix in the app's Claude requests (Vault M5, tech review J16). The system
 // prompt runs static, then per chat, then per task: the head (the base prompt,
 // the standards, the project's own words) stays byte-identical from send to
 // send, and everything that moves (the effort line, the walk line, the vault
@@ -7,7 +7,7 @@
 // caching on the growing history too (two of the API's four slots).
 //
 // Off by default (`settings.promptCache`, no UI in M5): it flips on only with
-// the eval number (CTO J19, tenet 2), so no copy claims a saving. Kept
+// the eval number (tech review J19, tenet 2), so no copy claims a saving. Kept
 // dependency-free like effort.ts: the store mirrors the setting here, and the
 // drivers read it once per send. A prefix under the model's minimum simply
 // does not cache; the request is still valid.

@@ -1,5 +1,5 @@
-// The words OpenShore says once a chat holds a private note's text (CX and
-// CMO, 2026-10-08, rulings A, D, F, G and H). One source for each line, so
+// The words OpenShore says once a chat holds a private note's text (UX review and
+// copy review, 2026-10-08, rulings A, D, F, G and H). One source for each line, so
 // the engine's cards and refusals and the app's drivers and sheets say the
 // same thing: the engine's loop reads them here, and the app through
 // `os-code/protocol`. Pure: no Node built-ins, no I/O.

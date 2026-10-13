@@ -1,5 +1,5 @@
 // Rewind (P2): the store logic for taking a chat back to one of the person's
-// own messages (CTO ruling 9: a sibling module, store.ts only wires it in).
+// own messages (tech review ruling 9: a sibling module, store.ts only wires it in).
 // A coding chat's brain is an engine session on the person's computer, which
 // checkpoints every task, so the engine does the work there: the chat and,
 // when asked, the folder's files. Its `rewound` marker cuts the transcript on

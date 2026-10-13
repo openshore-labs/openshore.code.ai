@@ -281,7 +281,7 @@ describe('a handoff never carries a local-only note to a cloud seat (D5)', () =>
     );
   });
 
-  // CX and CMO, 2026-10-08 (G): the refusal names its real cause. A pin alone
+  // UX and copy review, 2026-10-08 (G): the refusal names its real cause. A pin alone
   // says the pin, through a reply marked only for it; once the chat also
   // reads a private note, it says the read.
   it('a pin alone, then a read: each refusal names its cause', async () => {
@@ -470,7 +470,7 @@ describe('a handoff never carries a local-only note to a cloud seat (D5)', () =>
   });
 });
 
-// CX and CMO, 2026-10-08 (F): the sticky mark stays, and the person is told
+// UX and copy review, 2026-10-08 (F): the sticky mark stays, and the person is told
 // once, where the context is lost: one status line per chat for each model
 // off this network, on the first turn it is sent the placeholder.
 describe('the placeholder line (F)', () => {

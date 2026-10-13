@@ -1,4 +1,4 @@
-// When the desktop's one-time move card shows (Vault M1 1.3, CX 1.3), as a
+// When the desktop's one-time move card shows (Vault M1 1.3, UX review 1.3), as a
 // table: first time yes; after one decline, only on a visit at least 7 days
 // later with more notes in the folder than at the decline; never after two.
 import { describe, expect, it } from 'vitest';

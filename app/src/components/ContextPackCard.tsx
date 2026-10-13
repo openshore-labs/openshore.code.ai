@@ -5,7 +5,7 @@
 // files card's frame, and it arrives the way every transcript card does.
 // Every line comes from lib/vaultCopy.ts, where the claims are tested.
 //
-// Vault M5 (CTO J9): when this device's vault can open the note (an app
+// Vault M5 (tech review J9): when this device's vault can open the note (an app
 // chat's own vault, or the computer's vault reached as the hub), a title is a
 // button that opens it; otherwise titles stay plain and the foot says they
 // are on the computer.

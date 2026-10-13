@@ -13,7 +13,7 @@
 // Scope is drive.file only (CFO ruling, os-code/DECISIONS.md): the app can
 // only see files and folders it creates itself, never the user's whole
 // Drive. gdrive.ts's blurb discloses the corollary (files added outside
-// OpenShore may not appear) per the founder's call on that decision point.
+// OpenShore may not appear) per a maintainer's call on that decision point.
 import { Browser } from '@capacitor/browser';
 import { platform, openExternal, secretGet, secretSet, secretDelete } from '../platform.js';
 import { bridge } from '../electronBridge.js';

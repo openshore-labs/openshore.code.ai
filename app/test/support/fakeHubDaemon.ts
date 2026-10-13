@@ -1,4 +1,4 @@
-// A fake of the daemon's /vault routes (Vault M5, CTO J7), answering the wire
+// A fake of the daemon's /vault routes (Vault M5, tech review J7), answering the wire
 // in os-code/protocol's vaultWire exactly: versions are fresh tokens on every
 // write, a PUT checks ifMatch and ifAbsent where the bytes are, a DELETE
 // checks ifMatch, and a 409 carries the note's metadata now. `up = false`
@@ -48,7 +48,7 @@ export interface FakeHubDaemon {
   index?: { text: string; etag: string };
   /** When set, the notes route answers 404, as a daemon from before M5. */
   old?: boolean;
-  // ---- Vault M6 (CTO K13): rename, folders, Trash and attachments, with the
+  // ---- Vault M6 (tech review K13): rename, folders, Trash and attachments, with the
   // semantics the contract pins (never replace, folded names, restore beside
   // a taken name as "{title} (restored)"). Versions at a new name are fresh,
   // so a caller that assumes the old one fails.
@@ -189,7 +189,7 @@ export function fakeHubDaemon(baseUrl = 'http://mac.tail1234.ts.net:4816'): Fake
         if (text === undefined) return json(404, { error: 'absent' });
         return json(200, { name, text, version: configVersion(name, text) });
       }
-      // Vault M7 (CTO L7): the one config write, the note PUT's guard rules.
+      // Vault M7 (tech review L7): the one config write, the note PUT's guard rules.
       if (url.pathname.startsWith('/vault/config/') && method === 'PUT') {
         if (d.old) return json(404, { error: 'not found' });
         const name = url.pathname.slice('/vault/config/'.length);

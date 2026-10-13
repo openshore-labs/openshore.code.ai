@@ -500,7 +500,7 @@ describe('RemoteDriver terminal (Phase 2)', () => {
   });
 });
 
-// Vault M5 (CTO J12, J14): the create body carries a switch's handoff, cut
+// Vault M5 (tech review J12, J14): the create body carries a switch's handoff, cut
 // to the wire's cap, and the project's pins, notes only, at most eight.
 describe('daemonCreateSession carries the handoff and the project pins', () => {
   const realFetch = globalThis.fetch;

@@ -18,7 +18,7 @@ const REVIEWS = 'model_reviews';
 /** The public read surface (production's 0020): visible rows, the reader's
  *  blocks applied, no author id, and the server-set staff flag. Since 0020 the
  *  base table answers anon nothing and a signed-in reader only their own rows,
- *  so every list reads here (CTO 11 package B). */
+ *  so every list reads here (tech review 11 package B). */
 const REVIEWS_PUBLIC = 'model_reviews_public';
 const REPORTS = 'review_reports';
 const EULA = 'review_eula_acceptance';

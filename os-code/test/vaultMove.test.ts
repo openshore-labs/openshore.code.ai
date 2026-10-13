@@ -1,4 +1,4 @@
-// Link rewrites for a set of moves (Vault M6, CTO K4 with R1): the pure plan.
+// Link rewrites for a set of moves (Vault M6, tech review K4 with R1): the pure plan.
 // A link is spliced only when it would no longer reach the note it should, so
 // aliases, headings, block references and the embed `!` stay byte for byte;
 // a moved note's own relative links follow it; collateral links a new name

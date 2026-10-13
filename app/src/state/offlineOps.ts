@@ -1,4 +1,4 @@
-// Desktop Offline (founder, 2026-10-07): "Desktop app can use offline when
+// Desktop Offline (2026-10-07): "Desktop app can use offline when
 // there is no internet and it needs to use just the local models, where the
 // cloud connections are no longer viable options for work." The store's half,
 // kept beside it (the premium build's sibling-module rule): what the desktop

@@ -52,6 +52,9 @@ importers:
       os-code:
         specifier: workspace:*
         version: link:../os-code
+      oscode-applock:
+        specifier: file:./plugins/oscode-applock
+        version: file:app/plugins/oscode-applock(@capacitor/core@8.5.0)
       oscode-authsession:
         specifier: file:./plugins/oscode-authsession
         version: file:app/plugins/oscode-authsession(@capacitor/core@8.5.0)
@@ -64,6 +67,9 @@ importers:
       oscode-media:
         specifier: file:./plugins/oscode-media
         version: file:app/plugins/oscode-media(@capacitor/core@8.5.0)
+      oscode-passkey:
+        specifier: file:./plugins/oscode-passkey
+        version: file:app/plugins/oscode-passkey(@capacitor/core@8.5.0)
       oscode-speech:
         specifier: file:./plugins/oscode-speech
         version: file:app/plugins/oscode-speech(@capacitor/core@8.5.0)
@@ -2465,6 +2471,11 @@ packages:
     resolution: {integrity: sha512-6IpQ7mKUxRcZNLIObR0hz7lxsapSSIYNZJwXPGeF0mTVqGKFIXj1DQcMoT22S3ROcLyY/rz0PWaWZ9ayWmad9g==}
     engines: {node: '>= 0.8.0'}
 
+  oscode-applock@file:app/plugins/oscode-applock:
+    resolution: {directory: app/plugins/oscode-applock, type: directory}
+    peerDependencies:
+      '@capacitor/core': '>=8.0.0'
+
   oscode-authsession@file:app/plugins/oscode-authsession:
     resolution: {directory: app/plugins/oscode-authsession, type: directory}
     peerDependencies:
@@ -2482,6 +2493,11 @@ packages:
 
   oscode-media@file:app/plugins/oscode-media:
     resolution: {directory: app/plugins/oscode-media, type: directory}
+    peerDependencies:
+      '@capacitor/core': '>=8.0.0'
+
+  oscode-passkey@file:app/plugins/oscode-passkey:
+    resolution: {directory: app/plugins/oscode-passkey, type: directory}
     peerDependencies:
       '@capacitor/core': '>=8.0.0'
 
@@ -5907,6 +5923,10 @@ snapshots:
       type-check: 0.4.0
       word-wrap: 1.2.5
 
+  oscode-applock@file:app/plugins/oscode-applock(@capacitor/core@8.5.0):
+    dependencies:
+      '@capacitor/core': 8.5.0
+
   oscode-authsession@file:app/plugins/oscode-authsession(@capacitor/core@8.5.0):
     dependencies:
       '@capacitor/core': 8.5.0
@@ -5920,6 +5940,10 @@ snapshots:
       '@capacitor/core': 8.5.0
 
   oscode-media@file:app/plugins/oscode-media(@capacitor/core@8.5.0):
+    dependencies:
+      '@capacitor/core': 8.5.0
+
+  oscode-passkey@file:app/plugins/oscode-passkey(@capacitor/core@8.5.0):
     dependencies:
       '@capacitor/core': 8.5.0
 

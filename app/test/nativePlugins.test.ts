@@ -1,5 +1,5 @@
 // A static guard over the native plugins' Swift, since no Mac runs in CI
-// (Vault M2, CTO G2 and G7 wave 0). It reads the Swift as text and holds the
+// (Vault M2, tech review G2 and G7 wave 0). It reads the Swift as text and holds the
 // two halves of each plugin together:
 //
 // 1. In every plugin's Swift sources, the plugin file (named after its SPM
@@ -51,7 +51,9 @@ const CONTRACTS: Record<string, { file: string; contract: string }> = {
     file: 'src/lib/authSessionPlugin.ts',
     contract: 'OscodeAuthSessionContract',
   },
+  'oscode-applock': { file: 'src/lib/appLock.ts', contract: 'OscodeAppLockContract' },
   'oscode-icloud': { file: 'src/lib/gitos/icloudPlugin.ts', contract: 'IcloudPluginContract' },
+  'oscode-passkey': { file: 'src/lib/passkeys.ts', contract: 'OscodePasskeyContract' },
   'oscode-llama': { file: 'src/lib/llamaPlugin.ts', contract: 'LlamaPluginContract' },
   'oscode-media': { file: 'src/lib/mediaPlugin.ts', contract: 'MediaPluginContract' },
   'oscode-speech': { file: 'src/lib/speechPlugin.ts', contract: 'OscodeSpeechContract' },

@@ -1,4 +1,4 @@
-// The vault's settings (Vault M7, CTO L1 to L4, L13): one schema and one pure
+// The vault's settings (Vault M7, tech review L1 to L4, L13): one schema and one pure
 // core, read by the engine, the daemon, the desktop's main process and the app
 // alike. The in-vault file `.oscode/vault.json` holds conventions and
 // narrowing only: anyone who can write the folder (a sync client, an Obsidian
@@ -42,7 +42,7 @@ import type {
 } from './types.js';
 import type { VaultContextSetting } from '../vaultContext.js';
 
-/** Every field of the in-vault file, in CX Y1's sheet order (L2, L18). */
+/** Every field of the in-vault file, in UX review Y1's sheet order (L2, L18). */
 export const VAULT_SETTINGS_FIELDS: readonly VaultSettingsField[] = Object.freeze([
   'newNotes.location',
   'newNotes.folder',
@@ -96,7 +96,7 @@ export const VAULT_SETTINGS_LIST_MAX = 200;
 export const VAULT_SETTINGS_STRING_MAX = 512;
 
 // ---------------------------------------------------------------------------
-// Plain fragments (CTO-owned, CX Y3). Each one completes "This vault's
+// Plain fragments (tech review-owned, UX review Y3). Each one completes "This vault's
 // settings file also asks to {plain}." so it reads as a verb phrase.
 
 const ROOM = 'give notes more room in each chat';
@@ -163,7 +163,7 @@ function unknownPlain(key: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Tolerant JSON readers (Vault M3, CTO H5; moved here in M7, L1)
+// Tolerant JSON readers (Vault M3, tech review H5; moved here in M7, L1)
 
 /** A config file's top-level object, copied onto a null-prototype object, or
  *  undefined for a refusal, bad JSON, or anything that is not an object. */
@@ -879,7 +879,7 @@ export function vaultContextOn(
   return machine !== 'off' && project !== 'off' && app !== 'off';
 }
 
-/** Whether the handoff is written and read (L13, CTO reconciliation 4):
+/** Whether the handoff is written and read (L13, tech review reconciliation 4):
  *  true only when machine `vault.handoff`, the project and the app all allow
  *  it. */
 export function vaultHandoffOn(

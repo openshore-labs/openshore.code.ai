@@ -364,7 +364,7 @@ export function capabilityShelfTitle(cap: CapabilityCategory): string {
   return plain.charAt(0).toUpperCase() + plain.slice(1);
 }
 
-/** The featured hero row. The founder's editorial picks lead; when the feed has
+/** The featured hero row. A maintainer's editorial picks lead; when the feed has
  *  none yet (a fresh or partial catalog), the top of the curated order stands in
  *  so the store is never empty. */
 export function featuredModels(models: CatalogModel[], limit = 8): CatalogModel[] {

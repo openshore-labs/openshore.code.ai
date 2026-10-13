@@ -1,4 +1,4 @@
-// Vault M7 stream C: provenance on the notes the engine writes (CTO L9, L10).
+// Vault M7 stream C: provenance on the notes the engine writes (tech review L9, L10).
 // The merge is stream B's; until it lands in this tree its stub throws, so a
 // small stand-in merge answers here. What these tests prove is the engine's
 // wiring: the lines are merged BEFORE the diff, execute writes the very bytes

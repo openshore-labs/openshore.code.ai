@@ -250,7 +250,7 @@ const FLAT_MS = 220;
  *  person's own stop or a declined step. */
 const retryable = isFailedStop;
 
-/** A switch's note with its handoff (Vault M5, CTO J12): "Save to Vault"
+/** A switch's note with its handoff (Vault M5, tech review J12): "Save to Vault"
  *  under it writes the handoff as a note in Handoffs, once; saved, the row
  *  says where it went. */
 function HandoffNote({
@@ -439,7 +439,7 @@ export function MessageList({
   }, []);
 
   // Pull the transcript down to read back, and the keyboard goes away, the way
-  // the Claude app and Messages do (founder, 2026-09-25): scrolling up means
+  // the Claude app and Messages do (2026-09-25): scrolling up means
   // skimming, and a tap on the chat box calls the keyboard back. A clear
   // downward drag, once per gesture, only while the keyboard is up. Blur alone
   // is not reliable in the iOS web view, so the plugin is told to hide too.
@@ -834,7 +834,7 @@ export function MessageList({
       {pillMounted ? (
         // The thread is its own scroller, so an absolute child would ride the
         // content. A zero-height sticky dock holds the chip and the foot veil
-        // to the visible bottom at any scroll position (Creative Studio,
+        // to the visible bottom at any scroll position (design review,
         // docs/design/jump-to-latest-redesign.md).
         <div className={`jump-dock${pillClosing ? ' closing' : ''}`}>
           <div className="jump-veil" aria-hidden="true" />

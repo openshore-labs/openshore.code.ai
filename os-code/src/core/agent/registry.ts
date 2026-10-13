@@ -98,13 +98,13 @@ export interface ToolRegistryOptions {
   // network is left out, the web tools, Codemagic, the currents' tools, and
   // the tools that hand work to another model (a specialist, vision, image
   // making), which may be a cloud one and are classed as reads, so nothing
-  // would ask (CTO 3, headless means offline). A routine reads commit
+  // would ask (tech review 3, headless means offline). A routine reads commit
   // messages, files and notes other people wrote, and one injected line could
   // send a secret out in a URL, a search, or a subtask while nobody watches.
   // See networkToolsLeftOut.
   offline?: boolean;
   // With `offline`, keeps webSearch (and only webSearch): the person allowed
-  // models to search the web and a routine follows that switch (founder,
+  // models to search the web and a routine follows that switch (maintainer,
   // 2026-10-01). Results are titles, links and snippets; webFetch, Codemagic,
   // the currents and the model handoffs stay out. Ignored under egress lockdown.
   offlineSearch?: boolean;
@@ -185,7 +185,7 @@ export function networkToolsLeftOut(options: ToolRegistryOptions): string[] {
 
 /**
  * The tools a session takes off its menu while this computer is offline
- * (Desktop Offline, founder 2026-10-07), by name: the network tools of the
+ * (Desktop Offline, 2026-10-07), by name: the network tools of the
  * routine's offline slice (web search, opening pages, Codemagic, the
  * currents), and making an image when the image server is off this network.
  * webSearch is named even when declined, so a call to it is refused by name.
@@ -246,7 +246,7 @@ export function buildToolRegistry(options: ToolRegistryOptions): ToolRegistry {
   registry.register(searchRepoTool);
   // The agent's durable, on-device knowledge vault. Reads/lists flow; writes
   // always ask (vaultWriteTool.alwaysAsk). The reads teach search first, then
-  // a section, then links (CTO I11). Both the separate reads and the merged
+  // a section, then links (tech review I11). Both the separate reads and the merged
   // vaultLookup are registered; the loop offers one set per seat each turn
   // (seatOffersVaultTool), since an escalation changes the seat mid-task.
   if (options.vault !== false) {
@@ -277,7 +277,7 @@ export const MERGED_VAULT_TOOL = vaultLookupTool.name;
 
 /**
  * Whether a seat is offered a vault tool, by the class policy's
- * `mergedVaultTool` (CTO I11): a merged seat sees vaultLookup and not the four
+ * `mergedVaultTool` (tech review I11): a merged seat sees vaultLookup and not the four
  * separate reads; any other seat sees the separate reads and not vaultLookup.
  * Every other tool passes. The loop applies it before the small-seat cut.
  */
@@ -289,7 +289,7 @@ export function seatOffersVaultTool(name: string, mergedVaultTool: boolean): boo
 
 /**
  * The small-seat tool priority with vaultLookup placed right after
- * searchRepo (CTO I11): a small seat's ten see it, a tiny seat's six do not
+ * searchRepo (tech review I11): a small seat's ten see it, a tiny seat's six do not
  * (tiny leans on the pack). Without searchRepo in the list it goes last.
  */
 export function withVaultLookupPriority(priority: readonly string[]): string[] {
@@ -300,7 +300,7 @@ export function withVaultLookupPriority(priority: readonly string[]): string[] {
 }
 
 /**
- * The vault's privacy rules, compiled on first use and kept (CTO I4). Lazy so
+ * The vault's privacy rules, compiled on first use and kept (tech review I4). Lazy so
  * a session that never touches a note never pays for it, and so a config the
  * compiler refuses fails the vault tools that need it, loudly, never by
  * opening every note.
@@ -315,7 +315,7 @@ export function lazyVaultPrivacy(cfg: VaultPrivacyConfig): VaultPrivacy {
   };
 }
 
-/** The vault's privacy for one session (Vault M7, CTO L4, L5): the machine's
+/** The vault's privacy for one session (Vault M7, tech review L4, L5): the machine's
  *  rules unioned with the vault's own file (`.oscode/vault.json`), which can
  *  only hide more or keep more on this computer. `visibility` stays sync;
  *  `refresh` re-reads the settings (kept 2 s, `force` at a task start) and
@@ -453,7 +453,7 @@ export function buildToolContext(options: {
    *  (a member's session on a shared hub). Undefined means on. */
   vault?: boolean;
   /** This session's own vault root in place of the machine's (a member's on
-   *  a shared hub, CTO J8). Ignored when `vault` is off. */
+   *  a shared hub, tech review J8). Ignored when `vault` is off. */
   vaultRoot?: string;
   /** The media jobs placed in this Stack (the model library). */
   media?: MediaHost;
@@ -526,7 +526,7 @@ export function buildToolContext(options: {
   };
   // Which notes are hidden and which stay on this computer: the machine's
   // vault config (projectPolicy classes these keys machine) unioned with the
-  // vault's own file, which only narrows (Vault M7, CTO L4). The holder follows
+  // vault's own file, which only narrows (Vault M7, tech review L4). The holder follows
   // the context's root, so a caller that repoints it is followed.
   if (vaultRoot) {
     const holder = vaultPrivacyHolder(vaultPrivacyConfig(config), () => ctx.vaultRoot);

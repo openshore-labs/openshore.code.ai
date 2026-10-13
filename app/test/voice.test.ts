@@ -1,7 +1,7 @@
 // Voice mode's pure core: shaping a streamed reply into speech, and the
 // decision-break policy that keeps the conversation flowing where it is safe and
 // hands you back to the screen where it matters. These run without a device, so
-// the logic the founder cares about (where voice breaks, what it reads) is
+// the logic a maintainer cares about (where voice breaks, what it reads) is
 // pinned even though the native synthesizer is only provable on TestFlight.
 import { describe, expect, it } from 'vitest';
 import type { ApprovalRequest } from 'os-code/protocol';

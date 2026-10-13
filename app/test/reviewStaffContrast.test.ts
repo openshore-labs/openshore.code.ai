@@ -1,4 +1,4 @@
-// The "OpenShore team" label on a review (CTO 11 package B) is small text
+// The "OpenShore team" label on a review (tech review 11 package B) is small text
 // (--text-1, 11px), so it needs WCAG AA's 4.5:1 against the surfaces a review
 // sits on, in both themes. The port once gave it --wave, a fill teal that
 // reads about 3.3:1 on --bg and 3.0:1 on --surface in the light theme

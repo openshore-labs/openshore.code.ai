@@ -1,9 +1,9 @@
 // Sign-in hygiene (build 2026-09-29, package E2). The rules live here, apart
-// from the store (CTO ruling 9), as plain functions a test reads without it;
+// from the store (tech review ruling 9), as plain functions a test reads without it;
 // the store wires them into the sign-out, the preference sync, and
 // saveSettings. Tests: app/test/accounts.test.ts and app/test/auth.test.ts.
 //
-// Signing out of one device never signs out the others (CX ruling 4), and it
+// Signing out of one device never signs out the others (UX review ruling 4), and it
 // always finishes on this device, offline too. Ending every sign-in at once
 // is its own quiet link, and it says plainly when the server could not be
 // reached. The preferences that follow a person merge key by key, so two
@@ -17,7 +17,7 @@ import {
 import type { Session, SignOutScope } from '../lib/supabase.js';
 import type { AppSettings } from './store.js';
 
-// The words, as CX ruled them (advisor rulings 2026-09-29, CX 4).
+// The words, as UX review ruled them (advisor rulings 2026-09-29, UX review 4).
 export const SIGNED_OUT_HERE = 'Signed out here. Your other devices stay signed in.';
 export const SIGN_OUT_EVERYWHERE_LINK = 'Sign out everywhere';
 export const SIGN_OUT_EVERYWHERE_TITLE = 'Sign out on every device?';
@@ -28,7 +28,7 @@ export const SIGN_OUT_EVERYWHERE_FAILED =
 /** After it worked: the confirm's own promise, said back once. */
 export const SIGNED_OUT_EVERYWHERE =
   'Signed out everywhere. Your other devices sign out within an hour.';
-/** While the server works on it (CX cleanup 7): the link's place on the
+/** While the server works on it (UX review cleanup 7): the link's place on the
  *  card, as a status line. */
 export const SIGNING_OUT_EVERYWHERE = 'Signing out everywhere...';
 

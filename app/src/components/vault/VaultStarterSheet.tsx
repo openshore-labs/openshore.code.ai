@@ -1,4 +1,4 @@
-// The starter layout's preview (Vault M7 7.3; CTO L12; CX Y13): opt-in, and
+// The starter layout's preview (Vault M7 7.3; tech review L12; UX review Y13): opt-in, and
 // everything it would add is shown before anything is written. Four rows, a
 // glyph and one line each, then (only where the vault's settings file can be
 // written) the one line on what the settings will say. "Add these" is the one
@@ -8,7 +8,7 @@
 // folders and no `.obsidian/`, and `onAdd` re-checks emptiness and writes
 // every item `ifAbsent` (stream F's `vaultStarter.ts`). It answers how many of
 // the items landed. All of them: the one haptic of this surface marks the
-// multi-note change (CX R5, X19's rule), and the sheet asks to close; the
+// multi-note change (UX review R5, X19's rule), and the sheet asks to close; the
 // screen shows the toast. Some: the partial line stays in place and "Add
 // these" tries again for the rest.
 import { useEffect, useState } from 'react';

@@ -1,4 +1,4 @@
-// Accounts (founder + CX, 2026-09-27; docs/accounts-cx-memo.md). Chatting needs
+// Accounts (2026-09-27). Chatting needs
 // no account: Harbor Lite and Harbor on the phone, the Stack, and a model you
 // connect yourself. Everything else OpenShore does is behind a free sign-in:
 // the coding agent, Projects, Terminal, Repositories, Vault, Crew, Cloud
@@ -65,7 +65,7 @@ export const ROOM_ACCOUNT: Record<ViewName, AccountFeature | null> = {
  *  free chat. Only the coding agent ('desktop', a session that reads, edits
  *  and runs in a repository) needs one. The free chat with a computer's own
  *  local model ('desktop-chat', no tools, no session) is chat, on the phone
- *  and on the desktop alike (CTO ruling 8). */
+ *  and on the desktop alike (tech review ruling 8). */
 export const SOURCE_ACCOUNT: Record<ConversationSource['kind'], AccountFeature | null> = {
   desktop: 'coding',
   'desktop-chat': null,
@@ -114,7 +114,7 @@ export const ACCOUNT_GATE_BODY =
 export const ACCOUNT_SIGN_IN_SUB = 'To build and connect your computer';
 
 /** The pitch on the sign-in card and in Settings. It names the few that
- *  follow (founder, D19, 2026-10-07): the theme and the other 'follows' keys
+ *  follow (D19, 2026-10-07): the theme and the other 'follows' keys
  *  in settingsReach.ts, on every platform, and nothing else. The writing
  *  voice, the app icon, approvals, web search and the vault stay here.
  *  Pairing is "connect your computer", every door's words, so the line reads

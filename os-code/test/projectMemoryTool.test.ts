@@ -110,7 +110,7 @@ describe('project memory in the system prompt', () => {
   });
 });
 
-// CX and CMO, 2026-10-08 (A): projectMemoryWrite is the one write the engine
+// UX and copy review, 2026-10-08 (A): projectMemoryWrite is the one write the engine
 // allows by name. Once a chat on a seat that stays holds a private note's
 // text, it asks every time, in every mode, past every grant, with a line
 // above the diff that says why; a routine leaves the notes as they were. No

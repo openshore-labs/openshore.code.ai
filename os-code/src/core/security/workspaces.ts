@@ -54,7 +54,7 @@ export function isAdminProvisionedWorkspace(cwd: string): boolean {
  * link to the vault counts as the vault, and a workspace that only holds a
  * link to it does not overlap (the jail refuses to follow that link out).
  *
- * With no `vaultDir`, every root on this machine counts (Vault M5, CTO J8):
+ * With no `vaultDir`, every root on this machine counts (Vault M5, tech review J8):
  * the owner's vault and the folder that holds each member's own root, so a
  * member workspace can reach neither the owner's notes nor another member's.
  */

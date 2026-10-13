@@ -119,7 +119,7 @@ describe('org vault provider', () => {
   });
 
   // PostgREST caps a select at max_rows (1000): one select would silently
-  // drop the rest. Keyset pages by path, 500 at a time (CTO G3).
+  // drop the rest. Keyset pages by path, 500 at a time (tech review G3).
   it('1,001 notes all list, in pages of 500 keyed by the last path', async () => {
     for (let i = 0; i < 1001; i++) server.put(`n/${String(i).padStart(4, '0')}.md`, 'x');
     const files = await orgVaultProvider.list(ORG);
@@ -256,7 +256,7 @@ describe('org vault provider', () => {
     });
   });
 
-  // CTO G3: a stash from before M2 carries an ISO base. It can never equal a
+  // tech review G3: a stash from before M2 carries an ISO base. It can never equal a
   // rev, so it resolves as keep both, and nothing is sent that could write.
   it('a base that is not a rev never writes: changed with theirs, or missing', async () => {
     server.put('old.md', 'there now');
@@ -421,7 +421,7 @@ describe('org vault provider', () => {
 
   // A server that has not had migration 0021 yet answers PGRST202 (a 404).
   // Not permanent: the text is stashed and retried, and nothing is written
-  // blind through the old last-write-wins function (CTO G3).
+  // blind through the old last-write-wins function (tech review G3).
   it('PGRST202 (function not found) is non-permanent, for a write and a remove', async () => {
     server.put('a.md', 'there');
     const v = (await orgVaultProvider.stat(ORG, 'a.md'))!.version!;
@@ -495,7 +495,7 @@ describe('org vault provider', () => {
   });
 });
 
-// CTO G6: "Edited by" comes from one cached select of the org's active
+// tech review G6: "Edited by" comes from one cached select of the org's active
 // members; the label is the email's local part, never the address.
 describe('org vault editedBy', () => {
   beforeEach(() => {
@@ -564,7 +564,7 @@ describe('org vault editedBy', () => {
   });
 });
 
-// ---- Vault M6 on the team vault (CTO K3, K6, R3; migration 0024) ----------
+// ---- Vault M6 on the team vault (tech review K3, K6, R3; migration 0024) ----------
 
 const rpcsNamed = (fn: string) => server.rpcs.filter((r) => r.fn === fn);
 const version = (r: { ok: boolean; file?: { version?: string } }) => (r.ok ? r.file!.version! : '');
@@ -899,7 +899,7 @@ describe('org vault Trash (Restore only, R3)', () => {
   });
 });
 
-// ---- Vault M7 on the team vault (CTO L17; CX Y14, Y15; migration 0025) ----
+// ---- Vault M7 on the team vault (tech review L17; UX review Y14, Y15; migration 0025) ----
 
 describe('org vault plan (OV402) and settings', () => {
   it('maps OV402 to the calm lapsed state: the line, permanent, and the plan', async () => {

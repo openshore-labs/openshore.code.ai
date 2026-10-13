@@ -1,8 +1,8 @@
 # How OpenShore works with you (the interaction model)
 
-Founder direction, 2026-09-02: "all of the process of working with LLMs should
+Maintainer direction, 2026-09-02: "all of the process of working with LLMs should
 mirror how I work with Claude Code." This is that process, distilled from how
-the founder actually builds (the audit and remediation sessions of 2026-08-31
+a maintainer actually builds (the audit and remediation sessions of 2026-08-31
 through 09-02 are the reference record), written as product tenets every surface
 in the app is measured against. It is the standard, not a style guide; a new
 screen or flow that does not fit it is not done.
@@ -41,14 +41,14 @@ screen or flow that does not fit it is not done.
    else, it arrives as its own fenced code block, one per step, nothing else in
    the block, and the chat renders it with a one-tap Copy. Never a command
    inline in a sentence to be retyped. The only exception is the person asking
-   for something else. (Founder, 2026-09-02: "it's highly efficient.")
+   for something else. (Maintainer, 2026-09-02: "it's highly efficient.")
 10. **Premium UX out of the box.** Everything a coding model builds through
     OpenShore is built to the twenty laws of UX and the house bar (calm motion,
     every state designed, honest copy, accessible) without being asked. The
     standard is on by default and rerouted only on purpose: a project turns it
     off or adds its own rules in config, or the person says to skip it.
     `os-code/src/core/agent/uxStandard.ts` is the text; the coding agent's
-    system prompt carries it. (Founder, 2026-09-02.)
+    system prompt carries it. (Maintainer, 2026-09-02.)
 
 ## Where this already shows up in the app
 
@@ -64,8 +64,8 @@ screen or flow that does not fit it is not done.
 
 ## Where the tenets come from
 
-The founder named the sources on 2026-09-02: the standing rules in `CLAUDE.md`
-(this repo's), `PROGRESS.md`, and the advisor org in
+A maintainer named the sources on 2026-09-02: the standing rules in `CLAUDE.md`
+(this repo's), `PROGRESS.md`, and the reviewers in
 `.claude/agents`. Each tenet above is one of those rules, turned toward the
 person using the app:
 
@@ -85,12 +85,12 @@ person using the app:
   is one guarantee per sentence. Tenets 6 and 7.
 - **PROGRESS.md as the source of truth and to-do capture**: what happened,
   what is waiting on whom, and no suggestion silently evaporates. Tenet 8.
-- **Advisory, and the founder decides; disagree and commit**: every advisor
+- **Advisory, and a maintainer decides; disagree and commit**: every advisor
   presses its case with evidence, then gets behind the call. This is why the
   advisor team ships as a Crew preset (`app/src/lib/crewPresets.ts`): named,
   project-agnostic perspectives the Reasoning model brings in, in their voice, and
   the person decides. The Technical Advisor reviews the work; the Marketing,
-  Finance, and Creative Studio advisors step in on their own when a decision
+  Finance, and design review advisors step in on their own when a decision
   needs them; the rest speak when asked. (The names shipped as a startup C-suite
   until 2026-09-15; see `docs/design/crew-page-redesign.md`.)
 - **Motion and polish are a standard**: calm, premium, smooth and slow feels

@@ -1,4 +1,4 @@
-// Pairing needs the computer's yes (CTO security review 2026-10-01, F3): a
+// Pairing needs the computer's yes (tech review security review 2026-10-01, F3): a
 // spent claim answers 202 with a short code, the phone shows it and asks
 // until the computer allows or denies. Only an Allow gives it a token.
 import { afterEach, describe, expect, it, vi } from 'vitest';

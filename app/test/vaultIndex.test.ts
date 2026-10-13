@@ -1,4 +1,4 @@
-// The app's Vault index host (Vault M3, CTO H3 and H6): the pure core's index,
+// The app's Vault index host (Vault M3, tech review H3 and H6): the pure core's index,
 // fed by provider reads the host schedules. What these rows hold: a 5,000-note
 // vault answers warm backlinks in under 100 ms; updating one note touches one
 // entry; opening a note reads no other note; Linked mentions read only the

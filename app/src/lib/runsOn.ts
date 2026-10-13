@@ -1,6 +1,6 @@
-// Where the work runs (founder, 2026-10-12): "in your projects, you can choose
+// Where the work runs (2026-10-12): "in your projects, you can choose
 // the Hub to run your project from, either your home computer, home server, or
-// remote server." Copy calls that choice Runs on (CX, 2026-10-01: "hub" stays
+// remote server." Copy calls that choice Runs on (UX review, 2026-10-01: "hub" stays
 // out of copy). A device docks to as many machines as the person likes; each
 // project may name one, and each chat remembers the machine its engine
 // session opened on, so switching the device's active machine, or a project's
@@ -123,11 +123,13 @@ export function projectsOn(projects: { runsOn?: RunsOn }[] | undefined, key: str
 }
 
 /** Why a chat cannot reach its machine, in plain words. */
-export function goneLine(key: string, name?: string): string {
+export function goneLine(key: string, name?: string, withWay = true): string {
   if (key === THIS_COMPUTER) {
     return "This chat ran on a computer's own engine, which this device cannot reach.";
   }
-  return `This chat ran on ${name ?? hostOfKey(key)}, which this device no longer docks to. Dock to it again from Computer to pick it up.`;
+  const line = `This chat ran on ${name ?? hostOfKey(key)}, which this device no longer docks to.`;
+  // Where a door sits beside the line (the chat's banner), it says no more.
+  return withWay ? `${line} Dock to it again from Computer to pick it up.` : line;
 }
 
 function hostOfKey(key: string): string {

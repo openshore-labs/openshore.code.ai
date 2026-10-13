@@ -1,5 +1,5 @@
 // Vault reading mode: the chat renderer's markdown treatment, plus Obsidian's
-// own syntax (Vault M3, CTO H2; Vault M6 6.5 and 6.6, CTO K10 and K11, CX X12
+// own syntax (Vault M3, tech review H2; Vault M6 6.5 and 6.6, tech review K10 and K11, UX review X12
 // to X14). The frontmatter is found by the shared core and shown by
 // VaultProperties; the renderer only ever sees `text.slice(fm.end)`, so the
 // core and the renderer can never disagree about where frontmatter ends (no
@@ -96,7 +96,7 @@ export function vaultHrefSubpath(href: string): string | undefined {
   return sub ? safeDecode(sub) : undefined;
 }
 
-/** Scroll to a heading or a block once the note shows (CX X12). `key` makes
+/** Scroll to a heading or a block once the note shows (UX review X12). `key` makes
  *  the same target fire again (a second tap on the same link). */
 export interface VaultAnchor {
   subpath: string;
@@ -128,7 +128,7 @@ type Props = {
   onToggleTask?: (line: number, checked: boolean) => void | boolean | Promise<void | boolean>;
   /** Boxes are shown `aria-disabled` (a lease, Your computer away, Drive). */
   tasksReadOnly?: boolean;
-  /** A tap on a `#tag`: the room searches `tag:x` (CX X2). Without it a tag
+  /** A tap on a `#tag`: the room searches `tag:x` (UX review X2). Without it a tag
    *  shows as plain styled text. */
   onTag?: (tag: string) => void;
   /** How deep inside note embeds this reader sits (0 for the note). */
@@ -310,7 +310,7 @@ function TaskLine(props: ElementProps) {
 
 // --------------------------------------------------------------------- tags
 
-/** A `#tag` in the text: a small tap that searches `tag:x` (CX X2). */
+/** A `#tag` in the text: a small tap that searches `tag:x` (UX review X2). */
 function Tag(props: ElementProps) {
   const reader = useContext(ReaderContext);
   const tag = str(props['data-tag']) ?? '';

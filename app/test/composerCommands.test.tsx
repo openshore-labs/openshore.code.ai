@@ -1,4 +1,4 @@
-// Your Claude Code commands work here (P3, CTO wave-3). On an engine session
+// Your Claude Code commands work here (P3, tech review wave-3). On an engine session
 // the composer's "/" menu lists the person's own commands after OpenShore's,
 // each marked with where it came from ("From this repository"), a - in the
 // name included; picking one sends it as typed (the engine fills it in). A

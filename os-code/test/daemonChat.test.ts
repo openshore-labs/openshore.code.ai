@@ -1,4 +1,4 @@
-// The desktop chat's vault pack (Vault M5, CTO J6): `/chat` builds the pack
+// The desktop chat's vault pack (Vault M5, tech review J6): `/chat` builds the pack
 // on the daemon over the caller's own root, sized for the orchestrator's
 // served window, places it last in the system line, and streams the card
 // before the first text. A fake Ollama stands in for the local model, so the

@@ -160,8 +160,8 @@ export function ToolCard({ item }: { item: ToolItem }) {
         aria-expanded={open}
       >
         <span className="tool-summary">{item.summary}</span>
-        {/* A handoff to a model off this network wears the Cloud chip (CX
-            and CMO, 2026-10-08, D). */}
+        {/* A handoff to a model off this network wears the Cloud chip (UX review
+            and copy review, 2026-10-08, D). */}
         {item.handoff?.leaves ? <span className="kind-chip cloud">Cloud</span> : null}
         {item.stats ? (
           <span

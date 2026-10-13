@@ -64,7 +64,7 @@ describe('outbox apply', () => {
     // The new commit is on main, and carries the buffered file.
     const show = await simpleGit(repo).raw(['show', `${result.resultCommit}:new.txt`]);
     expect(show).toContain('hello from offshore');
-    // The founder's uncommitted edit is still uncommitted and unchanged.
+    // A maintainer's uncommitted edit is still uncommitted and unchanged.
     const status = await simpleGit(repo).status();
     expect(status.modified).toContain('README.md');
     expect(readFileSync(join(repo, 'README.md'), 'utf8')).toContain('local uncommitted edit');

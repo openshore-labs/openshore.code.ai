@@ -1,5 +1,5 @@
-// Cloud Connections and Repositories in the Settings ledger (D14, founder
-// 2026-10-07, built as the Creative Studio recommended, A): one row per
+// Cloud Connections and Repositories in the Settings ledger (D14, maintainer
+// 2026-10-07, built as the design review recommended, A): one row per
 // provider or platform, a tap opens its connect sheet, and a connected row
 // asks before it disconnects. The Stack's Image reading rows name the model
 // an image goes to until the person chooses one (D13, B). Mounted in a real
@@ -448,7 +448,7 @@ describe('the Stack names its image reader', () => {
     await dom.render(<StackManager />);
     expect(reader).toBe('Claude Haiku 4.5');
     // The stand-in reads a picture in a chat, after asking; it never takes a
-    // plan's image step (CX and CMO, 2026-10-08, E), so no row names one.
+    // plan's image step (UX and copy review, 2026-10-08, E), so no row names one.
     expect(cloudRow()).toBe(`None yet · ${reader} reads images for now. It asks before a picture.`);
     expect(localRow()).toBe(`None yet · ${reader} reads images for now.`);
   });
@@ -483,7 +483,7 @@ describe('the Stack names its image reader', () => {
     expect(cloudRow()).toBe('None yet · Opus 5 reads images for now. It asks before a picture.');
   });
 
-  // CX and CMO, 2026-10-08 (E): the founder's 2026-10-07 exception is off. A
+  // UX and copy review, 2026-10-08 (E): a maintainer's 2026-10-07 exception is off. A
   // plan carries no picture, so with nothing set for Image reading its image
   // step goes to the Reasoning model, which works from the text, and the
   // stand-in never takes it. So the row names no plan's image step, even on
@@ -659,8 +659,8 @@ describe('the Stack names its image reader', () => {
     };
     expect(imageStepRunner({ ...stack, imageReader: haiku, reachable: () => true })).toEqual(sonar);
     // With nothing set for Image reading, a plan carries no picture, so its
-    // image step is the Reasoning model's whatever reads one in the chat (CX
-    // and CMO, 2026-10-08, E): never the connected cloud reader.
+    // image step is the Reasoning model's whatever reads one in the chat (UX review
+    // and copy review, 2026-10-08, E): never the connected cloud reader.
     const unplaced = { ...stack, active: stack.active.slice(1) };
     expect(imageStepRunner({ ...unplaced, imageReader: haiku, reachable: () => true })).toEqual(
       sonar,

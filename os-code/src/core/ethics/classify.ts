@@ -106,7 +106,7 @@ export type IntentCheck = (input: {
 // suggestions that read as a moral aside.
 // ---------------------------------------------------------------------------
 
-/** The one published address for questions, appeals and support (founder
+/** The one published address for questions, appeals and support (maintainer
  *  decision F1, 2026-09-30: support@openshore.ai passed its round-trip test,
  *  so it replaces os-code@openshorellc.com). The app's Delete account sheet
  *  reads this constant through os-code/protocol; the server's ladder (the
@@ -114,7 +114,7 @@ export type IntentCheck = (input: {
  *  so app/test/contactAddress.test.ts fails when either says anything else.
  *  Switching it again changes this line, the Terms, and the ladder's warning
  *  through a new migration, since 0022 is never edited once production runs it
- *  (DECISIONS, CTO 11 package C). */
+ *  (DECISIONS, tech review 11 package C). */
 export const SUPPORT_EMAIL = 'support@openshore.ai';
 
 /** The next action on a hard block, kept apart from the refusal so the

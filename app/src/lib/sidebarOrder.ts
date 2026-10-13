@@ -1,4 +1,4 @@
-// The sidebar's order is the person's (founder, 2026-10-01): every room can be
+// The sidebar's order is the person's (2026-10-01): every room can be
 // dragged to a new place, in its group or across to the other one, and the
 // recent chats sit between the two groups. Settings and the sign-in card are
 // pinned to the bottom and never move. Pure, so the rules are tested here and
@@ -17,7 +17,7 @@ export interface NavOrder {
   v?: number;
 }
 
-/** 2: every room in one group under the Vault (founder, 2026-10-01). */
+/** 2: every room in one group under the Vault (2026-10-01). */
 export const NAV_ORDER_VERSION = 2;
 
 /** Where the recent chats sit in the flat list a drag works on. */

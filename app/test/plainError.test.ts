@@ -15,9 +15,7 @@ describe('plainError', () => {
   });
 
   it('maps known sign-in errors to plain lines', () => {
-    expect(plainError(new Error('Invalid login credentials'))).toMatch(/do not match/);
-    expect(plainError(new Error('Email not confirmed'))).toMatch(/Confirm your email/);
-    expect(plainError(new Error('User already registered'))).toMatch(/already has an account/);
+    expect(plainError(new Error('Token has expired or is invalid'))).toMatch(/Send a new email/);
     expect(plainError(new Error('Email rate limit exceeded'))).toMatch(/Too many tries/);
   });
 

@@ -1,5 +1,5 @@
-// The Vault's M6 operations (state/vaultOps.ts; CTO K3 to K7, K11 with R1 to
-// R3; CX X5 to X10, X13), run against an in-memory compare-and-swap storage
+// The Vault's M6 operations (state/vaultOps.ts; tech review K3 to K7, K11 with R1 to
+// R3; UX review X5 to X10, X13), run against an in-memory compare-and-swap storage
 // and a small index, with no store. The pure plan (move.ts) and the task
 // toggle (markdown.ts) belong to stream A2, so this file stands in for them
 // with small fakes that keep their contracts: a plan edit per referring note,
@@ -554,7 +554,7 @@ describe('rename with links following (6.2, R1)', () => {
   });
 });
 
-describe('the rename name check (CX X5)', () => {
+describe('the rename name check (UX review X5)', () => {
   const known = ['Ideas.md', 'Work/Plans.md'];
   it('builds the path from a name and a folder', () => {
     expect(checkRenameTarget('Ideas.md', 'Notes', 'Work', known)).toEqual({
@@ -962,7 +962,7 @@ describe('a refusal for good is carried, never "try again" (0023)', () => {
 
 // ---- the checkbox write-back ------------------------------------------------
 
-describe('a task toggle (K11, CX X13)', () => {
+describe('a task toggle (K11, UX review X13)', () => {
   it('is one guarded write on the open note’s version', async () => {
     const h = harness(memStorage({ 'T.md': '- [ ] one\n- [ ] two' }));
     h.open.note = { path: 'T.md', version: 'v1', dirty: false, choiceOpen: false };

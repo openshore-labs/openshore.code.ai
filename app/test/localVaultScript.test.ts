@@ -1,4 +1,4 @@
-// supabase/scripts/local-vault.sh (CTO 11; the closure memo, item 6): the
+// supabase/scripts/local-vault.sh (tech review 11; the closure memo, item 6): the
 // throwaway [db.vault] entry it appends to config.toml is safe only while the
 // allowlist in front of it lets through nothing but commands that touch the
 // LOCAL stack. The CLI reads `--linked=true`, `--linked=1` and the rest as

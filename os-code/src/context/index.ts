@@ -238,7 +238,7 @@ const HIT_LINES_AFTER = 6;
 
 /**
  * The keyword search as excerpts with line numbers, for retrieval before turn
- * one (CTO 6): the `k` files that hold the most of `terms` (lowercased), each
+ * one (tech review 6): the `k` files that hold the most of `terms` (lowercased), each
  * as the few lines around its best line. A file that holds more of the
  * distinct terms outranks one that repeats a single term, and a term in the
  * file's own name counts extra. `skip` sees each candidate's path and text

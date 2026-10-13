@@ -61,7 +61,7 @@ export interface ModelClassPolicy {
   bestOfAttempts: number;
   /** Fraction of the SERVED context window the vault context pack may use,
    *  capped for every class by `VAULT_PACK_MAX_TOKENS` (`packBudgetTokens` in
-   *  harness/vaultContext.ts). Placeholder until the 4.8 eval (CTO I2, I14).
+   *  harness/vaultContext.ts). Placeholder until the 4.8 eval (tech review I2, I14).
    *  Not a project override: a repo raising it would widen how much of the
    *  person's notes reaches a seat. */
   vaultPackFraction: number;
@@ -88,7 +88,7 @@ export interface ModelClassProfile extends ModelClassPolicy {
 // The per-class policy table. This is the heart of "make the smallest models as
 // capable as possible": the tighter the class, the more the harness does for it.
 // The three vault fields (vaultPackFraction, vaultReadCapChars,
-// mergedVaultTool) are PLACEHOLDERS (Vault M4, CTO I2) until the with-and-
+// mergedVaultTool) are PLACEHOLDERS (Vault M4, tech review I2) until the with-and-
 // without eval on the reference box sets them (I14, tenet 2), and so is
 // observationContextFraction.
 const POLICY: Record<ModelClass, ModelClassPolicy> = {
@@ -218,7 +218,7 @@ export function deriveModelClass(input: DeriveInput): ModelClass {
   // conservative at 'small', which applies the discipline without overreaching.
   if (input.evalScore !== undefined && input.evalScore >= 0.8) return 'mid';
   // The model's own window, not the served one: serving a smaller window
-  // (num_ctx, CTO I1) must never drop a seat a class.
+  // (num_ctx, tech review I1) must never drop a seat a class.
   if (input.caps && (input.caps.nativeContextTokens ?? input.caps.contextTokens) >= 100_000) {
     return 'mid';
   }
@@ -238,7 +238,7 @@ export function deriveProfile(
 }
 
 // ---------------------------------------------------------------------------
-// The served window (Vault M4, CTO I1, I2)
+// The served window (Vault M4, tech review I1, I2)
 
 /** Every class's vault context pack stops here, whatever its fraction of the
  *  served window comes to. */
@@ -251,7 +251,7 @@ export const NUM_CTX_RAM_BANDS_GB: readonly number[] = [12, 24, 48];
 /** The most context a local seat of each class is served on a computer in
  *  each memory band (index into `NUM_CTX_RAM_BANDS_GB`, then one more for
  *  anything above). PLACEHOLDERS until the eval records prefill cost and score
- *  per class on the reference box (CTO I14). */
+ *  per class on the reference box (tech review I14). */
 export const NUM_CTX_CEILING: Readonly<Record<ModelClass, readonly number[]>> = {
   tiny: [8192, 16384, 32768, 32768],
   small: [8192, 16384, 32768, 32768],
@@ -303,8 +303,8 @@ export function useConstrainedDecoding(
 }
 
 /** One honest line for a seat badge and the transcript, per tenet 3, in
- *  words a person reads (D3, founder 2026-10-07, built as recommended, B, the
- *  CMO's plain rewrite): OpenShore, never "the harness", and no seat, tools
+ *  words a person reads (D3, 2026-10-07, built as recommended, B, the
+ *  copy review's plain rewrite): OpenShore, never "the harness", and no seat, tools
  *  or subagents. */
 export function classBlurb(modelClass: ModelClass): string {
   switch (modelClass) {

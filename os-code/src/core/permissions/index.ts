@@ -491,7 +491,7 @@ function carriesCode(words: string[]): boolean {
  * other programs (a wrapper or an interpreter, which covers python's `-m`),
  * when the command hands a program code on its command line (`-e`, `-c`,
  * `-p`, `--eval`), when git is pointed at a program (`git -c`), and under
- * PowerShell, where no prefix grant ever matches (D3, CTO 10). Matching
+ * PowerShell, where no prefix grant ever matches (D3, tech review 10). Matching
  * refuses the same commands, so a rule saved from a plain call never
  * reaches a later one that carries code.
  */
@@ -606,9 +606,9 @@ export class PermissionEngine {
     private readonly config: PermissionConfig = DEFAULT_PERMISSIONS,
     private readonly profile?: SecurityProfile,
     /** A routine may run webSearch, and only webSearch, unattended: the person
-     *  allowed web search and the registry kept the tool (founder, 2026-10-01). */
+     *  allowed web search and the registry kept the tool (2026-10-01). */
     private readonly offlineWebSearch = false,
-    /** Opening a web page (founder, 2026-10-02): `ask` before each page unless
+    /** Opening a web page (2026-10-02): `ask` before each page unless
      *  this session allowed it, or `allow`. A permission rule still wins. */
     private readonly webFetchMode: 'ask' | 'allow' = 'allow',
   ) {}
@@ -646,7 +646,7 @@ export class PermissionEngine {
   /** A network step on a profile with nobody to ask (headless) is denied,
    *  never asked: an unanswered ask would hold the run for 15 minutes and
    *  then decline anyway, and the step is one an injected line could use to
-   *  send a secret out (CTO 3). */
+   *  send a secret out (tech review 3). */
   private networkRefused(risk: ToolRisk, toolName?: string): boolean {
     return risk === 'network' && this.autoAllowBlocked(risk, toolName);
   }
@@ -698,7 +698,7 @@ export class PermissionEngine {
       }
     }
 
-    // Narrow, built-in exception (founder ruling): the coding agent keeps each
+    // Narrow, built-in exception (ruling): the coding agent keeps each
     // project's five memory notes current, and those writes land silently but
     // visibly. Only this dedicated tool, and only a managed memory file in the
     // repo's "OpenShore Project <name> MDs/", is auto-allowed here; every general
@@ -747,7 +747,7 @@ export class PermissionEngine {
     // The configured default is no louder than a rule: a config that sets
     // shell (or push, or cloud spend) to allow cannot make it silent on the
     // phone or headless profile. A routine running at 3am asks, or is denied
-    // when no one answers; it never runs a shell command unattended (the CTO's
+    // when no one answers; it never runs a shell command unattended (the tech review's
     // must-fix for unattended crew).
     if (decision === 'allow' && this.autoAllowBlocked(q.risk, q.toolName)) {
       return {

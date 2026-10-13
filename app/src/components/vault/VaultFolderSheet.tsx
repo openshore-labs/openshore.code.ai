@@ -1,4 +1,4 @@
-// A folder's options (Vault M6 6.2, 6.3; CTO K5, K6 with R2; CX X5, X8): the
+// A folder's options (Vault M6 6.2, 6.3; tech review K5, K6 with R2; UX review X5, X8): the
 // folder view's own "..." button opens this Sheet with Rename folder, Move
 // folder, New folder, and Delete folder. Every row that acts on the folder
 // states its counts first ("12 notes and 3 other files", K5). Delete folder
@@ -37,7 +37,7 @@ export interface VaultFolderSheetProps {
   /** Folders can be made here (`vaultCaps().folders`). */
   canCreate: boolean;
   /** Trash is real here (`vaultCaps().trash`): Delete folder is offered. */
-  // False too for a team member under admins-only, who may not delete (CX
+  // False too for a team member under admins-only, who may not delete (UX review
   // Y14).
   canTrash: boolean;
   /** Why a row is not offered here (the admins-only line), one line each,
@@ -171,7 +171,7 @@ export function VaultFolderSheet({
                   className={`btn press-fb ${armed ? 'danger' : 'quiet'}`}
                   disabled={!counts}
                   onClick={() => {
-                    // Two taps for a folder, everywhere (CX X8).
+                    // Two taps for a folder, everywhere (UX review X8).
                     if (!armed) {
                       setArmed(true);
                       return;

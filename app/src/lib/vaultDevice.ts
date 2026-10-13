@@ -1,5 +1,5 @@
-// The vault's switches on this device (Vault M7 wave 2; CTO L13, L14,
-// reconciliation 2 and 4; CX Y7, Y8): Notes in chats, Handoff and Room for
+// The vault's switches on this device (Vault M7 wave 2; tech review L13, L14,
+// reconciliation 2 and 4; UX review Y7, Y8): Notes in chats, Handoff and Room for
 // notes. Device-local, never the vault file's, and never able to widen what
 // the machine or a project allows:
 // - Notes in chats and Handoff are off-only overrides (the `memoryOverride`
@@ -31,7 +31,7 @@ export interface VaultDeviceSettings {
   vaultPackSize?: AppVaultPackSize;
 }
 
-/** What a new engine session carries (CTO L13): only what turns something
+/** What a new engine session carries (tech review L13): only what turns something
  *  off or lowers it; an empty object when every switch is on and the size is
  *  unset. */
 export function appVaultOverrides(s: VaultDeviceSettings): VaultOverrides {
@@ -84,7 +84,7 @@ function deviceSwitch(on: boolean, memoryOn: boolean): VaultDeviceSwitch {
   return memoryOn ? { on } : { on: false, lock: 'memory' };
 }
 
-/** "On this device" for the settings sheet (CX Y7, Y8). */
+/** "On this device" for the settings sheet (UX review Y7, Y8). */
 export function vaultDeviceView(
   s: VaultDeviceSettings,
   o: { memoryOn: boolean; cloudSeat: boolean; engine?: VaultEngineRoomSource },

@@ -1,5 +1,5 @@
-// The pairing review (CX-led Creative Studio, 2026-10-01; docs/design/pairing-review.md),
-// with the room renamed Computer and pairing called docking by the founder
+// The pairing review (UX-led design review, 2026-10-01; docs/design/pairing-review.md),
+// with the room renamed Computer and pairing called docking by a maintainer
 // (2026-10-07; the dock form moved to components/DockForm.tsx): the QR is a link the iPhone Camera opens and is
 // only ever for the person's own network, a spent code is never thrown away,
 // and the screens say plainly what happened.
@@ -74,11 +74,15 @@ describe('a pairing link opened from the iPhone Camera', () => {
     expect(form).toContain('Dock to this machine?');
     // Computer's own forms answer the link, on both paths.
     const screen = read('src', 'screens', 'PairScreen.tsx');
-    expect(screen).toContain('<DockForm expect="desktop" offers />');
-    // Both server paths, at home and rented (2026-10-12), answer it too.
     expect(screen).toContain(
-      '<DockForm key={`dock-${path}`} expect="server" place={path} offers />',
+      '<DockForm expect="desktop" offers onDocked={() => setAdding(false)} />',
     );
+    expect(screen).toMatch(
+      /<DockForm\s+key=\{`dock-\$\{path\}`\}\s+expect="server"\s+place=\{path\}\s+offers\b/,
+    );
+    // A docking link unfolds the ways in, which a docked phone keeps behind
+    // Dock another machine (2026-10-13).
+    expect(screen).toContain('const showWaysIn = !paired || adding || Boolean(pairOffer);');
   });
 
   it("refuses a link for an address off the person's own network", () => {
@@ -94,7 +98,7 @@ describe('a pairing link opened from the iPhone Camera', () => {
   });
 });
 
-describe('the screens, as CX asked', () => {
+describe('the screens, as UX review asked', () => {
   const screen = read('src', 'screens', 'PairScreen.tsx');
   const form = read('src', 'components', 'DockForm.tsx');
 

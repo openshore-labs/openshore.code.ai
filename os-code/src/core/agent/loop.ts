@@ -196,11 +196,11 @@ export interface AgentDeps {
   /** The permission mode to start in. Defaults to asking for writes and shell. */
   permissionMode?: PermissionMode;
   /** The tools this session left out because it works offline (a Crew
-   *  routine, CTO 3). A call the model makes to one anyway is refused by name,
+   *  routine, tech review 3). A call the model makes to one anyway is refused by name,
    *  never asked, and never read as a malformed call. */
   offlineTools?: readonly string[];
   /** This computer's offline state, read before every turn (Desktop Offline,
-   *  founder 2026-10-07). While it says offline, only a model whose requests
+   *  2026-10-07). While it says offline, only a model whose requests
    *  stay on this network answers (a cloud seat gives way to the router's
    *  local seat), nothing escalates, the tools in `offlineCut` leave the menu
    *  and are refused by name, and the model is told. Undefined reads as
@@ -227,14 +227,14 @@ export interface AgentDeps {
   /** Injectable fetch for the Jev advisor, so tests drive it with no network.
    *  Defaults to the global fetch. */
   jevFetch?: FetchLike;
-  /** Where this session's vault context pack comes from (Vault M4, CTO I8):
+  /** Where this session's vault context pack comes from (Vault M4, tech review I8):
    *  prepared once per task, rendered per turn for the seat that answers.
    *  The engine's source is core/vault/contextSource.ts; undefined leaves the
    *  pack out. Memory off or `vault.context: 'off'` leaves it out too. */
   vaultContext?: VaultContextSource;
   /** The clock for the dated Current State line (tests pin it). */
   now?: () => Date;
-  /** Where a handoff goes (Vault M5, CTO J13): called after a compaction,
+  /** Where a handoff goes (Vault M5, tech review J13): called after a compaction,
    *  after each task that ends complete, and when the session is disposed,
    *  with a short extractive summary of the chat. Bootstrap wires the
    *  engine's store (core/agent/handoffStore.ts). Undefined, Memory off, or
@@ -296,7 +296,7 @@ function handoffRole(call: ParsedToolCall): DelegableRole | undefined {
 }
 
 // The words said once a chat holds a private note's text live in one pure
-// module the app reads too (harness/privacyLines.ts, CX and CMO 2026-10-08);
+// module the app reads too (harness/privacyLines.ts, UX and copy review 2026-10-08);
 // re-exported here for the engine's own callers.
 export {
   HANDOFF_LOCAL_ONLY_DENIED,
@@ -345,7 +345,7 @@ export function handoffUnasked(model: string): string {
 
 /** Who passes a cloud tag's requests on to ollama.com, as a card names it:
  *  "Ollama on this computer" only for a loopback server (hostIsLoopback),
- *  never for one on the LAN or the tailnet (CX and CMO, 2026-10-08, C). */
+ *  never for one on the LAN or the tailnet (UX and copy review, 2026-10-08, C). */
 function ollamaPasser(server: { host: string; loopback: boolean }): string {
   return server.loopback ? 'Ollama on this computer' : `The Ollama server at ${server.host}`;
 }
@@ -393,7 +393,7 @@ export const MEDIA_LOCAL_ONLY_DENIED =
 /** How one task runs (AgentSession.run). */
 export interface RunOptions {
   /** The task's message carries a private note's text (a private plan's
-   *  step sent from the app, CX and CMO 2026-10-08, J): it is marked
+   *  step sent from the app, UX and copy review 2026-10-08, J): it is marked
    *  local-only, so the engine's D5 rules hold for the whole task and the
    *  reply comes back marked. */
   localOnly?: true;
@@ -409,7 +409,7 @@ export interface ProjectRule {
 /** Tools a plan may use: nothing that changes the workspace or runs a shell. */
 const PLAN_SAFE_RISKS = new Set(['read', 'network']);
 
-/** Why a call to a tool an offline run left out did not run (CTO 3). The
+/** Why a call to a tool an offline run left out did not run (tech review 3). The
  *  scheduler reads the denial for the run's note. */
 export const OFFLINE_DENIED = 'This routine works offline, so nothing here reaches the web.';
 const OFFLINE_ADVICE =
@@ -433,7 +433,7 @@ const LEAN_CLASSES = new Set<string>(['tiny', 'small']);
 /** When a small seat can see only a handful of tools, these are the ones worth
  *  showing, most useful first: read, edit, search, then the rest. Tools not
  *  listed keep their registration order after these. The merged vault read
- *  slots in right after searchRepo (withVaultLookupPriority, CTO I11), so a
+ *  slots in right after searchRepo (withVaultLookupPriority, tech review I11), so a
  *  small seat's ten see it and a tiny seat's six do not. */
 const SMALL_MODEL_TOOL_PRIORITY = withVaultLookupPriority([
   'readFile',
@@ -475,7 +475,7 @@ export class AgentSession {
   private escalated = false;
   private cloudApprovedForSession = false;
   /** The cloud models the person approved for this task, keyed by provider
-   *  id and model (CX and CMO, 2026-10-08, D): the orchestrator's yes covers
+   *  id and model (UX and copy review, 2026-10-08, D): the orchestrator's yes covers
    *  only the orchestrator, and a placed cloud specialist asks for itself
    *  before its first handoff. Cleared at each task's start. */
   private cloudApprovedThisTask = new Set<string>();
@@ -488,7 +488,7 @@ export class AgentSession {
    *  there is something to verify. */
   private wroteThisTask = false;
   /** This task has read a local-only vault note, so what the model says next
-   *  may quote it: its replies are marked `localOnly` too (CTO I5), the same
+   *  may quote it: its replies are marked `localOnly` too (tech review I5), the same
    *  rule seed.ts applies to a journaled reply. */
   private readLocalOnlyThisTask = false;
   /** Files a media call made from a local-only file (security review,
@@ -504,7 +504,7 @@ export class AgentSession {
   /** So the lean-seat note is said once per session, not every turn. */
   private profileNoteEmitted = false;
   /** Set once a tool result was local-only or carried a secret: a routine
-   *  stops searching for the rest of the run (CTO review 2026-10-01, F1). */
+   *  stops searching for the rest of the run (tech review 2026-10-01, F1). */
   private searchTainted = false;
   /** A lean seat that answers with code but changes no file is nudged to make
    *  the change, once per task; this flag keeps it to once. */
@@ -525,13 +525,13 @@ export class AgentSession {
   /** Set when the model has repeated one exact call three times: the next turn
    *  runs with no tools so the only thing it can do is answer. */
   private answerOnly = false;
-  /** Two calls taking turns this task, A, B, A, B (CTO 6): the ladder above
+  /** Two calls taking turns this task, A, B, A, B (tech review 6): the ladder above
    *  answers the cycle from the record, then makes the next turn answer-only. */
   private cycles = new AlternatingRepeats();
   /** The seat's full fixed prompt crowds its served window, so it runs the
    *  lean prompt and the lean menu whatever its class. Set each turn. */
   private windowLean = false;
-  /** This turn's reply is held to the tool-or-answer union schema (CTO 6). */
+  /** This turn's reply is held to the tool-or-answer union schema (tech review 6). */
   private unionTurn = false;
   /** Seats whose server refused the union schema, by provider and model:
    *  they answer without it for the rest of the session. */
@@ -549,7 +549,7 @@ export class AgentSession {
   /** The active Harness Current's Jev advisor, built lazily from the handle,
    *  or undefined when no harness current is on. Cached across a task. */
   private jev: JevAdvisor | undefined | null = null;
-  /** This task's vault context, prepared once per `run()` (CTO I8). */
+  /** This task's vault context, prepared once per `run()` (tech review I8). */
   private prepared?: PreparedVaultContext;
   /** The task's own words, the pack's retrieval query. */
   private taskQuery = '';
@@ -563,7 +563,7 @@ export class AgentSession {
   private packCardShown?: string;
   /** Replies marked local-only only because this turn's pack carried a
    *  private project pin (privateCause 'pin'), so a later refusal can still
-   *  name the pin as its cause rather than a read (CX and CMO, 2026-10-08,
+   *  name the pin as its cause rather than a read (UX and copy review, 2026-10-08,
    *  G). Session-only. */
   private pinMarked = new WeakSet<ChatMessage>();
   /** This session has held a private note's text at some point (a marked
@@ -579,7 +579,7 @@ export class AgentSession {
    *  code: it never triggers verify or the judge. */
   private noteWroteThisTask = false;
   /** The seat wrote Current State itself this task, so the harness does not
-   *  add its own line on top (CTO I12). */
+   *  add its own line on top (tech review I12). */
   private seatWroteCurrentState = false;
   /** The harness's Current State line is written at most once per task. */
   private landedNoted = false;
@@ -624,7 +624,7 @@ export class AgentSession {
     // A tool that runs a model of its own (a delegated subtask) reports its
     // usage here, so its tokens hit the rails and its dollars are visible.
     // A vault tool asks whether the seat answering now leaves this network, so
-    // a local-only note is read only by a seat that stays (CTO I5). Judged by
+    // a local-only note is read only by a seat that stays (tech review I5). Judged by
     // address, live, since an escalation switches the seat mid-task.
     deps.toolContext.seatLeavesNetwork = () => this.activeLeaves();
     // Repo search sends its query to the embedder, which may be off this
@@ -632,7 +632,7 @@ export class AgentSession {
     // query may quote it, so search keeps to the keyword index (D5).
     deps.toolContext.chatHoldsLocalOnly = () => !this.activeLeaves() && this.holdsLocalOnly();
     // The seat answering now, for the provenance lines on a note the agent
-    // writes (Vault M7, CTO L9): its model, its class, and a cloud seat's
+    // writes (Vault M7, tech review L9): its model, its class, and a cloud seat's
     // provider. Where it ran is `seatLeavesNetwork`, judged by address.
     deps.toolContext.vaultSeat = () => ({
       model: this.active.model,
@@ -642,7 +642,7 @@ export class AgentSession {
       ...(this.activeLeaves() ? { provider: this.active.provider.label } : {}),
     });
     // A vault read is capped per class (the seat answering now), past which it
-    // returns the outline and asks for a section (CTO I11), and never past
+    // returns the outline and asks for a section (tech review I11), and never past
     // what one observation may carry in the seat's served window (C1).
     deps.toolContext.vaultReadCapChars = () =>
       Math.min(
@@ -913,7 +913,7 @@ export class AgentSession {
     const { cwd } = this.deps.toolContext;
     const key = `${command}\0${digest}`;
     // Under the secrets lockdown every command asks, the check included: the
-    // card promises "asks before every command and commit" (CX 7), so a saved
+    // card promises "asks before every command and commit" (UX review 7), so a saved
     // grant, an earlier yes, and bypass mode all wait for this one answer.
     // So does a check that can read the vault's notes for a seat that leaves
     // this network (D5), with the line every such command's card carries.
@@ -971,7 +971,7 @@ export class AgentSession {
   /** On when this session holds the project's secrets, which only a local
    *  orchestrator is ever given (gateProjectSecrets): the egress lockdown. No
    *  tool may send anything off the device, and every command and commit asks
-   *  (D3, CX 7). */
+   *  (D3, UX review 7). */
   private get lockdown(): boolean {
     return Boolean(this.deps.projectSecrets?.trim());
   }
@@ -979,7 +979,7 @@ export class AgentSession {
   // A Harness Current (Jev) layers a cheap decision method into the loop. The
   // engine uses it here for the verify JUDGE: when there is no check command to
   // run (no oracle), and the seat is a paid cloud model (scoped to where there
-  // is spend to steer, founder 2026-09-23), ask Jev cheaply whether the result
+  // is spend to steer, 2026-09-23), ask Jev cheaply whether the result
   // satisfies the task and show the answer as a card. This never overrides a
   // real check (that path returns a verdict other than 'skipped'), and it never
   // blocks the task: the card is advisory. Off leaves no trace, so with no
@@ -1019,7 +1019,7 @@ export class AgentSession {
   }
 
   // -------------------------------------------------------------------------
-  // The vault context pack (Vault M4, 4.4, CTO I8 to I10)
+  // The vault context pack (Vault M4, 4.4, tech review I8 to I10)
   // -------------------------------------------------------------------------
 
   /** Whether this session carries a pack at all: a source, Memory on (F6),
@@ -1082,7 +1082,7 @@ export class AgentSession {
     // Vault layers need a vault; without one the pack is Current State only.
     const hasVault = Boolean(this.deps.toolContext.vaultRoot);
     if (!hasVault) mode = 'current-state';
-    // Room for notes (Vault M7, CTO L13): the machine's size, lowered by
+    // Room for notes (Vault M7, tech review L13): the machine's size, lowered by
     // the app's switch (folded into this config at open), always capped by
     // the machine's `packMaxTokens`.
     const vaultCfg = this.deps.config.vault;
@@ -1166,7 +1166,7 @@ export class AgentSession {
   }
 
   // -------------------------------------------------------------------------
-  // The handoff (Vault M5, 5.4, CTO J13)
+  // The handoff (Vault M5, 5.4, tech review J13)
   // -------------------------------------------------------------------------
 
   /** A handoff is written when a sink is wired, Memory is on (F6), and
@@ -1229,7 +1229,7 @@ export class AgentSession {
   }
 
   // -------------------------------------------------------------------------
-  // Current State kept current for lean seats (Vault M4, 4.7, CTO I12)
+  // Current State kept current for lean seats (Vault M4, 4.7, tech review I12)
   // -------------------------------------------------------------------------
 
   /**
@@ -1341,7 +1341,7 @@ export class AgentSession {
    *  (tenet 3: the harness raises the floor and says so), and the same for a
    *  larger seat that runs lean because its window is small. The note is read
    *  by a person, so it speaks of OpenShore and actions, never the harness, a
-   *  seat or tools (D3, founder 2026-10-07, built as recommended, B). */
+   *  seat or tools (D3, 2026-10-07, built as recommended, B). */
   private announceLeanSeat(): void {
     if (this.profileNoteEmitted || !this.leanSeat || !this.modelProfile) return;
     this.profileNoteEmitted = true;
@@ -1372,7 +1372,7 @@ export class AgentSession {
   }
 
   /**
-   * Union decoding this turn (CTO 6): `harness.decoding.union: 'on'`, a tiny
+   * Union decoding this turn (tech review 6): `harness.decoding.union: 'on'`, a tiny
    * or small seat on the JSON text bridge whose server can hold a reply to a
    * schema (`useConstrainedDecoding`), and not an answer-only turn, which
    * has no tools to choose between. A server that refused the schema once is
@@ -1388,7 +1388,7 @@ export class AgentSession {
   }
 
   /**
-   * Retrieval before turn one (CTO 6): with `harness.retrieval.firstTurn:
+   * Retrieval before turn one (tech review 6): with `harness.retrieval.firstTurn:
    * 'on'`, on a seat that stays on this network (judged by address, never a
    * label), search the workspace for the task's words and return the
    * excerpts that head the task, shown as a card. Best effort: a search that
@@ -1422,7 +1422,7 @@ export class AgentSession {
   // -------------------------------------------------------------------------
 
   /**
-   * The system prompt, with the offset where the vault pack begins (CTO
+   * The system prompt, with the offset where the vault pack begins (tech review
    * J17): everything before it is stable across turns of one seat, so the
    * Anthropic provider can cache that head when prompt caching is on. The
    * adapters only append to the prompt, so the offset holds after them. No
@@ -1516,7 +1516,7 @@ export class AgentSession {
     // The Memory switch off (config memory.enabled, the app's override folded
     // in at bootstrap) leaves the whole block out.
     // With the top sheet inlined by the context pack, the seat is told it
-    // already has it instead of being sent to readFile for it (CTO I8).
+    // already has it instead of being sent to readFile for it (tech review I8).
     const memorySeg = memorySegment(toolContext.projectName, toolContext.cwd);
     const inlined = this.currentPack?.used.some((s) => s.layer === 'current-state') ?? false;
     if (
@@ -1658,7 +1658,7 @@ export class AgentSession {
     if (!(await this.followOffline())) return;
     let modelText = contextPreamble ? `${contextPreamble}\n\n${input}` : input;
     // Retrieval before turn one, when switched on: the excerpts head the
-    // task, so every attempt at it starts from them (CTO 6).
+    // task, so every attempt at it starts from them (tech review 6).
     const lead = await this.retrievalLead(input);
     if (lead) modelText = `${lead}\n\n${modelText}`;
 
@@ -1733,7 +1733,7 @@ export class AgentSession {
       turn += 1;
       // Whether this turn's seat sends its requests off this network (judged
       // by address). A leaving turn never sees a local-only note's text: the
-      // pack withholds it and the history it is sent carries a stub (CTO I5).
+      // pack withholds it and the history it is sent carries a stub (tech review I5).
       const leaves = this.activeLeaves();
       const caps = await this.active.provider.capabilities(this.active.model);
       this.contextTokens = caps.contextTokens;
@@ -1850,7 +1850,7 @@ export class AgentSession {
       };
       let promptTokens = 0;
       let completionTokens = 0;
-      // The Anthropic prompt cache's reads and writes (CTO J17), last seen
+      // The Anthropic prompt cache's reads and writes (tech review J17), last seen
       // wins like the counts; undefined when the provider reports none.
       let cacheReadTokens: number | undefined;
       let cacheWriteTokens: number | undefined;
@@ -2242,7 +2242,7 @@ export class AgentSession {
       return 'aborted';
     }
 
-    // A tool this run left out because it works offline (a Crew routine, CTO
+    // A tool this run left out because it works offline (a Crew routine, tech review
     // 3). The model reached for it anyway: refused, never asked, with a line
     // it can act on. The scheduler reads the denial for the run's note.
     // The same for a tool that reaches the network while this computer is
@@ -2260,7 +2260,7 @@ export class AgentSession {
 
     // A routine's search (a profile with nobody to ask) is held to a short,
     // plain query on a result-only backend, and stops once the run has read
-    // anything local-only or secret-shaped (CTO review 2026-10-01, F1).
+    // anything local-only or secret-shaped (tech review 2026-10-01, F1).
     if (call.name === 'webSearch' && !profile.allowNetworkAutoApprove) {
       // A private note carried in the pack counts as one read (H).
       const refusal = routineSearchRefusal(
@@ -2402,7 +2402,7 @@ export class AgentSession {
     const vaultAsks = nearVault && leavesNow;
     // Once a chat on a seat that stays holds a private note's text (a read, a
     // marked turn, a private pin), two kinds of step ask every time, in every
-    // mode and past every grant (CX and CMO, 2026-10-08): a change to the
+    // mode and past every grant (UX and copy review, 2026-10-08): a change to the
     // project's memory notes, which a cloud model may read later (A), and a
     // model-written search on a result-only backend or a page fetch, whose
     // words or address leave as written (H). A deny still wins.
@@ -2598,7 +2598,7 @@ export class AgentSession {
     }
 
     // A handoff to a model off this network asks first, before the first one
-    // to that model in each task, on the amber card (CX and CMO, 2026-10-08,
+    // to that model in each task, on the amber card (UX and copy review, 2026-10-08,
     // D): a placed cloud specialist, an Ollama cloud tag, a cloud image
     // server. Keyed by provider and model, so the orchestrator's yes does not
     // cover it. Judged last, with the refusals above, right before it runs.
@@ -2841,7 +2841,7 @@ export class AgentSession {
    *  record; 'answer-only': that, and the next turn has no tools) and which
    *  pattern caught it. An exact repeat with nothing changed since is stale
    *  the second time and answer-only the third. Two calls taking turns (A, B,
-   *  A, B, CTO 6) are stale on the fourth call and answer-only on the next
+   *  A, B, tech review 6) are stale on the fourth call and answer-only on the next
    *  that keeps the cycle going: a command or a write that succeeds between
    *  them makes each look fresh to the exact check, yet the same pair again
    *  changes nothing. */
@@ -2867,7 +2867,7 @@ export class AgentSession {
     return false;
   }
 
-  /** Record an assistant turn with the mark it carries (CTO I5): once this
+  /** Record an assistant turn with the mark it carries (tech review I5): once this
    *  task has read a local-only note, or when its seat stays on this network
    *  and the pack or the history it was sent holds a local-only note's text,
    *  since the reply may quote it (the app's sendLocalOnly rule). A seat
@@ -2887,7 +2887,7 @@ export class AgentSession {
     this.history.push(marked);
   }
 
-  /** What makes this chat hold a private note's text now (CX and CMO,
+  /** What makes this chat hold a private note's text now (UX and copy review,
    *  2026-10-08, A, G, H): 'pin' when it is only this turn's pack carrying
    *  the project's own private pins (no kept message carries such text but a
    *  reply marked for the same pin, the repository's instructions are not a
@@ -2908,7 +2908,7 @@ export class AgentSession {
 
   /** Whether this session has held a private note's text at any point (a
    *  marked observation, a marked reply, or holdsLocalOnly at any turn), so
-   *  a Crew run's note is judged private (CX and CMO, 2026-10-08, A). Sticky
+   *  a Crew run's note is judged private (UX and copy review, 2026-10-08, A). Sticky
    *  for the session's life. */
   heldLocalOnly(): boolean {
     return this.heldEver || this.holdsLocalOnly();
@@ -2971,7 +2971,7 @@ export class AgentSession {
 
   /**
    * Where a handoff (delegate, analyzeImage, generateImage) goes, resolved
-   * before it runs (CX and CMO, 2026-10-08, D): the seat the router names for
+   * before it runs (UX and copy review, 2026-10-08, D): the seat the router names for
    * the role, judged by seatLeaves, or the image server, judged by address
    * and named by its model or else its host. None offline, where the router
    * picks a seat on this network as the step runs, and none for any other
@@ -3197,7 +3197,7 @@ export class AgentSession {
 
   /** Record a tool's observation. `localOnly` (a local-only vault note's
    *  text) rides onto the message, so a later leaving turn sends a stub in
-   *  its place while the kept history holds the note (CTO I5). */
+   *  its place while the kept history holds the note (tech review I5). */
   private pushObservation(
     call: ParsedToolCall,
     content: string,
@@ -3329,7 +3329,7 @@ export class AgentSession {
     const server = this.serverOf(provider);
     // One noun pair on every such card, "your messages and the files the
     // agent reads", and a loopback server is "Ollama on this computer"
-    // (hostIsLoopback, never isLocalHost) (CX and CMO, 2026-10-08, C).
+    // (hostIsLoopback, never isLocalHost) (UX and copy review, 2026-10-08, C).
     if (isOllamaCloudTag(this.active.model)) {
       return [
         `This step runs on ${this.active.model}, one of Ollama's cloud models, so it leaves this computer.`,
@@ -3373,7 +3373,7 @@ export class AgentSession {
 
   /**
    * The amber card before a cloud model's step. Asked once per task for each
-   * model, keyed by provider and model (`key`, CX and CMO 2026-10-08, D): the
+   * model, keyed by provider and model (`key`, UX and copy review 2026-10-08, D): the
    * orchestrator's yes covers the orchestrator, an escalation's its target,
    * and a placed cloud specialist's its own first handoff. A yes for the
    * session (where the profile allows it) covers every cloud step. The
@@ -3448,7 +3448,7 @@ export class AgentSession {
   }
 
   // -------------------------------------------------------------------------
-  // Desktop Offline (founder, 2026-10-07)
+  // Desktop Offline (2026-10-07)
   // -------------------------------------------------------------------------
 
   /** This computer's offline state now. */
@@ -3538,7 +3538,7 @@ export class AgentSession {
     return { provider: seat.provider, model: seat.ref.model, adapter: adapterFor(seat.ref.model) };
   }
 
-  /** One way into the vault per seat (CTO I11): a class with
+  /** One way into the vault per seat (tech review I11): a class with
    *  `mergedVaultTool` sees the merged vault read and not the separate reads,
    *  any other seat the separate reads and not the merged one. The rule is the
    *  registry's seatOffersVaultTool, read per turn since an escalation changes
@@ -3678,7 +3678,7 @@ export class AgentSession {
         )
       : 0;
     // The cache fields ride only when the provider reported them (additive,
-    // CTO J17), so the eval's DriveTrace can sum reads and writes per task.
+    // tech review J17), so the eval's DriveTrace can sum reads and writes per task.
     this.emit({
       type: 'usage',
       promptTokens,

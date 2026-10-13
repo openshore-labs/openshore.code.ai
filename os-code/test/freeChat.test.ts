@@ -1,4 +1,4 @@
-// The free chat (CTO ruling 8, 2026-09-29): one function yields the answer's
+// The free chat (tech review ruling 8, 2026-09-29): one function yields the answer's
 // events, and both hosts pass them on (the daemon as server sent events, the
 // desktop's window over IPC). Driven directly here against a fake Ollama, so
 // the test reads exactly what the model was sent: no tools, no session left

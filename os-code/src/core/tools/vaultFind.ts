@@ -1,13 +1,13 @@
-// Vault tools that find before they read (Vault M4, CTO I11; plan 4.5): search
+// Vault tools that find before they read (Vault M4, tech review I11; plan 4.5): search
 // the vault by keyword, read a note by name, alias or heading and only the
 // section that matters, and follow the links into a note. They run on the
 // engine's per-root index (core/vault/engineIndex.ts), so a session reaches
 // only its own vault root, and every answer honors the person's privacy
-// rules (CTO I5): an excluded note is absent, and a local-only note's text
+// rules (tech review I5): an excluded note is absent, and a local-only note's text
 // reaches only a seat whose requests stay on this network, carrying the
 // `localOnly` flag so a later cloud turn sends a stub in its place.
 //
-// The descriptions come from the pure harness/vault/toolText.ts (Vault M5, CTO
+// The descriptions come from the pure harness/vault/toolText.ts (Vault M5, tech review
 // J10), so the app's seats teach the same order: search, a section, links.
 //
 // This file also holds the note-path helpers vault.ts shares, so the two never
@@ -128,10 +128,10 @@ export function closed(ctx: ToolContext, path: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Privacy (CTO I4, I5)
+// Privacy (tech review I4, I5)
 
 /** Read the vault's own settings again before a vault tool runs (Vault M7,
- *  CTO L5): the privacy the call is judged by then holds the union with the
+ *  tech review L5): the privacy the call is judged by then holds the union with the
  *  vault's file. Kept 2 s by the holder, so a burst of calls reads once. */
 export async function refreshVault(ctx: ToolContext): Promise<void> {
   try {
@@ -819,7 +819,7 @@ export const vaultLookupTool: ToolDef<typeof lookupSchema> = {
 };
 
 /** The separate vault read tools the merged vaultLookup stands in for on a
- *  lean seat (CTO I11). vaultWrite is never merged. */
+ *  lean seat (tech review I11). vaultWrite is never merged. */
 export const SEPARATE_VAULT_READ_TOOLS: readonly string[] = [
   'vaultSearch',
   'vaultRead',

@@ -82,7 +82,7 @@ too. The reply is folded back into the framing and it re-frames. Rendered from a
 ## Workflows on your computer (crew routines)
 
 Crew routines fire headless on the engine, which runs its own ReAct loop with
-real tools (not the app's play). Per the CTO ruling we did not port the play
+real tools (not the app's play). Per the tech review ruling we did not port the play
 planner there (a headless run must never block on a clarifying question).
 Instead the routine's dated vault note now carries a **Plan** section, taken
 from the agent's own `todoWrite`, so you see what a routine set out to do

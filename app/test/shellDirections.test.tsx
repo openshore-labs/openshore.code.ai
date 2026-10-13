@@ -1,4 +1,4 @@
-// The shell's four directions from the 2026-10-07 review, as the founder
+// The shell's four directions from the 2026-10-07 review, as a maintainer
 // ruled them ("Do the remaining recommendations"): the setup page's idle
 // paths are one tap each (D9, B), its headline is the App Store's line with a
 // lead from the device in hand (D23, A), and on the desktop New project is

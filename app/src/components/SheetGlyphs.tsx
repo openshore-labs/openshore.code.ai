@@ -4,7 +4,7 @@ import { Icon } from './Icon.js';
 // compose and the way out to a page outside the app.
 // Typed characters never stand in for them. A text "×" or "‹" carries the
 // font's side bearings and baseline with it, so it lands low and to the left
-// of the circle it sits in (founder screenshot, 2026-09-03). A path in a
+// of the circle it sits in (screenshot, 2026-09-03). A path in a
 // square viewBox is centered by geometry, whatever font is loaded. Each draws
 // through the Icon frame on its 24-unit grid and takes the frame's stroke.
 export function CloseGlyph({ size = 18 }: { size?: number }) {

@@ -1,4 +1,4 @@
-// Today's note (Vault M6, 6.4; CTO K7, CX X11): the day's path comes from
+// Today's note (Vault M6, 6.4; tech review K7, UX review X11): the day's path comes from
 // Obsidian's daily-notes config (else the vault root and YYYY-MM-DD), an
 // existing note opens unchanged with nothing read and nothing said, a new one
 // starts from its template (found exactly, then as a wikilink resolves) or
@@ -243,7 +243,7 @@ describe("today's budget", () => {
       { 'Templates/Day.md': 't' },
     );
     await resolveVaultToday(deps);
-    // The settings loader's four config reads (Vault M7, CTO L5) and the
+    // The settings loader's four config reads (Vault M7, tech review L5) and the
     // template.
     expect(calls.config.length + calls.reads.length).toBeLessThanOrEqual(5);
     advance(VAULT_TODAY_CONFIG_TTL_MS - 1000);
@@ -271,7 +271,7 @@ describe("today's budget", () => {
   });
 });
 
-describe("today's note from the vault's own settings (Vault M7, CTO L3)", () => {
+describe("today's note from the vault's own settings (Vault M7, tech review L3)", () => {
   it("uses the vault file's daily folder, format and template when Obsidian sets none", async () => {
     const { deps } = vault(
       {

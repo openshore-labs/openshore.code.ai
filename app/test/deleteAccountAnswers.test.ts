@@ -1,4 +1,4 @@
-// Both delete-account functions, through the real client (CTO 11 package C,
+// Both delete-account functions, through the real client (tech review 11 package C,
 // the interim app fix). Production runs the privacy branch's 2026-09-24
 // function until main's merged one is deployed; a build from main must read
 // either one's answers correctly, so a deletion that succeeded does not read

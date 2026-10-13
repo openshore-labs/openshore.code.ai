@@ -1,5 +1,5 @@
 // Where a voice conversation pauses, and whether that pause is answered by voice
-// or hands you back to the screen. This is the core of the founder's ask: keep
+// or hands you back to the screen. This is the core of a maintainer's ask: keep
 // the talking flowing where it is safe (a clarifying question, approving a
 // plan), but the moment the model needs you to authorize your machine, spend
 // money, or pick from a list, close voice, show the card, and reopen once you
@@ -16,7 +16,7 @@ export type VoiceBreakKind = 'clarify' | 'plan' | 'approval-tool' | 'approval-sp
  *  screen (exit voice, show the card, reopen after the tap). */
 export type VoiceBreakWhere = 'voice' | 'screen';
 
-/** The single source of truth for the founder's policy (2026-09-06): the
+/** The single source of truth for a maintainer's policy (2026-09-06): the
  *  conversational decisions stay in voice; authorizing the machine, spending
  *  money, and picking from a visual list hand you back to the screen. Change a
  *  row here and every surface follows. */

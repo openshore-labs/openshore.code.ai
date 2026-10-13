@@ -1,4 +1,4 @@
-// Chain of Thought (founder, 2026-09-25): a Settings switch, OFF by default.
+// Chain of Thought (2026-09-25): a Settings switch, OFF by default.
 // When it is on, a model's reasoning shows above its answer the way Claude
 // shows it: live while the model thinks, then folded to "Thought for Ns". When
 // it is off, no model is asked to think out loud and any reasoning a model

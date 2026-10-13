@@ -171,7 +171,7 @@ describe('DesktopChatDriver', () => {
 });
 
 // On the desktop itself the same driver reaches this computer's own engine
-// over IPC (CTO ruling 8): frames arrive under the request's own id, a Stop
+// over IPC (tech review ruling 8): frames arrive under the request's own id, a Stop
 // asks main to stop the model, and a refusal is the turn's one error.
 describe('DesktopChatDriver over IPC (the desktop window)', () => {
   type Payload = { requestId: string; event: Record<string, unknown> };

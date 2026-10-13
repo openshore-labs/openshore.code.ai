@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { byomReach } from '../src/lib/byom.js';
 
 // Teal is local only: a BYOM pointed at a hosted API is someone's cloud and
-// wears amber (brand sweep 2026-09-24, wave 1 #11). Since Vault M5 (CTO J2)
+// wears amber (brand sweep 2026-09-24, wave 1 #11). Since Vault M5 (tech review J2)
 // the pill is judged by the one shared judge, `hostIsLocal`, so it can never
 // disagree with what the seat is allowed to read.
 describe('byomReach', () => {

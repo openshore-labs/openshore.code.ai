@@ -1,4 +1,4 @@
-// Slack Water (Creative Studio, 2026-10-01; the third pass 2026-10-02;
+// Slack Water (design review, 2026-10-01; the third pass 2026-10-02;
 // docs/design/slack-water.md): the one-time transition from the setup walk's chat to
 // the main chat page when the person chooses to just chat. Where they tapped
 // the surface dips, then a train of ripples crosses the app itself.

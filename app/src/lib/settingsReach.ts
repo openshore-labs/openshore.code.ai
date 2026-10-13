@@ -1,4 +1,4 @@
-// Where each setting may go (founder + CX, 2026-09-27; docs/accounts-cx-memo.md).
+// Where each setting may go (2026-09-27).
 // Signing in is worth something because a few preferences follow the person to
 // every device they sign in on: a reinstall, a new phone, their computer.
 // Everything else stays on the device it was made on, signed in or not.
@@ -10,10 +10,10 @@
 // key, or a consent that sends something off a device: those are 'device'.
 // The settings blob itself never leaves; only pickPreferences() does.
 //
-// Nothing resets for a signed-out person. The CX memo weighed a relaunch
+// Nothing resets for a signed-out person. The UX review memo weighed a relaunch
 // reset (iOS ends a suspended app without notice, an update relaunches the
 // desktop app, and a blanket reset reruns onboarding and forgets a downloaded
-// model) and advised against it; the founder's call is recorded in DECISIONS.
+// model) and advised against it; a maintainer's call is recorded in DECISIONS.
 // A named-list reset, if it is ever wanted, is this list's 'follows' keys and
 // never a 'device' one.
 
@@ -25,7 +25,7 @@ export type SettingReach = 'follows' | 'device';
 export const SETTINGS_REACH: Record<keyof AppSettings, SettingReach> = {
   // The preferences that follow a signed-in person.
   theme: 'follows',
-  // The Home Screen or Dock icon is this device's own (founder, 2026-10-01).
+  // The Home Screen or Dock icon is this device's own (2026-10-01).
   appIcon: 'device',
   effort: 'follows',
   humanizeWriting: 'follows',
@@ -56,6 +56,10 @@ export const SETTINGS_REACH: Record<keyof AppSettings, SettingReach> = {
   prefsStamps: 'device',
   prefsOwner: 'device',
   accountNoticeSeen: 'device',
+  passwordsGoneSeen: 'device',
+  appLock: 'device',
+  passkeyOfferDismissed: 'device',
+  passkeyUsedHere: 'device',
   vaultMoveOffer: 'device',
   vaultHubOffer: 'device',
   vaultBeforeHub: 'device',

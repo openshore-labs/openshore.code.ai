@@ -2,7 +2,7 @@
 // home repo the whole system works through, and see anything buffered while you
 // were off-home. Below that, the desktop clone/open flow: point OpenShore at a
 // repo and it reads, edits, tests, and commits there, showing every change.
-// The room is the Settings ledger (D14, founder 2026-10-07): a Connect a
+// The room is the Settings ledger (D14, 2026-10-07): a Connect a
 // platform group whose rows open a connect sheet (or, once connected, ask
 // before they disconnect), then the On your computer rows.
 import { Fragment, useEffect, useRef, useState } from 'react';
@@ -34,7 +34,7 @@ import { thisDeviceNoun } from '../lib/deviceNoun.js';
 // lands in HomeRepoEditor below, so the home repo can actually be pointed at an
 // on-desktop clone and Sync is gated on that path. Still hidden by default
 // until an app flow produces buffered commit-intents (the offload producer,
-// CTO ruling FD-1), or the section would only ever show its empty state. Flip
+// tech review ruling FD-1), or the section would only ever show its empty state. Flip
 // this to reveal it, a one-line change; the store actions and the desktop apply
 // engine stay intact.
 const REPO_OUTBOX_ENABLED = false;

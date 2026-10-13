@@ -43,7 +43,7 @@ export interface EvalTask {
    *  workspace, never inside it) before the agent runs, as a map of
    *  vault-relative path to markdown. Absent on a task that needs no vault. */
   vault?: Record<string, string>;
-  /** A scripted earlier chat (Vault M5, CTO J13): the drive builds a handoff
+  /** A scripted earlier chat (Vault M5, tech review J13): the drive builds a handoff
    *  from it with the harness's own `buildHandoff` and hands it to the pack's
    *  handoff layer on the first send, the way the next day reads the one the
    *  last session wrote. It never reaches the workspace, the vault, or the
@@ -224,7 +224,7 @@ export const EVAL_TASKS: EvalTask[] = [
   },
 ];
 
-// Vault tasks (Vault M4, 4.8, CTO I14). Both run against the generated
+// Vault tasks (Vault M4, 4.8, tech review I14). Both run against the generated
 // fixture in `vaultFixture.ts`: about two hundred notes, one convention, one
 // decision reached by a link from a hub, and an older crew-run note that
 // contradicts both. The graders reject the stale note's answer even when the
@@ -331,7 +331,7 @@ const VAULT_NOTE_TASKS: EvalTask[] = [
   },
 ];
 
-// The handoff task (Vault M5, CTO J13 and J19). An earlier chat settled a
+// The handoff task (Vault M5, tech review J13 and J19). An earlier chat settled a
 // value, and the only record of it the next session sees is the handoff built
 // from that chat: the workspace holds the old value, the prompt names no
 // number, the vault is empty, and the check prints no value. So a run with the

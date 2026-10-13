@@ -1,4 +1,4 @@
-// Contrast is a rule, not a look (founder, 2026-10-02: "make sure all of the
+// Contrast is a rule, not a look (2026-10-02: "make sure all of the
 // contrast is compliant ... with the background as the anchor"). WCAG 2.2 AA,
 // measured from theme.css itself in both themes: every text colour clears
 // 4.5:1 on each ground it sits on (the page, a raised card, a surface fill),
@@ -120,7 +120,7 @@ describe.each([
     expect(ratio('on-fill', 'hero-local-end', t)).toBeGreaterThanOrEqual(4.5);
   });
   it("a primary's label clears 4.5:1 on the accent, the Projects dock's too", () => {
-    // D8 (founder, 2026-10-07): the dock's New pill wears the primary's fill.
+    // D8 (2026-10-07): the dock's New pill wears the primary's fill.
     expect(ratio('accent-ink', 'accent', t)).toBeGreaterThanOrEqual(4.5);
   });
   it("the selected segment's label clears 4.5:1 on its thumb", () => {
@@ -141,7 +141,7 @@ describe('the controls wear their edge', () => {
     expect(rule).toMatch(/background: var\(--surface\)/);
   });
   it('draws a switch at rest and a field border on the control edge', () => {
-    // D21 (founder, 2026-10-07): the switch at rest is an outline, its 3:1
+    // D21 (2026-10-07): the switch at rest is an outline, its 3:1
     // edge drawn as an inset ring on a surface track, and on fills with the
     // accent. The edge moved from the track's fill to its ring.
     expect(CSS).toMatch(/\.switch \{[^}]*box-shadow: inset 0 0 0 1\.5px var\(--control-edge\)/);

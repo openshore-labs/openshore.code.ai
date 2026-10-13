@@ -1,4 +1,4 @@
-// Runs on (founder, 2026-10-12): "in your projects, you can choose the Hub to
+// Runs on (2026-10-12): "in your projects, you can choose the Hub to
 // run your project from, either your home computer, home server, or remote
 // server." A pill under the project's title, beside its repositories and its
 // instructions, and the sheet it opens: this computer (on the desktop), each
@@ -124,8 +124,10 @@ export function RunsOnSheet({
           onClick={() => choose(undefined, deviceName)}
         >
           <span className="grow">
-            <span className="profile-row-title">Where this device runs</span>
-            <span className="sub">Right now, {deviceName}.</span>
+            <span className="profile-row-title">Automatic</span>
+            <span className="sub">
+              Follows this device&apos;s default. Right now, {deviceName}.
+            </span>
           </span>
           {current === undefined ? <RowCheck /> : null}
         </button>

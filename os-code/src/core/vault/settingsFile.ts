@@ -1,4 +1,4 @@
-// The vault's settings on the engine and the daemon (Vault M7, CTO L5, L6):
+// The vault's settings on the engine and the daemon (Vault M7, tech review L5, L6):
 // the four config reads (`.oscode/vault.json` and Obsidian's three) resolved
 // through the pure core (`resolveVaultSettings`), kept per real root and
 // revalidated at most every 2 seconds, or at once when a caller forces it (a
@@ -27,7 +27,7 @@ import { memberVaultsDir } from './memberRoots.js';
 /** A cached value is looked at again after this long (L6). */
 export const VAULT_SETTINGS_REVALIDATE_MS = 2_000;
 
-/** The tool card's reason when a model tries to write under `.oscode/` (CX
+/** The tool card's reason when a model tries to write under `.oscode/` (UX review
  *  Y3). */
 export const VAULT_SETTINGS_DENY =
   'Vault settings are yours to change, so a model cannot write under .oscode.';

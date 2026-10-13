@@ -1,4 +1,4 @@
-// A vault's config files, read through the seam (Vault M3, CTO H5). Only
+// A vault's config files, read through the seam (Vault M3, tech review H5). Only
 // logical names cross (`obsidian/app`, `obsidian/daily-notes`,
 // `obsidian/templates`, `oscode/vault`); each provider maps a name through its
 // own allow-list, so a plugin's folder (which can hold tokens) and
@@ -65,7 +65,7 @@ export async function readVaultConfig(
 }
 
 // ---------------------------------------------------------------------------
-// Tolerant JSON readers: moved to the pure core in Vault M7 (CTO L1), so the
+// Tolerant JSON readers: moved to the pure core in Vault M7 (tech review L1), so the
 // engine seeds from `.obsidian` exactly as the app does. Re-exported here so
 // every app import keeps its path.
 export {

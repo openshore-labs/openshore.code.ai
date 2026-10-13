@@ -1,4 +1,4 @@
-// The handoff core (Vault M5, CTO J11): extractive and deterministic, the
+// The handoff core (Vault M5, tech review J11): extractive and deterministic, the
 // fixed format, within budget at every size, never a word of thinking, never
 // a local-only turn, never a tool's output (so a note a tool read cannot
 // ride along), and `fitSeed` keeping the newest messages that fit.

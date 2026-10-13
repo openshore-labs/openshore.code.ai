@@ -1,4 +1,4 @@
-// A desktop folder vault's file work (Vault M5, CTO J7): list, stat, read,
+// A desktop folder vault's file work (Vault M5, tech review J7): list, stat, read,
 // write and remove notes in one folder, every path checked as a note and
 // jailed to the folder. Moved here from app/electron/vaultFs.ts (which now
 // re-exports it) so Electron main's osc:vault* handlers and the daemon's
@@ -6,11 +6,11 @@
 // plain Node, no Electron, testable on its own. Every note is read,
 // versioned, and written through the engine's one note file module
 // (noteFile.ts), the same one the agent's vaultWrite uses, so no two writers
-// drift on how a note is saved (Vault M1, CTO F1, F2, F5).
+// drift on how a note is saved (Vault M1, tech review F1, F2, F5).
 //
 // Callers are untrusted input (the renderer, UI-6; a paired phone), so every
 // path is checked twice here: it must be a note (`.md`, no dot segment, so
-// `.obsidian/` plugin data and attachments never cross; CTO F7.4) and it must
+// `.obsidian/` plugin data and attachments never cross; tech review F7.4) and it must
 // resolve inside the vault folder (the Jail, symlink-safe). A write's guard
 // is validated the same way.
 import { existsSync, realpathSync, rmSync, type BigIntStats } from 'node:fs';
@@ -84,7 +84,7 @@ export type VaultWriteResult =
 export type VaultRemoveResult =
   { ok: true } | { ok: false; conflict: 'changed'; theirs?: VaultFile };
 
-/** The seam's note rule, the vault core's own isNotePath (Vault M3, CTO H4),
+/** The seam's note rule, the vault core's own isNotePath (Vault M3, tech review H4),
  *  which the app's providers hold too: a `.md` path with no dot segment, no
  *  backslash, not rooted. On Windows it also refuses what that file system
  *  cannot hold (a colon, which names a drive or an NTFS stream, the other
@@ -160,7 +160,7 @@ const LIST_STAT_BATCH = 8;
  *  reports the link itself). Temp files a crash left behind are swept as the
  *  walk passes their folder, unless `sweep` is false.
  *
- *  The walk is asynchronous (Vault M3, CTO H3 "Cold build"): a vault of
+ *  The walk is asynchronous (Vault M3, tech review H3 "Cold build"): a vault of
  *  thousands of notes never holds main's event loop, so the window and every
  *  other IPC keep answering while it lists. It visits folders in the same
  *  order the synchronous walk did, and `limit` stops it at the same note. */
@@ -175,7 +175,7 @@ export async function listVaultFolder(
   return walked.notes;
 }
 
-/** What one walk of a vault folder gathers (Vault M6, CTO K13: the note list,
+/** What one walk of a vault folder gathers (Vault M6, tech review K13: the note list,
  *  the attachment list and the folder list share it). */
 interface VaultWalk {
   notes: VaultFileMeta[];
@@ -303,7 +303,7 @@ export function deepestRealpath(abs: string): string {
 }
 
 /** Whether a write to `abs` lands somewhere the agent may write in the vault
- *  at `root` (Vault M7, CTO L8), judged on the RESOLVED path: the target's
+ *  at `root` (Vault M7, tech review L8), judged on the RESOLVED path: the target's
  *  real path, or its nearest existing parent's, relative to the real root,
  *  must pass `isAgentWritablePath`. So a planted `x.md -> .oscode/vault.json`,
  *  or a folder linked into `.oscode/` or `.obsidian/`, is refused though its
@@ -325,7 +325,7 @@ export function resolvedAgentWritable(root: string, abs: string): boolean {
  *  conflict is a result that leaves the note as it was. The resolved path is
  *  checked for every caller (main's IPC, the daemon's notes PUT): a note that
  *  is a link into a dot folder (`.oscode/`, `.obsidian/`) is never written
- *  through (Vault M7, CTO L8); the settings file has its own writer. */
+ *  through (Vault M7, tech review L8); the settings file has its own writer. */
 export async function writeVaultFile(
   root: string,
   path: string,
@@ -362,7 +362,7 @@ function changedRemove(
  *  lstat right before the unlink, so the window a writer can land in is the
  *  gap between that lstat and the unlink, not the whole read. A write landing
  *  in it is lost with the note; wave 1 may close it with a rename-aside
- *  (Vault M2, CTO G7). */
+ *  (Vault M2, tech review G7). */
 export async function removeVaultFile(
   root: string,
   path: string,
@@ -385,7 +385,7 @@ export async function removeVaultFile(
 }
 
 // ===========================================================================
-// Vault M6 (CTO K3, K5, K6, K11, K13): rename, folders, Trash, attachments.
+// Vault M6 (tech review K3, K5, K6, K11, K13): rename, folders, Trash, attachments.
 //
 // The same code serves Electron main (osc:vault*) and the daemon's routes.
 // Every path is checked against the note rule, the folder rule (the note rule
@@ -637,7 +637,7 @@ function tempBeside(abs: string): string {
 }
 
 /**
- * Rename one note (CTO K3). Guarded by the source's version and never
+ * Rename one note (tech review K3). Guarded by the source's version and never
  * replacing: `exists` when a name that folds the same is taken in the
  * destination folder, `missing` when the source is gone, `changed` when its
  * version moved (theirs is what is there now). A case-only rename of the same
@@ -756,7 +756,7 @@ export async function createVaultFolder(
 }
 
 /**
- * Rename (or move) a folder with one directory rename (CTO K5). `missing`
+ * Rename (or move) a folder with one directory rename (tech review K5). `missing`
  * when `from` is not a real folder; `exists` when `to` is taken (a case-only
  * rename of the same folder is allowed). A folder never moves into itself.
  * The answer lists every note that moved with its version there, and how many
@@ -809,7 +809,7 @@ export async function renameVaultFolder(
 }
 
 // ---------------------------------------------------------------------------
-// Trash (CTO K6; R3 for Restore's name)
+// Trash (tech review K6; R3 for Restore's name)
 
 interface TrashRecord {
   id: string;
@@ -911,7 +911,7 @@ async function pruneTrashDirs(trash: string, relDir: string, keep: ReadonlySet<s
 }
 
 /**
- * Move a note or a folder to `<vault>/.trash/<original path>` (CTO K6), the
+ * Move a note or a folder to `<vault>/.trash/<original path>` (tech review K6), the
  * folders on the way kept so Restore knows where it goes; a taken name gets
  * ` 2` to ` 99`. A note is guarded by its version (`changed` with theirs when
  * it moved, or without when it is gone); a folder is moved as it is, since
@@ -1079,7 +1079,7 @@ function restoreNameAt(path: string, n: number, note: boolean): string {
 }
 
 /**
- * Put one Trash entry back where it came from (CTO K6, R3). Never overwrites:
+ * Put one Trash entry back where it came from (tech review K6, R3). Never overwrites:
  * a taken name lands beside it as "{title} (restored)", and the folders on
  * the way are made again. `missing` when the entry is not in Trash.
  */
@@ -1172,7 +1172,7 @@ export async function emptyVaultTrash(
 }
 
 // ---------------------------------------------------------------------------
-// Attachments (CTO K11)
+// Attachments (tech review K11)
 
 /** Every attachment in the vault (the note list's walk), sorted by path. */
 export async function listVaultAttachments(root: string): Promise<AttachmentMeta[]> {
@@ -1180,7 +1180,7 @@ export async function listVaultAttachments(root: string): Promise<AttachmentMeta
 }
 
 /**
- * One attachment's bytes, in the `ConfigRead` style (CTO K2, K11): `refused`
+ * One attachment's bytes, in the `ConfigRead` style (tech review K2, K11): `refused`
  * for a path that is not an attachment, leaves the vault, or is a link;
  * `absent`; `too-large` past 20 MB (or a lower `max`); `unsupported` when the
  * bytes are not the type the name says.

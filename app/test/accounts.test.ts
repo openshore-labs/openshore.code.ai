@@ -1,4 +1,4 @@
-// Accounts (founder + CX, 2026-09-27; docs/accounts-cx-memo.md): chatting needs
+// Accounts (2026-09-27): chatting needs
 // no account, everything else is behind a free sign-in, nothing resets for a
 // signed-out person, and signing in is worth something because a short list
 // of preferences follows the person to every device they sign in on. Pure
@@ -110,7 +110,7 @@ vi.mock('../src/lib/supabase.js', async (importOriginal) => {
   return {
     ...real,
     isConfigured: () => sb.configured,
-    signInWithPassword: async () => live(),
+    verifyEmailCode: async () => live(),
     signOut: async (token: string, scope: string) => {
       sb.signOuts.push({ token, scope });
     },
@@ -246,7 +246,7 @@ describe('the gate: chat is free, everything else is a free sign-in', () => {
       expect(ROOM_ACCOUNT[view as keyof typeof ROOM_ACCOUNT], view).not.toBeNull();
   });
 
-  // Nothing is sold (open source, founder 2026-10-11): no account copy, guide
+  // Nothing is sold (open source, 2026-10-11): no account copy, guide
   // card or Harbor Lite line talks about buying.
   it('never talks about buying', async () => {
     for (const line of [ACCOUNT_GATE_BODY, ACCOUNT_PITCH, ACCOUNT_NOTICE, ACCOUNT_SIGN_IN_SUB])
@@ -270,7 +270,7 @@ describe('the gate: chat is free, everything else is a free sign-in', () => {
       expect(title).toMatch(/needs? an account/);
     expect(ACCOUNT_GATE_BODY).toMatch(/Signing in is free/);
     expect(ACCOUNT_GATE_BODY).toMatch(/chatting needs no account/);
-    // D19 (founder, 2026-10-07): the pitch names the few that follow, never
+    // D19 (2026-10-07): the pitch names the few that follow, never
     // "your settings", since the writing voice, the app icon, approvals, web
     // search and the vault stay on the device.
     expect(ACCOUNT_PITCH).toMatch(/take your theme and a few preferences to every device/);
@@ -333,7 +333,7 @@ describe('where settings may go', () => {
     );
   });
 
-  // The theme follows a signed-in person (CMO, 2026-10-07), so Appearance
+  // The theme follows a signed-in person (copy review, 2026-10-07), so Appearance
   // says so then, and says it stays here only while signed out.
   it('says Appearance follows a signed-in person, as the theme does', () => {
     expect(SETTINGS_REACH.theme).toBe('follows');
@@ -596,7 +596,7 @@ describe('the store', () => {
   it('signing in from the sheet carries on to the room it was opened for', async () => {
     useApp.getState().setView('crew');
     expect(useApp.getState().accountGate).toBe('crew');
-    await useApp.getState().signIn('a@b.c', 'pw');
+    await useApp.getState().verifySignInCode('a@b.c', '123456');
     await tick();
     expect(useApp.getState().accountGate).toBeUndefined();
     expect(useApp.getState().view).toBe('crew');
@@ -608,7 +608,7 @@ describe('the store', () => {
       at: '2026-09-27T10:00:00.000Z',
       prefs: { theme: 'dark', chainOfThought: true },
     };
-    await useApp.getState().signIn('a@b.c', 'pw');
+    await useApp.getState().verifySignInCode('a@b.c', '123456');
     await vi.waitFor(() => expect(useApp.getState().settings.theme).toBe('dark'));
     expect(useApp.getState().settings.chainOfThought).toBe(true);
     // A v: 1 record's one time stands for each of its keys.
@@ -661,7 +661,7 @@ describe('the store', () => {
       v: 2,
       prefs: { noticeDownloads: { v: false, at: '2026-09-28T10:00:00.000Z' } },
     };
-    await useApp.getState().signIn('a@b.c', 'pw');
+    await useApp.getState().verifySignInCode('a@b.c', '123456');
     await vi.waitFor(() => expect(useApp.getState().settings.noticeDownloads).toBe(false));
     // The native side reads its own copy on a background relaunch, with no
     // web layer to ask, so the pull reaches it too.
@@ -691,7 +691,7 @@ describe('the store', () => {
       settings: base({ theme: 'light', prefsOwner: 'u1', prefsStamps: { theme: mine } }),
     });
     sb.remote = { v: 2, prefs: { theme: { v: 'dark', at: ahead } } };
-    await useApp.getState().signIn('a@b.c', 'pw');
+    await useApp.getState().verifySignInCode('a@b.c', '123456');
     await vi.waitFor(() => expect(sb.writes).toHaveLength(1));
     expect(useApp.getState().settings.theme).toBe('light');
     expect((sb.remote as Record2).prefs.theme).toEqual({ v: 'light', at: mine });
@@ -756,7 +756,7 @@ describe('the store', () => {
     // person's change here, and still it is theirs that shows.
     sb.userId = 'u2';
     sb.remote = { v: 2, prefs: { theme: { v: 'light', at: minutesAgo(60) } } };
-    await useApp.getState().signIn('x@y.z', 'pw');
+    await useApp.getState().verifySignInCode('x@y.z', '123456');
     await vi.waitFor(() => expect(useApp.getState().settings.theme).toBe('light'));
     expect(useApp.getState().settings.prefsOwner).toBe('u2');
     expect(sb.writes).toHaveLength(0);
@@ -834,7 +834,7 @@ describe('one door to the coding agent', () => {
     expect(useApp.getState().accountGate).toBe('coding');
 
     // Signing in carries on: the session is built and the kept message goes.
-    await useApp.getState().signIn('a@b.c', 'pw');
+    await useApp.getState().verifySignInCode('a@b.c', '123456');
     await vi.waitFor(() => expect(engine.built[0]?.sent).toEqual(['now the footer']));
     expect(engine.built).toHaveLength(1);
     expect(useApp.getState().accountGate).toBeUndefined();
@@ -944,7 +944,7 @@ describe('the notice for people who used OpenShore before the gate', () => {
 
   it('never reaches someone who has signed in before', async () => {
     useApp.setState({ settings: base({ gitosResources: [VAULT_FOLDER] }) });
-    await useApp.getState().signIn('a@b.c', 'pw');
+    await useApp.getState().verifySignInCode('a@b.c', '123456');
     await vi.waitFor(() => expect(useApp.getState().settings.accountNoticeSeen).toBe(true));
     await useApp.getState().signOutAccount();
     useApp.setState({ initStarted: false, ready: false, toast: undefined });

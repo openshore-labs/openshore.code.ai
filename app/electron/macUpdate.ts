@@ -3,7 +3,7 @@
 // new build's code signature against the running one, cannot be used. Instead,
 // on the person's click: download the release's zip (or dmg) for this Mac and
 // its `.sig`, check the signature against the Mac key pinned in the app
-// (releaseVerify.ts, CTO ruling 1), and only then unpack it (or mount the dmg
+// (releaseVerify.ts, tech review ruling 1), and only then unpack it (or mount the dmg
 // and copy the app out) with ditto, which keeps the bundle's symlinks and
 // permissions intact. Then clear the quarantine flag on the verified bundle
 // and hand off to a tiny detached script that waits for this app to quit,
@@ -246,7 +246,7 @@ export async function updateMacInPlace(opts: {
       'This copy of OpenShore cannot be replaced where it is.',
     );
   }
-  // CTO ruling 1: no pinned key means no in-place swap.
+  // tech review ruling 1: no pinned key means no in-place swap.
   if (!opts.publicKey.trim()) {
     return toReleasePage('no-key', 'No Mac release key is pinned in this build.');
   }
@@ -301,7 +301,7 @@ export async function updateMacInPlace(opts: {
 
   const unpacked = join(work, 'unpacked');
   if (isDmg) {
-    // A disk image (a release built on the founder's own Mac may carry only
+    // A disk image (a release built on a maintainer's own Mac may carry only
     // this): mount it quietly, copy the app out with ditto, and detach.
     const mnt = join(work, 'mnt');
     await deps.run('/usr/bin/hdiutil', [

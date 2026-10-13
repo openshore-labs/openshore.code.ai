@@ -1,5 +1,5 @@
 // Opening web pages, the person's choice for the coding agent on their
-// computer (founder, 2026-10-02; the CTO review's H3): ask before each page
+// computer (2026-10-02; the tech review's H3): ask before each page
 // (the default), always allow (a blanket yes), or never. It lives in the
 // computer's own config (`tools.webFetch`), so every session there follows
 // it, a reopened one included; the app keeps a copy to show and carries a

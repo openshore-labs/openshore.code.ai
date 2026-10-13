@@ -1,5 +1,5 @@
-// The quick doors to a new chat (Creative Studio, 2026-10-12, built on the
-// founder's yes): the drawer's floating button, the desktop sidebar's compose
+// The quick doors to a new chat (design review, 2026-10-12, built on the
+// maintainer's yes): the drawer's floating button, the desktop sidebar's compose
 // icon, the keyboard shortcut, `/new`, and the tray and Dock menus. Each one
 // starts a plain chat, the claude.ai side, except a door used from inside a
 // project's room, which starts a chat in that project. Where you are decides

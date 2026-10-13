@@ -189,7 +189,7 @@ export type InstallForward = (payload: {
 // so a reopened terminal resumes from where it left off (Phase 2 desktop).
 export type TerminalForward = (payload: { termId: string; b64: string; offset: number }) => void;
 
-// One free chat event on its way to the window (CTO ruling 8). A refusal
+// One free chat event on its way to the window (tech review ruling 8). A refusal
 // arrives as its one error; the ready marker stays here.
 export type FreeChatForward = (event: Exclude<FreeChatEvent, { type: 'refused' | 'open' }>) => void;
 
@@ -297,12 +297,12 @@ export class EngineHost {
       codemagicTarget?: { appId: string; workflowId: string; branch: string; platform?: string };
       currents?: CurrentsHandles;
       harnessCurrents?: HarnessCurrentsHandle;
-      /** A handoff from the chat this session continues (Vault M5, CTO J12),
+      /** A handoff from the chat this session continues (Vault M5, tech review J12),
        *  already capped by main; the engine prepends it to the first task. */
       handoff?: string;
-      /** The project's own pinned note paths (CTO J14), already capped. */
+      /** The project's own pinned note paths (tech review J14), already capped. */
       vaultPins?: string[];
-      /** The app's vault switches (Vault M7, CTO L13), already parsed by
+      /** The app's vault switches (Vault M7, tech review L13), already parsed by
        *  main: off-only, and a size the engine keeps lower-only. */
       vaultOverrides?: VaultOverrides;
     } = {},
@@ -404,7 +404,7 @@ export class EngineHost {
 
   // --------------------------------------------------------------- free chat
 
-  /** The free chat on this computer (CTO ruling 8): the engine's one free
+  /** The free chat on this computer (tech review ruling 8): the engine's one free
    *  chat function, the same one the daemon serves a paired phone, forwarded
    *  event by event to the window that asked. No session is opened, nothing
    *  is journaled, no tool exists, and no vault pack is built, so a signed-out
@@ -500,7 +500,7 @@ export class EngineHost {
     return trustSessionFolder(driver);
   }
 
-  /** The truncation card's tap (C1, CTO 5): `numCtx: 'auto'` for this
+  /** The truncation card's tap (C1, tech review 5): `numCtx: 'auto'` for this
    *  provider in machine config, and every live provider on that server
    *  serves the larger window from its next request. The host shares the
    *  engine module with its sessions, so the switch reaches them at once. */
@@ -643,7 +643,7 @@ export class EngineHost {
   // ----------------------------------------------------------- desktop offline
 
   /** This computer's offline state, for every session this process hosts
-   *  (Desktop Offline, founder 2026-10-07): main's network watch sets it, from
+   *  (Desktop Offline, 2026-10-07): main's network watch sets it, from
    *  the network and the person's choice. The desktop's own sessions and a
    *  paired phone's (the daemon runs in this process) read the one engine
    *  flag before each turn, so the change reaches every chat at its next
@@ -699,8 +699,8 @@ export class EngineHost {
           isOllamaCloudTag(stackConfig.orchestrator?.model ?? '');
     // A seat that stays wears "On this computer" only when its server is this
     // computer itself (hostIsLoopback, never the LAN or the tailnet), so the
-    // Stack's chip says where it answers; GET /stack reports the same (CX and
-    // CMO, 2026-10-08, B).
+    // Stack's chip says where it answers; GET /stack reports the same (UX review and
+    // copy review, 2026-10-08, B).
     const onThisComputer = (providerId: string): { onThisComputer?: true } => {
       const endpoint = config.providers[providerId];
       if (!endpoint || !('baseUrl' in endpoint) || typeof endpoint.baseUrl !== 'string') return {};
@@ -1168,8 +1168,8 @@ export class EngineHost {
   }
 
   /** The person's web search switch, carried to the scheduler's machine config
-   *  so a routine follows it (founder, 2026-10-01). */
-  /** Opening web pages for the coding agent here (founder, 2026-10-02). */
+   *  so a routine follows it (2026-10-01). */
+  /** Opening web pages for the coding agent here (2026-10-02). */
   webFetchMode(mode: 'ask' | 'allow' | 'off'): { webFetch: 'ask' | 'allow' | 'off' } {
     saveGlobalConfig({ tools: { webFetch: mode } });
     return { webFetch: mode };
@@ -1229,7 +1229,7 @@ export class EngineHost {
   // pointer to a credential the phone has yet to mint, never a credential.
   private claim?: { claim: string; expiresAt: string };
 
-  /** The person's yes or no when a device spends a pairing claim (CTO
+  /** The person's yes or no when a device spends a pairing claim (tech review
    *  security review 2026-10-01, F3). main.ts sets it to a native dialog;
    *  unset, no device can finish pairing. */
   pairingApprover?: (request: {

@@ -685,7 +685,7 @@ export function MarketplaceScreen() {
 
   // Fetch community summaries for whatever is on screen, in ONE batched call, so
   // community-guided browsing costs a single request per view rather than one
-  // per row (the CTO's per-browse-egress guard). Degrades to nothing off a
+  // per row (the tech review's per-browse-egress guard). Degrades to nothing off a
   // configured build or when the read fails.
   useEffect(() => {
     // When the catalog carries a complete review snapshot, browse is driven from

@@ -1,4 +1,4 @@
-// The person's sidebar (founder, 2026-10-01): every room can be moved, in its
+// The person's sidebar (2026-10-01): every room can be moved, in its
 // group or across to the other; the recent chats sit between the groups, as
 // many as fit, with View all to the Chats room; Settings and then the sign-in
 // card are pinned to the bottom. The pure rules first, then the mounted
@@ -222,7 +222,7 @@ describe('the sidebar', () => {
     expect(saved?.v).toBe(2);
   });
 
-  // Founder, 2026-10-01: no separate section. Crew, Cloud Connections and the
+  // Maintainer, 2026-10-01: no separate section. Crew, Cloud Connections and the
   // pairing room sit straight under the Vault (after Terminal, on a phone
   // with no computer), and an order saved under the old two-group default is
   // set aside once so they come up there.
@@ -245,7 +245,7 @@ describe('the sidebar', () => {
   });
 });
 
-// D10 (founder, 2026-10-07): the default order comes from navRooms for this
+// D10 (2026-10-07): the default order comes from navRooms for this
 // device. On a phone with no computer, Terminal is only a setup page, so it
 // waits after the Vault; it moves up to third the day the phone pairs, for
 // anyone who never moved a row, and a saved order still wins.

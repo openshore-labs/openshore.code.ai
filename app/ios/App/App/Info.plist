@@ -47,14 +47,17 @@
 		  and the daemon has no public hostname to scope an NSExceptionDomains
 		  entry to, so the blanket flag is required and is kept on deliberately.
 		  Every provider call (Hugging Face, Anthropic, Supabase) is still https.
-		  App Review justification and the reasoning for not narrowing it:
-		  docs/app-review-notes.md. Do NOT flip this without updating that doc.
+		  App Review justification and the reasoning for not narrowing it live
+		  in the maintainers' App Store notes. Do NOT flip this without updating them.
 		-->
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>
 	</dict>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>OpenShore connects to your own computer, and to any model server you connect, over your local network or Tailscale.</string>
+	<!-- App Lock (oscode-applock): Face ID before the app opens, only when the person turns App Lock on. -->
+	<key>NSFaceIDUsageDescription</key>
+	<string>OpenShore uses Face ID to unlock the app when App Lock is on.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>OpenShore uses the camera when you scan the pairing QR code shown on your computer, or take a photo or video to attach to a chat.</string>
 	<key>NSMicrophoneUsageDescription</key>

@@ -2,7 +2,7 @@
 # every push to main and every PR that targets it, and run the pgTAP suite
 # against the Supabase migrations two ways: built from empty (the `sql` job)
 # and replaying production's recorded history first (the `sql-replay` job,
-# CTO 11), when supabase/ changed (`changes`). Before this workflow existed
+# tech review 11), when supabase/ changed (`changes`). Before this workflow existed
 # the only gate was Codemagic, which ships each main push straight to TestFlight
 # WITHOUT running the suite, so the em-dash guard, redaction tests, RBAC/crypto
 # tests, and the security tests only ever ran on a developer's machine. This is
@@ -43,7 +43,7 @@ env:
   SKIP_NATIVE_REBUILD: "1"
 
 jobs:
-  # What this push touched (founder, 2026-10-01: a one-person team on a
+  # What this push touched (2026-10-01: a one-person team on a
   # private repo pushes everything to main, and every push used to spend the
   # whole run against the month's Actions minutes). `check` runs on every
   # push. The two database jobs run only when supabase/ changed, and the
@@ -134,7 +134,7 @@ jobs:
       - name: Build the engine
         run: pnpm --filter os-code build
 
-      # OS Code, the terminal CLI, ships to npm as `os-code`
+      # OS Code, the terminal CLI, ships to npm as `@openshore/os-code`
       # (cli-publish.yml). Install the packed tarball into an empty prefix and
       # run it, so a file the CLI needs at runtime can never be left out of
       # the package.
@@ -167,17 +167,25 @@ jobs:
 
       # Prettier drift used to be invisible: neither package's formatting was
       # checked here, so files quietly diverged from .prettierrc. `pnpm format`
-      # in a package fixes what this step reports.
+      # in a package fixes what this step reports. On a pull request the
+      # house-style checks (format, lint, the style tests) move to the
+      # `house-style` job below: a maintainer fixes them when the change is
+      # pulled in (CONTRIBUTING.md), so they never block a contributor. Every
+      # push to main still runs all of them here.
       - name: Format check
+        if: github.event_name != 'pull_request'
         run: pnpm -r format:check
 
       - name: Lint
+        if: github.event_name != 'pull_request'
         run: pnpm -r lint
 
       - name: Typecheck
         run: pnpm -r typecheck
 
       - name: Test
+        env:
+          OSC_TEST_SET: ${{ github.event_name == 'pull_request' && 'behavior' || '' }}
         run: pnpm -r test
 
       # The Supabase edge functions are Deno, not a workspace package, so their
@@ -191,7 +199,49 @@ jobs:
       - name: Test the edge-function shared modules
         run: deno test supabase/functions/_shared
 
-  # CTO 10 (2026-09-29): the engine and the desktop shell run on Windows too,
+  # The house-style checks on a pull request: format, lint, and the style
+  # tests (the em dash rule, motion and spacing tokens, the UI guards, exact
+  # copy). Informational for contributors; a maintainer fixes what it reports
+  # when the change is pulled in. On main they run inside `check`.
+  house-style:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        with:
+          version: 10.33.0
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the engine
+        run: pnpm --filter os-code build
+
+      - name: Format check
+        if: always()
+        run: pnpm -r format:check
+
+      - name: Lint
+        if: always()
+        run: pnpm -r lint
+
+      - name: Style tests
+        if: always()
+        env:
+          OSC_TEST_SET: style
+        run: pnpm -r test
+
+  # tech review 10 (2026-09-29): the engine and the desktop shell run on Windows too,
   # where there is no /bin/bash (the runner resolves Git Bash, else
   # PowerShell), paths use backslashes, and a process tree ends with taskkill.
   # This job runs the engine's whole suite there, plus the app's Electron-side
@@ -249,12 +299,12 @@ jobs:
           test/lifecycle.test.ts
 
   # The pgTAP suite (supabase/tests/*.test.sql) against every migration,
-  # applied in order from an empty database (Vault v1 plan item 2.4, CTO
+  # applied in order from an empty database (Vault v1 plan item 2.4, tech review
   # ruling G4). It runs beside `check`, not after it. It uses the Supabase CLI,
   # never a bare postgres image or a stubbed auth schema: the migrations and
   # tests lean on the real auth.users (email_confirmed_at), auth.uid(), and
   # the anon/authenticated/service_role roles, and a stub would drift from
-  # production without anyone noticing. This is exactly what the founder runs
+  # production without anyone noticing. This is exactly what a maintainer runs
   # locally.
   sql:
     needs: changes
@@ -289,11 +339,11 @@ jobs:
       - name: Run the pgTAP suite
         run: supabase test db
 
-  # Production's replay (CTO 11, 2026-09-29). The `sql` job proves the files
+  # Production's replay (tech review 11, 2026-09-29). The `sql` job proves the files
   # apply to an empty database; production is not empty and already holds
   # 0001 to 0020 (supabase/production-history.tsv). This job builds exactly
   # that history, loads rows with production's shape, pushes the pending files
-  # the way the founder's push will (`db push`, one transaction per file),
+  # the way a maintainer's push will (`db push`, one transaction per file),
   # checks what must hold afterwards, runs the whole pgTAP suite on the result,
   # and compares its schema with one built from empty.
   sql-replay:

@@ -1,4 +1,4 @@
-// The Vault settings sheet's picks (Vault M7 wave 2; CX Y1, Y9, Y10): which
+// The Vault settings sheet's picks (Vault M7 wave 2; UX review Y1, Y9, Y10): which
 // folders a pick offers, and the patches one pick commits. Pure, so the host
 // component stays thin and the rules are tested without a store.
 import type { ResolvedVaultSettings, VaultSettingsPatch } from 'os-code/protocol';
@@ -27,7 +27,7 @@ export function vaultFolderChoices(
   return [...out].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
 }
 
-/** The patches one pick commits, in order (CX Y1): a folder for "New notes
+/** The patches one pick commits, in order (UX review Y1): a folder for "New notes
  *  go in" also says new notes go to a folder; a list pick adds the folder's
  *  glob to what the vault file already holds. */
 export function vaultPickPatches(

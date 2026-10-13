@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-// Every step into a page has a step back in the top bar (founder,
+// Every step into a page has a step back in the top bar (maintainer,
 // 2026-09-03, from the Kimi product page in the store, which still showed
 // the menu). Room-to-room is the store's viewTrail; a page inside a room
 // hands BackBar an in-room `back`. This pins the rooms that carry one, so a
@@ -73,7 +73,7 @@ describe('the way back', () => {
     const bar = src('components', 'BackBar.tsx');
     const theme = src('theme.css');
     // Keyed by its text, with its direction; it may also tuck away under a
-    // room's large title (Creative Studio, 2026-10-02).
+    // room's large title (design review, 2026-10-02).
     expect(bar).toMatch(
       /<div\s+className=\{`topbar-title\$\{tucked \? ' is-tucked' : ''\}`\}\s+key=\{title\}\s+data-depth=\{way \? 'page' : 'root'\}/,
     );

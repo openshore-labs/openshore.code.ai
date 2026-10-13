@@ -1,4 +1,4 @@
-// Community reviews read production's public view (CTO 11 package B; the
+// Community reviews read production's public view (tech review 11 package B; the
 // privacy branch's port). Production's 0020 took anon reads off model_reviews
 // and leaves a signed-in reader only their own rows there, so a build that
 // read the base table showed signed-out readers no reviews and signed-in

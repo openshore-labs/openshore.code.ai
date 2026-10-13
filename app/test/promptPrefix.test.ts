@@ -1,4 +1,4 @@
-// A stable prefix in the app's Claude requests (Vault M5, CTO J16): the head
+// A stable prefix in the app's Claude requests (Vault M5, tech review J16): the head
 // of the system prompt stays byte-identical from send to send, and what moves
 // (the effort line, the walk, the pack) rides the tail. With caching on, the
 // head carries the one marker and the request asks for automatic caching on

@@ -1,6 +1,6 @@
 // The arrival and the persistent ring: how an Agentic Current is felt.
 //
-// A replica of the iOS Siri glow in the brand's own water (founder,
+// A replica of the iOS Siri glow in the brand's own water (maintainer,
 // 2026-09-14, from a screen recording read frame by frame): flip a current on
 // and a soft bloom rises from where the switch sits, then a thick multi-hue
 // ring lights the whole border with a glow bleeding inward, and settles into

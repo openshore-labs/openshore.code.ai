@@ -1,4 +1,4 @@
-// The quick doors to a new chat (Creative Studio, 2026-10-12): the drawer's
+// The quick doors to a new chat (design review, 2026-10-12): the drawer's
 // floating button, the desktop sidebar's compose icon, the shortcut, /new,
 // and the tray and Dock menus. Plain everywhere but a project's room.
 import { readFileSync } from 'node:fs';

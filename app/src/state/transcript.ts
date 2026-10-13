@@ -138,7 +138,7 @@ export function reduceEvent(state: ThreadState, event: DriverEvent, atSeq?: numb
       return { ...next, model: { name: event.model, kind: event.providerKind } };
 
     case 'reach':
-      // A handoff is about to go to a model off this network (CX and CMO,
+      // A handoff is about to go to a model off this network (UX and copy review,
       // 2026-10-08, D): the turn reads cloud from here, under the turn's own
       // model name, the way a cloud turn-start would set it.
       return {
@@ -447,11 +447,11 @@ export function reduceEvent(state: ThreadState, event: DriverEvent, atSeq?: numb
 
     case 'window-cut':
       // The server cut the chat to fit (C1): a teal card once per chat per
-      // model, mapped in the security package's module (CTO 9).
+      // model, mapped in the security package's module (tech review 9).
       return push(next, windowCutItem(event));
 
     case 'window-tight':
-      // Even the lean prompt fills most of the window (CTO 6): the same card
+      // Even the lean prompt fills most of the window (tech review 6): the same card
       // family, once per chat per model, mapped in the harness's module.
       return push(next, windowTightItem(event));
 
@@ -493,7 +493,7 @@ export function reduceEvent(state: ThreadState, event: DriverEvent, atSeq?: numb
     }
 
     case 'image-reader-offer':
-      // Nothing here can read images (founder, 2026-10-07): a calm card with
+      // Nothing here can read images (2026-10-07): a calm card with
       // two doors, after whatever answer the turn gave.
       return push(settleAll(next), {
         kind: 'image-offer',
@@ -537,7 +537,7 @@ export function reduceEvent(state: ThreadState, event: DriverEvent, atSeq?: numb
         stepNote: undefined,
         pendingApprovals: [],
       };
-      // The person's own Stop (CX ruling 5): the partial answer stays where it
+      // The person's own Stop (UX review ruling 5): the partial answer stays where it
       // is, and a muted marker says who stopped it and whether any of the
       // answer had arrived. Every driver's stop reads the same.
       if (event.reason === 'aborted') {
@@ -761,7 +761,7 @@ export function describeCall(
   handoff?: CallHandoff,
 ): string {
   const path = str(args.path);
-  // A handoff names the model it goes to (CX and CMO, 2026-10-08, D); an
+  // A handoff names the model it goes to (UX and copy review, 2026-10-08, D); an
   // older engine, and a role the Reasoning model took itself, keep the words
   // below.
   if (handoff) {

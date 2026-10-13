@@ -1,5 +1,5 @@
 // Stand-ins for a chat that holds a private note's text, shared by the tests
-// of the CX and CMO rulings (2026-10-08): a vault read that returns today's
+// of the UX and copy review rulings (2026-10-08): a vault read that returns today's
 // Journal note marked local-only, as the vault tools return it to a seat that
 // stays on this network, and a vault source whose project pin sits under
 // Private/, rendered by the real pack builder.

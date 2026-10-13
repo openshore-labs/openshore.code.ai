@@ -1,4 +1,4 @@
-// The served window (Vault M4, CTO I1). With `numCtx: 'auto'` an Ollama
+// The served window (Vault M4, tech review I1). With `numCtx: 'auto'` an Ollama
 // endpoint sends `options.num_ctx` on every request, the lower of the model's
 // own window and the per-class ceiling for this computer's memory. Off or
 // unset, and every non-Ollama backend, leaves the request body as it was.

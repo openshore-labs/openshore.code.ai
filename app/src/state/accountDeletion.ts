@@ -1,5 +1,5 @@
-// Delete account (Apple 5.1.1(v); next build E1, CX ruling 3). The work lives
-// here, apart from the store (CTO ruling 9, the state/vaultOps.ts pattern):
+// Delete account (Apple 5.1.1(v); next build E1, UX review ruling 3). The work lives
+// here, apart from the store (tech review ruling 9, the state/vaultOps.ts pattern):
 // the store builds an AccountDeletionDeps from its own session door and its
 // forgetSession, and wires deleteAccount to this.
 //
@@ -17,7 +17,7 @@
 // door ends one on a dead refresh token: unsent team vault text stays sealed
 // on the device for the same account to sign back in to.
 //
-// Two functions answer (CTO 11, package C). Production runs the privacy
+// Two functions answer (tech review 11, package C). Production runs the privacy
 // branch's 2026-09-24 function until main's merged one is deployed, and a
 // build in the field must read both:
 //   main's:        200 { ok: true, deleted: true, appleNote }, or

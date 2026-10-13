@@ -76,11 +76,11 @@ export interface TestSessionOptions {
   buildHandoff?: AgentDeps['buildHandoff'];
   /** False for a member's session on a shared hub (v1 Phase 1 verify grant). */
   canGrantVerify?: boolean;
-  /** Build the session offline, as bootstrap builds a headless one (CTO 3):
+  /** Build the session offline, as bootstrap builds a headless one (tech review 3):
    *  no network tool registered, each refused by name. */
   offline?: boolean;
   /** With `offline`, keep webSearch as a routine does when the person's
-   *  switch is on (founder, 2026-10-01). */
+   *  switch is on (2026-10-01). */
   offlineSearch?: boolean;
   /** The permission mode to start in. */
   permissionMode?: AgentDeps['permissionMode'];

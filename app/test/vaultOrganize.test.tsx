@@ -1,5 +1,5 @@
-// The Vault's organize components (Vault M6 6.2, 6.3; CTO K5, K6 with R1 to
-// R3; CX X5 to X10), mounted in a small real DOM:
+// The Vault's organize components (Vault M6 6.2, 6.3; tech review K5, K6 with R1 to
+// R3; UX review X5 to X10), mounted in a small real DOM:
 // - Options deletes in ONE tap only where Trash is real, and keeps two taps,
 //   worded "for good", everywhere else (R2);
 // - the Undo toast shows 6 s, pauses under a hand, says Undo with a label
@@ -51,7 +51,7 @@ async function options(trashReal: boolean, confirmDelete = false) {
   return calls;
 }
 
-describe('Options (R2, CX X8)', () => {
+describe('Options (R2, UX review X8)', () => {
   it('deletes in one tap where Trash is real', async () => {
     const calls = await options(true);
     expect(dom.buttons()).toContain('Rename or move');
@@ -70,7 +70,7 @@ describe('Options (R2, CX X8)', () => {
   });
 });
 
-describe('the Undo toast (CX X9)', () => {
+describe('the Undo toast (UX review X9)', () => {
   it('names what it restores, points at Trash, and waits 6 s unless a hand is on it', async () => {
     vi.useFakeTimers();
     const { VaultUndoToast, VAULT_UNDO_MS } =
@@ -101,7 +101,7 @@ describe('the Undo toast (CX X9)', () => {
   });
 });
 
-describe('Trash (CX X10, R3)', () => {
+describe('Trash (UX review X10, R3)', () => {
   const entries = [
     {
       id: 'a',
@@ -167,7 +167,7 @@ describe('Trash (CX X10, R3)', () => {
   });
 });
 
-describe('the rename sheet (CX X5, X6)', () => {
+describe('the rename sheet (UX review X5, X6)', () => {
   const preview = (links: number): VaultMovePreview => ({
     kind: 'note',
     from: 'Ideas.md',
@@ -238,7 +238,7 @@ describe('the rename sheet (CX X5, X6)', () => {
     expect(applied).toEqual([false]);
   });
 
-  // A team plan that lapsed while the sheet was up (CX Y15): the sheet says
+  // A team plan that lapsed while the sheet was up (UX review Y15): the sheet says
   // the plan's line and plans nothing, at the name and at the links question.
   it('a refused rename says why, and plans and runs nothing', async () => {
     const { VaultRenameSheet } = await import('../src/components/vault/VaultRenameSheet.js');
@@ -295,7 +295,7 @@ describe('the rename sheet (CX X5, X6)', () => {
   });
 });
 
-describe('the folder sheet (K5, CX X8)', () => {
+describe('the folder sheet (K5, UX review X8)', () => {
   it('states its counts, and moves to Trash only on the second tap', async () => {
     const { VaultFolderSheet } = await import('../src/components/vault/VaultFolderSheet.js');
     const calls: string[] = [];
@@ -342,7 +342,7 @@ describe("stream G's copy", () => {
     ].map((f) => readFileSync(join(SRC, 'components', 'vault', `${f}.tsx`), 'utf8')),
   ];
 
-  it('never says the lines M6 retired for trash-backed deletes (CX X8, X14)', () => {
+  it('never says the lines M6 retired for trash-backed deletes (UX review X8, X14)', () => {
     for (const text of files) {
       for (const retired of [
         'Note deleted.',
@@ -364,7 +364,7 @@ describe("stream G's copy", () => {
     expect(fence).not.toMatch(/\bsynced\b|\bsafe\b|successfully|oops/i);
   });
 
-  it('a partial pass names what was left and never reads as a plain success (CX X7)', async () => {
+  it('a partial pass names what was left and never reads as a plain success (UX review X7)', async () => {
     const { vaultRenameToast } = await import('../src/lib/vaultCopy.js');
     const several = vaultRenameToast({
       old: 'Ideas',

@@ -152,7 +152,7 @@ describe('TerminalManager.killAll', () => {
   });
 });
 
-// The resolver's answer on a real Windows machine (CTO 10): the windows-latest
+// The resolver's answer on a real Windows machine (tech review 10): the windows-latest
 // CI job runs this, so the probes, `git --exec-path` and the spawn are the
 // real ones there, not the injected ones below.
 describe.runIf(process.platform === 'win32')('resolveShell on this Windows machine', () => {
@@ -270,7 +270,7 @@ describe('shellInfo: one answer for the prompt, the runner and the permission en
   });
 });
 
-describe('prefix grants and the shell (CTO ruling 10)', () => {
+describe('prefix grants and the shell (tech review ruling 10)', () => {
   it('under PowerShell no prefix grant matches, so every command asks', () => {
     expect(commandMatchesPrefix('npm test', 'npm', 'bash')).toBe(true);
     expect(commandMatchesPrefix('npm test', 'npm', 'powershell')).toBe(false);

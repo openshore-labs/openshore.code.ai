@@ -1,4 +1,4 @@
-// Block this user through the real client (CTO 11 package B, review
+// Block this user through the real client (tech review 11 package B, review
 // 2026-09-30). block_review_author (production's 0020) returns void, and
 // PostgREST answers a void function with 204 and no body (checked on the
 // CLI's pinned postgrest v16.3). The client once read every RPC answer with

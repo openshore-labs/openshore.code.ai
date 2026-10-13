@@ -6,7 +6,7 @@
 // grow only so far: past a bounded lag it catches up proportionally, so a long
 // code answer never trails by ten seconds, and the reveal keeps going after the
 // stream itself has ended, so the tail settles at the same pace instead of
-// snapping in (founder, 2026-09-03: "a more graceful typing of the response").
+// snapping in (2026-09-03: "a more graceful typing of the response").
 
 /** The reveal interval. About 40 frames a second, the TUI's cadence. */
 export const TICK_MS = 24;
@@ -47,7 +47,7 @@ export function ticksToDrain(backlog: number): number {
 }
 
 /**
- * Word pacing (founder, 2026-09-23: "like in Claude"). A reply arrives in whole
+ * Word pacing (2026-09-23: "like in Claude"). A reply arrives in whole
  * words, never a half-typed one, and each new group fades in. Two helpers:
  * `revealLimit` is how far the reveal may go right now (while the stream is
  * live, only up to the last complete word, so a word still arriving is held

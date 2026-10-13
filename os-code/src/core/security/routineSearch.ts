@@ -1,4 +1,4 @@
-// The guard on a Crew routine's web search (CTO security review, 2026-10-01,
+// The guard on a Crew routine's web search (tech review security review, 2026-10-01,
 // finding F1). A routine runs with nobody at the desk and reads text other
 // people wrote (a cloned README, a clipped note), so an injected line could
 // ask the model to search for a secret or a private note's contents and leave

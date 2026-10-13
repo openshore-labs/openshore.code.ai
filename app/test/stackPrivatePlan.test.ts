@@ -1,4 +1,4 @@
-// A private plan's file-editing step (CX and CMO, 2026-10-08, J). The step
+// A private plan's file-editing step (UX and copy review, 2026-10-08, J). The step
 // runs on the paired computer when that computer, asked fresh (GET /stack),
 // says its Reasoning model stays on its network and it takes a local-only
 // turn: the step goes marked (POST /input `localOnly`), so the engine's own

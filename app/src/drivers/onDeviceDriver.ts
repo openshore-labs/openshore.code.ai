@@ -98,7 +98,7 @@ export class OnDeviceDriver implements ChatDriver {
   private afterNote?: string;
   /** This chat's model is Harbor Lite, so the guide harness shapes its turns. */
   private readonly guideTurn: boolean;
-  /** The conversation's vault pack (CTO J1), and the text this reply's
+  /** The conversation's vault pack (tech review J1), and the text this reply's
    *  system prompt carries from it, the prompt's last part. */
   private readonly vaultPack?: AppVaultPack;
   private readonly writingVoice?: string;
@@ -133,7 +133,7 @@ export class OnDeviceDriver implements ChatDriver {
     /** The chat this driver answers for, so the guided setup's line reaches
      *  only the walk's own chat, whichever chat is on screen. */
     private readonly conversationId?: string,
-    /** The conversation's vault pack (CTO J1); none with Memory off. And the
+    /** The conversation's vault pack (tech review J1); none with Memory off. And the
      *  person's writing voice (lib/writingVoice.ts), when they set one. */
     opts: DriverVaultOptions & { writingVoice?: string } = {},
   ) {
@@ -498,7 +498,7 @@ export class OnDeviceDriver implements ChatDriver {
     this.sendController?.abort();
     const requestId = this.activeRequestId;
     if (requestId) {
-      // Stop answers at once (CTO ruling 7): late tokens for this request are
+      // Stop answers at once (tech review ruling 7): late tokens for this request are
       // dropped by id from here, and the turn closes now with what streamed.
       this.activeRequestId = undefined;
       this.clearWatchdog();

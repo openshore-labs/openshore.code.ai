@@ -1,8 +1,8 @@
 // PROJECT TRUST (v1 Phase 0, the Zed proposal's first fix). A folder's own
 // os-code.config.json can tighten OpenShore but never loosen it until the
 // person trusts that folder on this machine, and trust lives on the machine,
-// never in the repo. One test per attack vector the Zed proposal and the
-// advisor memos named (docs/zed-proposal.md, "Fix now" item 1): each was run
+// never in the repo. One test per attack vector a project-trust review
+// named: each was run
 // against the code before the fix and failed, then passed after it.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
@@ -465,7 +465,7 @@ describe('trusting a folder, on this machine', () => {
   });
 });
 
-// The Memory switch (Vault v1, 1.5; CTO F6). On, projectMemoryWrite saves into
+// The Memory switch (Vault v1, 1.5; tech review F6). On, projectMemoryWrite saves into
 // the repo without asking, so a project turning memory on is a loosening that
 // waits for trust; turning it off tightens and applies from any folder.
 describe('a project file and the Memory switch', () => {
@@ -582,7 +582,7 @@ describe('every config key is classified for project trust', () => {
   });
 });
 
-// Vault M4, CTO I3: which notes are hidden or stay on this computer is the
+// Vault M4, tech review I3: which notes are hidden or stay on this computer is the
 // person's own call, so a repo never names their private folders; the context
 // pack may be turned off from any folder and turned up only with trust.
 describe('a project file and the Vault', () => {
@@ -638,7 +638,7 @@ describe('a project file and the Vault', () => {
     expect(loadConfig(project).config.providers.ollama).not.toHaveProperty('numCtx');
   });
 
-  // Vault M5, CTO J18: the handoff may be turned off from any folder and back
+  // Vault M5, tech review J18: the handoff may be turned off from any folder and back
   // on only with trust; prompt caching is the machine's own call.
   it("may turn the handoff off from an untrusted folder ('off')", () => {
     writeProject({ vault: { handoff: 'off' } });
@@ -663,7 +663,7 @@ describe('a project file and the Vault', () => {
     expect(loadConfig(project).config.vault.handoff).toBe('auto');
   });
 
-  // Vault M7, CTO L14: room for notes, its ceiling and provenance are machine
+  // Vault M7, tech review L14: room for notes, its ceiling and provenance are machine
   // config. A project file never sets them, trusted or not, and says so.
   it('cannot give notes more room in each chat (vault.packSize), even trusted', () => {
     writeProject({ vault: { packSize: 'large' } });

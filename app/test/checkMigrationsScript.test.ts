@@ -1,5 +1,5 @@
 // supabase/scripts/check-migrations.mjs, the branch guard .github/workflows/
-// migrations.yml runs on every push that touches supabase/ (CTO 11). Two
+// migrations.yml runs on every push that touches supabase/ (tech review 11). Two
 // shapes once passed it (review 2026-09-30): a tree that deleted a file
 // production applied, and a byte-for-byte copy of one of main's unapplied
 // files under a new number beside the original (the "moved above

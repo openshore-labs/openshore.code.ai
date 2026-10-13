@@ -92,7 +92,7 @@ describe('a Personal build, loaded as one', () => {
     const { ROOM_LABELS } =
       await asPersonal<typeof import('../src/lib/navRooms.js')>('../src/lib/navRooms.js');
     expect([ROOM_LABELS.stackhealth, ROOM_LABELS.launch]).toEqual(['', '']);
-    // The Marketplace is a v1 room since 2026-10-11 (founder).
+    // The Marketplace is a v1 room since 2026-10-11.
     expect(ROOM_LABELS.marketplace).toBe('Marketplace');
     expect(ROOM_LABELS.vault).toBe('Vault');
   });

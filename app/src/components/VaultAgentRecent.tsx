@@ -1,4 +1,4 @@
-// "Recently from your agent" (Vault M5, CTO J15): the newest notes tagged
+// "Recently from your agent" (Vault M5, tech review J15): the newest notes tagged
 // `crew` (what routines left) and the notes the agent's approved writes named
 // on this device, so what the agent wrote is one tap away. Hidden notes never
 // show. Rendered at the Vault's root, personal vault only; nothing at all

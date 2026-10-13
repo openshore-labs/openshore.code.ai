@@ -1,4 +1,4 @@
-// Release tiers (founder, 2026-09-27; docs/release-tiers.md). A build is
+// Release tiers (2026-09-27; docs/release-tiers.md). A build is
 // Personal unless it says otherwise, and a later tier's surfaces have no door
 // in an earlier build: not in the Sidebar, not in the room list, not through
 // navigation, and no current is on anywhere. The suite itself runs at tier 4
@@ -48,7 +48,7 @@ describe('which tier a build carries', () => {
     expect(vite.slice(0, vite.indexOf('test: {'))).not.toMatch(/VITE_RELEASE_TIER/);
   });
 
-  it("places each feature in the founder's tier", () => {
+  it("places each feature in a maintainer's tier", () => {
     expect(FEATURE_TIER).toEqual({
       currents: 2,
       stackhealth: 2,
@@ -92,7 +92,7 @@ describe('a Personal build', () => {
     ]) {
       expect(roomOpen(view, 1), view).toBe(true);
     }
-    // The Marketplace is a v1 room since 2026-10-11 (founder).
+    // The Marketplace is a v1 room since 2026-10-11.
     expect(
       visibleRooms([{ view: 'launch' }, { view: 'marketplace' }, { view: 'crew' }], 1),
     ).toEqual([{ view: 'marketplace' }, { view: 'crew' }]);

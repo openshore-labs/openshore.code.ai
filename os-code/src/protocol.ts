@@ -160,13 +160,13 @@ export {
   claudeThinking,
 } from './core/agent/chainOfThought.js';
 export type { ThoughtPiece } from './core/agent/chainOfThought.js';
-// The free chat's events (CTO ruling 8): what the daemon streams to a phone
+// The free chat's events (tech review ruling 8): what the daemon streams to a phone
 // and the desktop's main process forwards to its window. Types only.
 export type { FreeChatEvent } from './daemon/freeChat.js';
 // The Memory switch's precedence: the app's switch can only turn project
 // memory off, and a project's config off always wins.
 export { memoryEnabled } from './core/agent/memorySwitch.js';
-// Desktop Offline (founder, 2026-10-07): the engine's words for working with
+// Desktop Offline (2026-10-07): the engine's words for working with
 // no internet, so the app's door for "no model on your computer can answer
 // yet" matches the line the engine ends that turn with. Pure.
 export {
@@ -187,7 +187,7 @@ export type { PullFailure, PullResult } from './market/pullLine.js';
 // import-free.
 export { unifiedDiff } from './core/edit/diff.js';
 export type { DiffStats } from './core/edit/diff.js';
-// The Vault's shared core (Vault M3, CTO H1, H2 and H4): the one new-name
+// The Vault's shared core (Vault M3, tech review H1, H2 and H4): the one new-name
 // rule and the path helpers, the note scanner, the frontmatter reader, link
 // resolution, link rewriting and excerpts. The app, the engine's vault tools,
 // the scheduler and the desktop's main process all run this same code. Pure
@@ -206,7 +206,7 @@ export {
   safeNoteName,
   utf8Length,
   vaultConflictCopyPath,
-  // Vault M7 (CTO L8): the agent's hard deny under any dot folder.
+  // Vault M7 (tech review L8): the agent's hard deny under any dot folder.
   isAgentWritablePath,
 } from './harness/vault/paths.js';
 export {
@@ -227,7 +227,7 @@ export {
 } from './harness/vault/resolve.js';
 export { rewriteLinks } from './harness/vault/rewrite.js';
 export { excerptAt } from './harness/vault/excerpt.js';
-// Vault M6 "Obsidian day one" (CTO K4, K7, K8, K10, K11, K15): the pure core
+// Vault M6 "Obsidian day one" (tech review K4, K7, K8, K10, K11, K15): the pure core
 // the app and the engine share. Stubs until each stream lands.
 export { planLinkRewrites, rewriteForMoves } from './harness/vault/move.js';
 export { highlightRanges, parseVaultQuery, phrasesMatch } from './harness/vault/query.js';
@@ -259,7 +259,7 @@ export {
   isAttachmentPath,
   resolveAttachment,
 } from './harness/vault/attachments.js';
-// Vault M7 "The customization surface" (CTO L1 to L4, L9, L10, L13): the
+// Vault M7 "The customization surface" (tech review L1 to L4, L9, L10, L13): the
 // vault settings core, provenance, and the hand-written YAML scalar. Stubs
 // until each stream lands (settings.ts stream A, provenance.ts stream B).
 export {
@@ -290,7 +290,7 @@ export type {
 } from './harness/vault/settings.js';
 export { PROV_KEYS, mergeProvenance, readProvenance } from './harness/vault/provenance.js';
 export { yamlString } from './harness/vault/yamlScalar.js';
-// The Vault's shared core contract (Vault M3, CTO H1 to H5): the types the
+// The Vault's shared core contract (Vault M3, tech review H1 to H5): the types the
 // scanner, frontmatter reader, resolver, index and readConfig seam agree on.
 // Types only, so nothing reaches the bundle.
 export type {
@@ -336,7 +336,7 @@ export type {
   VaultPrivacyNarrowing,
   VaultVisibility,
   VaultVisibilityInput,
-  // Vault M6 (CTO K2, K4, K7, K8, K10, K11, K15)
+  // Vault M6 (tech review K2, K4, K7, K8, K10, K11, K15)
   AttachmentFolderSetting,
   AttachmentMeta,
   AttachmentMime,
@@ -363,7 +363,7 @@ export type {
   VaultTask,
   VaultTitleHit,
   VaultTrashEntry,
-  // Vault M7 (CTO L1 to L14)
+  // Vault M7 (tech review L1 to L14)
   ConfigWriteGuard,
   ConfigWriteResult,
   NoteProvenance,
@@ -397,7 +397,7 @@ export type {
   VaultSettingsSource,
   VaultTreeSort,
 } from './harness/vault/types.js';
-// Vault privacy (Vault M4, CTO I4, I5): one judge of which notes are hidden and
+// Vault privacy (Vault M4, tech review I4, I5): one judge of which notes are hidden and
 // which stay on this computer, and the stub a leaving seat sees in their place.
 export {
   LOCAL_ONLY_STUB,
@@ -405,7 +405,7 @@ export {
   oscodeMarks,
   withholdLocalOnly,
 } from './harness/vault/privacy.js';
-// The vault context pack (Vault M4, CTO I6 to I10), pure, so the app's drivers
+// The vault context pack (Vault M4, tech review I6 to I10), pure, so the app's drivers
 // (M5) render the exact pack the engine does.
 export {
   PACK_BY_CLASS,
@@ -430,7 +430,7 @@ export type {
   VaultContextSetting,
   VaultContextSource,
 } from './harness/vaultContext.js';
-// The served window (Vault M4, CTO I1, I2): the app computes the same number
+// The served window (Vault M4, tech review I1, I2): the app computes the same number
 // the engine sends (M5).
 export {
   NUM_CTX_CEILING,
@@ -440,16 +440,16 @@ export {
   servedContextTokens,
 } from './harness/profile.js';
 export type { ModelClass } from './harness/profile.js';
-// Every app seat's class and profile (Vault M5, CTO J2, J4), derived exactly as
+// Every app seat's class and profile (Vault M5, tech review J2, J4), derived exactly as
 // the engine derives its own.
 export { MODEL_CLASSES, deriveModelClass, deriveProfile } from './harness/profile.js';
 export type { DeriveInput, ModelClassPolicy, ModelClassProfile } from './harness/profile.js';
-// What counts as this computer's own network (Vault M5, CTO J2): one pure
+// What counts as this computer's own network (Vault M5, tech review J2): one pure
 // judge, by address, shared with the engine's isLocalHost. A seat is judged by
 // its model's name too: an Ollama cloud tag leaves through a local Ollama, so
 // the app reads the engine's own seat judge (privacy review, 2026-10-08).
 // `hostIsLoopback` is the narrower test for words that say "on this computer"
-// (CX and CMO, 2026-10-08): never the LAN or the tailnet.
+// (UX and copy review, 2026-10-08): never the LAN or the tailnet.
 export {
   hostIsLocal,
   hostIsLoopback,
@@ -460,7 +460,7 @@ export {
 } from './harness/locality.js';
 export { leavesThisNetwork, seatLeaves } from './providers/types.js';
 export type { HostIsLocalOptions } from './harness/locality.js';
-// The words said once a chat holds a private note's text (CX and CMO,
+// The words said once a chat holds a private note's text (UX and copy review,
 // 2026-10-08, A, D, F, G, H): one source for the engine and the app.
 export {
   HANDOFF_LOCAL_ONLY_DENIED,
@@ -484,7 +484,7 @@ export {
   searchServiceName,
 } from './harness/privacyLines.js';
 export type { PrivateCause } from './harness/privacyLines.js';
-// The handoff (Vault M5, CTO J11 to J13): extractive, offline, no thinking.
+// The handoff (Vault M5, tech review J11 to J13): extractive, offline, no thinking.
 export {
   HANDOFF_MAX_AGE_DAYS,
   HANDOFF_MAX_BYTES,
@@ -496,10 +496,10 @@ export {
   handoffBudgetTokens,
 } from './harness/handoff.js';
 export type { Handoff, HandoffTurn } from './harness/handoff.js';
-// The vault tools' shared descriptions (Vault M5, CTO J10).
+// The vault tools' shared descriptions (Vault M5, tech review J10).
 export { VAULT_TOOL_TEXT, vaultToolText } from './harness/vault/toolText.js';
 export type { VaultToolName } from './harness/vault/toolText.js';
-// The daemon's vault wire (Vault M5, CTO J6, J7): the hub's routes, the
+// The daemon's vault wire (Vault M5, tech review J6, J7): the hub's routes, the
 // additive /chat and session-create fields.
 export {
   VAULT_CONFIG_ROUTE,
@@ -510,7 +510,7 @@ export {
   VAULT_WIRE_LIST_MAX,
   VAULT_WIRE_NOTE_MAX_BYTES,
   vaultNoteRoute,
-  // Vault M6 (CTO K13)
+  // Vault M6 (tech review K13)
   VAULT_ATTACHMENTS_ROUTE,
   VAULT_FILES_ROUTE,
   VAULT_FOLDERS_RENAME_ROUTE,
@@ -519,7 +519,7 @@ export {
   VAULT_TRASH_RESTORE_ROUTE,
   VAULT_TRASH_ROUTE,
   vaultFileRoute,
-  // Vault M7 (CTO L7)
+  // Vault M7 (tech review L7)
   VAULT_SETTINGS_CONFIG_NAME,
 } from './daemon/vaultWire.js';
 export type {
@@ -536,7 +536,7 @@ export type {
   VaultNotesListResponse,
   VaultPrivacyWire,
   VaultWireError,
-  // Vault M6 (CTO K13)
+  // Vault M6 (tech review K13)
   VaultAttachmentsListResponse,
   VaultFolderConflictResponse,
   VaultFolderCreateBody,
@@ -554,7 +554,7 @@ export type {
   VaultTrashRestoreBody,
   VaultTrashRestoreResponse,
   VaultTrashResponse,
-  // Vault M7 (CTO L7)
+  // Vault M7 (tech review L7)
   VaultConfigConflictResponse,
   VaultConfigPutBody,
   VaultConfigPutResponse,
@@ -765,7 +765,7 @@ export interface DaemonStackInfo {
     kind: 'local' | 'cloud';
     /** Set when it stays on this network and its server is this computer
      *  itself (`hostIsLoopback`, never the LAN or the tailnet), so a chip can
-     *  say "On this computer" rather than "On your network" (CX and CMO,
+     *  say "On this computer" rather than "On your network" (UX and copy review,
      *  2026-10-08). Additive: absent from an older daemon. */
     onThisComputer?: true;
   };
@@ -781,7 +781,7 @@ export interface DaemonStackInfo {
   }>;
   /** This daemon takes a local-only turn (POST /sessions/:id/input with
    *  `localOnly: true`) and holds it to the engine's D5 rules, so a private
-   *  plan's step may run here (CX and CMO, 2026-10-08, J). Absent from an
+   *  plan's step may run here (UX and copy review, 2026-10-08, J). Absent from an
    *  older daemon, which would run such a step unmarked. */
   acceptsLocalOnly?: true;
   /** Why the computer works offline right now (Desktop Offline): no network,
@@ -854,7 +854,7 @@ export interface DaemonPlaceOrchestratorAnswer {
   };
 }
 
-// The Vault index (Vault M3, CTO H3) and the readConfig folder rule (H5).
+// The Vault index (Vault M3, tech review H3) and the readConfig folder rule (H5).
 // Pure: the index takes the shared core's grammar and resolution as an
 // injected VaultIndexCore; hosts own every read, write and file.
 export {

@@ -1,4 +1,4 @@
-// Link rewriting on a rename or move (Vault M3, CTO H4). Every link in a note
+// Link rewriting on a rename or move (Vault M3, tech review H4). Every link in a note
 // that resolved to the old path, in the body and in frontmatter, is changed to
 // reach the new path. Only the target portion is spliced, so a subpath
 // (`#Heading`, `#^block`), an alias (`|shown`) and an embed's `!` are kept

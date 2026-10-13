@@ -1,4 +1,4 @@
-// Rename or move a note or a folder (Vault M6 6.2; CTO K3 to K5 with R1; CX
+// Rename or move a note or a folder (Vault M6 6.2; tech review K3 to K5 with R1; UX review
 // X5 to X7). One Sheet with three steps: the name and the folder; the folder
 // list (the current one marked "Here now", "New folder" at the end); and,
 // only when links point at what moves, "Update links?" with Update links and
@@ -11,7 +11,7 @@
 // the standing card, and closing the sheet when the run is done.
 //
 // Also here: the standing card on the renamed note that names each note whose
-// links still point at the old name, with "Update the rest" (CX X7).
+// links still point at the old name, with "Update the rest" (UX review X7).
 import { useEffect, useState } from 'react';
 import { foldPath, noteFolder, noteTitle } from 'os-code/protocol';
 import { Sheet } from '../Sheet.js';
@@ -65,11 +65,11 @@ export interface VaultRenameSheetProps {
   onClose: () => void;
   /** Open straight on the folder list (a folder's "Move folder"). */
   startAt?: 'name' | 'folders';
-  /** The vault's `links.updateOnRename` (Vault M7, CTO L2): `always`
+  /** The vault's `links.updateOnRename` (Vault M7, tech review L2): `always`
    *  updates the links without asking; `ask` (the default) asks. */
   updateOnRename?: 'ask' | 'always';
   /** The whole line a rename is refused with now (a team plan that lapsed
-   *  while the sheet was up, CX Y15): the sheet says it and goes no further,
+   *  while the sheet was up, UX review Y15): the sheet says it and goes no further,
    *  so nothing is planned or sent. */
   refused?: string;
 }
@@ -361,7 +361,7 @@ export function VaultRenameSheet(props: VaultRenameSheetProps) {
 }
 
 /** The standing card on the renamed note while some links still point at
- *  the old name (CX X7): one row per note, and Update the rest. */
+ *  the old name (UX review X7): one row per note, and Update the rest. */
 export function VaultLinksLeftCard({
   old,
   notes,

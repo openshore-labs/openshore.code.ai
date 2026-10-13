@@ -1,4 +1,4 @@
-// An image in a Stack chat (founder, 2026-09-25): "Ask first unless the stack
+// An image in a Stack chat (2026-09-25): "Ask first unless the stack
 // has a model there that is dedicated to image reading, then it's just
 // automatic." Any other reader, a connected cloud model filling the gap or an
 // anchor that can see, waits on a card the person taps (tenet 4): nothing is
@@ -148,7 +148,7 @@ describe('an image when no local model can see', () => {
     const ask = asked(events);
     // The card names the model the image would go to: the Claude model that
     // costs the person least, never the top of the lineup, the same name the
-    // Stack's Image reading row shows (D13, founder 2026-10-07).
+    // Stack's Image reading row shows (D13, 2026-10-07).
     expect(ask?.request).toMatchObject({
       kind: 'cloud-spend',
       risk: 'cloud-spend',
@@ -175,7 +175,7 @@ describe('an image when no local model can see', () => {
     expect(h.streams).toBe(1);
     expect(h.models).toEqual(['claude-haiku-4-5']);
     // Nothing is set for Image reading, so the line says so and names the
-    // reader and the connection it runs on (founder, 2026-10-07).
+    // reader and the connection it runs on (2026-10-07).
     expect(
       events.some(
         (e) =>
@@ -244,7 +244,7 @@ describe('an image when a model is placed for Image reading', () => {
   });
 });
 
-describe('an image when nothing here can read it (founder, 2026-10-07)', () => {
+describe('an image when nothing here can read it (2026-10-07)', () => {
   it('answers with the two-door offer, never an error, and sends nothing', async () => {
     h.keys = false;
     const { driver, events } = chat(localOnly);
@@ -458,7 +458,7 @@ describe('an image when a model set for Image reading cannot read it', () => {
   });
 });
 
-// Image reading falls back once (CX and CMO, 2026-10-08, K): when the Local
+// Image reading falls back once (UX and copy review, 2026-10-08, K): when the Local
 // model errors on a picture before writing anything and the Cloud slot holds
 // a model that reads images and is in reach, a card (amber for a cloud
 // model) asks before the picture goes to it. A no sends nothing; a stop, a
