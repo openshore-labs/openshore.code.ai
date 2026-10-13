@@ -1,3 +1,12 @@
 {
-   "signedContributors": []
+  "signedContributors": [
+    {
+      "name": "openshore-labs",
+      "id": 279266900,
+      "comment_id": 6149456473,
+      "created_at": "2026-10-13T15:47:55Z",
+      "repoId": 1413878566,
+      "pullRequestNo": 4
+    }
+  ]
 }
