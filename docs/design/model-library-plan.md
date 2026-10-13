@@ -200,10 +200,15 @@ counsel before release:
 2. **MedGemma** (Health AI Developer Foundations terms): the shelf stays
    (founder, 2026-10-13) with conditions that state the position plainly: the
    terms and Prohibited Use Policy apply, they bar uses that could make Google
-   a medical-device manufacturer, and the pick is not for diagnosing or
-   treating anyone. Counsel still to answer: the section 4.5 indemnity, and
-   whether linking to a download is "distribution". The Prohibited Use Policy
-   page is not yet read against the shelf's copy.
+   a medical-device manufacturer (the terms), and the pick is not for diagnosing
+   or treating anyone. The Prohibited Use Policy (last modified 2024-11-14) was
+   read 2026-10-13: beyond the usual bans it bars unlicensed practice of
+   medicine, misleading claims of health expertise, and automated decisions
+   about healthcare, housing, insurance and similar. The pick's conditions name
+   those. The "Health and care" collection's "visit notes" line is the one to
+   watch: transcribing a visit is not a decision, but the copy must never
+   suggest clinical use. Counsel still to answer: the section 4.5 indemnity,
+   and whether linking to a download is "distribution".
 3. **SAM 3.1** (SAM License): royalty-free commercial use, but the license
    travels with the model and bars military use and export violations. Accept
    it and approve the shipped text.
