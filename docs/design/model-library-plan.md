@@ -236,8 +236,18 @@ counsel before release:
    and Qwen-Image-Edit 2511 is in the library.
 8. **Held, not in the library**: LTX-2.5 (community license under $10M, and a
    use policy against competing with Lightricks: the founder asks Lightricks
-   for a written OK), and Qwen3.8-Flash-Next (Qwen Community License with an
-   assistant carve-out: the license text is to be read before counsel).
+   for a written OK), and Qwen3.8-Flash-Next. Its license (Qwen Community
+   License 1.0, read 2026-10-13) is MIT-like with two conditions: show the
+   model name on the product's interface above 100M monthly users or $20M a
+   month in revenue (neither applies), and a separate license from Qwen before
+   any commercial use by a licensee who conducts a "Model as a Service" or
+   "AI Work Assistant" business. An AI Work Assistant is an independent
+   AI-powered product primarily designed for AI-assisted coding or office
+   productivity, which describes OpenShore. The person who downloads the model
+   is the licensee, not Open Shore, and a person using it for their own work is
+   not conducting that business, but the clause is aimed at products like this
+   one, so it stays out unless Qwen gives a written OK (model-business at
+   notice.qwencloud.com). Qwen's Apache-licensed models are unaffected.
 9. **Counsel, one question**: whether a catalog that names a file and an
    installer that fetches it from the licensor's own host makes Open Shore a
    "distributor" under each license's own definition (Gemma, HAI-DEF, SAM,
