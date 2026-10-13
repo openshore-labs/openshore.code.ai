@@ -1,4 +1,4 @@
-// The model library (founder, 2026-10-12): the Marketplace as a store of
+// The model library (founder, 2026-10-12): the Local Library as a store of
 // recommended models, organized by the Stack it fills. One structure, in one
 // place, shared by the engine and every app (through os-code/protocol), and
 // free of Node built-ins so the phone can run it.

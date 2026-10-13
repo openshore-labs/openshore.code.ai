@@ -29,7 +29,7 @@ export async function attachImageCommand(path?: string): Promise<void> {
     okLine(`${image.name} is in the inbox.`);
     out(
       t.muted(
-        `  In a session, ask about it: "look at ${image.path} and tell me what broke". The vision specialist reads it (enable one with osc market if you have not).`,
+        `  In a session, ask about it: "look at ${image.path} and tell me what broke". The vision specialist reads it (enable one with osc library if you have not).`,
       ),
     );
   } catch (err) {

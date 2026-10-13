@@ -95,7 +95,7 @@ describe('the rest of the Personal paths', () => {
     expect(terminal).toContain('Your computer no longer accepts this device.');
   });
 
-  it('Install by name lives in Stack, not only the Marketplace', () => {
+  it('Install by name lives in Stack, not only the Local Library', () => {
     expect(read('src', 'screens', 'StackScreen.tsx')).toContain('<InstallByName />');
     expect(read('src', 'components', 'InstallByName.tsx')).toContain('b.installOllamaRef(ref)');
   });

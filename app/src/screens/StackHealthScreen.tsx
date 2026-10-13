@@ -10,7 +10,7 @@ import { hapticSuccess } from '../lib/haptics.js';
 import { loadAppStackHealth } from '../lib/stackHealth.js';
 import { loadAppCatalog } from '../lib/catalog.js';
 import { leanerSuggestions, type LeanerSuggestion } from '../lib/stackOptimizer.js';
-import { osCodeFit } from '../components/marketplace.js';
+import { osCodeFit } from '../components/localLibrary.js';
 import { useApp } from '../state/store.js';
 import type { Catalog } from 'os-code/protocol';
 import type { StackHealth, StackHealthRange, SustainabilityFootprint } from 'os-code/protocol';

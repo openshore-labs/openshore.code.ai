@@ -1,4 +1,4 @@
-// Storage and memory math for the marketplace, kept pure so the screen never
+// Storage and memory math for the Local Library, kept pure so the screen never
 // has to reason about bytes. Three honest questions live here:
 //
 //   1. Does this model fit in the free space I have right now?  (storageFit)
@@ -134,7 +134,7 @@ export function deviceRunsComfortably(requiredRamGB: number, deviceRamGB: number
  *  memory? Storage is not the limit on a phone; memory is, and iOS ends an app
  *  that reaches for too much of it. So a phone with plenty of free space can
  *  still be short on the memory a big model wants. Composes the RAM estimate
- *  with the comfortable budget so the marketplace can say "runs here" or
+ *  with the comfortable budget so the Local Library can say "runs here" or
  *  "better on your computer" honestly, before a download or a load.
  *
  *  This is guidance for copy, never a gate: like everything in this module it

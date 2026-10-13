@@ -47,7 +47,7 @@ describe('navRooms', () => {
         'crew',
         'connections',
         'pair',
-        'marketplace',
+        'library',
         'stackhealth',
         'launch',
         'settings',

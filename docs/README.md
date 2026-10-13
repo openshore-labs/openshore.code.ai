@@ -22,7 +22,7 @@ feature each. Nothing here is required reading before a first change.
 | Doc | What it covers |
 | --- | --- |
 | [`os-code/README.md`](../os-code/README.md) | The `osc` CLI: install, commands, config. |
-| [`os-code/docs/MARKETPLACE.md`](../os-code/docs/MARKETPLACE.md) | The model catalog: sources, gates, hardware fit. |
+| [`os-code/docs/LOCAL-LIBRARY.md`](../os-code/docs/LOCAL-LIBRARY.md) | The model catalog: sources, gates, hardware fit. |
 | [`os-code/docs/STACK-HEALTH.md`](../os-code/docs/STACK-HEALTH.md) | Stack Health (a later tier). |
 | [`os-code/docs/voice-mode.md`](../os-code/docs/voice-mode.md) | Voice mode. |
 | [`os-code/docs/guide-eval-2026-09-24.md`](../os-code/docs/guide-eval-2026-09-24.md) | Eval results for Harbor Lite's guide harness. |
@@ -35,7 +35,7 @@ behind a choice; the code is the source of truth for what ships.
 
 | Doc | What it covers |
 | --- | --- |
-| [`design/model-library-plan.md`](design/model-library-plan.md) | The Marketplace as a library: one pick per size for each job, media jobs, sources and licenses. |
+| [`design/model-library-plan.md`](design/model-library-plan.md) | The Local Library as a library: one pick per size for each job, media jobs, sources and licenses. |
 | [`design/connect-anywhere-proposal.md`](design/connect-anywhere-proposal.md) | Docking a phone to a computer or a rented server. |
 | [`design/byok-any-provider-plan.md`](design/byok-any-provider-plan.md) | Bring your own keys, any provider, and keys on your server. |
 | [`design/pairing-review.md`](design/pairing-review.md) | The pairing flow, reviewed and rebuilt. |

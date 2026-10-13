@@ -68,10 +68,10 @@ export const GUIDE_EVAL_CASES: readonly GuideEvalCase[] = [
     mustInclude: [['stack', 'place']],
   },
   {
-    id: 'marketplace',
+    id: 'library',
     message: 'Where do I get more models?',
     route: 'app',
-    cards: ['marketplace'],
+    cards: ['library'],
   },
   {
     id: 'harbor-lite',
@@ -212,10 +212,10 @@ export const GUIDE_EVAL_CASES: readonly GuideEvalCase[] = [
     mustNot: [/settings, under get started/i],
   },
   {
-    id: 'marketplace-download',
-    message: 'How do I download a model from the Marketplace?',
+    id: 'library-download',
+    message: 'How do I download a model from the Local Library?',
     route: 'app',
-    cards: ['marketplace'],
+    cards: ['library'],
     mustInclude: [['catalog', 'download']],
     mustNot: [/coming soon/i],
   },

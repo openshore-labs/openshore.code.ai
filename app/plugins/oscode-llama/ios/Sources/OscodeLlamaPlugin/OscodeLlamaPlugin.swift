@@ -194,7 +194,7 @@ public class OscodeLlamaPlugin: CAPPlugin, CAPBridgedPlugin {
         #else
         // Harbor Light (135M, bundled) and other pocket models run comfortably on
         // ~3GB phones; keep this gate low so the built-in guide is available
-        // broadly. The marketplace is where larger pocket models get sized per device.
+        // broadly. The Local Library is where larger pocket models get sized per device.
         let ramGB = Double(ProcessInfo.processInfo.physicalMemory) / 1_073_741_824
         if ramGB < 2.9 {
             call.resolve([

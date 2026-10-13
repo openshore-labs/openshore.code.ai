@@ -444,7 +444,7 @@ export interface OscodeBridge {
     cb: (payload: { termId: string; b64: string; offset: number }) => void,
   ): () => void;
 
-  // Machine, stack, marketplace.
+  // Machine, stack, Local Library.
   status(): Promise<DesktopStatus>;
   catalog(): Promise<{ catalog: Catalog; note?: string }>;
   /** Fully local read of how the stack is being used, folded from the session
@@ -456,7 +456,7 @@ export interface OscodeBridge {
   installModel(modelId: string, shelfId?: string): Promise<PullResult>;
   onInstallProgress(cb: (payload: InstallProgressPayload) => void): () => void;
   /** Pull any Ollama model by its raw ref (progress arrives keyed by the ref on
-   *  onInstallProgress), so the marketplace is not limited to catalog entries. */
+   *  onInstallProgress), so the Local Library is not limited to catalog entries. */
   installOllamaRef(ref: string): Promise<PullResult>;
   setOrchestrator(model: string): Promise<{ ok: boolean; detail: string }>;
   enableSpecialist(role: string, model: string): Promise<{ ok: boolean; detail: string }>;

@@ -168,7 +168,7 @@ export class MediaHost {
     const placed = this.placement(job);
     if (!placed) {
       throw new MediaError(
-        `Nothing in your Stack does ${MEDIA_JOB_INFO[job].plain.toLowerCase()} yet. Get one from the Marketplace and place it.`,
+        `Nothing in your Stack does ${MEDIA_JOB_INFO[job].plain.toLowerCase()} yet. Get one from the Local Library and place it.`,
       );
     }
     if (runtime && placed.runtime !== runtime) {
@@ -313,7 +313,7 @@ export class MediaHost {
       if (!target.what) throw new MediaError('Say what to remove, or give a mask picture of it.');
       if (!this.placement('select')) {
         throw new MediaError(
-          'Removing something by name needs Find and select in your Stack too. Get it from the Marketplace, or give a mask picture.',
+          'Removing something by name needs Find and select in your Stack too. Get it from the Local Library, or give a mask picture.',
         );
       }
       mask = await this.select(imagePath, target.what, signal);

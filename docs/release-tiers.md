@@ -10,14 +10,14 @@ fully."
 
 | Tier | Name | What it carries |
 | --- | --- | --- |
-| v1 | Personal | One person, their desktop and their own phone. Chats, Projects, Terminal, Repositories, Stack, Vault, Crew (routines), Cloud Connections, Pairing, the Marketplace (catalog browsing and downloads; v1 since 2026-10-11), and Settings. |
+| v1 | Personal | One person, their desktop and their own phone. Chats, Projects, Terminal, Repositories, Stack, Vault, Crew (routines), Cloud Connections, Pairing, the Local Library (catalog browsing and downloads; v1 since 2026-10-11), and Settings. |
 | v2 | Currents | Agentic Currents and Harness Currents, Stack Health, Launch with Codemagic. |
-| v3 | Reserved | Nothing today. The Marketplace moved to v1 on 2026-10-11; its community reviews stay off until a migration grants review writes back. |
+| v3 | Reserved | Nothing today. The Local Library moved to v1 on 2026-10-11; its community reviews stay off until a migration grants review writes back. |
 | v4 | Enterprise | Admin configuration, teams (shared projects, the team vault, project permissions), seats, and shared-hub members. |
 
 Each tier carries every tier before it.
 
-Maintainer, 2026-10-11: the Marketplace comes back into the Personal build so the
+Maintainer, 2026-10-11: the Local Library comes back into the Personal build so the
 open-source community can help build it. It is a plain v1 room now (no
 `FEATURE_TIER` entry, no `SHIPS_` gate). Its reviews stay shut
 (`REVIEWS_OPEN` in `app/src/lib/reviews.ts`): production's 0027 revoked review

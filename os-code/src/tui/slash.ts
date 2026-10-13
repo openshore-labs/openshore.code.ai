@@ -50,7 +50,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
           ...SLASH_COMMANDS.map((c) => `  ${c.name.padEnd(10)} ${c.description}`),
           ...repoCommandHelp(ctx.repoCommands?.()),
           'Keys: Esc stops the current run. Ctrl+C twice quits. Up/Down recalls input history.',
-          'Bigger flows have their own commands: osc init, osc market, osc doctor, osc pair.',
+          'Bigger flows have their own commands: osc init, osc library, osc doctor, osc pair.',
         ].join('\n'),
       );
     },

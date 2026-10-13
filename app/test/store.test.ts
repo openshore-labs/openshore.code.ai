@@ -359,8 +359,8 @@ describe('entitlement gate (billing A1)', () => {
     // Open source (2026-10-11): no paywall, so a room is never
     // intercepted for money.
     useApp.setState({ entitlement: undefined, view: 'chat' });
-    useApp.getState().setView('marketplace');
-    expect(useApp.getState().view).toBe('marketplace');
+    useApp.getState().setView('library');
+    expect(useApp.getState().view).toBe('library');
   });
 
   it('canGrowTeam stays true for a local (unbilled) org', async () => {
@@ -384,9 +384,9 @@ describe('init idempotency (P2-11)', () => {
     mem.set(SETTINGS_KEY, JSON.stringify({ onboarded: true, claudeModel: 'x', deviceModels: {} }));
     await useApp.getState().init();
     expect(useApp.getState().view).toBe('chat');
-    useApp.setState({ view: 'marketplace' });
+    useApp.setState({ view: 'library' });
     await useApp.getState().init(); // guarded: must not re-run and reset the view
-    expect(useApp.getState().view).toBe('marketplace');
+    expect(useApp.getState().view).toBe('library');
     expect(useApp.getState().initStarted).toBe(true);
   });
 });

@@ -1,7 +1,7 @@
 // Stack bundles: one tap fills Your stack with a coherent set of local models
 // for a profile, instead of choosing model by model. Each bundle names an
 // orchestrator plus specialists by engine role, all as catalog ids, so the
-// Marketplace can sum the real download size from the catalog and install
+// Local Library can sum the real download size from the catalog and install
 // them in order. Pocket runs on the phone itself; the rest run on the desktop
 // engine through Ollama. Desktop bundles mirror the engine's own presets where
 // one exists (starter, coding, big-rig), so `osc init` and the app agree.

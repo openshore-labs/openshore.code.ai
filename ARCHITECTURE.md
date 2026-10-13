@@ -34,13 +34,13 @@ private network. One React codebase (`app/`) is both app shells.
 | `src/eval/` | `osc eval`: the task suites and the scoring behind every number we publish. |
 | `src/routines/` | Scheduled routines that run headless on your own computer. |
 | `src/config/` | Config loading and project trust (`projectPolicy.ts` classifies every key). |
-| `scripts/build-catalog/` | The daily Marketplace catalog build and its gates. |
+| `scripts/build-catalog/` | The daily Local Library catalog build and its gates. |
 
 ## The apps: `app/`
 
 | Path | What it does |
 | --- | --- |
-| `src/screens/` | One file per room: Chats, Projects, Stack, Vault, Crew, Marketplace, Settings and the rest. |
+| `src/screens/` | One file per room: Chats, Projects, Stack, Vault, Crew, Local Library, Settings and the rest. |
 | `src/drivers/` | How a chat reaches a model: `electronDriver.ts` (the in-process engine), `remoteDriver.ts` (a docked computer), `onDeviceDriver.ts` (llama.cpp on the phone), `providerClient.ts` (cloud providers, streamed, with abort). |
 | `src/state/store.ts` | The app store. New logic goes in a sibling module (`*Ops.ts`) and `store.ts` only wires it in. |
 | `src/lib/` | Pure helpers. Three are rules, not utilities: `focus.ts` (release tiers: which rooms ship), `egressManifest.ts` (everything that leaves a device), `accountGate.ts` (what needs a sign-in). |

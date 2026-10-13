@@ -1,11 +1,11 @@
-// The model library's store front (founder, 2026-10-12): the Marketplace laid
+// The model library's store front (founder, 2026-10-12): the Local Library laid
 // out like an app store, by the Stack it fills. The front shows "Made for"
 // collections and the categories in their sections; a category page shows its
 // shelves; a shelf shows at most one pick per size of machine, the one that
 // fits the device in hand marked. Every view ends on the door for a model the
 // library does not carry.
 //
-// These views own no state and no installs: the Marketplace screen hands each
+// These views own no state and no installs: the Local Library screen hands each
 // one the Get control and the way into a model's page, so a pick installs and
 // opens exactly as every other model in the store does.
 import type { CSSProperties, ReactNode } from 'react';

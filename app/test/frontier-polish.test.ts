@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 
 const SRC = resolve(fileURLToPath(import.meta.url), '../../src');
 const THEME = readFileSync(join(SRC, 'theme.css'), 'utf8');
-const MARKET = readFileSync(join(SRC, 'screens/MarketplaceScreen.tsx'), 'utf8');
+const MARKET = readFileSync(join(SRC, 'screens/LocalLibraryScreen.tsx'), 'utf8');
 const LIBRARY = readFileSync(join(SRC, 'components/LibraryViews.tsx'), 'utf8');
 const STORE = readFileSync(join(SRC, 'state/store.ts'), 'utf8');
 

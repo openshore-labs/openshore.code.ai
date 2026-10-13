@@ -500,7 +500,7 @@ describe('polish standards', () => {
       [/\.account-card\b/, 'teams and plans, v4'],
       [
         /\.(lib-cta|facet-chip|market-card|cat-chip|hero-card|store-get|store-row)\b/,
-        'the Marketplace (v1 since 2026-10-11): known UI polish debt, open for contributors',
+        'the Local Library (v1 since 2026-10-11): known UI polish debt, open for contributors',
       ],
     ];
     const offenders: string[] = [];
@@ -533,7 +533,7 @@ describe('polish standards', () => {
     const SKIP: Array<[RegExp, string]> = [
       [
         /\.family-chip\b/,
-        'the Marketplace (v1 since 2026-10-11): known UI polish debt, open for contributors',
+        'the Local Library (v1 since 2026-10-11): known UI polish debt, open for contributors',
       ],
     ];
     const withPress = new Set<string>();

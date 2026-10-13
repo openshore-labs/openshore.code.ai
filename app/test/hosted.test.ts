@@ -1,11 +1,11 @@
-// Hosted (cloud) models in the Marketplace. A maintainer asked for the new Kimi
+// Hosted (cloud) models in the Local Library. A maintainer asked for the new Kimi
 // in the store and "that level of selection": the frontier models next to the
 // downloads. This pins that the list derives from the providers (so the store
 // and Cloud Connections never drift), that the current Kimi lineup is present
 // and no retired id is, that search and capability filters find them, and
 // that the newest lens puts the latest release first.
 import { describe, expect, it } from 'vitest';
-import { EMPTY_FACETS } from '../src/components/marketplace.js';
+import { EMPTY_FACETS } from '../src/components/localLibrary.js';
 import {
   contextLabel,
   filterHosted,

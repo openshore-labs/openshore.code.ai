@@ -4,7 +4,7 @@
 // teal for anything that runs on the phone, deep ink otherwise, with a Fraunces
 // two-letter monogram. Distinct enough to scan a shelf by, on-brand on any card.
 import type { CapabilityCategory, CategoryId } from 'os-code/protocol';
-import { modelMonogram } from './marketplace.js';
+import { modelMonogram } from './localLibrary.js';
 import { Icon } from './Icon.js';
 
 const CAP_PATHS: Record<CapabilityCategory, JSX.Element> = {

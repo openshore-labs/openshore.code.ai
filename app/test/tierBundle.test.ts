@@ -49,16 +49,16 @@ describe('the lazy rooms are gated where the bundler can see it', () => {
     expect(app).toContain(
       "const BUILT_V2 = BUILT_TIER === '2' || BUILT_TIER === '3' || BUILT_TIER === '4';",
     );
-    // v3 owns no room today (the Marketplace is v1 since 2026-10-11).
+    // v3 owns no room today (the Local Library is v1 since 2026-10-11).
     expect(app).not.toContain('BUILT_V3');
     expect(app).toContain("const BUILT_V4 = BUILT_TIER === '4';");
   });
 
-  it('loads the Marketplace, a v1 room, lazily with no tier gate', () => {
-    expect(app).toContain(
-      "const MarketplaceScreen = room(() => import('./screens/MarketplaceScreen.js'), 'MarketplaceScreen');",
+  it('loads the Local Library, a v1 room, lazily with no tier gate', () => {
+    expect(app).toMatch(
+      /const LocalLibraryScreen = room\(\s*\(\) => import\('\.\/screens\/LocalLibraryScreen\.js'\),\s*'LocalLibraryScreen',\s*\);/,
     );
-    expect(LAZY_ROOM_FILES).toContain('MarketplaceScreen');
+    expect(LAZY_ROOM_FILES).toContain('LocalLibraryScreen');
   });
 
   it("holds each later room behind its own tier and focus.ts's roomOpen", () => {

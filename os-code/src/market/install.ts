@@ -70,7 +70,7 @@ export async function installModel(
 }
 
 /** Pull ANY Ollama model by its raw ref (e.g. "qwen3-coder:30b", "gemma3:12b"),
- *  not just a catalog entry, so the marketplace is never limited to the models
+ *  not just a catalog entry, so the Local Library is never limited to the models
  *  we happened to enumerate: whatever is on the Ollama library, the user can
  *  install and place. Same structured pull, same plain failure line as a
  *  catalog install. The ref is trusted as an Ollama model name; a bad name

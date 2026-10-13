@@ -158,7 +158,7 @@ jobs:
         run: pnpm -r build
 
       # A Personal build carries no later tier (docs/release-tiers.md): no
-      # Stack Health, Launch, Marketplace, or Admin room, none of their words,
+      # Stack Health, Launch, Local Library, or Admin room, none of their words,
       # and every room its own chunk that waits for its first open. Reads the
       # app build the step above just made (VITE_RELEASE_TIER unset), reports
       # what a launch loads, and fails on anything that should not be there.

@@ -715,7 +715,7 @@ import {
 export type ViewName =
   | 'chat'
   | 'chats'
-  | 'marketplace'
+  | 'library'
   | 'stack'
   | 'stackhealth'
   | 'connections'
@@ -779,7 +779,7 @@ export interface AppSettings {
   /** Web search backend for local models, when the user has brought their own key.
    *  Undefined means the zero-config DuckDuckGo default. */
   searchBackend?: SearchBackend;
-  /** Whether the Marketplace intro walkthrough has been shown. */
+  /** Whether the Local Library intro walkthrough has been shown. */
   libraryIntroSeen?: boolean;
   /** The person's sidebar order (2026-10-01): the rooms above the
    *  recent chats and the rooms below them, as last dragged. Settings and the
@@ -1558,7 +1558,7 @@ interface AppState {
   /** Which cloud providers are connected (keys live in the Keychain). */
   connectedProviders: Record<string, boolean>;
   /** A provider whose Connect form Cloud Connections should open on arrival
-   *  (set by a Connect tap in the Marketplace, cleared once honored). */
+   *  (set by a Connect tap in the Local Library, cleared once honored). */
   connectionsFocus?: string;
   /** The provider that was connected most recently and has not yet been
    *  celebrated: the next room that shows its rows pops them once. */
@@ -1735,7 +1735,7 @@ interface AppState {
   /** A sheet another room asked the Vault room to open when it shows
    *  (Settings' "Where it lives"). The room takes it once and clears it. */
   vaultSheetRequest?: 'storage';
-  /** When true, the Marketplace intro walkthrough is showing over the library. */
+  /** When true, the Local Library intro walkthrough is showing over the library. */
   libraryIntro?: boolean;
   /** When true, a brand-new account was just created on a device that never
    *  chose Personal or Business, so the choice shows (AccountSetup). Until an
@@ -1855,7 +1855,7 @@ interface AppState {
    *  if it failed to open (the hub did not answer), or flush if it exists. */
   retryPending(conversationId: string): void;
   /** Hold a first message typed before any brain could answer, persisted, so
-   *  a trip to the Marketplace or the pair room does not lose it. */
+   *  a trip to the Local Library or the pair room does not lose it. */
   holdFirstMessage(text: string, attachments?: Attachment[]): Promise<void>;
   /** Take the held message (clearing it) to send it now. */
   takeHeldFirstMessage(): { text: string; attachments?: Attachment[] } | undefined;
@@ -9226,7 +9226,7 @@ export const useApp = create<AppState>((set, get, api) => {
       // a forward hop to anywhere else (Chat from the panel) lets it rest, so
       // the pop never fires on a store opened days later.
       const justConnected =
-        view === 'marketplace' || view === 'stack' ? get().justConnected : undefined;
+        view === 'library' || view === 'stack' ? get().justConnected : undefined;
       set({ view, viewTrail: trail, drawerOpen: false, arrivedBack: false, justConnected });
     },
 
@@ -11448,7 +11448,7 @@ export const useApp = create<AppState>((set, get, api) => {
       logEvent('library_intro_open', { model: HARBOR_MINI_MODEL_ID });
       // Kick the download in the background. ensureHarborMini manages
       // harborMiniDownload / harborMiniReady. Setup downloads in place and the
-      // row shows the progress; it does not walk into the Marketplace (a v1
+      // row shows the progress; it does not walk into the Local Library (a v1
       // room since 2026-10-11), so first-run setup stays on its own page.
       void get().ensureHarborMini();
     },

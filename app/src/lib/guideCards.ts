@@ -126,7 +126,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
       'Crew',
       'Cloud Connections',
       'Computer',
-      'Marketplace',
+      'Local Library',
       ...(stackHealthOn ? ['Stack Health'] : []),
       ...(launchOn ? ['Launch with Codemagic'] : []),
     ].join(
@@ -468,11 +468,13 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     keywords: ['first run', 'no model', 'first seat', 'nothing answers', 'one tap', 'empty chat'],
   },
   {
-    id: 'marketplace',
-    title: 'Marketplace',
-    where: 'Menu, Marketplace',
+    id: 'library',
+    title: 'Local Library',
+    where: 'Menu, Local Library',
     text: 'A curated catalog of more models, each rated for how well it fits this device, downloaded straight from its public source to run locally; OpenShore never rehosts weights. On a computer a model installs through Ollama; on a phone it downloads to the phone, or to your iCloud when it is too big to fit. A downloaded model lands on the Bench until you place it in the stack.',
     keywords: [
+      'local library',
+      'library',
       'marketplace',
       'more models',
       'other models',

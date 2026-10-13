@@ -21,25 +21,25 @@ describe('the way back', () => {
     expect(bar).toMatch(/aria-label=\{`Back to \$\{way\.to\}`\}/);
   });
 
-  it('the store product pages go back to the Marketplace, and take the model name as title', () => {
-    const store = src('screens', 'MarketplaceScreen.tsx');
+  it('the store product pages go back to the Local Library, and take the model name as title', () => {
+    const store = src('screens', 'LocalLibraryScreen.tsx');
     expect(store).toMatch(
-      /\{ title: focusedHosted\.name, back: \{ to: 'Marketplace', onBack: closeHosted \} \}/,
+      /\{ title: focusedHosted\.name, back: \{ to: 'Local Library', onBack: closeHosted \} \}/,
     );
     // A catalog model's page goes back to the library page it was opened
-    // from (a category or a collection), or to the Marketplace; a category
-    // or collection page goes back to the Marketplace.
+    // from (a category or a collection), or to the Local Library; a category
+    // or collection page goes back to the Local Library.
     expect(store).toMatch(
-      /title: focusedModel\.name,\s*back: \{ to: returnName \?\? 'Marketplace', onBack: closeModel \}/,
+      /title: focusedModel\.name,\s*back: \{ to: returnName \?\? 'Local Library', onBack: closeModel \}/,
     );
     expect(store).toMatch(
-      /\{ title: category\.name, back: \{ to: 'Marketplace', onBack: closeLibraryPage \} \}/,
+      /\{ title: category\.name, back: \{ to: 'Local Library', onBack: closeLibraryPage \} \}/,
     );
     expect(store).toMatch(
-      /\{ title: collection\.name, back: \{ to: 'Marketplace', onBack: closeLibraryPage \} \}/,
+      /\{ title: collection\.name, back: \{ to: 'Local Library', onBack: closeLibraryPage \} \}/,
     );
     expect(store).toMatch(
-      /<BackBar title=\{page\?\.title \?\? 'Marketplace'\} back=\{page\?\.back\} \/>/,
+      /<BackBar title=\{page\?\.title \?\? 'Local Library'\} back=\{page\?\.back\} \/>/,
     );
   });
 

@@ -1,4 +1,4 @@
-# Publish the model catalog. The marketplace is a CATALOG, not a weight host:
+# Publish the model catalog. The Local Library is a CATALOG, not a weight host:
 # this job gathers source METADATA only (Hugging Face + Ollama), computes the
 # provenance-backed ratings, runs the license and regression gates, and
 # publishes a static catalog.json. The client pulls weights straight from the
@@ -18,7 +18,7 @@
 # any gate breach the job writes and publishes NOTHING, and the previously
 # published catalog keeps serving.
 #
-# One-time setup (see os-code/docs/MARKETPLACE.md): a repository secret named
+# One-time setup (see os-code/docs/LOCAL-LIBRARY.md): a repository secret named
 # MARKETING_DEPLOY_TOKEN, a fine-grained PAT scoped to
 # OpenShore.ai-marketing-site with Contents: read and write. Without it the
 # publish step is skipped and the job just proves the catalog builds.
@@ -54,7 +54,7 @@ on:
     inputs:
       # The builder refuses a catalog whose model count collapses against the
       # live baseline (a broken discovery run must not publish an empty
-      # marketplace). When a large drop is intended, a curation purge for
+      # Local Library). When a large drop is intended, a curation purge for
       # example, run the workflow by hand with this on; it sets
       # CATALOG_ALLOW_LARGE_DROP=1 for that one build only.
       allow_large_drop:

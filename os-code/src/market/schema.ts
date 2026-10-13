@@ -1,4 +1,4 @@
-// The catalog schema. The marketplace is a CATALOG, not a weight host: a
+// The catalog schema. The Local Library is a CATALOG, not a weight host: a
 // static JSON manifest OpenShore publishes, pointing at each model's own home
 // (Ollama, Hugging Face, a GitHub release, Civitai, or the publisher's own
 // site) with license flags. The client pulls weights straight from the

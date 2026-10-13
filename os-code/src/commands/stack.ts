@@ -52,7 +52,7 @@ export async function stackShowCommand(): Promise<void> {
   );
   out(
     t.muted(
-      `Roles: ${SPECIALIST_ROLES.filter((r) => r !== 'imageGen').join(', ')} (osc market finds good candidates per role)`,
+      `Roles: ${SPECIALIST_ROLES.filter((r) => r !== 'imageGen').join(', ')} (osc library finds good candidates per role)`,
     ),
   );
 }

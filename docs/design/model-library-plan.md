@@ -1,6 +1,6 @@
 # The model library (founder, 2026-10-12)
 
-The Marketplace is now a library of recommended models, laid out like an app
+The Local Library is now a library of recommended models, laid out like an app
 store and matched to the Stack. Each job has a shelf. Each shelf holds at most
 one pick per size of machine. Every pick's license allows commercial use. Media
 jobs (photo editing, video, transcription, voices, music and sound) are new

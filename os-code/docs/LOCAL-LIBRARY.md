@@ -1,6 +1,6 @@
-# The OS Code Marketplace
+# The OS Code Local Library
 
-The marketplace is a CATALOG, not a weight host. OpenShore publishes a static
+The Local Library is a CATALOG, not a weight host. OpenShore publishes a static
 JSON manifest that points at where each model lives (the Ollama library,
 Hugging Face, a publisher's GitHub releases, and the other sources named in
 `src/market/sources.ts`) with honest license flags and computed ratings. The client pulls weights straight from the
@@ -162,7 +162,7 @@ Unit tests: `catalog.builder.stars.test.ts` (normalization, provenance,
 never-invent), `catalog.builder.license.test.ts` (fail-closed, note from overlay
 only), `catalog.builder.gate.test.ts` (curated gate and regression gate).
 
-## Client (`app/src/screens/MarketplaceScreen.tsx`)
+## Client (`app/src/screens/LocalLibraryScreen.tsx`)
 
 Search, a filter rail, a sort segmented control, rich cards, a card detail, and
 compare. The download and install flows are unchanged: pocket models pull
@@ -198,12 +198,12 @@ so be package-ready there; the desktop has the luxury of choice.
    not better here. Disk space was never the limit; RAM under the iOS cap is.
 4. **Desktop and home servers**: a divider, then the frontier shelf and every
    other shelf. The install control on those rows never says "Get" on a phone:
-   `installLabel` in `marketplace.ts` reads "On <hub>" when a computer is
+   `installLabel` in `Local Library.ts` reads "On <hub>" when a computer is
    paired (the existing tailnet install), or a quiet "Desktop" that explains
    itself on tap.
 
 A product page carries a "Where it runs" row (this iPhone, a laptop, a home
-server; `runsOn` in `marketplace.ts` reads the laptop and workstation homes off
+server; `runsOn` in `Local Library.ts` reads the laptop and workstation homes off
 the same budget fractions the engine uses) and a link to every size in the
 family. The desktop store front keeps its order and gains the family rail.
 
@@ -223,7 +223,7 @@ a device). Instead the store is honest and smart about the device.
 
 - **The limit is memory, not storage.** A phone with 90 GB free can still be
   short on the memory a big model needs, because iOS ends an app that reaches
-  past its ceiling. `runsWellOnDevice` in `marketplace`'s sibling
+  past its ceiling. `runsWellOnDevice` in `Local Library`'s sibling
   `app/src/lib/modelStorage.ts` composes `estimatedRamGB` with the comfortable
   budget so the store can say "runs here" or "better on your computer" before a
   download. Unknown device memory reads as runs-well, so a device we cannot
@@ -246,7 +246,7 @@ a device). Instead the store is honest and smart about the device.
   (n_gpu_layers, flash attention, KV quant), so there is no runtime-tuning
   lever to build against that wrapper.
 
-### Sorts (`app/src/components/marketplace.ts`)
+### Sorts (`app/src/components/localLibrary.ts`)
 
 - **OpenShore Recommended** (DEFAULT): recommended first, then `curation.rank`.
   Popularity never outranks curation here.
@@ -338,5 +338,5 @@ a scheduled run.
   sample. Extend them as the roster grows.
 - **A note on the commercial posture mirror**: the shipped license shape carries
   id and name but not the machine posture flag, so the client mirrors the
-  allow-list postures in `app/src/components/marketplace.ts`. Keep the two in
+  allow-list postures in `app/src/components/localLibrary.ts`. Keep the two in
   step when a license row changes.

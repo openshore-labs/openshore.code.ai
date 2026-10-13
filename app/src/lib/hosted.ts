@@ -1,4 +1,4 @@
-// Hosted (cloud) models in the Marketplace. The trillion-parameter frontier
+// Hosted (cloud) models in the Local Library. The trillion-parameter frontier
 // models (Kimi K3, Claude Opus, GPT-5, Gemini Pro) never run on a laptop, so
 // the catalog cannot list them as downloads. They still belong in the store:
 // a person browsing for "the best model" should find Kimi next to Qwen, not
@@ -7,7 +7,7 @@
 // renders them with a Connect control instead of Get. Pure: no React, no
 // platform calls, unit-tested directly.
 import type { CapabilityCategory } from 'os-code/protocol';
-import type { Facets } from '../components/marketplace.js';
+import type { Facets } from '../components/localLibrary.js';
 import { PROVIDERS, type ProviderInfo } from './providers.js';
 import type { StackModelRef } from './stack.js';
 

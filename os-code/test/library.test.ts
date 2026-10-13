@@ -1,4 +1,4 @@
-// The model library (founder, 2026-10-12): the Marketplace as a store of
+// The model library (founder, 2026-10-12): the Local Library as a store of
 // recommended models organized by the Stack. These pin the structure (every
 // category is a Stack slot, every shelf names a job, every collection draws on
 // shelves already on the list), the cap (at most one pick per size class per

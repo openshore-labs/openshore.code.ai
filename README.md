@@ -38,7 +38,7 @@ we have measured.
 - **Your phone, docked to your computer.** The work runs on your machine; the
   phone sends instructions, shows the work and approves the next step. It
   works while your computer is on and reachable.
-- **A model Marketplace.** A catalog that points at Hugging Face and Ollama,
+- **A model Local Library.** A catalog that points at Hugging Face and Ollama,
   marks each model as fits, tight or too big for your hardware, and never
   hosts the weights itself.
 - **Privacy you can check.** Everything the app sends off a device is listed

@@ -4,7 +4,7 @@
 // the old scroller is still in the DOM to be read (the same window the room
 // ghost uses to clone it). Restoring happens in a layout effect right after
 // the new room mounts, before paint, so there is no flash of the top; a room
-// whose content arrives later (the Marketplace catalog) restores again itself
+// whose content arrives later (the Local Library catalog) restores again itself
 // once that content has given the scroller its height.
 import { useLayoutEffect, type RefObject } from 'react';
 import { useApp } from '../state/store.js';

@@ -6,7 +6,7 @@
 // machines). The reference machine is a maintainer's CPU-only box: 8 GB, no
 // GPU, where the 7B must read too big and the 3B is the seat.
 import type { CatalogModel } from 'os-code/protocol';
-import { fitFor, type FitLabel } from '../components/marketplace.js';
+import { fitFor, type FitLabel } from '../components/localLibrary.js';
 import { POCKET_ANCHORS } from './packs.js';
 
 /** What we know about the machine, in the person's units. Mirrors the engine's

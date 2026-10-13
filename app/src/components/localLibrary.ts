@@ -1,4 +1,4 @@
-// Pure marketplace logic: search, sort, filter, and hardware fit. No React and
+// Pure Local Library logic: search, sort, filter, and hardware fit. No React and
 // no platform calls, so it is unit-tested directly. The screen renders what
 // these functions return. The sort and filter contracts here define how a
 // partial or old catalog still lands in a sensible curated order.

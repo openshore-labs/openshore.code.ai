@@ -15,7 +15,7 @@ export interface ProviderModel {
   label: string;
   /** A rough capability hint, for the placement suggestion. */
   good?: string;
-  /** Plain language: what this model is good at, for the Marketplace. */
+  /** Plain language: what this model is good at, for the Local Library. */
   tagline?: string;
   /** Capability categories (router/roles.ts taxonomy), for shelves and search. */
   categories?: CapabilityCategory[];
@@ -648,7 +648,7 @@ function firstPicks(all: LiveModel[]): LiveModel[] {
 }
 
 /** Put the person's picks for a live provider on the list every reader uses
- *  (the Bench, the model menu, the Marketplace shelf, context windows), in
+ *  (the Bench, the model menu, the Local Library shelf, context windows), in
  *  place, so nothing that reads PROVIDERS needs to know a list came live. */
 export function applyLiveModels(providerId: string, models: ProviderModel[]): void {
   const info = providerInfo(providerId);
@@ -707,7 +707,7 @@ export function providerInfo(id: string): ProviderInfo | undefined {
 /** A cloud provider's selectable models for the bench. Claude comes from the
  *  full client lineup (claudeModels.ts, the same list and tiers the chat sheet
  *  uses), so the bench offers every Claude model and its favorites, not the
- *  short marketplace set; other providers keep their own model list. */
+ *  short Local Library set; other providers keep their own model list. */
 export type BenchModel = { id: string; label: string; tier?: 'primary' | 'more' };
 export function providerBenchModels(p: ProviderInfo): BenchModel[] {
   return p.id === 'anthropic'

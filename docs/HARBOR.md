@@ -1,7 +1,7 @@
 # Harbor, Harbor Lite, and DeepBlue: the out-of-the-box models
 
 OpenShore ships three curated models out of the box, never behind the
-Marketplace: Harbor Lite, the tiny built-in guide for the phone; Harbor, a
+Local Library: Harbor Lite, the tiny built-in guide for the phone; Harbor, a
 coder that runs on the phone; and DeepBlue, the coder that runs on the
 computer. All three are grounded in this repository, so they answer app
 questions from the front end without ever revealing backend build internals,

@@ -1,4 +1,4 @@
-// osc market: browse and install from the curated catalog. Plain language
+// osc library: browse and install from the curated catalog. Plain language
 // first ("great at code", "can read screenshots"), benchmark detail one
 // keystroke away, everything filtered against what this machine can run.
 // Weights pull straight from the source; the license shows before anything
@@ -68,7 +68,7 @@ export async function marketBrowseCommand(): Promise<void> {
   out();
   out(
     t.muted(
-      `  osc market install <id> pulls one ${GLYPHS.bullet} osc market details <id> shows the benchmark detail ${GLYPHS.bullet} osc market presets lists starter stacks`,
+      `  osc library install <id> pulls one ${GLYPHS.bullet} osc library details <id> shows the benchmark detail ${GLYPHS.bullet} osc library presets lists starter stacks`,
     ),
   );
 }
@@ -78,7 +78,7 @@ export async function marketDetailsCommand(id: string): Promise<void> {
   const { catalog } = await loadCatalog(config, new EgressPolicy(config.egress));
   const model = findModel(catalog, id);
   if (!model) {
-    warnLine(`Nothing in the catalog called "${id}". osc market lists everything.`);
+    warnLine(`Nothing in the catalog called "${id}". osc library lists everything.`);
     process.exitCode = 1;
     return;
   }
@@ -112,7 +112,7 @@ export async function marketInstallCommand(id: string): Promise<void> {
   const { catalog } = await loadCatalog(config, new EgressPolicy(config.egress));
   const model = findModel(catalog, id);
   if (!model) {
-    warnLine(`Nothing in the catalog called "${id}". osc market lists everything.`);
+    warnLine(`Nothing in the catalog called "${id}". osc library lists everything.`);
     process.exitCode = 1;
     return;
   }
@@ -186,7 +186,7 @@ export async function marketPresetsCommand(apply?: string): Promise<void> {
     out();
     out(
       t.muted(
-        '  osc market presets --apply <id> writes one into your config (osc init walks the same choice with downloads).',
+        '  osc library presets --apply <id> writes one into your config (osc init walks the same choice with downloads).',
       ),
     );
     return;

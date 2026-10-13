@@ -168,7 +168,7 @@ select matches(
   'the warning names the published appeal address (founder decision F1)');
 
 -- ------------------------------------------------------------ 0020: reviews
--- 0027 takes the app's insert away while the Marketplace (v3) is shut, so
+-- 0027 takes the app's insert away while the Local Library (v3) is shut, so
 -- the two reviews are seeded as the table's owner; what 0020 holds is how
 -- they are read, which stays the same.
 insert into public.model_reviews (user_id, model_id, rating, body)

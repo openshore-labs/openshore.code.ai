@@ -1,7 +1,7 @@
 // DeepBlue, the third and most capable member of the Harbor family, the
 // one that runs on your computer: a stable slot over catalog weights, sized to
 // the machine, out of the box (Settings > Harbor and the First Seat card), never
-// behind the Marketplace. Pinned here so a catalog rename, a copy drift, or a
+// behind the Local Library. Pinned here so a catalog rename, a copy drift, or a
 // claim past the honesty bar fails the build, not a person's first run.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -244,7 +244,7 @@ describe('the guides know the third Harbor', () => {
       guideStepsCompact('get-harbor-master'),
     );
     expect(APP_KNOWLEDGE).toContain('DeepBlue');
-    expect(APP_KNOWLEDGE).toContain('never through the Marketplace');
+    expect(APP_KNOWLEDGE).toContain('never through the Local Library');
   });
 });
 

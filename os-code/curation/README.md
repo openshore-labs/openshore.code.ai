@@ -2,7 +2,7 @@
 
 These files are the editorial layer the catalog builder merges on top of the
 seed (`catalog.sample.json`). They are the founder's, not the machine's. The
-builder reads them; it never writes them. See `docs/MARKETPLACE.md` for the full
+builder reads them; it never writes them. See `docs/LOCAL-LIBRARY.md` for the full
 workflow.
 
 - **`recommended.json`**: a map of modelId to
