@@ -212,10 +212,10 @@ counsel before release:
 6. **Apache and MIT notices** for every other pick, in the same place.
 7. **Files a pick pulls from another repository**: each must now name its own
    license, or the builder holds its model back
-   (`scripts/build-catalog/fileLicenses.ts`). Two need you: confirm the FLUX.2
-   VAE's Apache 2.0 on its card (named so, as BFL released it), and the
-   lightx2v Lightning LoRA's license, which names none yet, so Qwen-Image-Edit
-   2511 is not published until it does.
+   (`scripts/build-catalog/fileLicenses.ts`). One needs you: confirm the FLUX.2
+   VAE's Apache 2.0 on its card (named so, as BFL released it). The lightx2v
+   Lightning LoRA's card says Apache 2.0 (read 2026-10-13), so it is named too
+   and Qwen-Image-Edit 2511 is in the library.
 8. **Held for counsel, not in the library**: LTX-2.5 (community license under
    $10M, and a use policy against competing with Lightricks), Qwen3.8-Flash-Next
    (Qwen Community License with an assistant carve-out), and VibeVoice-ASR
