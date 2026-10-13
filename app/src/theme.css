@@ -10111,7 +10111,7 @@ button.vault-tag {
   background: linear-gradient(150deg, var(--cloud-bright), var(--cloud));
 }
 
-/* ---- Frontier, on your key: cloud-hosted models in the store ---- */
+/* ---- Cloud heroes (amber): a billed model's light ---- */
 /* The hosted hero catches an amber light instead of the teal one, so a person
    reads "this one is billed" before the pill says so. Declared after the
    per-capability heroes so it wins without carrying a data-cap. */
@@ -10223,20 +10223,8 @@ button.vault-tag {
     opacity: 1;
   }
 }
-.hosted-group .store-row:last-child {
-  border-bottom: none;
-}
 .product-page .card-row .model-tile {
   margin-right: 2px;
-}
-.hosted-page .detail-panel {
-  margin-top: 12px;
-}
-.hosted-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 12px;
 }
 
 /* Sort control scrolls horizontally on narrow screens rather than wrapping. */

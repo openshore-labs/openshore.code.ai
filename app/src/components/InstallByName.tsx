@@ -4,13 +4,27 @@
 // runs on this machine's engine. A wrong name, or any pull that fails, comes
 // back as one plain line with the way on (the engine's pullFailedLine), never
 // a fabricated success or Ollama's raw error. Lives in Stack and in the
-// Local Library.
+// Local Library. In the Local Library (`localOnly`) a cloud tag is turned
+// away before anything is pulled: cloud models connect in Cloud Connections,
+// never in the library (founder, 2026-10-13).
 import { useState } from 'react';
+import { isOllamaCloudTag } from 'os-code/protocol';
 import { useApp } from '../state/store.js';
 import { bridge } from '../lib/electronBridge.js';
 import { hapticSuccess } from '../lib/haptics.js';
 
-export function InstallByName({ onInstalled }: { onInstalled?: (ref: string) => void }) {
+/** What the Local Library says to a cloud tag. */
+export const CLOUD_TAG_IN_LIBRARY =
+  "That name runs on Ollama's cloud, not on this computer. Cloud models connect in Cloud Connections.";
+
+export function InstallByName({
+  onInstalled,
+  localOnly = false,
+}: {
+  onInstalled?: (ref: string) => void;
+  /** The Local Library's door: a cloud tag is turned away, never pulled. */
+  localOnly?: boolean;
+}) {
   const showToast = useApp((s) => s.showToast);
   const [refInput, setRefInput] = useState('');
   const [refBusy, setRefBusy] = useState(false);
@@ -20,6 +34,10 @@ export function InstallByName({ onInstalled }: { onInstalled?: (ref: string) => 
     const ref = refInput.trim();
     const b = bridge();
     if (!ref || !b || refBusy) return;
+    if (localOnly && isOllamaCloudTag(ref)) {
+      showToast(CLOUD_TAG_IN_LIBRARY);
+      return;
+    }
     setRefBusy(true);
     setRefLine(`Pulling ${ref}...`);
     const off = b.onInstallProgress((p) => {
@@ -55,7 +73,8 @@ export function InstallByName({ onInstalled }: { onInstalled?: (ref: string) => 
       <p className="hint" style={{ marginTop: 4 }}>
         Type any name from the Ollama library and install it on this computer, even brand new
         models. For example qwen3-coder:30b, deepseek-r1:14b, gemma3:12b. A name whose tag (after
-        the colon) is cloud or ends in -cloud runs on Ollama&apos;s cloud, not on this computer.
+        the colon) is cloud or ends in -cloud runs on Ollama&apos;s cloud, not on this computer
+        {localOnly ? ', so it connects in Cloud Connections instead.' : '.'}
       </p>
       <div className="field" style={{ marginTop: 8 }}>
         <input

@@ -1,4 +1,5 @@
-// The frontier shelf's polish, pinned so it cannot drift: the tile hop rides
+// The Local Library's polish, pinned so it cannot drift (the frontier shelf it
+// began with moved to Cloud Connections, 2026-10-13): the tile hop rides
 // the View Transitions API on the house tokens and dies under reduced motion;
 // the connected pop is a keyframe on the spring with `backwards`; the store
 // scrolls its own scroller (`.screen`), never the window, so scroll-to-top and
@@ -16,13 +17,11 @@ const LIBRARY = readFileSync(join(SRC, 'components/LibraryViews.tsx'), 'utf8');
 const STORE = readFileSync(join(SRC, 'state/store.ts'), 'utf8');
 
 describe('the tile hop (view transitions)', () => {
-  it('names the product page tile as the shared element, hosted and catalog alike', () => {
+  it('names the product page tile as the shared element', () => {
     expect(THEME).toMatch(/\.product-page \.model-tile \{[^}]*view-transition-name: product-tile/);
-    // Both product pages carry the class, and every tile origin (a hosted
-    // row, a library pick) hands the page its tile.
-    expect(MARKET).toMatch(/hosted-page product-page/);
+    // The product page carries the class, and a library pick hands the page
+    // its tile.
     expect(MARKET).toMatch(/focused \? ' product-page' : ''/);
-    expect(MARKET).toMatch(/e\.currentTarget, 'row'/);
     expect(MARKET).toMatch(/openModel\(model, origin, 'pick'\)/);
     expect(LIBRARY).toMatch(/transitionName=\{tileName\?\.\(model\.id\)\}/);
   });
@@ -34,12 +33,6 @@ describe('the tile hop (view transitions)', () => {
     expect(THEME).toMatch(/\.market-search \{[^}]*view-transition-name: market-search/);
     // No search change bypasses the boundary logic.
     expect(MARKET).not.toMatch(/onChange=\{\(e\) => setQuery\(/);
-  });
-
-  it('shows real pull progress through Ollama on the hosted page', () => {
-    const fn = /const pullHostedViaOllama[\s\S]*?\n  \};/.exec(MARKET)?.[0] ?? '';
-    expect(fn).toMatch(/onInstallProgress/);
-    expect(fn).toMatch(/finally \{\s*off\(\);/);
   });
 
   it('times the hop on the motion tokens, tile on the slow arrive lane', () => {
@@ -85,11 +78,9 @@ describe('the connected pop', () => {
     expect(THEME).toMatch(/@keyframes pill-pop/);
   });
 
-  it('is armed by the store on connect and cleared by the room that shows it', () => {
+  it('is armed by the store on connect', () => {
     expect(STORE).toMatch(/justConnected: id/);
     expect(STORE).toMatch(/clearJustConnected\(\)/);
-    expect(MARKET).toMatch(/clearJustConnected\(\)/);
-    expect(MARKET).toMatch(/pill-pop/);
   });
 });
 

@@ -41,15 +41,6 @@ import { useApp } from '../state/store.js';
 import { loadAppCatalog } from '../lib/catalog.js';
 import { daemonInstallModel, daemonInstallProgress } from '../drivers/remoteDriver.js';
 import { pollInstall } from '../drivers/installPoll.js';
-import {
-  HOSTED_SHELF,
-  contextLabel,
-  filterHosted,
-  hostedIsNew,
-  hostedModels,
-  sortHostedNewest,
-  type HostedModel,
-} from '../lib/hosted.js';
 import { Llama, type DeviceCapacity, type StorageTarget } from '../lib/llamaPlugin.js';
 import { isIcloudAvailable } from '../lib/gitos/icloud.js';
 import { gdriveStorageQuota, type CloudQuota } from '../lib/gitos/gdrive.js';
@@ -70,7 +61,6 @@ import { bridge } from '../lib/electronBridge.js';
 import { isDesktop, isPhone } from '../lib/platform.js';
 import { hapticSuccess } from '../lib/haptics.js';
 import { logEvent } from '../lib/insights.js';
-import { durationMs } from '../lib/motion.js';
 import { recallScroll } from '../lib/scrollMemory.js';
 import { BackBar } from '../components/BackBar.js';
 import { LibraryIntro } from '../components/LibraryIntro.js';
@@ -78,7 +68,7 @@ import { Stars, CapabilityLane, NotRated, CommunityStars } from '../components/S
 import { ReviewsSection } from '../components/ReviewsSection.js';
 import { fetchSummaries, reviewsAvailable } from '../lib/reviews.js';
 import { communityScore, type CommunityScore } from '../lib/reviewsMath.js';
-import { CapIcon, ModelTile } from '../components/MarketIcon.js';
+import { ModelTile } from '../components/MarketIcon.js';
 import {
   fitFor,
   installLabel,
@@ -166,13 +156,7 @@ const SOURCE_NAME: Record<CatalogModel['source']['kind'], string> = {
   publisher: "the publisher's own site",
 };
 
-// The hosted product page that was open when the store was left for another
-// room (Cloud Connections, the Stack), so a Connect tap comes back to the page
-// it left rather than the store front. Honored on a back navigation only; a
-// fresh open from the panel starts at the front, the way a tab does.
-let hostedPageMemory: string | undefined;
-
-/** Where a tile was tapped (a hosted row, or a library pick), so the way back
+/** Where a tile was tapped (a library pick), so the way back
  *  flies to the same tile. */
 type TileHome = { id: string; where: 'row' | 'pick' };
 
@@ -193,7 +177,6 @@ export function LocalLibraryScreen() {
     harborDownload,
     connectedProviders,
     setView,
-    openConnections,
     authSession,
   } = useApp();
   const [catalog, setCatalog] = useState<Catalog | undefined>();
@@ -209,19 +192,8 @@ export function LocalLibraryScreen() {
   // The phone pack being installed (one at a time), so its card shows progress
   // and the others wait.
   const [packBusy, setPackBusy] = useState<ProfileId | undefined>();
-  // The frontier shelf: cloud-hosted models derived from the BYOK providers.
-  // Their product page is its own focus, distinct from a catalog model's.
-  const hosted = useMemo(() => hostedModels(), []);
-  const [focusedHostedId, setFocusedHostedId] = useState<string | undefined>(() =>
-    useApp.getState().arrivedBack ? hostedPageMemory : undefined,
-  );
-  const focusedHostedRef = useRef(focusedHostedId);
-  focusedHostedRef.current = focusedHostedId;
   // The tile the open page flew from, so the way back flies to it.
   const [tileHome, setTileHome] = useState<TileHome | undefined>();
-  // A provider connected since the store was last on screen: its rows just
-  // flipped from Connect to "on bench", and pop once to mark the commit.
-  const [pop, setPop] = useState<string | undefined>(() => useApp.getState().justConnected);
   // The room's scroller. The window never scrolls here (.screen does), so
   // scroll-to-top and scroll memory address this element.
   const screenRef = useRef<HTMLDivElement>(null);
@@ -350,13 +322,6 @@ export function LocalLibraryScreen() {
   }, []);
 
   useEffect(() => {
-    // Remember the open hosted page for the way back, whatever room comes next.
-    return () => {
-      hostedPageMemory = focusedHostedRef.current;
-    };
-  }, []);
-
-  useEffect(() => {
     // Back from another room: land where the eye left, once the catalog has
     // given the shelves their height (the app-level restore ran at mount,
     // against a skeleton that may have been too short to hold the offset).
@@ -364,17 +329,6 @@ export function LocalLibraryScreen() {
     const top = recallScroll('library');
     if (top && screenRef.current) screenRef.current.scrollTop = top;
   }, [catalog]);
-
-  useEffect(() => {
-    // The connected moment. A haptic marks the commit, the pill pops in on
-    // the release spring, then the flag rests so nothing replays.
-    if (!pop) return;
-    hapticSuccess();
-    useApp.getState().clearJustConnected();
-    const t = setTimeout(() => setPop(undefined), durationMs('--dur-5', 600));
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   useEffect(() => {
     // MP-F4: adopt pocket models that finished downloading while the app was
@@ -653,20 +607,10 @@ export function LocalLibraryScreen() {
     showToast(outcome.detail ?? (outcome.ok ? 'Installed on your computer.' : 'Install failed.'));
   };
 
-  // Hosted models that answer the search. A cloud model is part of the
-  // store, not of the library's shelves, so it shows beside the picks.
-  const hostedMatches = useMemo(
-    () => (query.trim() ? sortHostedNewest(filterHosted(hosted, query, undefined)) : []),
-    [hosted, query],
-  );
-  const hostedShelf = useMemo(() => sortHostedNewest(hosted), [hosted]);
-
   // The store front (the App Store's front page) shows when nothing is being
   // searched and no page is open: the "Made for" row and the categories.
-  const browsing =
-    !focusedId && !focusedHostedId && !focusedCategory && !focusedCollection && !query.trim();
+  const browsing = !focusedId && !focusedCategory && !focusedCollection && !query.trim();
   const focusedModel = focusedId ? catalog?.models.find((m) => m.id === focusedId) : undefined;
-  const focusedHosted = focusedHostedId ? hosted.find((m) => m.id === focusedHostedId) : undefined;
   const category = focusedCategory ? libraryCategory(focusedCategory) : undefined;
   const collection = focusedCollection ? libraryCollection(focusedCollection) : undefined;
   // The phone packs, resolved against whatever catalog is loaded.
@@ -1009,11 +953,9 @@ export function LocalLibraryScreen() {
   const applyQuery = (next: string) => {
     const toFront = !next.trim();
     const crossing =
-      Boolean(focusedId || focusedHostedId || focusedCategory || focusedCollection) ||
-      toFront !== browsing;
+      Boolean(focusedId || focusedCategory || focusedCollection) || toFront !== browsing;
     const update = () => {
       setFocusedId(undefined);
-      setFocusedHostedId(undefined);
       setFocusedCategory(undefined);
       setFocusedCollection(undefined);
       setLibReturn(undefined);
@@ -1031,7 +973,6 @@ export function LocalLibraryScreen() {
     fade(() => {
       setQuery('');
       setFocusedId(undefined);
-      setFocusedHostedId(undefined);
       setFocusedCollection(undefined);
       setLibReturn(undefined);
       setFocusedCategory(id);
@@ -1043,7 +984,6 @@ export function LocalLibraryScreen() {
     fade(() => {
       setQuery('');
       setFocusedId(undefined);
-      setFocusedHostedId(undefined);
       setFocusedCategory(undefined);
       setLibReturn(undefined);
       setFocusedCollection(id);
@@ -1306,7 +1246,7 @@ export function LocalLibraryScreen() {
 
   // Open one model as its own product page. From a library pick (anything
   // with a tile) the tile hops into the page; the way back flies it home.
-  // Defined below with the hosted hop, which it shares. A model opened from a
+  // Defined below with the tile hop. A model opened from a
   // category or a collection goes back there; one opened from the search
   // results goes back to them, since the search stays as it was.
   const openModel = (
@@ -1316,7 +1256,6 @@ export function LocalLibraryScreen() {
   ) => {
     if (where) setTileHome({ id: model.id, where });
     hop(() => {
-      setFocusedHostedId(undefined);
       if (focusedCategory) setLibReturn({ kind: 'category', id: focusedCategory });
       else if (focusedCollection) setLibReturn({ kind: 'collection', id: focusedCollection });
       setFocusedCategory(undefined);
@@ -1343,13 +1282,7 @@ export function LocalLibraryScreen() {
     );
   };
 
-  // ---- hosted (cloud) models: the frontier shelf ---------------------------
-  // Kimi K3, Claude Opus, GPT-5, Gemini Pro: too big to download, so the store
-  // offers Connect instead of Get. A connected provider already has its models
-  // on the Bench (the Stack derives them from the same providers), so the
-  // control flips to "on bench" the moment the key is saved.
-
-  // The tile hops. A hosted hero or row and its product page share one tile,
+  // The tile hops. A pick and its product page share one tile,
   // so the page arrives by that tile flying into place instead of the list
   // hard-cutting to a card. The View Transitions API where the platform has
   // it (iOS 18, Chromium); a plain swap elsewhere and under reduced motion.
@@ -1374,258 +1307,10 @@ export function LocalLibraryScreen() {
     });
   };
 
-  const openHosted = (m: HostedModel, origin: Element | null, where: TileHome['where']) => {
-    setTileHome({ id: m.id, where });
-    hop(() => {
-      setFocusedId(undefined);
-      setDetailOpen(undefined);
-      setFocusedCategory(undefined);
-      setFocusedCollection(undefined);
-      setFocusedHostedId(m.id);
-    }, origin);
-    scrollToTop();
-  };
-
-  const closeHosted = () => {
-    hop(
-      () => setFocusedHostedId(undefined),
-      screenRef.current?.querySelector('.product-page') ?? null,
-      () => setTileHome(undefined),
-    );
-  };
-
   /** The shared-element name for a browse tile, only on the one the open page
    *  flew from (a duplicate name would make the platform skip the hop). */
   const tileName = (id: string, where: TileHome['where']) =>
     tileHome && tileHome.id === id && tileHome.where === where ? 'product-tile' : undefined;
-
-  const hostedConnected = (m: HostedModel) => Boolean(connectedProviders[m.providerId]);
-
-  const hostedControl = (m: HostedModel) =>
-    hostedConnected(m) ? (
-      <span className={`pill cloud${pop === m.providerId ? ' pill-pop' : ''}`}>on bench</span>
-    ) : (
-      <button
-        className="store-get"
-        onClick={(e) => {
-          e.stopPropagation();
-          logEvent('hosted_connect_tap', { id: m.id });
-          openConnections(m.providerId);
-        }}
-      >
-        Connect
-      </button>
-    );
-
-  const hostedMeta = (m: HostedModel) =>
-    `${m.providerName} · ${m.contextTokens ? `${contextLabel(m.contextTokens)} context` : 'cloud'}${
-      hostedIsNew(m) ? ' · New' : ''
-    }`;
-
-  const renderHostedRow = (m: HostedModel) => {
-    const primaryCap = m.categories[0];
-    return (
-      <div
-        className="store-row"
-        key={m.id}
-        role="button"
-        tabIndex={0}
-        onClick={(e) => openHosted(m, e.currentTarget, 'row')}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            openHosted(m, e.currentTarget, 'row');
-          }
-        }}
-      >
-        <ModelTile name={m.name} cloud size={52} transitionName={tileName(m.id, 'row')} />
-        <div className="store-row-body">
-          <div className="store-row-name">{m.name}</div>
-          <div className="store-row-sub">{m.tagline}</div>
-          <div className="store-row-meta">
-            {primaryCap ? <CapIcon cap={primaryCap} size={12} /> : null}
-            {hostedMeta(m)}
-          </div>
-        </div>
-        <span className="store-row-get">{hostedControl(m)}</span>
-      </div>
-    );
-  };
-
-  const renderHostedShelf = () => {
-    const columns: HostedModel[][] = [];
-    for (let i = 0; i < hostedShelf.length; i += 3) {
-      columns.push(hostedShelf.slice(i, i + 3));
-    }
-    return (
-      <section className="shelf" key={HOSTED_SHELF.key}>
-        <div className="shelf-head static">
-          <span className="shelf-head-text">
-            <span className="shelf-title">{HOSTED_SHELF.title}</span>
-            <span className="shelf-sub">{HOSTED_SHELF.subtitle}</span>
-          </span>
-        </div>
-        <div className="shelf-scroll">
-          {columns.map((col, i) => (
-            <div className="shelf-col" key={i}>
-              {col.map(renderHostedRow)}
-            </div>
-          ))}
-        </div>
-      </section>
-    );
-  };
-
-  // Pull the same model through Ollama's cloud on this desktop (no provider
-  // key; an Ollama account instead). The engine's install-by-ref seam does the
-  // pull and returns Ollama's own result, never a fabricated success.
-  const pullHostedViaOllama = async (m: HostedModel) => {
-    const b = bridge();
-    const ref = m.ollamaCloudRef;
-    if (!b || !ref) return;
-    setDownloads((d) => ({
-      ...d,
-      [m.id]: { percent: 0, label: `Pulling ${ref} through Ollama`, indeterminate: true },
-    }));
-    // Ollama reports bytes as it pulls, so the page shows the real bar and
-    // percent the catalog rows get, not an endless shimmer.
-    const off = b.onInstallProgress((p) => {
-      if (p.modelId !== ref) return;
-      setDownloads((d) => ({
-        ...d,
-        [m.id]: {
-          percent: p.percent ?? 0,
-          label:
-            p.total && p.completed !== undefined
-              ? `${Math.round(p.percent ?? 0)}% · ${gb(p.completed)} of ${gb(p.total)}`
-              : p.line,
-          indeterminate: p.percent === undefined,
-        },
-      }));
-    });
-    try {
-      const r = await b.installOllamaRef(ref);
-      clearDownload(m.id);
-      if (r.ok) {
-        hapticSuccess();
-        setInstalledRefs((s) => new Set(s).add(ref));
-        await useApp.getState().refreshDesktopStatus();
-      }
-      showToast(r.detail);
-    } catch (err) {
-      setDownloads((d) => ({
-        ...d,
-        [m.id]: {
-          percent: 0,
-          label: err instanceof Error ? err.message : 'Could not pull that model.',
-          failed: true,
-        },
-      }));
-    } finally {
-      off();
-    }
-  };
-
-  const renderHostedPage = (m: HostedModel) => {
-    const connected = hostedConnected(m);
-    const dl = downloads[m.id];
-    const ollamaHere = Boolean(m.ollamaCloudRef) && !isPhone();
-    const viaOllamaDone = m.ollamaCloudRef ? installedRefs.has(m.ollamaCloudRef) : false;
-    return (
-      <div className="card market-card hosted-page product-page" key={m.id}>
-        <div className="card-row">
-          <ModelTile name={m.name} cloud size={56} />
-          <div className="grow">
-            <h3>{m.name}</h3>
-            <div className="sub">{m.tagline}</div>
-          </div>
-        </div>
-
-        <div className="badge-row">
-          {hostedIsNew(m) ? <span className="pill cloud">New</span> : null}
-          <span className="pill cloud">Cloud, on your key</span>
-          <span className="pill muted">{m.openWeights ? 'Open weights' : 'Closed weights'}</span>
-          {connected ? (
-            <span className={`pill ok${pop === m.providerId ? ' pill-pop' : ''}`}>connected</span>
-          ) : null}
-        </div>
-
-        <div className="market-meta">
-          {m.providerName}
-          {m.contextTokens ? ` · ${m.contextTokens.toLocaleString()} ctx` : ''}
-          {m.released ? ` · released ${m.released}` : ''}
-        </div>
-
-        <div className="detail-panel">
-          <p>
-            Runs on {m.providerName}&apos;s servers, on the key you connect under Cloud Connections.{' '}
-            {m.providerName} bills your account directly. OpenShore asks before it spends.
-          </p>
-          <p>Good at: {m.categories.map((c) => CAPABILITIES[c].plain).join(', ')}.</p>
-          {m.openWeights ? (
-            <p>
-              The weights are published, so this model also runs on other hosts. It is far too large
-              for a laptop or a phone, which is why it is not a download here.
-            </p>
-          ) : null}
-          {ollamaHere && m.ollamaCloudRef ? (
-            <>
-              <p>
-                Also on Ollama&apos;s cloud. With an Ollama account signed in on this computer, pull
-                it like any library model and it runs there, no {m.providerName} key needed.
-              </p>
-              <div className="pull-cmd">
-                <code>ollama pull {m.ollamaCloudRef}</code>
-              </div>
-            </>
-          ) : null}
-        </div>
-
-        {dl && dl.failed ? (
-          <div className="hint" style={{ marginTop: 8, color: 'var(--danger)' }}>
-            {dl.label}
-          </div>
-        ) : dl ? (
-          <>
-            <div className="progress-track">
-              <div
-                className={`progress-fill${dl.indeterminate ? ' indeterminate' : ''}`}
-                style={dl.indeterminate ? undefined : { transform: `scaleX(${dl.percent / 100})` }}
-              />
-            </div>
-            <div className="hint" style={{ marginTop: 6 }}>
-              {dl.label}
-            </div>
-          </>
-        ) : null}
-
-        <div className="hosted-actions">
-          <button
-            className="btn primary press-fb"
-            onClick={() => {
-              if (connected) {
-                setView('stack');
-              } else {
-                logEvent('hosted_connect_tap', { id: m.id });
-                openConnections(m.providerId);
-              }
-            }}
-          >
-            {connected ? 'Place it in your stack' : `Connect ${m.providerName}`}
-          </button>
-          {ollamaHere && bridge() ? (
-            <button
-              className="btn ghost press-fb"
-              disabled={Boolean(dl && !dl.failed) || viaOllamaDone}
-              onClick={() => void pullHostedViaOllama(m)}
-            >
-              {viaOllamaDone ? 'Installed through Ollama' : 'Pull through Ollama instead'}
-            </button>
-          ) : null}
-        </div>
-      </div>
-    );
-  };
 
   // A model already present: on-device by the device-models record, in iCloud
   // by the cloud-models record, a desktop model by whether its source ref is in
@@ -2002,18 +1687,16 @@ export function LocalLibraryScreen() {
       ? libraryCategory(libReturn.id as CategoryId).name
       : libraryCollection(libReturn.id)?.name
     : undefined;
-  const page = focusedHosted
-    ? { title: focusedHosted.name, back: { to: 'Local Library', onBack: closeHosted } }
-    : focusedModel
-      ? {
-          title: focusedModel.name,
-          back: { to: returnName ?? 'Local Library', onBack: closeModel },
-        }
-      : category
-        ? { title: category.name, back: { to: 'Local Library', onBack: closeLibraryPage } }
-        : collection
-          ? { title: collection.name, back: { to: 'Local Library', onBack: closeLibraryPage } }
-          : undefined;
+  const page = focusedModel
+    ? {
+        title: focusedModel.name,
+        back: { to: returnName ?? 'Local Library', onBack: closeModel },
+      }
+    : category
+      ? { title: category.name, back: { to: 'Local Library', onBack: closeLibraryPage } }
+      : collection
+        ? { title: collection.name, back: { to: 'Local Library', onBack: closeLibraryPage } }
+        : undefined;
 
   // What every library view needs to show a pick.
   const pickProps = {
@@ -2124,14 +1807,9 @@ export function LocalLibraryScreen() {
                 onCategory={(c) => openCategory(c.id)}
                 onCollection={(c) => openCollection(c.id)}
                 onRequest={() => setRequestOpen(true)}
-                hosted={renderHostedShelf()}
               />
               {renderPackShelf()}
             </>
-          ) : focusedHosted ? (
-            <div className="focused-view">
-              <div className="market-list">{renderHostedPage(focusedHosted)}</div>
-            </div>
           ) : focusedModel ? (
             <div className="focused-view">
               <div className="market-list">{renderCard(focusedModel, 0, true)}</div>
@@ -2156,17 +1834,6 @@ export function LocalLibraryScreen() {
             </div>
           ) : (
             <div className="focused-view" key="results">
-              {hostedMatches.length ? (
-                <section className="shelf hosted-group" key="hosted-matches">
-                  <div className="shelf-head static">
-                    <span className="shelf-head-text">
-                      <span className="shelf-title">{HOSTED_SHELF.title}</span>
-                      <span className="shelf-sub">{HOSTED_SHELF.subtitle}</span>
-                    </span>
-                  </div>
-                  {hostedMatches.map(renderHostedRow)}
-                </section>
-              ) : null}
               <LibrarySearchResults
                 results={results}
                 onRequest={() => setRequestOpen(true)}

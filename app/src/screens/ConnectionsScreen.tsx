@@ -11,8 +11,11 @@
 // one More providers row, a searchable sheet. A docked server that keeps
 // keys, with this device as its admin, gains two rows under Your server:
 // which keys it keeps, and which model it runs (keys on your server,
-// 2026-10-09; components/ServerKeys.tsx).
-import { useEffect, useRef, useState } from 'react';
+// 2026-10-09; components/ServerKeys.tsx). Every cloud model lives here and
+// only here (founder, 2026-10-13): the Local Library lists what runs on your
+// own machines, and the frontier models (Kimi, Claude, GPT, Gemini) are found
+// under Frontier models, a searchable sheet that opens each one's provider.
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../state/store.js';
 import {
   PROVIDERS,
@@ -23,6 +26,7 @@ import {
   validateProviderKey,
   type LiveModel,
 } from '../lib/providers.js';
+import { HOSTED_SHELF, filterHosted, hostedModels, sortHostedNewest } from '../lib/hosted.js';
 import { BackBar } from '../components/BackBar.js';
 import { Sheet } from '../components/Sheet.js';
 import { SheetHead } from '../components/SheetHead.js';
@@ -97,6 +101,12 @@ export function ConnectionsScreen() {
   const [choosing, setChoosing] = useState<{ id: string; name: string } | undefined>();
   // Setting up a server, while its sheet is open.
   const [settingUpServer, setSettingUpServer] = useState(false);
+  // The Frontier models sheet: every model the providers offer, newest
+  // first, and what its search holds.
+  const [frontierOpen, setFrontierOpen] = useState(false);
+  const [frontierQuery, setFrontierQuery] = useState('');
+  const frontier = useMemo(() => sortHostedNewest(hostedModels()), []);
+  const frontierFound = filterHosted(frontier, frontierQuery);
   // The More providers sheet, and what its search holds.
   const [browsing, setBrowsing] = useState(false);
   const [query, setQuery] = useState('');
@@ -214,6 +224,20 @@ export function ConnectionsScreen() {
     setQuery('');
     setBrowsing(true);
   };
+  const openFrontier = () => {
+    setFrontierQuery('');
+    setFrontierOpen(true);
+  };
+  // A frontier model's provider: its key sheet when not yet connected (the
+  // list leaves first, sheets never stack), or the Stack to place it.
+  const pickFrontier = (providerId: string) => {
+    setFrontierOpen(false);
+    if (connectedProviders[providerId]) {
+      setView('stack');
+      return;
+    }
+    setTimeout(() => openSheet(providerId), sheetExitMs());
+  };
   // Sheets never stack: the list leaves before the key sheet rises.
   const pickMore = (id: string) => {
     setBrowsing(false);
@@ -228,7 +252,7 @@ export function ConnectionsScreen() {
   };
 
   useEffect(() => {
-    // Arrived from a Connect tap elsewhere (the Local Library's frontier shelf):
+    // Arrived from a Connect tap elsewhere (a chat that stopped for a key):
     // open that provider's key sheet, so the person lands on the paste field,
     // not at the top of a list to hunt through.
     // A chat that stopped for Claude's workspace lands on the workspace field.
@@ -422,6 +446,11 @@ export function ConnectionsScreen() {
               ) : null,
             ];
           })}
+          <SettingsRow
+            label={HOSTED_SHELF.title}
+            sub={frontierLine(frontier)}
+            onClick={openFrontier}
+          />
           {more.length ? (
             <SettingsRow label="More providers" sub={moreLine(more)} onClick={openMore} />
           ) : null}
@@ -535,6 +564,48 @@ export function ConnectionsScreen() {
       {/* The named providers not yet connected, searchable. A tap closes
           this list and opens that provider's key sheet, the same one the
           familiar seven use. */}
+      <Sheet open={frontierOpen} onClose={() => setFrontierOpen(false)}>
+        {frontierOpen ? (
+          <>
+            <SheetHead title={HOSTED_SHELF.title} onClose={() => setFrontierOpen(false)} />
+            <p className="sheet-sub">{HOSTED_SHELF.subtitle}</p>
+            <div className="field">
+              <label htmlFor="frontier-search">Search {frontier.length} models</label>
+              <input
+                id="frontier-search"
+                value={frontierQuery}
+                placeholder="Kimi, Claude, GPT..."
+                autoCapitalize="none"
+                autoCorrect="off"
+                onChange={(e) => setFrontierQuery(e.target.value)}
+              />
+            </div>
+            {frontierFound.length ? (
+              <div className="settings">
+                <SettingsGroup index={0}>
+                  {frontierFound.map((m) => {
+                    const on = Boolean(connectedProviders[m.providerId]);
+                    return (
+                      <SettingsRow
+                        key={m.id}
+                        label={m.name}
+                        sub={`${m.providerName}. ${m.tagline}`}
+                        value={on ? <span className="pill cloud">On your bench</span> : undefined}
+                        onClick={() => pickFrontier(m.providerId)}
+                      />
+                    );
+                  })}
+                </SettingsGroup>
+              </div>
+            ) : (
+              <p className="hint" role="status">
+                No model here by that name. More providers lists the rest, each on your own key.
+              </p>
+            )}
+          </>
+        ) : null}
+      </Sheet>
+
       <Sheet open={browsing} onClose={() => setBrowsing(false)}>
         {browsing ? (
           <>
@@ -750,6 +821,13 @@ const GATEWAY_NAMES = ['amazon bedrock', 'bedrock', 'aws', 'azure', 'google vert
  *  through a gateway: three letters or more of one of their names. */
 function asksForGateway(q: string): boolean {
   return q.length >= 3 && GATEWAY_NAMES.some((n) => n.startsWith(q) || q.includes(n));
+}
+
+/** The Frontier models row's line: the newest few names, plainly. */
+function frontierLine(models: Array<{ name: string }>): string {
+  const names = models.slice(0, 3).map((m) => m.name);
+  if (!names.length) return 'Cloud models on your own key.';
+  return `${names.join(', ')} and more, each on its provider's key.`;
 }
 
 function moreLine(more: Array<{ name: string }>): string {

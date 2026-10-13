@@ -1,18 +1,17 @@
-// Hosted (cloud) models in the Local Library. The trillion-parameter frontier
-// models (Kimi K3, Claude Opus, GPT-5, Gemini Pro) never run on a laptop, so
-// the catalog cannot list them as downloads. They still belong in the store:
-// a person browsing for "the best model" should find Kimi next to Qwen, not
-// in a settings screen. This module derives a browsable, searchable list from
-// the bring-your-own-key providers so the two can never drift, and the store
-// renders them with a Connect control instead of Get. Pure: no React, no
-// platform calls, unit-tested directly.
+// Hosted (cloud) models, found in Cloud Connections and only there (founder,
+// 2026-10-13: the Local Library lists what runs on your own machines). The
+// trillion-parameter frontier models (Kimi K3, Claude Opus, GPT-5, Gemini Pro)
+// never run on a laptop, so they are never a download. This module derives a
+// browsable, searchable list from the bring-your-own-key providers so the two
+// can never drift; Cloud Connections renders it as the Frontier models sheet,
+// each row opening its provider. Pure: no React, no platform calls,
+// unit-tested directly.
 import type { CapabilityCategory } from 'os-code/protocol';
-import type { Facets } from '../components/localLibrary.js';
 import { PROVIDERS, type ProviderInfo } from './providers.js';
 import type { StackModelRef } from './stack.js';
 
 export interface HostedModel {
-  /** Stable store id: `hosted:<provider>:<model>`. */
+  /** Stable id: `hosted:<provider>:<model>`. */
   id: string;
   providerId: string;
   providerName: string;
@@ -32,7 +31,7 @@ export interface HostedModel {
 
 export const HOSTED_SHELF = {
   key: 'hosted',
-  title: 'Frontier, on your key',
+  title: 'Frontier models',
   // Not "hosted by their makers": a live provider's picks sit here too, and
   // Groq, Together AI or OpenRouter host other makers' models (2026-10-09).
   subtitle:
@@ -98,7 +97,7 @@ export function sortHostedNewest(models: HostedModel[]): HostedModel[] {
     .map((x) => x.m);
 }
 
-/** The single newest dated hosted model, for the store's hero row. */
+/** The single newest dated hosted model. */
 export function newestHosted(models: HostedModel[]): HostedModel | undefined {
   return sortHostedNewest(models).find((m) => releaseTime(m) !== undefined);
 }
@@ -120,22 +119,6 @@ export function filterHosted(
     if (capability && !m.categories.includes(capability)) return false;
     return true;
   });
-}
-
-/** Whether the store's current facets can describe a hosted model at all.
- *  Search and capability apply; the rest (hardware fit, license posture, size,
- *  on-device, orchestrator, source) are about downloads, so any of them set
- *  means the person is shopping for something local and hosted rows stay out. */
-export function hostedFacetsApply(facets: Facets): boolean {
-  return (
-    !facets.fits &&
-    !facets.posture &&
-    facets.maxSizeGB === undefined &&
-    !facets.onDeviceOnly &&
-    !facets.orchestratorOnly &&
-    !facets.source &&
-    (facets.minStar === undefined || !facets.capability)
-  );
 }
 
 /** A compact context label: 1M, 256K, 128K. */
