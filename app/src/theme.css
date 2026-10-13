@@ -15591,6 +15591,27 @@ button.settings-row:active {
   margin-bottom: var(--section-gap);
 }
 
+/* Three ways in share the width evenly and may wrap to two lines, so the
+   choice fits a 320px phone (2026-10-13) instead of running off its edge. */
+.dock-choice.segmented {
+  display: flex;
+  width: 100%;
+}
+
+.dock-choice .seg {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 6px 8px;
+  white-space: normal;
+  text-align: center;
+  line-height: 1.25;
+}
+
+/* Where a coding chat runs, in the chat bar beside its repositories. */
+.chat-runs-on {
+  white-space: nowrap;
+}
+
 .dock-other-head {
   margin-top: var(--section-gap);
 }
@@ -15677,13 +15698,8 @@ button.settings-row:active {
 }
 
 /* What each size of rented server can do (many machines, 2026-10-12). */
-.dock-sizes-head {
-  margin: 14px 0 6px;
-  font-size: 0.95em;
-}
-
 .dock-sizes {
-  margin: 0 0 12px;
+  margin: 8px 0 12px;
 }
 
 .dock-size + .dock-size {

@@ -36,7 +36,7 @@ import {
   type DockPath,
   type DockPlace,
 } from '../lib/docking.js';
-import { projectsOn } from '../lib/runsOn.js';
+import { THIS_COMPUTER, projectsOn } from '../lib/runsOn.js';
 import { sheetExitMs } from '../lib/motion.js';
 
 export { phoneDeviceName } from '../components/DockForm.js';
@@ -398,7 +398,7 @@ function DesktopPair() {
 
 /** The three ways to dock, short enough to sit side by side on a phone. */
 export const DOCK_CHOICE_LABEL: Record<'computer' | DockPlace, string> = {
-  computer: 'Your computer',
+  computer: 'Computer',
   home: 'Home server',
   rented: 'Rented server',
 };
@@ -426,17 +426,15 @@ function thisDesktopOs(): 'macOS' | 'Windows' | 'Linux' | undefined {
   return undefined;
 }
 
-// On a desktop that is not your computer, the one the work runs on (a laptop
-// away from the hub): point it at a remote hub and it runs sessions there over
-// the tailnet, the way the phone does, instead of on this machine. Off by default, so a desktop stays
-// its own engine unless you say otherwise.
+// Docking a desktop by a machine's address and an `osc token mint` key, for
+// a machine that shows no code. Where sessions run is the default in Your
+// machines and each project's Runs on (2026-10-13), not a switch here.
 function RemoteHubPanel() {
-  const { settings, saveHub, setPreferRemoteHub, showToast } = useApp();
-  const [address, setAddress] = useState(settings.daemon?.baseUrl ?? '');
-  const [token, setToken] = useState(settings.daemon?.token ?? '');
+  const { settings, saveHub, showToast } = useApp();
+  const [address, setAddress] = useState('');
+  const [token, setToken] = useState('');
   const [testing, setTesting] = useState(false);
   const [state, setState] = useState<string | undefined>();
-  const prefer = settings.preferRemoteHub === true;
 
   const connect = async () => {
     const baseUrl = address.trim().replace(/\/$/, '');
@@ -452,68 +450,56 @@ function RemoteHubPanel() {
       // The hub's /health names this credential's role (admin or member); an
       // older hub says nothing and the daemon decides per request.
       await saveHub(
-        { baseUrl, token: token.trim() },
+        { baseUrl, token: token.trim(), ...(health.kind ? { kind: health.kind } : {}) },
         { role: (health as { role?: HubRole }).role },
       );
-      showToast('Connected. This computer now runs sessions on the other one.');
+      showToast('Docked. Choose it under Runs on, or make it the default in Your machines.');
     }
   };
 
+  // Nothing docked yet reads as the first time; the list above says the rest.
+  const first = hubList(settings).length === 0;
   return (
     <div className="card">
-      <div className="card-row">
-        <div className="grow">
-          <h3 style={{ margin: 0 }}>Run on another computer</h3>
-          <div className="sub">
-            {prefer
-              ? 'On. This computer runs sessions on the computer below, not on itself.'
-              : 'Off. Sessions run on this computer. Turn on to run them on another one.'}
-          </div>
-        </div>
-        <Switch
-          checked={prefer}
-          label="Run on another computer"
-          onChange={(next) => void setPreferRemoteHub(next)}
+      <h3 style={{ margin: 0 }}>Dock by address and key</h3>
+      <div className="sub">
+        {first
+          ? 'For a computer that gives you its address and an access key instead of a code.'
+          : 'Another machine, by the address and access key it gives you.'}
+      </div>
+      <div className="field" style={{ marginTop: 12 }}>
+        <label htmlFor="pair-hub-address">Address</label>
+        <input
+          id="pair-hub-address"
+          placeholder="http://100.x.y.z:4816"
+          value={address}
+          autoCapitalize="none"
+          autoCorrect="off"
+          onChange={(e) => setAddress(e.target.value)}
         />
       </div>
-
-      {prefer ? (
-        <>
-          <div className="field" style={{ marginTop: 12 }}>
-            <label htmlFor="pair-hub-address">Address</label>
-            <input
-              id="pair-hub-address"
-              placeholder="http://100.x.y.z:4816"
-              value={address}
-              autoCapitalize="none"
-              autoCorrect="off"
-              onChange={(e) => setAddress(e.target.value)}
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="pair-hub-key">Access key</label>
-            <input
-              id="pair-hub-key"
-              placeholder="osc_..."
-              value={token}
-              autoCapitalize="none"
-              autoCorrect="off"
-              onChange={(e) => setToken(e.target.value)}
-            />
-          </div>
-          <button
-            className="btn primary block press-fb"
-            disabled={testing}
-            onClick={() => void connect()}
-          >
-            {testing ? 'Checking...' : 'Connect to the other computer'}
-          </button>
-          {state ? (
-            <p className="hint" style={{ marginTop: 10 }}>
-              {state}
-            </p>
-          ) : null}
-        </>
+      <div className="field">
+        <label htmlFor="pair-hub-key">Access key</label>
+        <input
+          id="pair-hub-key"
+          placeholder="osc_..."
+          value={token}
+          autoCapitalize="none"
+          autoCorrect="off"
+          onChange={(e) => setToken(e.target.value)}
+        />
+      </div>
+      <button
+        className="btn primary block press-fb"
+        disabled={testing}
+        onClick={() => void connect()}
+      >
+        {testing ? 'Checking...' : 'Dock'}
+      </button>
+      {state ? (
+        <p className="hint" style={{ marginTop: 10 }}>
+          {state}
+        </p>
       ) : null}
     </div>
   );
@@ -575,6 +561,14 @@ function PhonePair() {
   const [path, setPath] = useState<'computer' | DockPlace>(
     paired?.kind === 'server' ? (paired.place === 'home' ? 'home' : 'rented') : 'computer',
   );
+  // Once docked, the ways in fold behind "Dock another machine" (the "it
+  // worked" moment, as the desktop folds its QR); a docking link opened from
+  // outside unfolds them, since its sheet lives in the dock form.
+  const pairOffer = useApp((s) => s.pairOffer);
+  // Open from the start when nothing is docked yet, so the form that is
+  // docking stays on screen through its first check.
+  const [adding, setAdding] = useState(!paired);
+  const showWaysIn = !paired || adding || Boolean(pairOffer);
 
   return (
     <div className="screen">
@@ -602,52 +596,71 @@ function PhonePair() {
 
         {paired ? <ConnectedCard onTerminal={() => setView('terminalroom')} /> : null}
 
-        {/* Scan sits in the first screen (2026-10-07 review): the two ways to
+        {/* Scan sits in the first screen (2026-10-07 review): the ways to
             dock are one small choice above it, and the other ways to give
-            OpenShore a brain wait below. */}
-        <div className="segmented dock-choice" role="tablist" aria-label="Dock to">
-          {(['computer', 'home', 'rented'] as const).map((id) => (
-            <button
-              key={id}
-              type="button"
-              role="tab"
-              aria-selected={path === id}
-              className={`seg press-fb${path === id ? ' active' : ''}`}
-              onClick={() => setPath(id)}
-            >
-              {DOCK_CHOICE_LABEL[id]}
-            </button>
-          ))}
-        </div>
-
-        {path === 'computer' ? (
+            OpenShore a brain wait below. Docked, they wait behind one quiet
+            button. */}
+        {showWaysIn ? (
           <>
-            {!paired ? (
-              <div className="card">
-                <h3>Before you scan</h3>
-                <ol className="setup-steps">
-                  <li>Install Tailscale on both devices and sign in to the same account.</li>
-                  <li>
-                    On your computer, open OpenShore, then Computer. The QR is there. If it says
-                    Off, choose Turn on.
-                  </li>
-                </ol>
+            <div className="segmented dock-choice" role="tablist" aria-label="Dock to">
+              {(['computer', 'home', 'rented'] as const).map((id) => (
                 <button
+                  key={id}
                   type="button"
-                  className="linklike door press-fb"
-                  onClick={() => setTailscaleOpen(true)}
+                  role="tab"
+                  aria-selected={path === id}
+                  className={`seg press-fb${path === id ? ' active' : ''}`}
+                  onClick={() => setPath(id)}
                 >
-                  Get Tailscale
+                  {DOCK_CHOICE_LABEL[id]}
                 </button>
-              </div>
-            ) : null}
-            <DockForm expect="desktop" offers />
+              ))}
+            </div>
+
+            {path === 'computer' ? (
+              <>
+                {!paired ? (
+                  <div className="card">
+                    <h3>Before you scan</h3>
+                    <ol className="setup-steps">
+                      <li>Install Tailscale on both devices and sign in to the same account.</li>
+                      <li>
+                        On your computer, open OpenShore, then Computer. The QR is there. If it says
+                        Off, choose Turn on.
+                      </li>
+                    </ol>
+                    <button
+                      type="button"
+                      className="linklike door press-fb"
+                      onClick={() => setTailscaleOpen(true)}
+                    >
+                      Get Tailscale
+                    </button>
+                  </div>
+                ) : null}
+                <DockForm expect="desktop" offers onDocked={() => setAdding(false)} />
+              </>
+            ) : (
+              <>
+                <ServerSetup key={path} place={path} />
+                <DockForm
+                  key={`dock-${path}`}
+                  expect="server"
+                  place={path}
+                  offers
+                  onDocked={() => setAdding(false)}
+                />
+              </>
+            )}
           </>
         ) : (
-          <>
-            <ServerSetup key={path} place={path} />
-            <DockForm key={`dock-${path}`} expect="server" place={path} offers />
-          </>
+          <button
+            type="button"
+            className="btn block press-fb dock-another"
+            onClick={() => setAdding(true)}
+          >
+            Dock another machine
+          </button>
         )}
 
         <HubList />
@@ -906,7 +919,7 @@ function machineLine(hub: {
 // server section shows it from the first. The active one is marked; tapping
 // another makes it active, and each can be edited or forgotten.
 function HubList({ min = 2 }: { min?: number }) {
-  const { settings, selectHub, removeHub, showToast } = useApp();
+  const { settings, setDefaultMachine, removeHub, showToast } = useApp();
   // The machine being named, while its sheet is open.
   const [naming, setNaming] = useState<{
     baseUrl: string;
@@ -927,9 +940,12 @@ function HubList({ min = 2 }: { min?: number }) {
   // A forgotten server whose keys could not be deleted there.
   const [left, setLeft] = useState<KeysLeft | undefined>();
   const hubs = hubList(settings);
-  // On the desktop the active machine matters only while this computer runs
-  // its sessions elsewhere; on a phone it always does.
-  const activeUrl = isDesktop() && !settings.preferRemoteHub ? undefined : settings.daemon?.baseUrl;
+  // One idea, the default (2026-10-13; it retired the desktop's "Run on
+  // another computer" switch): where a project runs unless it chooses under
+  // Runs on. The desktop's own engine is a choice too.
+  const desktop = isDesktop();
+  const defaultKey =
+    desktop && !settings.preferRemoteHub ? THIS_COMPUTER : settings.daemon?.baseUrl;
   // The confirm sits outside the list: forgetting the second of two machines
   // hides the list, and the confirm still plays its exit.
   return (
@@ -938,12 +954,26 @@ function HubList({ min = 2 }: { min?: number }) {
         <div className="card">
           <h3 style={{ marginTop: 0 }}>Your machines</h3>
           <p className="hint" style={{ marginTop: 0, marginBottom: 10 }}>
-            {isDesktop()
-              ? 'A project runs on the one it chooses under Runs on.'
-              : 'The active one runs the Stack, the Vault on it, Crew, and every project that does not choose its own under Runs on.'}
+            {desktop
+              ? 'New projects run on the default unless one chooses its own under Runs on. Tap a machine to make it the default.'
+              : 'The default runs the Stack, the Vault on it, Crew, and every project that does not choose its own under Runs on. Tap another to make it the default.'}
           </p>
-          {hubs.map((h, i) => {
-            const active = h.baseUrl === activeUrl;
+          {desktop ? (
+            <div className="card-row machine-row stagger-in" style={{ '--i': 0 } as CSSProperties}>
+              <button
+                className="linklike grow press-fb machine-row-main"
+                disabled={defaultKey === THIS_COMPUTER}
+                onClick={() => void setDefaultMachine(THIS_COMPUTER)}
+              >
+                <span className="machine-row-name">This computer</span>
+                <span className="sub">Its own engine, while OpenShore is open here.</span>
+              </button>
+              {defaultKey === THIS_COMPUTER ? <span className="pill ink">Default</span> : null}
+            </div>
+          ) : null}
+          {hubs.map((h, n) => {
+            const i = desktop ? n + 1 : n;
+            const active = h.baseUrl === defaultKey;
             const host = hostOf(h.baseUrl);
             const runs = projectsOn(settings.projects, h.baseUrl);
             return (
@@ -954,8 +984,8 @@ function HubList({ min = 2 }: { min?: number }) {
               >
                 <button
                   className="linklike grow press-fb machine-row-main"
-                  disabled={active || (isDesktop() && !settings.preferRemoteHub)}
-                  onClick={() => void selectHub(h.baseUrl)}
+                  disabled={active}
+                  onClick={() => void setDefaultMachine(h.baseUrl)}
                 >
                   <span className="machine-row-name">{h.name?.trim() || host}</span>
                   <span className="sub">
@@ -963,7 +993,7 @@ function HubList({ min = 2 }: { min?: number }) {
                     {runs ? `. Runs ${runs === 1 ? 'one project' : `${runs} projects`}.` : ''}
                   </span>
                 </button>
-                {active ? <span className="pill ink">Active</span> : null}
+                {active ? <span className="pill ink">Default</span> : null}
                 <span className="machine-row-actions">
                   <button
                     className="linklike press-fb"

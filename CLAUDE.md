@@ -159,9 +159,11 @@ under **Runs on** in its room (`Project.runsOn`, or `THIS_COMPUTER` on a
 desktop; unset follows the device), and each coding chat records the machine
 its session opened on (`source.hub`) and only ever goes back there. The
 chat's session, free chat, approvals, push, model menu, plan steps and
-repositories follow its machine; the device's active machine keeps the Stack,
-the Vault on it and Crew, so choosing a project's machine never moves the
-Vault. One pure rule, `app/src/lib/runsOn.ts`, read through the store's
+repositories follow its machine; the device's default machine (Default in
+Your machines; on a desktop This computer or a docked one, `setDefaultMachine`,
+which retired the "Run on another computer" switch, 2026-10-13) keeps the
+Stack, the Vault on it and Crew, so choosing a project's machine never moves
+the Vault. One pure rule, `app/src/lib/runsOn.ts`, read through the store's
 `conversationWhere` and `newChatWhere`; never read `settings.daemon` for a
 chat's own work. Copy says Runs on and machine, never "hub"; a server's place
 (home or rented) is the person's answer, and only a rented one (or one of

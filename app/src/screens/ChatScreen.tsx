@@ -31,6 +31,8 @@ import { BrandMark } from '../components/BrandMark.js';
 import { MenuIcon } from '../components/MenuIcon.js';
 import { ROOM_NAMES } from '../components/BackBar.js';
 import { RepoPicker } from '../components/RepoPicker.js';
+import { whereName } from '../components/ProjectRunsOn.js';
+import { THIS_COMPUTER, goneLine } from '../lib/runsOn.js';
 import { TodoCard } from '../components/TodoCard.js';
 import { MiniFirstMoves } from '../components/MiniFirstMoves.js';
 import { GuideSetupLink } from '../components/GuideSetupLink.js';
@@ -383,6 +385,10 @@ export function ChatScreen({ compact }: { compact: boolean }) {
   useOpeningGlide(bodyRef);
 
   const conv = activeId ? conversations[activeId] : undefined;
+  // The machine this chat runs on (lib/runsOn.ts), named in the bar for a
+  // coding chat on a docked machine, and a door when it was forgotten.
+  const chatWhere = conv?.source.kind === 'desktop' ? conversationWhere(settings, conv) : undefined;
+  const chatMachine = chatWhere?.kind === 'docked' ? whereName(chatWhere) : undefined;
   const showRepoPicker = Boolean(
     conv && (conv.projectChat || conv.source.kind === 'desktop' || (conv.repoIds?.length ?? 0) > 0),
   );
@@ -869,9 +875,19 @@ export function ChatScreen({ compact }: { compact: boolean }) {
                   }
                 />
               ) : null}
-              {thread && thread.dollars > 0 ? (
+              {/* Where this coding chat runs, once that could be anywhere but
+                  here (Runs on, 2026-10-13): a quiet name, never a control. */}
+              {chatMachine ? (
                 <>
                   {showRepoPicker ? ' · ' : null}
+                  <span className="chat-runs-on" title="Where this chat runs">
+                    on {chatMachine}
+                  </span>
+                </>
+              ) : null}
+              {thread && thread.dollars > 0 ? (
+                <>
+                  {showRepoPicker || chatMachine ? ' · ' : null}
                   {/* Cloud spend so far: marked as spend, so it wears amber. */}
                   <span className="chat-spend spend" title="Cloud spend in this chat">
                     ${thread.dollars.toFixed(2)}
@@ -943,6 +959,22 @@ export function ChatScreen({ compact }: { compact: boolean }) {
             chosen: offlineByChoice,
             here: thisDeviceNoun(),
           })}
+        </div>
+      ) : null}
+
+      {/* A chat whose machine this device forgot: say where it ran, with
+          the one door that brings it back (no dead end, 2026-10-13). */}
+      {chatWhere?.kind === 'gone' ? (
+        <div className="offline-banner machine-gone" role="status">
+          {goneLine(chatWhere.key, undefined, false)}
+          {chatWhere.key !== THIS_COMPUTER ? (
+            <>
+              {' '}
+              <button type="button" className="linklike press-fb" onClick={() => setView('pair')}>
+                Dock again
+              </button>
+            </>
+          ) : null}
         </div>
       ) : null}
 

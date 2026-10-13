@@ -123,11 +123,13 @@ export function projectsOn(projects: { runsOn?: RunsOn }[] | undefined, key: str
 }
 
 /** Why a chat cannot reach its machine, in plain words. */
-export function goneLine(key: string, name?: string): string {
+export function goneLine(key: string, name?: string, withWay = true): string {
   if (key === THIS_COMPUTER) {
     return "This chat ran on a computer's own engine, which this device cannot reach.";
   }
-  return `This chat ran on ${name ?? hostOfKey(key)}, which this device no longer docks to. Dock to it again from Computer to pick it up.`;
+  const line = `This chat ran on ${name ?? hostOfKey(key)}, which this device no longer docks to.`;
+  // Where a door sits beside the line (the chat's banner), it says no more.
+  return withWay ? `${line} Dock to it again from Computer to pick it up.` : line;
 }
 
 function hostOfKey(key: string): string {

@@ -123,8 +123,8 @@ describe('the project room', () => {
     await dom.click('Runs on studio');
     await dom.settle();
     const text = dom.text();
-    expect(text).toContain('Where this device runs');
-    expect(text).toContain('Right now, studio.');
+    expect(text).toContain('Automatic');
+    expect(text).toContain("Follows this device's default. Right now, studio.");
     expect(text).toContain('Rented server, 4 GB memory, 2 cores, Arm');
     expect(text).toContain('A chat already started stays where it began.');
     // A phone has no "this computer" to offer.
@@ -164,17 +164,20 @@ describe('Computer, the three ways in', () => {
     const tabs = [...dom.container.querySelectorAll<HTMLElement>('.dock-choice .seg')].map(
       (el) => el.textContent,
     );
-    expect(tabs).toEqual(['Your computer', 'Home server', 'Rented server']);
+    expect(tabs).toEqual(['Computer', 'Home server', 'Rented server']);
 
     await dom.click('Rented server');
     expect(dom.text()).toContain('Set up a rented server');
-    expect(dom.text()).toContain('What each size can do');
+    // The size guide waits behind its question (2026-10-13).
+    expect(dom.text()).not.toContain('2 to 4 GB');
+    await dom.click('Which size do I need?');
+    expect(dom.text()).toContain('2 to 4 GB');
     expect(dom.text()).toContain(docking.SERVER_RENTED_LINE);
 
     await dom.click('Home server');
     expect(dom.text()).toContain('Set up a server at home');
     expect(dom.text()).not.toContain(docking.SERVER_RENTED_LINE);
-    expect(dom.text()).not.toContain('What each size can do');
+    expect(dom.text()).not.toContain('Which size do I need?');
   });
 
   it('lists every machine with its kind and size once there are two', async () => {
@@ -249,5 +252,66 @@ describe('the server copy', () => {
     );
     // A server whose place is unknown keeps the renting line.
     expect(vaultCopy('ios', 'hub', opts).storage).toBe(HUB_SERVER_STORAGE);
+  });
+});
+
+// The CX pass (founder, 2026-10-13: "Build it all"): docked, the ways in
+// fold; one idea, the default, replaces Active and the desktop's switch; a
+// chat names its machine and, when that machine is forgotten, offers the way
+// back; the first choice in Runs on is Automatic.
+describe('the CX pass', () => {
+  it('folds the ways in behind Dock another machine once docked, and unfolds on a tap', async () => {
+    useApp.setState((s) => ({ settings: { ...s.settings, daemon: HOME, daemons: [HOME] } }));
+    const { PairScreen } = await import('../src/screens/PairScreen.js');
+    await dom.render(<PairScreen />);
+    expect(dom.container.querySelector('.dock-choice')).toBeNull();
+    expect(dom.buttons()).toContain('Dock another machine');
+    await dom.click('Dock another machine');
+    expect(dom.container.querySelector('.dock-choice')).not.toBeNull();
+  });
+
+  it('names one default, and a tap makes another machine the default', async () => {
+    useApp.setState((s) => ({
+      settings: { ...s.settings, daemon: HOME, daemons: [HOME, VPS] },
+    }));
+    const { PairScreen } = await import('../src/screens/PairScreen.js');
+    await dom.render(<PairScreen />);
+    expect(dom.text()).toContain('Default');
+    expect(dom.text()).not.toMatch(/\bActive\b/);
+    const row = [...dom.container.querySelectorAll<HTMLElement>('.machine-row-main')].find((el) =>
+      el.textContent?.startsWith('cax11'),
+    )!;
+    const { act } = await import('react');
+    await act(async () => {
+      row.dispatchEvent(new window.Event('click', { bubbles: true }));
+    });
+    await dom.settle();
+    expect(useApp.getState().settings.daemon?.baseUrl).toBe(VPS.baseUrl);
+  });
+
+  it('on the desktop, the default replaces the "Run on another computer" switch', async () => {
+    const screen = (await import('node:fs')).readFileSync(
+      (await import('node:path')).join(process.cwd(), 'src', 'screens', 'PairScreen.tsx'),
+      'utf8',
+    );
+    expect(screen).not.toContain('Run on another computer');
+    expect(screen).toContain('setDefaultMachine(THIS_COMPUTER)');
+    expect(screen).toContain('Dock by address and key');
+  });
+
+  it('a chat names its machine, and a forgotten one offers Dock again', async () => {
+    const { goneLine } = await import('../src/lib/runsOn.js');
+    const key = 'http://127.0.0.1:9';
+    expect(goneLine(key, 'cax11', false)).toBe(
+      'This chat ran on cax11, which this device no longer docks to.',
+    );
+    expect(goneLine(key, 'cax11')).toMatch(/Dock to it again from Computer/);
+    const chat = (await import('node:fs')).readFileSync(
+      (await import('node:path')).join(process.cwd(), 'src', 'screens', 'ChatScreen.tsx'),
+      'utf8',
+    );
+    expect(chat).toContain('<span className="chat-runs-on" title="Where this chat runs">');
+    expect(chat).toContain("chatWhere?.kind === 'gone'");
+    expect(chat).toMatch(/onClick=\{\(\) => setView\('pair'\)\}>\s*Dock again/);
   });
 });

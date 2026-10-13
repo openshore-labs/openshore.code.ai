@@ -74,11 +74,15 @@ describe('a pairing link opened from the iPhone Camera', () => {
     expect(form).toContain('Dock to this machine?');
     // Computer's own forms answer the link, on both paths.
     const screen = read('src', 'screens', 'PairScreen.tsx');
-    expect(screen).toContain('<DockForm expect="desktop" offers />');
-    // Both server paths, at home and rented (2026-10-12), answer it too.
     expect(screen).toContain(
-      '<DockForm key={`dock-${path}`} expect="server" place={path} offers />',
+      '<DockForm expect="desktop" offers onDocked={() => setAdding(false)} />',
     );
+    expect(screen).toMatch(
+      /<DockForm\s+key=\{`dock-\$\{path\}`\}\s+expect="server"\s+place=\{path\}\s+offers\b/,
+    );
+    // A docking link unfolds the ways in, which a docked phone keeps behind
+    // Dock another machine (2026-10-13).
+    expect(screen).toContain('const showWaysIn = !paired || adding || Boolean(pairOffer);');
   });
 
   it("refuses a link for an address off the person's own network", () => {

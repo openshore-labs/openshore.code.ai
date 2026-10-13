@@ -2674,6 +2674,11 @@ interface AppState {
    *  machine's address, THIS_COMPUTER on a desktop, or undefined to follow
    *  this device. New chats only: a chat already started stays put. */
   setProjectRunsOn(projectId: string, runsOn: string | undefined): Promise<void>;
+  /** The default machine (2026-10-13): where a project runs unless it
+   *  chooses under Runs on. THIS_COMPUTER on a desktop runs on its own engine;
+   *  a docked machine's address makes it the active one, and on a desktop
+   *  sends sessions there (the old "Run on another computer"). */
+  setDefaultMachine(key: string): Promise<void>;
   /** On a desktop, run sessions on the active remote hub instead of this
    *  machine's own engine. Ignored on a phone. */
   setPreferRemoteHub(on: boolean): Promise<void>;
@@ -14987,6 +14992,16 @@ export const useApp = create<AppState>((set, get, api) => {
       const daemons = hubList(s).map((d) => (d.baseUrl === baseUrl ? { ...d, machine } : d));
       const daemon = s.daemon?.baseUrl === baseUrl ? { ...s.daemon, machine } : s.daemon;
       await get().saveSettings({ daemons, daemon });
+    },
+
+    async setDefaultMachine(key) {
+      if (key === THIS_COMPUTER) {
+        if (isDesktop() && bridge()) await get().setPreferRemoteHub(false);
+        return;
+      }
+      if (!hubList(get().settings).some((d) => d.baseUrl === key)) return;
+      await get().selectHub(key);
+      if (isDesktop()) await get().setPreferRemoteHub(true);
     },
 
     async setProjectRunsOn(projectId, runsOn) {

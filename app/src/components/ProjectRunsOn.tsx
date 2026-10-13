@@ -124,8 +124,10 @@ export function RunsOnSheet({
           onClick={() => choose(undefined, deviceName)}
         >
           <span className="grow">
-            <span className="profile-row-title">Where this device runs</span>
-            <span className="sub">Right now, {deviceName}.</span>
+            <span className="profile-row-title">Automatic</span>
+            <span className="sub">
+              Follows this device&apos;s default. Right now, {deviceName}.
+            </span>
           </span>
           {current === undefined ? <RowCheck /> : null}
         </button>
