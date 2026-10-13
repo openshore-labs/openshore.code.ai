@@ -7,7 +7,7 @@
 // this network, machine config only for where the servers are).
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { ConfigSchema } from '../src/config/schema.js';
 import { PROJECT_POLICY } from '../src/config/projectPolicy.js';
@@ -368,7 +368,7 @@ describe('the programs, run with no shell', () => {
       },
     });
     const result = await programs.separate({ file: '/w/song.mp3', model: 'htdemucs_ft.yaml' });
-    expect(result.files.map((f) => f.split('/').at(-1))).toEqual(['song_(Vocals).flac']);
+    expect(result.files.map((f) => basename(f))).toEqual(['song_(Vocals).flac']);
     expect(seenEnv.OSC_TEST_API_KEY).toBeUndefined();
     delete process.env.OSC_TEST_API_KEY;
   });

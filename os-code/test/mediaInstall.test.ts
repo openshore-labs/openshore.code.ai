@@ -6,7 +6,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, onTestFinished } from 'vitest';
 import { ConfigSchema } from '../src/config/schema.js';
 import { globalConfigPath, saveMediaPlacement } from '../src/config/load.js';
@@ -69,9 +69,9 @@ function pinnedTo(model: CatalogModel, body: string): CatalogModel {
 describe("ComfyUI's models folder", () => {
   it('looks in the usual places, Comfy Desktop first', () => {
     expect(comfyModelsCandidates('/home/me', {})).toEqual([
-      '/home/me/ComfyUI-Shared/models',
-      '/home/me/Documents/ComfyUI/models',
-      '/home/me/ComfyUI/models',
+      join('/home/me', 'ComfyUI-Shared', 'models'),
+      join('/home/me', 'Documents', 'ComfyUI', 'models'),
+      join('/home/me', 'ComfyUI', 'models'),
     ]);
   });
 
@@ -84,9 +84,10 @@ describe("ComfyUI's models folder", () => {
   it('refuses a file that would land outside it', () => {
     expect(() => destPath('/m', '../../etc/passwd')).toThrow(/outside ComfyUI's models folder/);
     expect(() => destPath('/m', '/etc/passwd')).toThrow(/outside ComfyUI's models folder/);
-    expect(destPath('/m', 'vae/ae.safetensors')).toBe('/m/vae/ae.safetensors');
+    const placed = resolve('/m', 'vae', 'ae.safetensors');
+    expect(destPath('/m', 'vae/ae.safetensors')).toBe(placed);
     // A folder typed with a trailing slash is the same folder.
-    expect(destPath('/m/', 'vae/ae.safetensors')).toBe('/m/vae/ae.safetensors');
+    expect(destPath('/m/', 'vae/ae.safetensors')).toBe(placed);
   });
 });
 
