@@ -193,12 +193,22 @@ the bundled catalog until the first library publish.
 Each pick's conditions show on its product page. These need the founder or
 counsel before release:
 
-1. **Gemma 4** (Gemma 4 12B and 26B, and T5Gemma inside Stable Audio 3): the
-   model cards say Apache 2.0, but the `gemma_4_license` page was not read.
-   Confirm it before Gemma 4 ships as the laptop pick on five shelves.
-2. **MedGemma** (Health AI Developer Foundations terms): commercial use is
-   allowed, with Google's prohibited use policy passed on to users. Accept the
-   terms, and keep the pick's "not for diagnosing or treating anyone" line.
+1. **Gemma 4** (Gemma 4 12B and 26B): cleared 2026-10-13. The founder read the
+   Gemma 4 license page and it is the Apache License 2.0, as the pick records.
+   T5Gemma inside Stable Audio 3 is a separate model under the Gemma Terms of
+   Use, and its notice is in `NOTICE`.
+2. **MedGemma** (Health AI Developer Foundations terms): the shelf stays
+   (founder, 2026-10-13) with conditions that state the position plainly: the
+   terms and Prohibited Use Policy apply, they bar uses that could make Google
+   a medical-device manufacturer (the terms), and the pick is not for diagnosing
+   or treating anyone. The Prohibited Use Policy (last modified 2024-11-14) was
+   read 2026-10-13: beyond the usual bans it bars unlicensed practice of
+   medicine, misleading claims of health expertise, and automated decisions
+   about healthcare, housing, insurance and similar. The pick's conditions name
+   those. The "Health and care" collection's "visit notes" line is the one to
+   watch: transcribing a visit is not a decision, but the copy must never
+   suggest clinical use. Counsel still to answer: the section 4.5 indemnity,
+   and whether linking to a download is "distribution".
 3. **SAM 3.1** (SAM License): royalty-free commercial use, but the license
    travels with the model and bars military use and export violations. Accept
    it and approve the shipped text.
