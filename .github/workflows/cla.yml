@@ -44,4 +44,7 @@ jobs:
           path-to-signatures: signatures/cla.json
           path-to-document: https://github.com/openshore-labs/openshore.code.ai/blob/main/CLA.md
           branch: cla-signatures
-          allowlist: dependabot[bot],renovate[bot]
+          # The maintainers' own account and the account that commits the
+          # AI coding sessions' work, so the company's own changes need no
+          # contributor sign-off. A pull request from anyone else still does.
+          allowlist: dependabot[bot],renovate[bot],openshore-labs,claude
