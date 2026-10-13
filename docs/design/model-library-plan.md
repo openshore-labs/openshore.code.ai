@@ -193,9 +193,10 @@ the bundled catalog until the first library publish.
 Each pick's conditions show on its product page. These need the founder or
 counsel before release:
 
-1. **Gemma 4** (Gemma 4 12B and 26B, and T5Gemma inside Stable Audio 3): the
-   model cards say Apache 2.0, but the `gemma_4_license` page was not read.
-   Confirm it before Gemma 4 ships as the laptop pick on five shelves.
+1. **Gemma 4** (Gemma 4 12B and 26B): cleared 2026-10-13. The founder read the
+   Gemma 4 license page and it is the Apache License 2.0, as the pick records.
+   T5Gemma inside Stable Audio 3 is a separate model under the Gemma Terms of
+   Use, and its notice is in `NOTICE`.
 2. **MedGemma** (Health AI Developer Foundations terms): commercial use is
    allowed, with Google's prohibited use policy passed on to users. Accept the
    terms, and keep the pick's "not for diagnosing or treating anyone" line.
