@@ -98,8 +98,34 @@ describe('reading pins from the source', () => {
 });
 
 describe('publishing only pinned files', () => {
-  it('pins every file it can, drops a model with one it cannot, and its picks go too', async () => {
+  /** The seed with LaMa's curator pin taken off, as if GitHub gave none. */
+  const unpinnedLama: Catalog = {
+    ...seed,
+    models: seed.models.map((m) =>
+      m.id === 'lama'
+        ? {
+            ...m,
+            source: {
+              ...m.source,
+              files: m.source.files!.map(({ sha256: _sha, ...rest }) => rest),
+            },
+          }
+        : m,
+    ),
+  };
+
+  it('keeps a curator pin, since the seed already names LaMa checksum', async () => {
     const pinned = await pinCatalogFiles(seed, {
+      huggingface: { pin: async () => undefined },
+      github: { pin: async () => undefined },
+    });
+    expect(pinned.models.find((m) => m.id === 'lama')?.source.files?.[0]?.sha256).toMatch(
+      /^344c77bb/,
+    );
+  });
+
+  it('pins every file it can, drops a model with one it cannot, and its picks go too', async () => {
+    const pinned = await pinCatalogFiles(unpinnedLama, {
       huggingface: {
         pin: async (url) => ({
           url: url.replace('/resolve/main/', `/resolve/${COMMIT}/`),
@@ -123,10 +149,10 @@ describe('publishing only pinned files', () => {
     expect(built.catalog.library?.picks['imageEdit.select']?.laptop?.model).toBe('sam3.1');
   });
 
-  it('drops every unpinned media model offline, keeping the chat models', () => {
+  it('drops every unpinned media model offline, keeping the chat models and a curator-pinned one', () => {
     const { catalog, drops } = dropUnpinned(seed);
-    expect(drops.length).toBe(seed.models.filter((m) => m.source.files?.length).length);
-    expect(catalog.models.every((m) => !m.source.files?.length)).toBe(true);
+    expect(drops.length).toBe(seed.models.filter((m) => m.source.files?.length).length - 1);
+    expect(catalog.models.filter((m) => m.source.files?.length).map((m) => m.id)).toEqual(['lama']);
     expect(catalog.models.some((m) => m.id === 'qwen3.5-4b')).toBe(true);
   });
 
