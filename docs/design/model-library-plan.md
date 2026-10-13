@@ -222,8 +222,16 @@ counsel before release:
 6. **Apache and MIT notices** for every other pick, in the same place.
 7. **Files a pick pulls from another repository**: each must now name its own
    license, or the builder holds its model back
-   (`scripts/build-catalog/fileLicenses.ts`). One needs you: confirm the FLUX.2
-   VAE's Apache 2.0 on its card (named so, as BFL released it). The lightx2v
+   (`scripts/build-catalog/fileLicenses.ts`). The FLUX.2 VAE is named Apache 2.0
+   as Black Forest Labs released it: BFL's own FLUX.2-klein-4B repo (card and
+   LICENSE.md read 2026-10-13, Apache 2.0) carries the VAE in its `vae`
+   folder, and BFL's FLUX.2-small-decoder is Apache 2.0 too. The file Get
+   downloads is the single-file copy in `Comfy-Org/flux2-dev`, a repack whose
+   own card says the FLUX.1 dev non-commercial license (it labels the whole
+   repo for the FLUX.2 dev weights it holds). Open until a device run shows
+   ComfyUI loads BFL's `vae` folder file directly: then the source moves to
+   BFL's repo and the question closes. Until then it is one of counsel's
+   questions (the repack's label against BFL's own). The lightx2v
    Lightning LoRA's card says Apache 2.0 (read 2026-10-13), so it is named too
    and Qwen-Image-Edit 2511 is in the library.
 8. **Held, not in the library**: LTX-2.5 (community license under $10M, and a
