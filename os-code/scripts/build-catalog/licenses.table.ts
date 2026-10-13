@@ -58,6 +58,32 @@ export const LICENSE_TABLE: LicenseRow[] = [
     url: 'https://creativecommons.org/licenses/by/4.0/',
     commercial: 'ok',
   },
+  // The model library (2026-10-12). Each `gated` row allows commercial use
+  // under a condition the pick states in its own license.conditions line.
+  {
+    id: 'HAI-DEF',
+    name: 'Health AI Developer Foundations Terms of Use',
+    url: 'https://developers.google.com/health-ai-developer-foundations/terms',
+    commercial: 'gated',
+  },
+  {
+    id: 'OpenMDW-1.1',
+    name: 'Open Model, Data and Weights License 1.1',
+    url: 'https://openmdw.ai/license/1-1/',
+    commercial: 'ok',
+  },
+  {
+    id: 'SAM-License',
+    name: 'SAM License',
+    url: 'https://github.com/facebookresearch/sam3/blob/main/LICENSE',
+    commercial: 'gated',
+  },
+  {
+    id: 'Stability-Community',
+    name: 'Stability AI Community License',
+    url: 'https://stability.ai/license',
+    commercial: 'gated',
+  },
   {
     // Qwen2.5's 3B sizes (and 72B) are not Apache: research and non-commercial
     // use, commercial use needs Qwen's permission. Admitted flagged, like

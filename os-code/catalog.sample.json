@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-08-18",
+  "updated": "2026-10-12",
   "models": [
     {
       "id": "qwen2.5-coder-7b",
@@ -839,6 +839,1545 @@
         "note": "A Llama-based R1 distill. Pick the Qwen distill for a different lineage."
       },
       "blessed": false
+    },
+    {
+      "id": "qwen3.5-4b",
+      "name": "Qwen3.5 4B",
+      "tagline": "A small all-rounder that reads pictures and runs on a phone.",
+      "categories": ["reasoning", "coding", "analysis", "vision", "fast"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "ollama",
+        "ref": "qwen3.5:4b",
+        "pullCommand": "ollama pull qwen3.5:4b"
+      },
+      "sizeGB": 3.4,
+      "quantization": "Q4_K_M",
+      "contextTokens": 262144,
+      "license": {
+        "id": "Apache-2.0",
+        "name": "Apache License 2.0",
+        "url": "https://www.apache.org/licenses/LICENSE-2.0",
+        "commercial": "ok"
+      },
+      "curation": {
+        "rank": 101,
+        "note": "The phone's pick across the library: steady tool use and long context at 4B."
+      },
+      "blessed": false,
+      "onDevice": {
+        "url": "https://huggingface.co/unsloth/Qwen3.5-4B-GGUF/resolve/main/Qwen3.5-4B-Q4_K_M.gguf",
+        "sizeGB": 2.74,
+        "minRamGB": 6
+      }
+    },
+    {
+      "id": "qwen3.5-9b",
+      "name": "Qwen3.5 9B",
+      "tagline": "Reads long files and calls tools reliably on a 16 GB computer.",
+      "categories": ["reasoning", "analysis", "coding", "vision"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "ollama",
+        "ref": "qwen3.5:9b",
+        "pullCommand": "ollama pull qwen3.5:9b"
+      },
+      "sizeGB": 6.6,
+      "quantization": "Q4_K_M",
+      "contextTokens": 262144,
+      "license": {
+        "id": "Apache-2.0",
+        "name": "Apache License 2.0",
+        "url": "https://www.apache.org/licenses/LICENSE-2.0",
+        "commercial": "ok"
+      },
+      "curation": {
+        "rank": 102,
+        "note": "The laptop's pick for long reading, tools, and math."
+      },
+      "blessed": false
+    },
+    {
+      "id": "gemma4-12b",
+      "name": "Gemma 4 12B",
+      "tagline": "An all-rounder for a 16 GB computer that writes well and reads pictures.",
+      "categories": ["reasoning", "writing", "coding", "vision"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "ollama",
+        "ref": "gemma4:12b",
+        "pullCommand": "ollama pull gemma4:12b"
+      },
+      "sizeGB": 8.0,
+      "quantization": "Q4_K_M",
+      "contextTokens": 131072,
+      "license": {
+        "id": "Apache-2.0",
+        "name": "Apache License 2.0",
+        "url": "https://www.apache.org/licenses/LICENSE-2.0",
+        "commercial": "ok"
+      },
+      "curation": {
+        "rank": 103,
+        "note": "The laptop's everyday pick: the highest independent score at its size."
+      },
+      "blessed": false
+    },
+    {
+      "id": "gemma4-26b",
+      "name": "Gemma 4 26B",
+      "tagline": "A fast writer in many languages: only about 4B of its 26B work at once.",
+      "categories": ["writing", "reasoning"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "ollama",
+        "ref": "gemma4:26b",
+        "pullCommand": "ollama pull gemma4:26b"
+      },
+      "sizeGB": 18.0,
+      "quantization": "Q4_K_M",
+      "contextTokens": 131072,
+      "license": {
+        "id": "Apache-2.0",
+        "name": "Apache License 2.0",
+        "url": "https://www.apache.org/licenses/LICENSE-2.0",
+        "commercial": "ok"
+      },
+      "curation": {
+        "rank": 104,
+        "note": "The workstation's pick for prose and translation."
+      },
+      "blessed": false
+    },
+    {
+      "id": "qwen3.8-27b",
+      "name": "Qwen3.8 27B",
+      "tagline": "The strongest open model that fits a 48 GB computer: reasons, codes, and reads pictures.",
+      "categories": ["reasoning", "coding", "analysis", "vision", "writing"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "ollama",
+        "ref": "qwen3.8:27b",
+        "pullCommand": "ollama pull qwen3.8:27b"
+      },
+      "sizeGB": 18.0,
+      "quantization": "Q4_K_M",
+      "contextTokens": 262144,
+      "license": {
+        "id": "Apache-2.0",
+        "name": "Apache License 2.0",
+        "url": "https://www.apache.org/licenses/LICENSE-2.0",
+        "commercial": "ok"
+      },
+      "curation": {
+        "rank": 105,
+        "note": "The workstation's pick across the library."
+      },
+      "blessed": false
+    },
+    {
+      "id": "qwen3.8-27b-q8",
+      "name": "Qwen3.8 27B 8-bit",
+      "tagline": "The same 27B at full 8-bit precision, with room for its whole window.",
+      "categories": ["reasoning", "coding", "analysis", "vision", "writing"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "ollama",
+        "ref": "qwen3.8:27b-q8_0",
+        "pullCommand": "ollama pull qwen3.8:27b-q8_0"
+      },
+      "sizeGB": 30.0,
+      "quantization": "Q8_0",
+      "contextTokens": 262144,
+      "license": {
+        "id": "Apache-2.0",
+        "name": "Apache License 2.0",
+        "url": "https://www.apache.org/licenses/LICENSE-2.0",
+        "commercial": "ok"
+      },
+      "curation": {
+        "rank": 106,
+        "note": "The server's pick: no larger openly licensed model scores higher."
+      },
+      "blessed": false
+    },
+    {
+      "id": "minicpm5-1b",
+      "name": "MiniCPM5 1B",
+      "tagline": "A tiny model that answers simple things at once, even on a phone.",
+      "categories": ["fast", "reasoning"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "ollama",
+        "ref": "openbmb/minicpm5",
+        "pullCommand": "ollama pull openbmb/minicpm5"
+      },
+      "sizeGB": 0.7,
+      "quantization": "Q4_K_M",
+      "contextTokens": 32768,
+      "license": {
+        "id": "Apache-2.0",
+        "name": "Apache License 2.0",
+        "url": "https://www.apache.org/licenses/LICENSE-2.0",
+        "commercial": "ok"
+      },
+      "curation": {
+        "rank": 107,
+        "note": "The phone's pick for instant replies."
+      },
+      "blessed": false,
+      "onDevice": {
+        "url": "https://huggingface.co/openbmb/MiniCPM5-1B-GGUF/resolve/main/MiniCPM5-1B-Q4_K_M.gguf",
+        "sizeGB": 0.69,
+        "minRamGB": 4
+      }
+    },
+    {
+      "id": "minicpm5-2b",
+      "name": "MiniCPM5 2B",
+      "tagline": "A small, quick model for simple questions and small edits.",
+      "categories": ["fast", "reasoning"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "ollama",
+        "ref": "openbmb/minicpm5-2b",
+        "pullCommand": "ollama pull openbmb/minicpm5-2b"
+      },
+      "sizeGB": 1.6,
+      "quantization": "Q4_K_M",
+      "contextTokens": 32768,
+      "license": {
+        "id": "Apache-2.0",
+        "name": "Apache License 2.0",
+        "url": "https://www.apache.org/licenses/LICENSE-2.0",
+        "commercial": "ok"
+      },
+      "curation": {
+        "rank": 108,
+        "note": "The laptop's pick for instant replies."
+      },
+      "blessed": false
+    },
+    {
+      "id": "qwen3-embedding-0.6b",
+      "name": "Qwen3 Embedding 0.6B",
+      "tagline": "Indexes your files and code quickly, even on a computer with no graphics card.",
+      "categories": ["embedding"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "ollama",
+        "ref": "qwen3-embedding:0.6b",
+        "pullCommand": "ollama pull qwen3-embedding:0.6b"
+      },
+      "sizeGB": 0.64,
+      "quantization": "F16",
+      "contextTokens": 32768,
+      "license": {
+        "id": "Apache-2.0",
+        "name": "Apache License 2.0",
+        "url": "https://www.apache.org/licenses/LICENSE-2.0",
+        "commercial": "ok"
+      },
+      "curation": {
+        "rank": 109,
+        "note": "The laptop's pick for search: the top open embedder under 1B."
+      },
+      "blessed": false
+    },
+    {
+      "id": "qwen3-embedding-8b",
+      "name": "Qwen3 Embedding 8B",
+      "tagline": "The most accurate open embedder for searching files and code.",
+      "categories": ["embedding"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "ollama",
+        "ref": "qwen3-embedding:8b",
+        "pullCommand": "ollama pull qwen3-embedding:8b"
+      },
+      "sizeGB": 4.7,
+      "quantization": "Q4_K_M",
+      "contextTokens": 32768,
+      "license": {
+        "id": "Apache-2.0",
+        "name": "Apache License 2.0",
+        "url": "https://www.apache.org/licenses/LICENSE-2.0",
+        "commercial": "ok"
+      },
+      "curation": {
+        "rank": 110,
+        "note": "The workstation's pick for search."
+      },
+      "blessed": false
+    },
+    {
+      "id": "glm-ocr",
+      "name": "GLM-OCR",
+      "tagline": "Turns scanned pages, receipts, and forms into text and tables.",
+      "categories": ["vision"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "ollama",
+        "ref": "glm-ocr",
+        "pullCommand": "ollama pull glm-ocr"
+      },
+      "sizeGB": 1.6,
+      "quantization": "Q8_0",
+      "contextTokens": 8192,
+      "license": {
+        "id": "MIT",
+        "name": "MIT License",
+        "url": "https://opensource.org/license/mit",
+        "commercial": "ok"
+      },
+      "curation": {
+        "rank": 111,
+        "note": "The pick for documents: it beats far larger general models on page reading."
+      },
+      "blessed": false
+    },
+    {
+      "id": "qwen3.5-122b",
+      "name": "Qwen3.5 122B",
+      "tagline": "A large vision model for a server: reads charts, screens, and photos closely.",
+      "categories": ["vision", "reasoning"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "ollama",
+        "ref": "qwen3.5:122b",
+        "pullCommand": "ollama pull qwen3.5:122b"
+      },
+      "sizeGB": 75.0,
+      "quantization": "Q4_K_M",
+      "contextTokens": 262144,
+      "license": {
+        "id": "Apache-2.0",
+        "name": "Apache License 2.0",
+        "url": "https://www.apache.org/licenses/LICENSE-2.0",
+        "commercial": "ok"
+      },
+      "curation": {
+        "rank": 112,
+        "note": "The server's pick for pictures."
+      },
+      "blessed": false
+    },
+    {
+      "id": "medgemma1.5-4b",
+      "name": "MedGemma 1.5 4B",
+      "tagline": "Trained on medical text and images, for research and learning. Not a diagnosis.",
+      "categories": ["reasoning", "vision"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "ollama",
+        "ref": "medgemma1.5",
+        "pullCommand": "ollama pull medgemma1.5"
+      },
+      "sizeGB": 3.3,
+      "quantization": "Q4_K_M",
+      "contextTokens": 131072,
+      "license": {
+        "id": "HAI-DEF",
+        "name": "Health AI Developer Foundations Terms of Use",
+        "url": "https://developers.google.com/health-ai-developer-foundations/terms",
+        "commercial": "gated",
+        "conditions": "Commercial use is allowed under Google's Health AI Developer Foundations terms and its prohibited use policy, which pass on to anyone you share it with. It is not for diagnosing or treating anyone."
+      },
+      "curation": {
+        "rank": 113,
+        "note": "The laptop's pick for health: well ahead of its general base on medical questions."
+      },
+      "blessed": false
+    },
+    {
+      "id": "medgemma-27b",
+      "name": "MedGemma 27B",
+      "tagline": "A larger medical model for a 48 GB computer. Not a diagnosis.",
+      "categories": ["reasoning"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "ollama",
+        "ref": "medgemma:27b",
+        "pullCommand": "ollama pull medgemma:27b"
+      },
+      "sizeGB": 17.0,
+      "quantization": "Q4_K_M",
+      "contextTokens": 131072,
+      "license": {
+        "id": "HAI-DEF",
+        "name": "Health AI Developer Foundations Terms of Use",
+        "url": "https://developers.google.com/health-ai-developer-foundations/terms",
+        "commercial": "gated",
+        "conditions": "Commercial use is allowed under Google's Health AI Developer Foundations terms and its prohibited use policy, which pass on to anyone you share it with. It is not for diagnosing or treating anyone."
+      },
+      "curation": {
+        "rank": 114,
+        "note": "The workstation's pick for health."
+      },
+      "blessed": false
+    },
+    {
+      "id": "intern-s1-mini",
+      "name": "Intern-S1 mini",
+      "tagline": "An 8B model trained for chemistry, materials, and biology.",
+      "categories": ["analysis", "reasoning"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "ollama",
+        "ref": "hf.co/internlm/Intern-S1-mini-GGUF:Q4_K_M",
+        "pullCommand": "ollama pull hf.co/internlm/Intern-S1-mini-GGUF:Q4_K_M"
+      },
+      "sizeGB": 5.0,
+      "quantization": "Q4_K_M",
+      "contextTokens": 32768,
+      "license": {
+        "id": "Apache-2.0",
+        "name": "Apache License 2.0",
+        "url": "https://www.apache.org/licenses/LICENSE-2.0",
+        "commercial": "ok"
+      },
+      "curation": {
+        "rank": 115,
+        "note": "The laptop's pick for science."
+      },
+      "blessed": false
+    },
+    {
+      "id": "flux2-klein-4b",
+      "name": "FLUX.2 klein 4B",
+      "tagline": "Makes and edits pictures on a 16 GB computer, from Black Forest Labs.",
+      "categories": ["image-gen", "image-edit"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "huggingface",
+        "ref": "black-forest-labs/FLUX.2-klein-4b-fp8",
+        "pullCommand": "curl -L -o \"models/diffusion_models/flux-2-klein-4b-fp8.safetensors\" \"https://huggingface.co/black-forest-labs/FLUX.2-klein-4b-fp8/resolve/main/flux-2-klein-4b-fp8.safetensors\"\ncurl -L -o \"models/text_encoders/qwen_3_4b_fp8_mixed.safetensors\" \"https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/text_encoders/qwen_3_4b_fp8_mixed.safetensors\"\ncurl -L -o \"models/vae/flux2-vae.safetensors\" \"https://huggingface.co/Comfy-Org/flux2-dev/resolve/main/split_files/vae/flux2-vae.safetensors\"",
+        "files": [
+          {
+            "url": "https://huggingface.co/black-forest-labs/FLUX.2-klein-4b-fp8/resolve/main/flux-2-klein-4b-fp8.safetensors",
+            "sizeGB": 3.79,
+            "dest": "diffusion_models/flux-2-klein-4b-fp8.safetensors"
+          },
+          {
+            "url": "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/text_encoders/qwen_3_4b_fp8_mixed.safetensors",
+            "sizeGB": 5.25,
+            "dest": "text_encoders/qwen_3_4b_fp8_mixed.safetensors",
+            "license": "Apache-2.0"
+          },
+          {
+            "url": "https://huggingface.co/Comfy-Org/flux2-dev/resolve/main/split_files/vae/flux2-vae.safetensors",
+            "sizeGB": 0.32,
+            "dest": "vae/flux2-vae.safetensors",
+            "license": "Apache-2.0"
+          }
+        ]
+      },
+      "runtime": "comfyui",
+      "runner": {
+        "graph": "flux2-klein"
+      },
+      "sizeGB": 9.36,
+      "quantization": "as published",
+      "contextTokens": 1,
+      "license": {
+        "id": "Apache-2.0",
+        "name": "Apache License 2.0",
+        "url": "https://www.apache.org/licenses/LICENSE-2.0",
+        "commercial": "ok"
+      },
+      "curation": {
+        "rank": 201,
+        "note": "The laptop pick for making and editing pictures: one download serves both."
+      },
+      "blessed": false
+    },
+    {
+      "id": "z-image-turbo",
+      "name": "Z-Image Turbo",
+      "tagline": "Clear, correctly spelled words in pictures, in eight steps.",
+      "categories": ["image-gen"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "huggingface",
+        "ref": "Comfy-Org/z_image_turbo",
+        "pullCommand": "curl -L -o \"models/diffusion_models/z_image_turbo_int8_convrot.safetensors\" \"https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/diffusion_models/z_image_turbo_int8_convrot.safetensors\"\ncurl -L -o \"models/text_encoders/qwen_3_4b_fp8_mixed.safetensors\" \"https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/text_encoders/qwen_3_4b_fp8_mixed.safetensors\"\ncurl -L -o \"models/vae/ae.safetensors\" \"https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/vae/ae.safetensors\"",
+        "files": [
+          {
+            "url": "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/diffusion_models/z_image_turbo_int8_convrot.safetensors",
+            "sizeGB": 5.78,
+            "dest": "diffusion_models/z_image_turbo_int8_convrot.safetensors"
+          },
+          {
+            "url": "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/text_encoders/qwen_3_4b_fp8_mixed.safetensors",
+            "sizeGB": 5.25,
+            "dest": "text_encoders/qwen_3_4b_fp8_mixed.safetensors",
+            "license": "Apache-2.0"
+          },
+          {
+            "url": "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/vae/ae.safetensors",
+            "sizeGB": 0.32,
+            "dest": "vae/ae.safetensors"
+          }
+        ]
+      },
+      "runtime": "comfyui",
+      "runner": {
+        "graph": "z-image-turbo"
+      },
+      "sizeGB": 11.35,
+      "quantization": "as published",
+      "contextTokens": 1,
+      "license": {
+        "id": "Apache-2.0",
+        "name": "Apache License 2.0",
+        "url": "https://www.apache.org/licenses/LICENSE-2.0",
+        "commercial": "ok"
+      },
+      "curation": {
+        "rank": 202,
+        "note": "The laptop pick for text in pictures."
+      },
+      "blessed": false
+    },
+    {
+      "id": "hidream-o1-dev",
+      "name": "HiDream-O1 Image Dev",
+      "tagline": "The highest-rated openly licensed picture model, for a big graphics card.",
+      "categories": ["image-gen"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "huggingface",
+        "ref": "Comfy-Org/HiDream-O1-Image",
+        "pullCommand": "curl -L -o \"models/checkpoints/hidream_o1_image_dev_fp8_scaled.safetensors\" \"https://huggingface.co/Comfy-Org/HiDream-O1-Image/resolve/main/checkpoints/hidream_o1_image_dev_fp8_scaled.safetensors\"",
+        "files": [
+          {
+            "url": "https://huggingface.co/Comfy-Org/HiDream-O1-Image/resolve/main/checkpoints/hidream_o1_image_dev_fp8_scaled.safetensors",
+            "sizeGB": 7.51,
+            "dest": "checkpoints/hidream_o1_image_dev_fp8_scaled.safetensors"
+          }
+        ]
+      },
+      "runtime": "comfyui",
+      "runner": {
+        "graph": "hidream-o1"
+      },
+      "sizeGB": 7.51,
+      "quantization": "as published",
+      "contextTokens": 1,
+      "license": {
+        "id": "MIT",
+        "name": "MIT License",
+        "url": "https://opensource.org/license/mit",
+        "commercial": "ok"
+      },
+      "curation": {
+        "rank": 203,
+        "note": "The workstation pick for pictures."
+      },
+      "blessed": false
+    },
+    {
+      "id": "ernie-image-turbo",
+      "name": "ERNIE-Image Turbo",
+      "tagline": "Long, legible text in posters and signs.",
+      "categories": ["image-gen"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "huggingface",
+        "ref": "Comfy-Org/ERNIE-Image",
+        "pullCommand": "curl -L -o \"models/diffusion_models/ernie-image-turbo.safetensors\" \"https://huggingface.co/Comfy-Org/ERNIE-Image/resolve/main/diffusion_models/ernie-image-turbo.safetensors\"\ncurl -L -o \"models/text_encoders/ministral-3-3b.safetensors\" \"https://huggingface.co/Comfy-Org/ERNIE-Image/resolve/main/text_encoders/ministral-3-3b.safetensors\"\ncurl -L -o \"models/vae/flux2-vae.safetensors\" \"https://huggingface.co/Comfy-Org/ERNIE-Image/resolve/main/vae/flux2-vae.safetensors\"",
+        "files": [
+          {
+            "url": "https://huggingface.co/Comfy-Org/ERNIE-Image/resolve/main/diffusion_models/ernie-image-turbo.safetensors",
+            "sizeGB": 14.96,
+            "dest": "diffusion_models/ernie-image-turbo.safetensors"
+          },
+          {
+            "url": "https://huggingface.co/Comfy-Org/ERNIE-Image/resolve/main/text_encoders/ministral-3-3b.safetensors",
+            "sizeGB": 7.19,
+            "dest": "text_encoders/ministral-3-3b.safetensors"
+          },
+          {
+            "url": "https://huggingface.co/Comfy-Org/ERNIE-Image/resolve/main/vae/flux2-vae.safetensors",
+            "sizeGB": 0.32,
+            "dest": "vae/flux2-vae.safetensors"
+          }
+        ]
+      },
+      "runtime": "comfyui",
+      "runner": {
+        "graph": "ernie-image-turbo"
+      },
+      "sizeGB": 22.47,
+      "quantization": "as published",
+      "contextTokens": 1,
+      "license": {
+        "id": "Apache-2.0",
+        "name": "Apache License 2.0",
+        "url": "https://www.apache.org/licenses/LICENSE-2.0",
+        "commercial": "ok"
+      },
+      "curation": {
+        "rank": 204,
+        "note": "The workstation pick for text in pictures."
+      },
+      "blessed": false
+    },
+    {
+      "id": "ming-image-design",
+      "name": "Ming-Image Design",
+      "tagline": "App screens, posters and layouts, with a transparent background when asked.",
+      "categories": ["image-gen"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "huggingface",
+        "ref": "Comfy-Org/Ming-Image",
+        "pullCommand": "curl -L -o \"models/diffusion_models/ming_image_0.1_design_int8_convrot.safetensors\" \"https://huggingface.co/Comfy-Org/Ming-Image/resolve/main/diffusion_models/ming_image_0.1_design_int8_convrot.safetensors\"\ncurl -L -o \"models/text_encoders/ming_image_0.1_ling_mini_2.0_int8_convrot.safetensors\" \"https://huggingface.co/Comfy-Org/Ming-Image/resolve/main/text_encoders/ming_image_0.1_ling_mini_2.0_int8_convrot.safetensors\"\ncurl -L -o \"models/vae/ming_image_vae_bf16.safetensors\" \"https://huggingface.co/Comfy-Org/Ming-Image/resolve/main/vae/ming_image_vae_bf16.safetensors\"",
+        "files": [
+          {
+            "url": "https://huggingface.co/Comfy-Org/Ming-Image/resolve/main/diffusion_models/ming_image_0.1_design_int8_convrot.safetensors",
+            "sizeGB": 5.75,
+            "dest": "diffusion_models/ming_image_0.1_design_int8_convrot.safetensors"
+          },
+          {
+            "url": "https://huggingface.co/Comfy-Org/Ming-Image/resolve/main/text_encoders/ming_image_0.1_ling_mini_2.0_int8_convrot.safetensors",
+            "sizeGB": 18.17,
+            "dest": "text_encoders/ming_image_0.1_ling_mini_2.0_int8_convrot.safetensors"
+          },
+          {
+            "url": "https://huggingface.co/Comfy-Org/Ming-Image/resolve/main/vae/ming_image_vae_bf16.safetensors",
+            "sizeGB": 0.24,
+            "dest": "vae/ming_image_vae_bf16.safetensors"
+          }
+        ]
+      },
+      "runtime": "comfyui",
+      "runner": {
+        "graph": "ming-image"
+      },
+      "sizeGB": 24.16,
+      "quantization": "as published",
+      "contextTokens": 1,
+      "license": {
+        "id": "MIT",
+        "name": "MIT License",
+        "url": "https://opensource.org/license/mit",
+        "commercial": "ok"
+      },
+      "curation": {
+        "rank": 205,
+        "note": "The server pick for designs and screens."
+      },
+      "blessed": false
+    },
+    {
+      "id": "sam3.1",
+      "name": "SAM 3.1",
+      "tagline": "Finds what you name in a picture and outlines it, from Meta.",
+      "categories": ["image-edit"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "huggingface",
+        "ref": "Comfy-Org/sam3.1",
+        "pullCommand": "curl -L -o \"models/checkpoints/sam3.1_multiplex_fp16.safetensors\" \"https://huggingface.co/Comfy-Org/sam3.1/resolve/main/checkpoints/sam3.1_multiplex_fp16.safetensors\"",
+        "files": [
+          {
+            "url": "https://huggingface.co/Comfy-Org/sam3.1/resolve/main/checkpoints/sam3.1_multiplex_fp16.safetensors",
+            "sizeGB": 1.63,
+            "dest": "checkpoints/sam3.1_multiplex_fp16.safetensors"
+          }
+        ]
+      },
+      "runtime": "comfyui",
+      "runner": {
+        "graph": "sam3"
+      },
+      "sizeGB": 1.63,
+      "quantization": "as published",
+      "contextTokens": 1,
+      "license": {
+        "id": "SAM-License",
+        "name": "SAM License",
+        "url": "https://github.com/facebookresearch/sam3/blob/main/LICENSE",
+        "commercial": "gated",
+        "conditions": "Commercial use is royalty-free, but the license must travel with the model, and it bars military use and uses that break export and trade controls."
+      },
+      "curation": {
+        "rank": 206,
+        "note": "The pick for finding what you name."
+      },
+      "blessed": false
+    },
+    {
+      "id": "lama",
+      "name": "LaMa",
+      "tagline": "Takes something out of a photo and fills in what was behind it, quickly, even on a CPU.",
+      "categories": ["image-edit"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "github",
+        "ref": "advimman/lama",
+        "pullCommand": "curl -L -o \"models/inpaint/big-lama.pt\" \"https://github.com/Sanster/models/releases/download/add_big_lama/big-lama.pt\"",
+        "files": [
+          {
+            "url": "https://github.com/Sanster/models/releases/download/add_big_lama/big-lama.pt",
+            "sizeGB": 0.2,
+            "dest": "inpaint/big-lama.pt",
+            "license": "Apache-2.0",
+            "sha256": "344c77bbcb158f17dd143070d1e789f38a66c04202311ae3a258ef66667a9ea9"
+          }
+        ]
+      },
+      "runtime": "comfyui",
+      "runner": {
+        "graph": "lama",
+        "nodePack": "comfyui-inpaint-nodes"
+      },
+      "sizeGB": 0.2,
+      "quantization": "as published",
+      "contextTokens": 1,
+      "license": {
+        "id": "Apache-2.0",
+        "name": "Apache License 2.0",
+        "url": "https://www.apache.org/licenses/LICENSE-2.0",
+        "commercial": "ok"
+      },
+      "curation": {
+        "rank": 207,
+        "note": "The pick for removing objects."
+      },
+      "blessed": false
+    },
+    {
+      "id": "birefnet",
+      "name": "BiRefNet",
+      "tagline": "Cuts the subject out of a photo onto a clear background.",
+      "categories": ["image-edit"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "huggingface",
+        "ref": "Comfy-Org/BiRefNet",
+        "pullCommand": "curl -L -o \"models/background_removal/birefnet.safetensors\" \"https://huggingface.co/Comfy-Org/BiRefNet/resolve/main/background_removal/birefnet.safetensors\"",
+        "files": [
+          {
+            "url": "https://huggingface.co/Comfy-Org/BiRefNet/resolve/main/background_removal/birefnet.safetensors",
+            "sizeGB": 0.42,
+            "dest": "background_removal/birefnet.safetensors"
+          }
+        ]
+      },
+      "runtime": "comfyui",
+      "runner": {
+        "graph": "birefnet"
+      },
+      "sizeGB": 0.42,
+      "quantization": "as published",
+      "contextTokens": 1,
+      "license": {
+        "id": "MIT",
+        "name": "MIT License",
+        "url": "https://opensource.org/license/mit",
+        "commercial": "ok"
+      },
+      "curation": {
+        "rank": 208,
+        "note": "The pick for removing backgrounds."
+      },
+      "blessed": false
+    },
+    {
+      "id": "realesrgan-x4plus",
+      "name": "Real-ESRGAN x4plus",
+      "tagline": "Makes a picture four times bigger and sharper, on a CPU.",
+      "categories": ["image-edit"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "huggingface",
+        "ref": "Comfy-Org/Real-ESRGAN_repackaged",
+        "pullCommand": "curl -L -o \"models/upscale_models/RealESRGAN_x4plus.safetensors\" \"https://huggingface.co/Comfy-Org/Real-ESRGAN_repackaged/resolve/main/RealESRGAN_x4plus.safetensors\"",
+        "files": [
+          {
+            "url": "https://huggingface.co/Comfy-Org/Real-ESRGAN_repackaged/resolve/main/RealESRGAN_x4plus.safetensors",
+            "sizeGB": 0.07,
+            "dest": "upscale_models/RealESRGAN_x4plus.safetensors"
+          }
+        ]
+      },
+      "runtime": "comfyui",
+      "runner": {
+        "graph": "esrgan"
+      },
+      "sizeGB": 0.07,
+      "quantization": "as published",
+      "contextTokens": 1,
+      "license": {
+        "id": "BSD-3-Clause",
+        "name": "BSD 3-Clause License",
+        "url": "https://opensource.org/license/bsd-3-clause",
+        "commercial": "ok"
+      },
+      "curation": {
+        "rank": 209,
+        "note": "The laptop pick for upscaling."
+      },
+      "blessed": false
+    },
+    {
+      "id": "seedvr2-3b",
+      "name": "SeedVR2 3B",
+      "tagline": "Restores worn and blurry photos, not only enlarges them.",
+      "categories": ["image-edit"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "huggingface",
+        "ref": "Comfy-Org/SeedVR2",
+        "pullCommand": "curl -L -o \"models/diffusion_models/seedvr2_3b_int8_convrot.safetensors\" \"https://huggingface.co/Comfy-Org/SeedVR2/resolve/main/diffusion_models/seedvr2_3b_int8_convrot.safetensors\"\ncurl -L -o \"models/vae/seedvr2_ema_vae_fp16.safetensors\" \"https://huggingface.co/Comfy-Org/SeedVR2/resolve/main/vae/seedvr2_ema_vae_fp16.safetensors\"",
+        "files": [
+          {
+            "url": "https://huggingface.co/Comfy-Org/SeedVR2/resolve/main/diffusion_models/seedvr2_3b_int8_convrot.safetensors",
+            "sizeGB": 3.22,
+            "dest": "diffusion_models/seedvr2_3b_int8_convrot.safetensors"
+          },
+          {
+            "url": "https://huggingface.co/Comfy-Org/SeedVR2/resolve/main/vae/seedvr2_ema_vae_fp16.safetensors",
+            "sizeGB": 0.48,
+            "dest": "vae/seedvr2_ema_vae_fp16.safetensors"
+          }
+        ]
+      },
+      "runtime": "comfyui",
+      "runner": {
+        "graph": "seedvr2"
+      },
+      "sizeGB": 3.7,
+      "quantization": "as published",
+      "contextTokens": 1,
+      "license": {
+        "id": "Apache-2.0",
+        "name": "Apache License 2.0",
+        "url": "https://www.apache.org/licenses/LICENSE-2.0",
+        "commercial": "ok"
+      },
+      "curation": {
+        "rank": 210,
+        "note": "The workstation pick for restoring photos."
+      },
+      "blessed": false
+    },
+    {
+      "id": "seedvr2-7b",
+      "name": "SeedVR2 7B",
+      "tagline": "The larger SeedVR2, for the most worn photos.",
+      "categories": ["image-edit"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "huggingface",
+        "ref": "Comfy-Org/SeedVR2",
+        "pullCommand": "curl -L -o \"models/diffusion_models/seedvr2_7b_int8_convrot.safetensors\" \"https://huggingface.co/Comfy-Org/SeedVR2/resolve/main/diffusion_models/seedvr2_7b_int8_convrot.safetensors\"\ncurl -L -o \"models/vae/seedvr2_ema_vae_fp16.safetensors\" \"https://huggingface.co/Comfy-Org/SeedVR2/resolve/main/vae/seedvr2_ema_vae_fp16.safetensors\"",
+        "files": [
+          {
+            "url": "https://huggingface.co/Comfy-Org/SeedVR2/resolve/main/diffusion_models/seedvr2_7b_int8_convrot.safetensors",
+            "sizeGB": 7.76,
+            "dest": "diffusion_models/seedvr2_7b_int8_convrot.safetensors"
+          },
+          {
+            "url": "https://huggingface.co/Comfy-Org/SeedVR2/resolve/main/vae/seedvr2_ema_vae_fp16.safetensors",
+            "sizeGB": 0.48,
+            "dest": "vae/seedvr2_ema_vae_fp16.safetensors"
+          }
+        ]
+      },
+      "runtime": "comfyui",
+      "runner": {
+        "graph": "seedvr2",
+        "files": {
+          "unet": "seedvr2_7b_int8_convrot.safetensors"
+        }
+      },
+      "sizeGB": 8.24,
+      "quantization": "as published",
+      "contextTokens": 1,
+      "license": {
+        "id": "Apache-2.0",
+        "name": "Apache License 2.0",
+        "url": "https://www.apache.org/licenses/LICENSE-2.0",
+        "commercial": "ok"
+      },
+      "curation": {
+        "rank": 211,
+        "note": "The server pick for restoring photos."
+      },
+      "blessed": false
+    },
+    {
+      "id": "qwen-image-edit-2511",
+      "name": "Qwen-Image-Edit 2511",
+      "tagline": "Changes a photo the way you describe, keeping the rest as it was.",
+      "categories": ["image-edit"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "huggingface",
+        "ref": "Comfy-Org/Qwen-Image-Edit_ComfyUI",
+        "pullCommand": "curl -L -o \"models/diffusion_models/qwen_image_edit_2511_int8_convrot.safetensors\" \"https://huggingface.co/Comfy-Org/Qwen-Image-Edit_ComfyUI/resolve/main/split_files/diffusion_models/qwen_image_edit_2511_int8_convrot.safetensors\"\ncurl -L -o \"models/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors\" \"https://huggingface.co/Comfy-Org/HunyuanVideo_1.5_repackaged/resolve/main/split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors\"\ncurl -L -o \"models/vae/qwen_image_vae.safetensors\" \"https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/vae/qwen_image_vae.safetensors\"\ncurl -L -o \"models/loras/Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors\" \"https://huggingface.co/lightx2v/Qwen-Image-Edit-2511-Lightning/resolve/main/Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors\"",
+        "files": [
+          {
+            "url": "https://huggingface.co/Comfy-Org/Qwen-Image-Edit_ComfyUI/resolve/main/split_files/diffusion_models/qwen_image_edit_2511_int8_convrot.safetensors",
+            "sizeGB": 19.09,
+            "dest": "diffusion_models/qwen_image_edit_2511_int8_convrot.safetensors"
+          },
+          {
+            "url": "https://huggingface.co/Comfy-Org/HunyuanVideo_1.5_repackaged/resolve/main/split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors",
+            "sizeGB": 8.74,
+            "dest": "text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors",
+            "license": "Apache-2.0"
+          },
+          {
+            "url": "https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/vae/qwen_image_vae.safetensors",
+            "sizeGB": 0.24,
+            "dest": "vae/qwen_image_vae.safetensors",
+            "license": "Apache-2.0"
+          },
+          {
+            "url": "https://huggingface.co/lightx2v/Qwen-Image-Edit-2511-Lightning/resolve/main/Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors",
+            "sizeGB": 0.81,
+            "dest": "loras/Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors"
+          }
+        ]
+      },
+      "runtime": "comfyui",
+      "runner": {
+        "graph": "qwen-image-edit-2511"
+      },
+      "sizeGB": 28.88,
+      "quantization": "as published",
+      "contextTokens": 1,
+      "license": {
+        "id": "Apache-2.0",
+        "name": "Apache License 2.0",
+        "url": "https://www.apache.org/licenses/LICENSE-2.0",
+        "commercial": "ok"
+      },
+      "curation": {
+        "rank": 212,
+        "note": "The workstation pick for editing by asking."
+      },
+      "blessed": false
+    },
+    {
+      "id": "wan2.2-ti2v-5b",
+      "name": "Wan 2.2 5B",
+      "tagline": "Five-second clips at 720p from a description or a picture.",
+      "categories": ["video"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "huggingface",
+        "ref": "Comfy-Org/Wan_2.2_ComfyUI_Repackaged",
+        "pullCommand": "curl -L -o \"models/diffusion_models/wan2.2_ti2v_5B_fp16.safetensors\" \"https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_ti2v_5B_fp16.safetensors\"\ncurl -L -o \"models/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors\" \"https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors\"\ncurl -L -o \"models/vae/wan2.2_vae.safetensors\" \"https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/vae/wan2.2_vae.safetensors\"",
+        "files": [
+          {
+            "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_ti2v_5B_fp16.safetensors",
+            "sizeGB": 9.31,
+            "dest": "diffusion_models/wan2.2_ti2v_5B_fp16.safetensors"
+          },
+          {
+            "url": "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+            "sizeGB": 6.27,
+            "dest": "text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+            "license": "Apache-2.0"
+          },
+          {
+            "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/vae/wan2.2_vae.safetensors",
+            "sizeGB": 1.31,
+            "dest": "vae/wan2.2_vae.safetensors"
+          }
+        ]
+      },
+      "runtime": "comfyui",
+      "runner": {
+        "graph": "wan22-ti2v"
+      },
+      "sizeGB": 16.89,
+      "quantization": "as published",
+      "contextTokens": 1,
+      "license": {
+        "id": "Apache-2.0",
+        "name": "Apache License 2.0",
+        "url": "https://www.apache.org/licenses/LICENSE-2.0",
+        "commercial": "ok"
+      },
+      "curation": {
+        "rank": 213,
+        "note": "The workstation pick for video."
+      },
+      "blessed": false
+    },
+    {
+      "id": "wan2.2-t2v-a14b",
+      "name": "Wan 2.2 14B (text to video)",
+      "tagline": "The larger Wan, two 14B experts, for a server.",
+      "categories": ["video"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "huggingface",
+        "ref": "Comfy-Org/Wan_2.2_ComfyUI_Repackaged",
+        "pullCommand": "curl -L -o \"models/diffusion_models/wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors\" \"https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors\"\ncurl -L -o \"models/diffusion_models/wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors\" \"https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors\"\ncurl -L -o \"models/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors\" \"https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors\"\ncurl -L -o \"models/vae/wan_2.1_vae.safetensors\" \"https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors\"",
+        "files": [
+          {
+            "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors",
+            "sizeGB": 13.31,
+            "dest": "diffusion_models/wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors"
+          },
+          {
+            "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors",
+            "sizeGB": 13.31,
+            "dest": "diffusion_models/wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors"
+          },
+          {
+            "url": "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+            "sizeGB": 6.27,
+            "dest": "text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+            "license": "Apache-2.0"
+          },
+          {
+            "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors",
+            "sizeGB": 0.24,
+            "dest": "vae/wan_2.1_vae.safetensors"
+          }
+        ]
+      },
+      "runtime": "comfyui",
+      "runner": {
+        "graph": "wan22-a14b"
+      },
+      "sizeGB": 33.13,
+      "quantization": "as published",
+      "contextTokens": 1,
+      "license": {
+        "id": "Apache-2.0",
+        "name": "Apache License 2.0",
+        "url": "https://www.apache.org/licenses/LICENSE-2.0",
+        "commercial": "ok"
+      },
+      "curation": {
+        "rank": 214,
+        "note": "The server pick for text to video."
+      },
+      "blessed": false
+    },
+    {
+      "id": "wan2.2-i2v-a14b",
+      "name": "Wan 2.2 14B (picture to video)",
+      "tagline": "The larger Wan for animating a picture, for a server.",
+      "categories": ["video"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "huggingface",
+        "ref": "Comfy-Org/Wan_2.2_ComfyUI_Repackaged",
+        "pullCommand": "curl -L -o \"models/diffusion_models/wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors\" \"https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors\"\ncurl -L -o \"models/diffusion_models/wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors\" \"https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors\"\ncurl -L -o \"models/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors\" \"https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors\"\ncurl -L -o \"models/vae/wan_2.1_vae.safetensors\" \"https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors\"",
+        "files": [
+          {
+            "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors",
+            "sizeGB": 13.31,
+            "dest": "diffusion_models/wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors"
+          },
+          {
+            "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors",
+            "sizeGB": 13.31,
+            "dest": "diffusion_models/wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors"
+          },
+          {
+            "url": "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+            "sizeGB": 6.27,
+            "dest": "text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+            "license": "Apache-2.0"
+          },
+          {
+            "url": "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors",
+            "sizeGB": 0.24,
+            "dest": "vae/wan_2.1_vae.safetensors"
+          }
+        ]
+      },
+      "runtime": "comfyui",
+      "runner": {
+        "graph": "wan22-a14b"
+      },
+      "sizeGB": 33.13,
+      "quantization": "as published",
+      "contextTokens": 1,
+      "license": {
+        "id": "Apache-2.0",
+        "name": "Apache License 2.0",
+        "url": "https://www.apache.org/licenses/LICENSE-2.0",
+        "commercial": "ok"
+      },
+      "curation": {
+        "rank": 215,
+        "note": "The server pick for animating a picture."
+      },
+      "blessed": false
+    },
+    {
+      "id": "ace-step-1.5-turbo",
+      "name": "ACE-Step 1.5 Turbo",
+      "tagline": "Songs with vocals and lyrics in 50 languages, up to ten minutes.",
+      "categories": ["audio"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "huggingface",
+        "ref": "Comfy-Org/ace_step_1.5_ComfyUI_files",
+        "pullCommand": "curl -L -o \"models/checkpoints/ace_step_1.5_turbo_aio.safetensors\" \"https://huggingface.co/Comfy-Org/ace_step_1.5_ComfyUI_files/resolve/main/checkpoints/ace_step_1.5_turbo_aio.safetensors\"",
+        "files": [
+          {
+            "url": "https://huggingface.co/Comfy-Org/ace_step_1.5_ComfyUI_files/resolve/main/checkpoints/ace_step_1.5_turbo_aio.safetensors",
+            "sizeGB": 9.34,
+            "dest": "checkpoints/ace_step_1.5_turbo_aio.safetensors"
+          }
+        ]
+      },
+      "runtime": "comfyui",
+      "runner": {
+        "graph": "ace-step-15"
+      },
+      "sizeGB": 9.34,
+      "quantization": "as published",
+      "contextTokens": 1,
+      "license": {
+        "id": "MIT",
+        "name": "MIT License",
+        "url": "https://opensource.org/license/mit",
+        "commercial": "ok"
+      },
+      "curation": {
+        "rank": 216,
+        "note": "The laptop pick for music."
+      },
+      "blessed": false
+    },
+    {
+      "id": "ace-step-1.5-xl-turbo",
+      "name": "ACE-Step 1.5 XL Turbo",
+      "tagline": "The larger ACE-Step, aimed at higher quality.",
+      "categories": ["audio"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "huggingface",
+        "ref": "Comfy-Org/ace_step_1.5_ComfyUI_files",
+        "pullCommand": "curl -L -o \"models/diffusion_models/acestep_v1.5_xl_turbo_bf16.safetensors\" \"https://huggingface.co/Comfy-Org/ace_step_1.5_ComfyUI_files/resolve/main/split_files/diffusion_models/acestep_v1.5_xl_turbo_bf16.safetensors\"\ncurl -L -o \"models/text_encoders/qwen_0.6b_ace15.safetensors\" \"https://huggingface.co/Comfy-Org/ace_step_1.5_ComfyUI_files/resolve/main/split_files/text_encoders/qwen_0.6b_ace15.safetensors\"\ncurl -L -o \"models/text_encoders/qwen_4b_ace15.safetensors\" \"https://huggingface.co/Comfy-Org/ace_step_1.5_ComfyUI_files/resolve/main/split_files/text_encoders/qwen_4b_ace15.safetensors\"\ncurl -L -o \"models/vae/ace_1.5_vae.safetensors\" \"https://huggingface.co/Comfy-Org/ace_step_1.5_ComfyUI_files/resolve/main/split_files/vae/ace_1.5_vae.safetensors\"",
+        "files": [
+          {
+            "url": "https://huggingface.co/Comfy-Org/ace_step_1.5_ComfyUI_files/resolve/main/split_files/diffusion_models/acestep_v1.5_xl_turbo_bf16.safetensors",
+            "sizeGB": 9.29,
+            "dest": "diffusion_models/acestep_v1.5_xl_turbo_bf16.safetensors"
+          },
+          {
+            "url": "https://huggingface.co/Comfy-Org/ace_step_1.5_ComfyUI_files/resolve/main/split_files/text_encoders/qwen_0.6b_ace15.safetensors",
+            "sizeGB": 1.11,
+            "dest": "text_encoders/qwen_0.6b_ace15.safetensors"
+          },
+          {
+            "url": "https://huggingface.co/Comfy-Org/ace_step_1.5_ComfyUI_files/resolve/main/split_files/text_encoders/qwen_4b_ace15.safetensors",
+            "sizeGB": 7.8,
+            "dest": "text_encoders/qwen_4b_ace15.safetensors"
+          },
+          {
+            "url": "https://huggingface.co/Comfy-Org/ace_step_1.5_ComfyUI_files/resolve/main/split_files/vae/ace_1.5_vae.safetensors",
+            "sizeGB": 0.32,
+            "dest": "vae/ace_1.5_vae.safetensors"
+          }
+        ]
+      },
+      "runtime": "comfyui",
+      "runner": {
+        "graph": "ace-step-15-xl"
+      },
+      "sizeGB": 18.52,
+      "quantization": "as published",
+      "contextTokens": 1,
+      "license": {
+        "id": "MIT",
+        "name": "MIT License",
+        "url": "https://opensource.org/license/mit",
+        "commercial": "ok"
+      },
+      "curation": {
+        "rank": 217,
+        "note": "The workstation pick for music."
+      },
+      "blessed": false
+    },
+    {
+      "id": "stable-audio-3-small-sfx",
+      "name": "Stable Audio 3 Small SFX",
+      "tagline": "Sound effects from a description, on a CPU.",
+      "categories": ["audio"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "huggingface",
+        "ref": "Comfy-Org/stable-audio-3",
+        "pullCommand": "curl -L -o \"models/checkpoints/stable_audio_3_small_sfx.safetensors\" \"https://huggingface.co/Comfy-Org/stable-audio-3/resolve/main/checkpoints/stable_audio_3_small_sfx.safetensors\"\ncurl -L -o \"models/text_encoders/t5gemma_b_b_ul2.safetensors\" \"https://huggingface.co/Comfy-Org/stable-audio-3/resolve/main/text_encoders/t5gemma_b_b_ul2.safetensors\"",
+        "files": [
+          {
+            "url": "https://huggingface.co/Comfy-Org/stable-audio-3/resolve/main/checkpoints/stable_audio_3_small_sfx.safetensors",
+            "sizeGB": 2.27,
+            "dest": "checkpoints/stable_audio_3_small_sfx.safetensors"
+          },
+          {
+            "url": "https://huggingface.co/Comfy-Org/stable-audio-3/resolve/main/text_encoders/t5gemma_b_b_ul2.safetensors",
+            "sizeGB": 1.11,
+            "dest": "text_encoders/t5gemma_b_b_ul2.safetensors",
+            "license": "Gemma"
+          }
+        ]
+      },
+      "runtime": "comfyui",
+      "runner": {
+        "graph": "stable-audio-3",
+        "files": {
+          "checkpoint": "stable_audio_3_small_sfx.safetensors"
+        }
+      },
+      "sizeGB": 3.38,
+      "quantization": "as published",
+      "contextTokens": 1,
+      "license": {
+        "id": "Stability-Community",
+        "name": "Stability AI Community License",
+        "url": "https://stability.ai/license",
+        "commercial": "gated",
+        "conditions": "Free for commercial use by anyone under $1M in yearly revenue, who registers with Stability AI; above that, an Enterprise license from Stability. Its text encoder is under Google's Gemma terms."
+      },
+      "curation": {
+        "rank": 218,
+        "note": "The laptop pick for sound effects."
+      },
+      "blessed": false
+    },
+    {
+      "id": "stable-audio-3-medium",
+      "name": "Stable Audio 3 Medium",
+      "tagline": "Stability AI's larger sound model, for a graphics card.",
+      "categories": ["audio"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "huggingface",
+        "ref": "Comfy-Org/stable-audio-3",
+        "pullCommand": "curl -L -o \"models/checkpoints/stable_audio_3_medium.safetensors\" \"https://huggingface.co/Comfy-Org/stable-audio-3/resolve/main/checkpoints/stable_audio_3_medium.safetensors\"\ncurl -L -o \"models/text_encoders/t5gemma_b_b_ul2.safetensors\" \"https://huggingface.co/Comfy-Org/stable-audio-3/resolve/main/text_encoders/t5gemma_b_b_ul2.safetensors\"",
+        "files": [
+          {
+            "url": "https://huggingface.co/Comfy-Org/stable-audio-3/resolve/main/checkpoints/stable_audio_3_medium.safetensors",
+            "sizeGB": 8.59,
+            "dest": "checkpoints/stable_audio_3_medium.safetensors"
+          },
+          {
+            "url": "https://huggingface.co/Comfy-Org/stable-audio-3/resolve/main/text_encoders/t5gemma_b_b_ul2.safetensors",
+            "sizeGB": 1.11,
+            "dest": "text_encoders/t5gemma_b_b_ul2.safetensors",
+            "license": "Gemma"
+          }
+        ]
+      },
+      "runtime": "comfyui",
+      "runner": {
+        "graph": "stable-audio-3"
+      },
+      "sizeGB": 9.7,
+      "quantization": "as published",
+      "contextTokens": 1,
+      "license": {
+        "id": "Stability-Community",
+        "name": "Stability AI Community License",
+        "url": "https://stability.ai/license",
+        "commercial": "gated",
+        "conditions": "Free for commercial use by anyone under $1M in yearly revenue, who registers with Stability AI; above that, an Enterprise license from Stability. Its text encoder is under Google's Gemma terms."
+      },
+      "curation": {
+        "rank": 219,
+        "note": "The workstation pick for sound effects."
+      },
+      "blessed": false
+    },
+    {
+      "id": "htdemucs-ft",
+      "name": "Demucs v4 (fine-tuned)",
+      "tagline": "Splits a song into vocals, drums, bass and the rest, on a CPU.",
+      "categories": ["audio"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "github",
+        "ref": "nomadkaraoke/python-audio-separator",
+        "pullCommand": "pip install audio-separator"
+      },
+      "runtime": "separator",
+      "runner": {
+        "model": "htdemucs_ft.yaml"
+      },
+      "sizeGB": 0.3,
+      "quantization": "as published",
+      "contextTokens": 1,
+      "license": {
+        "id": "MIT",
+        "name": "MIT License",
+        "url": "https://opensource.org/license/mit",
+        "commercial": "ok"
+      },
+      "curation": {
+        "rank": 220,
+        "note": "The pick for separating stems."
+      },
+      "blessed": false
+    },
+    {
+      "id": "deepfilternet3",
+      "name": "DeepFilterNet 3",
+      "tagline": "Takes background noise out of a voice recording, in real time on a CPU.",
+      "categories": ["audio"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "github",
+        "ref": "Rikorose/DeepFilterNet",
+        "pullCommand": "pip install deepfilternet"
+      },
+      "runtime": "denoiser",
+      "runner": {
+        "model": "DeepFilterNet3"
+      },
+      "sizeGB": 0.02,
+      "quantization": "as published",
+      "contextTokens": 1,
+      "license": {
+        "id": "MIT",
+        "name": "MIT License",
+        "url": "https://opensource.org/license/mit",
+        "commercial": "ok",
+        "note": "Dual-licensed MIT or Apache 2.0."
+      },
+      "curation": {
+        "rank": 221,
+        "note": "The pick for cleaning up a voice."
+      },
+      "blessed": false
+    },
+    {
+      "id": "parakeet-tdt-0.6b-v3",
+      "name": "Parakeet TDT 0.6B v3",
+      "tagline": "Fast, accurate transcription in 25 European languages, on a CPU.",
+      "categories": ["listen"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "huggingface",
+        "ref": "nvidia/parakeet-tdt-0.6b-v3",
+        "pullCommand": "curl -X POST http://127.0.0.1:8080/models/apply -H 'content-type: application/json' -d '{\"id\":\"localai@nemo-speech-cpp-parakeet-tdt-0.6b-v3\"}'"
+      },
+      "runtime": "speech",
+      "runner": {
+        "model": "nemo-speech-cpp-parakeet-tdt-0.6b-v3",
+        "install": "localai@nemo-speech-cpp-parakeet-tdt-0.6b-v3"
+      },
+      "sizeGB": 0.7,
+      "quantization": "as published",
+      "contextTokens": 1,
+      "license": {
+        "id": "CC-BY-4.0",
+        "name": "Creative Commons Attribution 4.0",
+        "url": "https://creativecommons.org/licenses/by/4.0/",
+        "commercial": "ok",
+        "attribution": "Parakeet TDT 0.6B v3 by NVIDIA, licensed CC BY 4.0."
+      },
+      "curation": {
+        "rank": 222,
+        "note": "The laptop pick for transcription."
+      },
+      "blessed": false
+    },
+    {
+      "id": "granite-speech-4.1-2b",
+      "name": "Granite Speech 4.1 2B",
+      "tagline": "IBM's speech model, among the most accurate open ones in English.",
+      "categories": ["listen"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "huggingface",
+        "ref": "ibm-granite/granite-speech-4.1-2b",
+        "pullCommand": "curl -X POST http://127.0.0.1:8080/models/apply -H 'content-type: application/json' -d '{\"id\":\"localai@granite-4.1-crispasr\"}'"
+      },
+      "runtime": "speech",
+      "runner": {
+        "model": "granite-4.1-crispasr",
+        "install": "localai@granite-4.1-crispasr"
+      },
+      "sizeGB": 2.94,
+      "quantization": "as published",
+      "contextTokens": 1,
+      "license": {
+        "id": "Apache-2.0",
+        "name": "Apache License 2.0",
+        "url": "https://www.apache.org/licenses/LICENSE-2.0",
+        "commercial": "ok"
+      },
+      "curation": {
+        "rank": 223,
+        "note": "The workstation pick for transcription."
+      },
+      "blessed": false
+    },
+    {
+      "id": "whisper-large-v3",
+      "name": "Whisper large-v3",
+      "tagline": "Transcribes 99 languages, from OpenAI.",
+      "categories": ["listen"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "huggingface",
+        "ref": "openai/whisper-large-v3",
+        "pullCommand": "curl -X POST http://127.0.0.1:8080/models/apply -H 'content-type: application/json' -d '{\"id\":\"localai@whisper-large-q5_0\"}'"
+      },
+      "runtime": "speech",
+      "runner": {
+        "model": "whisper-large-q5_0",
+        "install": "localai@whisper-large-q5_0"
+      },
+      "sizeGB": 1.1,
+      "quantization": "as published",
+      "contextTokens": 1,
+      "license": {
+        "id": "MIT",
+        "name": "MIT License",
+        "url": "https://opensource.org/license/mit",
+        "commercial": "ok"
+      },
+      "curation": {
+        "rank": 224,
+        "note": "The pick for any language."
+      },
+      "blessed": false
+    },
+    {
+      "id": "nemotron-diarization",
+      "name": "Nemotron Diarization with Parakeet",
+      "tagline": "Labels up to eight speakers, with their words.",
+      "categories": ["listen"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "huggingface",
+        "ref": "nvidia/Nemotron-3-Diarization",
+        "pullCommand": "curl -X POST http://127.0.0.1:8080/models/apply -H 'content-type: application/json' -d '{\"id\":\"localai@parakeet-cpp-multilingual-diarization-speakers\"}'"
+      },
+      "runtime": "speech",
+      "runner": {
+        "model": "parakeet-cpp-multilingual-diarization-speakers",
+        "install": "localai@parakeet-cpp-multilingual-diarization-speakers"
+      },
+      "sizeGB": 1.5,
+      "quantization": "as published",
+      "contextTokens": 1,
+      "license": {
+        "id": "OpenMDW-1.1",
+        "name": "Open Model, Data and Weights License 1.1",
+        "url": "https://openmdw.ai/license/1-1/",
+        "commercial": "ok",
+        "attribution": "Uses Parakeet TDT 0.6B v3 by NVIDIA and WeSpeaker ResNet34, both licensed CC BY 4.0."
+      },
+      "curation": {
+        "rank": 225,
+        "note": "The pick for who said what."
+      },
+      "blessed": false
+    },
+    {
+      "id": "kokoro-82m",
+      "name": "Kokoro 82M",
+      "tagline": "A natural voice in a 0.3 GB download, quick on a CPU.",
+      "categories": ["voice"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "huggingface",
+        "ref": "hexgrad/Kokoro-82M",
+        "pullCommand": "curl -X POST http://127.0.0.1:8080/models/apply -H 'content-type: application/json' -d '{\"id\":\"localai@kokoro\"}'"
+      },
+      "runtime": "speech",
+      "runner": {
+        "model": "kokoro",
+        "install": "localai@kokoro",
+        "voice": "af_heart"
+      },
+      "sizeGB": 0.33,
+      "quantization": "as published",
+      "contextTokens": 1,
+      "license": {
+        "id": "Apache-2.0",
+        "name": "Apache License 2.0",
+        "url": "https://www.apache.org/licenses/LICENSE-2.0",
+        "commercial": "ok"
+      },
+      "curation": {
+        "rank": 226,
+        "note": "The pick for reading aloud."
+      },
+      "blessed": false
+    },
+    {
+      "id": "voxcpm2",
+      "name": "VoxCPM2",
+      "tagline": "Natural voices in 30 languages, from OpenBMB.",
+      "categories": ["voice"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "huggingface",
+        "ref": "openbmb/VoxCPM2",
+        "pullCommand": "curl -X POST http://127.0.0.1:8080/models/apply -H 'content-type: application/json' -d '{\"id\":\"localai@voxcpm2\"}'"
+      },
+      "runtime": "speech",
+      "runner": {
+        "model": "voxcpm2",
+        "install": "localai@voxcpm2"
+      },
+      "sizeGB": 4.6,
+      "quantization": "as published",
+      "contextTokens": 1,
+      "license": {
+        "id": "Apache-2.0",
+        "name": "Apache License 2.0",
+        "url": "https://www.apache.org/licenses/LICENSE-2.0",
+        "commercial": "ok"
+      },
+      "curation": {
+        "rank": 227,
+        "note": "The workstation pick for many languages."
+      },
+      "blessed": false
+    },
+    {
+      "id": "chatterbox",
+      "name": "Chatterbox",
+      "tagline": "Reads in your own voice from a short sample. Every output carries an inaudible watermark.",
+      "categories": ["voice"],
+      "orchestratorCapable": false,
+      "source": {
+        "kind": "huggingface",
+        "ref": "ResembleAI/chatterbox",
+        "pullCommand": "curl -X POST http://127.0.0.1:8080/models/apply -H 'content-type: application/json' -d '{\"id\":\"localai@chatterbox\"}'"
+      },
+      "runtime": "speech",
+      "runner": {
+        "model": "chatterbox",
+        "install": "localai@chatterbox",
+        "watermark": true
+      },
+      "sizeGB": 3.2,
+      "quantization": "as published",
+      "contextTokens": 1,
+      "license": {
+        "id": "MIT",
+        "name": "MIT License",
+        "url": "https://opensource.org/license/mit",
+        "commercial": "ok"
+      },
+      "curation": {
+        "rank": 228,
+        "note": "The pick for your own voice."
+      },
+      "blessed": false
     }
   ],
   "presets": [
@@ -893,5 +2432,347 @@
         }
       }
     }
-  ]
+  ],
+  "library": {
+    "picks": {
+      "overall.everyday": {
+        "phone": {
+          "model": "qwen3.5-4b",
+          "why": "The best-scoring open model this small that also reads pictures, so one download covers a phone."
+        },
+        "laptop": {
+          "model": "gemma4-12b",
+          "why": "The highest independent score among open models that fit 16 GB."
+        },
+        "workstation": {
+          "model": "qwen3.8-27b",
+          "why": "The highest independent score among open models from 4B to 40B."
+        },
+        "server": {
+          "model": "qwen3.8-27b-q8",
+          "why": "No larger openly licensed model scores higher; this is the same model at full precision."
+        }
+      },
+      "overall.long": {
+        "phone": {
+          "model": "qwen3.5-4b",
+          "why": "Reads a 262K-token window; a phone's memory keeps the usable part far smaller."
+        },
+        "laptop": {
+          "model": "qwen3.5-9b",
+          "why": "Recalls more over long inputs than Gemma 4 12B on an independent long-reading test."
+        },
+        "workstation": {
+          "model": "qwen3.8-27b",
+          "why": "Recalls about 82 percent over long inputs, ahead of the 1M-token models that fit here."
+        },
+        "server": {
+          "model": "qwen3.8-27b-q8",
+          "why": "Full precision with room for the whole 262K window."
+        }
+      },
+      "overall.health": {
+        "laptop": {
+          "model": "medgemma1.5-4b",
+          "why": "Scores 64.4 on MedQA against 50.7 for its general base, and reads CT, MRI and X-ray images (Google's numbers)."
+        },
+        "workstation": {
+          "model": "medgemma-27b",
+          "why": "Scores 87.7 on MedQA against 74.9 for its general base (Google's numbers)."
+        }
+      },
+      "reasoning.think": {
+        "phone": {
+          "model": "qwen3.5-4b",
+          "why": "Scores 77.1 on GPQA Diamond (the publisher's number), well ahead of other models this size."
+        },
+        "laptop": {
+          "model": "gemma4-12b",
+          "why": "Leads its size on an independent reasoning index."
+        },
+        "workstation": {
+          "model": "qwen3.8-27b",
+          "why": "Scores 89.2 on GPQA Diamond (the publisher's number)."
+        },
+        "server": {
+          "model": "qwen3.8-27b-q8",
+          "why": "The same model at full precision."
+        }
+      },
+      "reasoning.tools": {
+        "phone": {
+          "model": "qwen3.5-4b",
+          "why": "Scores 79.9 on tau2-bench, a test of using tools to finish a task."
+        },
+        "laptop": {
+          "model": "qwen3.5-9b",
+          "why": "Scores 66.1 on BFCL v4 and 79.1 on tau2-bench."
+        },
+        "workstation": {
+          "model": "qwen3.8-27b",
+          "why": "Scores 73.0 on Terminal-Bench 2.1."
+        },
+        "server": {
+          "model": "qwen3.8-27b-q8",
+          "why": "The same model at full precision."
+        }
+      },
+      "coding.agent": {
+        "laptop": {
+          "model": "gemma4-12b",
+          "why": "Scores 72.0 on LiveCodeBench v6, ahead of Qwen3.5 9B."
+        },
+        "workstation": {
+          "model": "qwen3.8-27b",
+          "why": "Scores 61.7 on SWE-bench Pro, ahead of every other open model that fits here."
+        },
+        "server": {
+          "model": "qwen3.8-27b-q8",
+          "why": "The same model at full precision."
+        }
+      },
+      "writing.prose": {
+        "laptop": {
+          "model": "gemma4-12b",
+          "why": "No writing score exists at this size yet; it leads its size on an independent index, and its larger sibling matches far bigger models on a creative writing test."
+        },
+        "workstation": {
+          "model": "gemma4-26b",
+          "why": "Matches models many times its size on a creative writing benchmark (a third-party snapshot), and runs fast."
+        }
+      },
+      "writing.translate": {
+        "laptop": {
+          "model": "gemma4-12b",
+          "why": "Trained on more than 140 languages, and it chats, so it fills the Writing slot."
+        },
+        "workstation": {
+          "model": "gemma4-26b",
+          "why": "The larger Gemma 4, with the same 140-plus languages."
+        }
+      },
+      "analysis.math": {
+        "phone": {
+          "model": "qwen3.5-4b",
+          "why": "Scores 74.0 on the February 2025 HMMT problems."
+        },
+        "laptop": {
+          "model": "qwen3.5-9b",
+          "why": "Scores 83.2 on the same problems, ahead of gpt-oss-20b."
+        },
+        "workstation": {
+          "model": "qwen3.8-27b",
+          "why": "Scores about 99 on AIME 2026 in an independent run."
+        },
+        "server": {
+          "model": "qwen3.8-27b-q8",
+          "why": "The same model at full precision."
+        }
+      },
+      "analysis.science": {
+        "laptop": {
+          "model": "intern-s1-mini",
+          "why": "Scores 76.5 on ChemBench against 61.1 for Qwen3 8B (the publisher's numbers)."
+        }
+      },
+      "embedding.files": {
+        "laptop": {
+          "model": "qwen3-embedding-0.6b",
+          "why": "The top open embedder under 1B on code and multilingual search, and quick on a CPU."
+        },
+        "workstation": {
+          "model": "qwen3-embedding-8b",
+          "why": "The top score in its family on code and multilingual search."
+        }
+      },
+      "fast.instant": {
+        "phone": {
+          "model": "minicpm5-1b",
+          "why": "Rated the leading open model at 1B or below, in a 0.7 GB download."
+        },
+        "laptop": {
+          "model": "minicpm5-2b",
+          "why": "Among the top two open models at 4B and under, in a 1.6 GB download."
+        }
+      },
+      "vision.photos": {
+        "laptop": {
+          "model": "qwen3.5-9b",
+          "why": "Reads pictures natively, and is reported to beat the previous generation's 30B vision models."
+        },
+        "workstation": {
+          "model": "qwen3.8-27b",
+          "why": "The newest open Qwen that reads pictures, at the size a workstation holds."
+        },
+        "server": {
+          "model": "qwen3.5-122b",
+          "why": "Scores 83.9 on MMMU."
+        }
+      },
+      "vision.documents": {
+        "laptop": {
+          "model": "glm-ocr",
+          "why": "Scores 94.6 on OmniDocBench at under 1B (the publisher's number), ahead of far larger general models."
+        }
+      },
+      "imageGen.create": {
+        "laptop": {
+          "model": "flux2-klein-4b",
+          "why": "Apache-licensed and step-distilled to about 8 GB, and the same download edits pictures too."
+        },
+        "workstation": {
+          "model": "hidream-o1-dev",
+          "why": "The top openly licensed model on Artificial Analysis's open-weights picture board."
+        }
+      },
+      "imageGen.text": {
+        "laptop": {
+          "model": "z-image-turbo",
+          "why": "Scores 0.92 on LongTextBench, far ahead of other models this size (the ERNIE team's table)."
+        },
+        "workstation": {
+          "model": "ernie-image-turbo",
+          "why": "Scores 0.97 on LongTextBench (the publisher's table)."
+        },
+        "server": {
+          "model": "ming-image-design",
+          "why": "Ranked first among open models for app and web design on Artificial Analysis (the publisher's report)."
+        }
+      },
+      "imageEdit.select": {
+        "laptop": {
+          "model": "sam3.1",
+          "why": "Finds what you name in plain words, built into ComfyUI with no add-on."
+        }
+      },
+      "imageEdit.remove": {
+        "laptop": {
+          "model": "lama",
+          "why": "The standard fill for removing objects: about 0.2 GB, and fast on a CPU."
+        }
+      },
+      "imageEdit.background": {
+        "laptop": {
+          "model": "birefnet",
+          "why": "The best MIT-licensed background remover, built into ComfyUI."
+        }
+      },
+      "imageEdit.upscale": {
+        "laptop": {
+          "model": "realesrgan-x4plus",
+          "why": "The standard 4x upscaler, in a 0.07 GB download that runs on a CPU."
+        },
+        "workstation": {
+          "model": "seedvr2-3b",
+          "why": "Restores a worn photo in one step, built into ComfyUI."
+        },
+        "server": {
+          "model": "seedvr2-7b",
+          "why": "The larger SeedVR2, the same workflow."
+        }
+      },
+      "imageEdit.instruct": {
+        "laptop": {
+          "model": "flux2-klein-4b",
+          "why": "The only openly licensed editor its maker says fits about 8 GB."
+        },
+        "workstation": {
+          "model": "qwen-image-edit-2511",
+          "why": "The top openly licensed model on Artificial Analysis's open-weights editing board."
+        }
+      },
+      "video.text": {
+        "workstation": {
+          "model": "wan2.2-ti2v-5b",
+          "why": "Apache-licensed, 720p at 24 frames a second, and ComfyUI says it fits an 8 GB graphics card with offloading. A laptop's memory is too tight for it."
+        },
+        "server": {
+          "model": "wan2.2-t2v-a14b",
+          "why": "The strongest Apache-licensed text-to-video model built into ComfyUI."
+        }
+      },
+      "video.image": {
+        "workstation": {
+          "model": "wan2.2-ti2v-5b",
+          "why": "The same 5B model animates a picture, so one download serves both."
+        },
+        "server": {
+          "model": "wan2.2-i2v-a14b",
+          "why": "The strongest Apache-licensed picture-to-video model built into ComfyUI."
+        }
+      },
+      "audio.music": {
+        "laptop": {
+          "model": "ace-step-1.5-turbo",
+          "why": "MIT-licensed songs with vocals, scoring 8.09 on SongEval in its paper."
+        },
+        "workstation": {
+          "model": "ace-step-1.5-xl-turbo",
+          "why": "The larger ACE-Step, aimed at higher quality; no separate score is published yet."
+        }
+      },
+      "audio.effects": {
+        "laptop": {
+          "model": "stable-audio-3-small-sfx",
+          "why": "Trained for sound effects on licensed audio, and small enough for a CPU."
+        },
+        "workstation": {
+          "model": "stable-audio-3-medium",
+          "why": "Stability AI's larger general sound model; whether it beats Small on effects is untested."
+        }
+      },
+      "audio.stems": {
+        "laptop": {
+          "model": "htdemucs-ft",
+          "why": "The best four-stem model we could clear for commercial use, on a CPU."
+        }
+      },
+      "audio.cleanup": {
+        "laptop": {
+          "model": "deepfilternet3",
+          "why": "A small, permissively licensed speech cleaner that runs in real time on a CPU."
+        }
+      },
+      "listen.transcribe": {
+        "laptop": {
+          "model": "parakeet-tdt-0.6b-v3",
+          "why": "6.3 percent word error in English on the Open ASR Leaderboard, at thousands of times real time."
+        },
+        "workstation": {
+          "model": "granite-speech-4.1-2b",
+          "why": "Reported at 5.3 percent word error in English, among the lowest of open models."
+        }
+      },
+      "listen.languages": {
+        "laptop": {
+          "model": "whisper-large-v3",
+          "why": "Covers 99 languages, and leads the leaderboard's multilingual track for its size."
+        }
+      },
+      "listen.speakers": {
+        "laptop": {
+          "model": "nemotron-diarization",
+          "why": "The newest commercially licensed speaker labeler, up to eight speakers, offline."
+        }
+      },
+      "voice.read": {
+        "laptop": {
+          "model": "kokoro-82m",
+          "why": "Tied for the best commercially usable open voice on Artificial Analysis's speech arena, in 0.3 GB."
+        }
+      },
+      "voice.languages": {
+        "workstation": {
+          "model": "voxcpm2",
+          "why": "Apache-licensed voices in 30 languages, with the best speaker match in its publisher's test."
+        }
+      },
+      "voice.own": {
+        "laptop": {
+          "model": "chatterbox",
+          "why": "MIT-licensed, and its watermark marks everything it says, which is what copying a voice requires here."
+        }
+      }
+    }
+  }
 }

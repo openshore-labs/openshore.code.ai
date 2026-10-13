@@ -18,6 +18,14 @@ import { gatherMetadata, HuggingFaceSource } from './sources.js';
 import { derivePresets } from './presets.js';
 import { discoverModels, HuggingFaceDiscovery } from './discover.js';
 import { mergeCommunity, SupabaseReviewSource } from './reviews.js';
+import { toV1 } from './v1.js';
+import {
+  dropUnpinned,
+  GitHubReleasePins,
+  HuggingFaceFilePins,
+  pinCatalogFiles,
+} from './pinFiles.js';
+import { dropUnlicensedFiles } from './fileLicenses.js';
 import type { BuildInputs, EvalEntries, ModelMetadata, Overlay } from './types.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -25,7 +33,14 @@ const OSC_ROOT = resolve(HERE, '..', '..');
 
 const SEED_PATH = join(OSC_ROOT, 'catalog.sample.json');
 const CURATION_DIR = join(OSC_ROOT, 'curation');
+// Two files (the model library, 2026-10-12): catalog.v2.json is the library
+// catalog; catalog.json is the same narrowed for apps released before it
+// (v1.ts). The regression baseline is the previous v2 file, falling back to
+// the previous v1 file on the first library build.
 const OUT_PATH = process.env.CATALOG_OUT ?? join(OSC_ROOT, 'build', 'catalog.json');
+const OUT_V2_PATH = process.env.CATALOG_OUT_V2 ?? join(dirname(OUT_PATH), 'catalog.v2.json');
+// Live discovery's finds, for the curators to read: candidates, never shelves.
+const CANDIDATES_PATH = join(dirname(OUT_PATH), 'candidates.json');
 
 function readJson<T>(path: string, fallback: T): T {
   try {
@@ -37,7 +52,7 @@ function readJson<T>(path: string, fallback: T): T {
 
 async function main(): Promise<void> {
   const seed = JSON.parse(readFileSync(SEED_PATH, 'utf8'));
-  const seedCatalog = CatalogSchema.parse(seed);
+  let seedCatalog = CatalogSchema.parse(seed);
 
   const benchmarks = readJson<Record<string, Record<string, number>>>(
     join(CURATION_DIR, 'benchmarks.json'),
@@ -52,12 +67,14 @@ async function main(): Promise<void> {
   let metadata: Record<string, ModelMetadata> = {};
   const online = process.env.CATALOG_OFFLINE !== '1';
   if (online) {
-    const refs = seedCatalog.models.map((m) => ({
-      ref: m.source.ref,
-      kind: m.source.kind,
-      // Popularity is HF only; an Ollama model reads its HF GGUF home.
-      popularityRef: m.source.popularityRef,
-    }));
+    // Popularity is HF only; an Ollama model reads its HF GGUF home. A model
+    // from GitHub, Civitai or a publisher's site carries no popularity number
+    // (never a guessed one).
+    const refs = seedCatalog.models.flatMap((m) =>
+      m.source.kind === 'ollama' || m.source.kind === 'huggingface'
+        ? [{ ref: m.source.ref, kind: m.source.kind, popularityRef: m.source.popularityRef }]
+        : [],
+    );
     try {
       metadata = await gatherMetadata(refs, { huggingface: new HuggingFaceSource() });
     } catch (err) {
@@ -76,6 +93,26 @@ async function main(): Promise<void> {
     }
   }
 
+  // Every file a media model downloads is pinned to the SHA-256 its source
+  // publishes (and a Hugging Face file to its commit) before anything is
+  // built; a model with a file left unpinned is taken out, its picks with it
+  // (pinFiles.ts, security review 2026-10-12). Offline nothing can be read,
+  // so only a curator's own pins in the seed survive.
+  if (online) {
+    seedCatalog = await pinCatalogFiles(seedCatalog, {
+      huggingface: new HuggingFaceFilePins(),
+      github: new GitHubReleasePins(),
+    });
+  }
+  const pinned = dropUnpinned(seedCatalog);
+  for (const drop of pinned.drops) console.log(`dropped ${drop.id}: ${drop.reason}`);
+  seedCatalog = pinned.catalog;
+  // And every file a model pulls from another repository names its own
+  // commercial license (fileLicenses.ts).
+  const licensed = dropUnlicensedFiles(seedCatalog);
+  for (const drop of licensed.drops) console.log(`dropped ${drop.id}: ${drop.reason}`);
+  seedCatalog = licensed.catalog;
+
   // Read the previously published catalog as the regression baseline, keeping
   // three cases distinct so the gate can act on them (H3): absent (undefined,
   // genuine first run) skips the previous-catalog checks; present-and-JSON is
@@ -84,8 +121,9 @@ async function main(): Promise<void> {
   // rejects, so the gate treats it as a breach instead of silently skipping.
   // A plain readJson-with-fallback would collapse the last case into "absent."
   let previous: unknown | undefined;
-  if (existsSync(OUT_PATH)) {
-    const raw = readFileSync(OUT_PATH, 'utf8');
+  const baselinePath = existsSync(OUT_V2_PATH) ? OUT_V2_PATH : OUT_PATH;
+  if (existsSync(baselinePath)) {
+    const raw = readFileSync(baselinePath, 'utf8');
     try {
       previous = JSON.parse(raw);
     } catch {
@@ -93,27 +131,25 @@ async function main(): Promise<void> {
     }
   }
 
-  // Live discovery: newly released and trending GGUF repos join the seed as
-  // clearly labelled, unrated entries, so the browse list grows without a
-  // hand edit. On by default when online; CATALOG_DISCOVER=0 turns it off. The
-  // seed wins every id collision, and last time's discoveries carry forward so
-  // a quiet source day never empties the shelf.
-  let seedModels = seedCatalog.models;
+  // Live discovery: newly released and trending GGUF repos. Since the model
+  // library (founder, 2026-10-12: limit the models per category) they are NOT
+  // published; they are written to candidates.json for the curators to read
+  // when they choose the next picks. On by default when online;
+  // CATALOG_DISCOVER=0 turns it off.
+  const seedModels = seedCatalog.models;
   if (online && process.env.CATALOG_DISCOVER !== '0') {
-    let previousModels: typeof seedModels = [];
-    const parsedPrevious = CatalogSchema.safeParse(previous);
-    if (parsedPrevious.success) previousModels = parsedPrevious.data.models;
     try {
       const found = await discoverModels(new HuggingFaceDiscovery(), {
         today: new Date().toISOString().slice(0, 10),
-        previous: previousModels,
+        previous: [],
         reserved: new Set(seedModels.map((m) => m.id)),
       });
       for (const s of found.skipped) console.log(`discovery skipped ${s.repo}: ${s.reason}`);
-      console.log(`discovery added ${found.models.length} models`);
-      seedModels = [...seedModels, ...found.models];
+      console.log(`discovery found ${found.models.length} candidates (not published)`);
+      mkdirSync(dirname(CANDIDATES_PATH), { recursive: true });
+      writeFileSync(CANDIDATES_PATH, `${JSON.stringify(found.models, null, 2)}\n`);
     } catch (err) {
-      console.warn(`Discovery failed, building from the seed only: ${String(err)}`);
+      console.warn(`Discovery failed: ${String(err)}`);
     }
   }
 
@@ -178,8 +214,11 @@ async function main(): Promise<void> {
   }
 
   mkdirSync(dirname(OUT_PATH), { recursive: true });
-  writeFileSync(OUT_PATH, `${JSON.stringify(validated, null, 2)}\n`);
-  console.log(`Wrote ${OUT_PATH}`);
+  writeFileSync(OUT_V2_PATH, `${JSON.stringify(validated, null, 2)}\n`);
+  console.log(`Wrote ${OUT_V2_PATH}`);
+  const v1 = validateCatalog(toV1(validated));
+  writeFileSync(OUT_PATH, `${JSON.stringify(v1, null, 2)}\n`);
+  console.log(`Wrote ${OUT_PATH} (${v1.models.length} models for apps before the library)`);
 }
 
 main().catch((err) => {

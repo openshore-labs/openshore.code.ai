@@ -1,6 +1,11 @@
-// The marketplace: curated models in plain language, searchable and sortable,
-// downloadable right here. Pocket models pull straight onto this device with a
-// live progress bar; desktop models pull through Ollama on the desktop.
+// The Marketplace: the model library (founder, 2026-10-12), laid out like an
+// app store by the Stack it fills. The front shows "Made for" collections and
+// the categories; a category holds shelves, one per job; a shelf offers at most
+// one pick per size of machine, the best fit for the device in hand marked
+// (os-code/src/market/library.ts, the views in components/LibraryViews.tsx).
+// A model the library does not carry is one door away: bring your own, or
+// ask us to add it. Pocket models pull straight onto this device with a live
+// progress bar; desktop models pull through Ollama on the desktop.
 // Licenses shown before anything downloads; weights come from the source, never
 // OpenShore. There are two rating axes, and the store keeps them apart on
 // purpose: "OpenShore fit" is computed from benchmarks by the server-side
@@ -9,21 +14,35 @@
 // is labelled as popularity, never quality.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
-import type { Catalog, CatalogModel, CapabilityCategory } from 'os-code/protocol';
-import { CAPABILITIES } from 'os-code/protocol';
+import type {
+  Catalog,
+  CatalogModel,
+  CapabilityCategory,
+  CategoryId,
+  LibraryPick,
+} from 'os-code/protocol';
+import {
+  CAPABILITIES,
+  RUNTIME_INFO,
+  categoryPicks,
+  libraryCategory,
+  libraryCollection,
+  picksForModel,
+  runtimeOf,
+  searchLibrary,
+  shelfPicks,
+  SIZE_CLASS_INFO,
+} from 'os-code/protocol';
 import { useApp } from '../state/store.js';
 import { loadAppCatalog } from '../lib/catalog.js';
 import { daemonInstallModel, daemonInstallProgress } from '../drivers/remoteDriver.js';
 import { pollInstall } from '../drivers/installPoll.js';
-import { bundleModelIds, bundleTotalGB, bundlesFor, type StackBundle } from '../lib/bundles.js';
 import {
   HOSTED_SHELF,
   contextLabel,
   filterHosted,
-  hostedFacetsApply,
   hostedIsNew,
   hostedModels,
-  newestHosted,
   sortHostedNewest,
   type HostedModel,
 } from '../lib/hosted.js';
@@ -44,9 +63,7 @@ import {
   type StorageFit,
 } from '../lib/modelStorage.js';
 import { bridge } from '../lib/electronBridge.js';
-import { SHIPS_STACKHEALTH } from '../lib/focus.js';
-import { InstallByName } from '../components/InstallByName.js';
-import { isPhone } from '../lib/platform.js';
+import { isDesktop, isPhone } from '../lib/platform.js';
 import { hapticSuccess } from '../lib/haptics.js';
 import { logEvent } from '../lib/insights.js';
 import { durationMs } from '../lib/motion.js';
@@ -57,33 +74,23 @@ import { Stars, CapabilityLane, NotRated, CommunityStars } from '../components/S
 import { ReviewsSection } from '../components/ReviewsSection.js';
 import { fetchSummaries, reviewsAvailable } from '../lib/reviews.js';
 import { communityScore, type CommunityScore } from '../lib/reviewsMath.js';
-import { CompareSheet } from '../components/CompareSheet.js';
 import { CapIcon, ModelTile } from '../components/MarketIcon.js';
 import {
-  EMPTY_FACETS,
-  activeFacetCount,
-  buildShelves,
-  deviceSplit,
-  featuredModels,
   fitFor,
-  filterModels,
   installLabel,
   licenseLabel,
   popularityLabel,
   runsOn,
-  sortModels,
-  usageTurns,
-  type Facets,
   type FitLabel,
-  type Shelf,
-  type SortKey,
 } from '../components/marketplace.js';
 import {
-  bySizeAscending,
-  familyOf,
-  groupByFamily,
-  type FamilyGroup,
-} from '../components/modelFamilies.js';
+  LibraryCategoryPage,
+  LibraryCollectionPage,
+  LibraryFront,
+  LibrarySearchResults,
+  ModelRequestSheet,
+} from '../components/LibraryViews.js';
+import { LIBRARY_LEAD, libraryDevice, systemMemoryGB } from '../lib/library.js';
 import {
   DEVICE_PACKS,
   packDownload,
@@ -122,11 +129,6 @@ function quantGloss(q: string): string | undefined {
 
 const MEMORY_TIERS = [8, 16, 24, 48];
 
-// How many list cards to add each time the bottom sentinel scrolls into view.
-// The list can run to a few hundred models now, so it renders a window and
-// grows it, rather than mounting every card at once.
-const LIST_PAGE = 24;
-
 function parseMemoryGB(summary?: string): number {
   if (!summary) return 16;
   const gpu = [...summary.matchAll(/\((\d+)\s*GB\)/g)].reduce((a, m) => a + Number(m[1]), 0);
@@ -142,18 +144,6 @@ function nearestTier(gbValue: number): number {
   );
 }
 
-// The honest label near the sort control, one per axis that needs the
-// disclosure. Editorial ('staff'), landscape ('popular'), and internal ('used')
-// each say plainly what they are and are not. No em dashes (house rule).
-const SORT_SUBHEAD: Partial<Record<SortKey, string>> = {
-  staff: 'Our opinionated shortlist. Chosen, not counted.',
-  popular:
-    'Ranked by downloads and likes on Hugging Face. A snapshot of what the world runs, not a measure of quality. The stars are quality.',
-  used: 'Counted on your computer. Never sent anywhere.',
-  greenest:
-    'Ordered by the energy a model is estimated to draw per token, leanest first. A relative guide from model size, not a measured figure.',
-};
-
 const FIT_PILL: Record<FitLabel, { cls: string; text: string }> = {
   fits: { cls: 'fits', text: 'Runs here' },
   tight: { cls: 'tight', text: 'Tight fit' },
@@ -162,14 +152,27 @@ const FIT_PILL: Record<FitLabel, { cls: string; text: string }> = {
 
 const CAP_ORDER = Object.keys(CAPABILITIES) as CapabilityCategory[];
 
+/** Where a model's weights come from, as the detail panel says it. */
+const SOURCE_NAME: Record<CatalogModel['source']['kind'], string> = {
+  ollama: 'the Ollama library',
+  huggingface: 'Hugging Face',
+  github: "the publisher's GitHub releases",
+  civitai: 'Civitai',
+  publisher: "the publisher's own site",
+};
+
 // The hosted product page that was open when the store was left for another
 // room (Cloud Connections, the Stack), so a Connect tap comes back to the page
 // it left rather than the store front. Honored on a back navigation only; a
 // fresh open from the panel starts at the front, the way a tab does.
 let hostedPageMemory: string | undefined;
 
-/** Where a hosted tile was tapped, so the way back flies to the same tile. */
-type TileHome = { id: string; where: 'hero' | 'row' | 'preset' };
+/** Where a tile was tapped (a hosted row, or a library pick), so the way back
+ *  flies to the same tile. */
+type TileHome = { id: string; where: 'row' | 'pick' };
+
+/** The library page a product page was opened from, so it goes back there. */
+type LibReturn = { kind: 'category' | 'collection'; id: string };
 
 const REDUCED_MOTION = '(prefers-reduced-motion: reduce)';
 
@@ -189,11 +192,15 @@ export function MarketplaceScreen() {
     authSession,
   } = useApp();
   const [catalog, setCatalog] = useState<Catalog | undefined>();
-  // A family page: one maker's sizes, split by where each installs from here.
-  // Its own focus, like a product page, and a product page opened from it
-  // remembers the way back (`familyReturn`).
-  const [focusedFamilyId, setFocusedFamilyId] = useState<string | undefined>();
-  const [familyReturn, setFamilyReturn] = useState<string | undefined>();
+  // A library category's page or a collection's: each its own focus, like a
+  // product page, and a product page opened from one remembers the way back
+  // (`libReturn`).
+  const [focusedCategory, setFocusedCategory] = useState<CategoryId | undefined>();
+  const [focusedCollection, setFocusedCollection] = useState<string | undefined>();
+  const [libReturn, setLibReturn] = useState<LibReturn | undefined>();
+  // The search, and the sheet for a model the library does not carry.
+  const [query, setQuery] = useState('');
+  const [requestOpen, setRequestOpen] = useState(false);
   // The phone pack being installed (one at a time), so its card shows progress
   // and the others wait.
   const [packBusy, setPackBusy] = useState<ProfileId | undefined>();
@@ -213,9 +220,6 @@ export function MarketplaceScreen() {
   // The room's scroller. The window never scrolls here (.screen does), so
   // scroll-to-top and scroll memory address this element.
   const screenRef = useRef<HTMLDivElement>(null);
-  // Which stack bundle is installing, if any (hooks stay above every early
-  // return; the bundle logic itself lives further down with the other installs).
-  const [bundleBusy, setBundleBusy] = useState<string | undefined>();
   // Install-by-name state (the logic lives further down, but the hooks must sit
   // above every early return).
   const [note, setNote] = useState<string | undefined>();
@@ -232,19 +236,18 @@ export function MarketplaceScreen() {
   }, []);
   const [detailOpen, setDetailOpen] = useState<string | undefined>();
   const [provOpen, setProvOpen] = useState<Record<string, boolean>>({});
-  const [sort, setSort] = useState<SortKey>('recommended');
-  const [facets, setFacets] = useState<Facets>(EMPTY_FACETS);
-  const [showFilters, setShowFilters] = useState(false);
-  const [compareIds, setCompareIds] = useState<string[]>([]);
-  const [compareOpen, setCompareOpen] = useState(false);
   const [memoryGB, setMemoryGB] = useState<number>(16);
-  const [usageByModel, setUsageByModel] = useState<Map<string, number> | undefined>();
+  // This computer's whole memory, for the library's size classes; unread on a
+  // phone and until the desktop bridge answers.
+  const [systemGB, setSystemGB] = useState<number | undefined>();
   // A single model opened as a product page: an exact id, not a name search, so
   // a sibling whose name happens to fuzzy-match never rides along.
   const [focusedId, setFocusedId] = useState<string | undefined>();
   // Desktop models already pulled onto the paired machine (by source ref), so a
   // model that is installed shows as installed rather than an endless Get.
   const [installedRefs, setInstalledRefs] = useState<Set<string>>(() => new Set());
+  // Library media models placed in this computer's Stack, by catalog id.
+  const [mediaPlaced, setMediaPlaced] = useState<Set<string>>(() => new Set());
   // This device's live storage and memory, for the capacity monitor and the fit
   // math. Undefined until the native read returns (or on web, the mock).
   const [capacity, setCapacity] = useState<DeviceCapacity | undefined>();
@@ -261,11 +264,6 @@ export function MarketplaceScreen() {
   // The storage readout is ambient (a chip); its full detail opens in a sheet,
   // so status is one tap away without a card sitting over the store front.
   const [storageSheetOpen, setStorageSheetOpen] = useState(false);
-  // Incremental rendering for the sortable list. The catalog now runs to a few
-  // hundred models, so the list renders a window and grows it as a sentinel
-  // scrolls into view, keeping the first paint and every scroll frame cheap.
-  const [renderLimit, setRenderLimit] = useState(LIST_PAGE);
-  const listSentinelRef = useRef<HTMLDivElement>(null);
   // Community review counts+averages for the models currently in view, fetched
   // in one batched call so a browse row can carry a crowd star without one
   // request per row. Empty until reviews land; rows fall back to benchmark only.
@@ -282,7 +280,13 @@ export function MarketplaceScreen() {
       .status()
       .then((s) => {
         setMemoryGB(nearestTier(parseMemoryGB(s.hardwareSummary)));
+        setSystemGB(systemMemoryGB(s.hardwareSummary));
         setInstalledRefs(new Set(s.ollama.models));
+        setMediaPlaced(
+          new Set(
+            (s.stack.media ?? []).map((m) => m.catalogId).filter((id): id is string => Boolean(id)),
+          ),
+        );
       })
       .catch(() => {});
   }, []);
@@ -410,24 +414,6 @@ export function MarketplaceScreen() {
   }, [catalog]);
 
   useEffect(() => {
-    // The user's OWN local, lifetime usage, read through the desktop bridge and
-    // folded from the session journals on THIS machine. No bridge (iOS/web)
-    // means no usage axis. Private by construction: nothing here is cross-user
-    // and nothing is ever sent anywhere. Stack Health is a v2 feature, so a
-    // build without it has no usage axis either (lib/focus.ts).
-    if (!SHIPS_STACKHEALTH) return;
-    const b = bridge();
-    if (!b) return;
-    void b
-      .stackHealth('all')
-      .then((h) => {
-        if (!h.modelUsage?.length) return;
-        setUsageByModel(new Map(h.modelUsage.map((u) => [u.model, u.turns])));
-      })
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
     // G4: register BOTH progress listeners in the effect and remove BOTH in
     // cleanup. No mount-once ref guard: under StrictMode the effect runs
     // cleanup then re-runs, and a ref guard would leave the bridge listener
@@ -462,6 +448,13 @@ export function MarketplaceScreen() {
       off?.();
     };
   }, []);
+
+  // Whether Get pulls this model onto the device in hand. A library pick can
+  // carry both a phone file and an Ollama tag (Qwen3.5 4B runs on a phone and
+  // on a computer), so a phone takes its phone file and a computer pulls it
+  // through Ollama; a phone-only build is the phone file everywhere.
+  const toDevice = (model: CatalogModel): boolean =>
+    Boolean(model.onDevice) && (isPhone() || model.source.kind !== 'ollama');
 
   const clearDownload = (id: string) =>
     setDownloads((d) => {
@@ -529,13 +522,13 @@ export function MarketplaceScreen() {
     }
   };
 
-  const pullToDesktop = async (model: CatalogModel) => {
+  const pullToDesktop = async (model: CatalogModel, shelfId?: string) => {
     const b = bridge();
     if (!b) {
       // No desktop app here. If a daemon is paired, install onto that machine
       // over the tailnet (MP-F2); otherwise this phone can only browse.
       if (settings.daemon) {
-        void installViaDaemon(model);
+        void installViaDaemon(model, shelfId);
         return;
       }
       showToast(
@@ -548,9 +541,12 @@ export function MarketplaceScreen() {
       [model.id]: { percent: 0, label: 'Connecting', indeterminate: true },
     }));
     try {
-      const result = await b.installModel(model.id);
+      const result = await b.installModel(model.id, shelfId);
       clearDownload(model.id);
       if (result.ok) hapticSuccess();
+      if (result.ok && runtimeOf(model) !== 'ollama') {
+        setMediaPlaced((placed) => new Set(placed).add(model.id));
+      }
       showToast(result.detail);
     } catch (err) {
       setDownloads((d) => ({
@@ -566,7 +562,7 @@ export function MarketplaceScreen() {
 
   // Install a desktop model onto a paired machine over the tailnet, polling the
   // daemon for progress so the same download UI animates as on the desktop.
-  const installViaDaemon = async (model: CatalogModel) => {
+  const installViaDaemon = async (model: CatalogModel, shelfId?: string) => {
     const daemon = settings.daemon;
     if (!daemon) return;
     installPolls.current.get(model.id)?.abort();
@@ -577,7 +573,7 @@ export function MarketplaceScreen() {
       [model.id]: { percent: 0, label: 'Connecting', indeterminate: true },
     }));
     try {
-      await daemonInstallModel(daemon, model.id);
+      await daemonInstallModel(daemon, model.id, shelfId);
     } catch (err) {
       if (ac.signal.aborted) return;
       setDownloads((d) => ({
@@ -634,132 +630,58 @@ export function MarketplaceScreen() {
     showToast(outcome.detail ?? (outcome.ok ? 'Installed on your computer.' : 'Install failed.'));
   };
 
-  // The internal axis only exists when the user has real local usage that maps
-  // onto at least one catalog model. Otherwise it hides gracefully.
-  const usageAxisAvailable = useMemo(
-    () =>
-      Boolean(
-        usageByModel &&
-        catalog &&
-        catalog.models.some((m) => usageTurns(m, usageByModel) !== undefined),
-      ),
-    [usageByModel, catalog],
-  );
-
-  // The staff axis lands on an empty state with a pick-less catalog (the bundled
-  // starter carries none), so only offer it when the catalog actually has picks.
-  const staffAxisAvailable = useMemo(
-    () => Boolean(catalog?.models.some((m) => m.recommended?.isRecommended)),
-    [catalog],
-  );
-
-  const sorts = useMemo(() => {
-    const list: { key: SortKey; label: string }[] = [{ key: 'recommended', label: 'Recommended' }];
-    if (staffAxisAvailable) list.push({ key: 'staff', label: 'Staff picks' });
-    list.push({ key: 'popular', label: 'Popular' });
-    if (usageAxisAvailable) list.push({ key: 'used', label: 'Your most-used' });
-    list.push(
-      { key: 'newest', label: 'Newest' },
-      { key: 'fit', label: 'Best fit' },
-      { key: 'greenest', label: 'Runs lean' },
-    );
-    return list;
-  }, [usageAxisAvailable, staffAxisAvailable]);
-
-  const visible = useMemo(() => {
-    if (!catalog) return [];
-    // A focused model is its own one-card product page.
-    if (focusedId) return catalog.models.filter((m) => m.id === focusedId);
-    let models = filterModels(catalog.models, facets, memoryGB);
-    // The editorial shelf: only the picks, kept in curated order.
-    if (sort === 'staff') models = models.filter((m) => m.recommended?.isRecommended);
-    return sortModels(models, sort, memoryGB, usageByModel);
-  }, [catalog, focusedId, facets, sort, memoryGB, usageByModel]);
-
-  // A new list (a different sort or filter) starts its window from the top.
-  useEffect(() => {
-    setRenderLimit(LIST_PAGE);
-  }, [sort, facets]);
-
-  // Grow the window as the sentinel nears the viewport, so a long list pages in
-  // ahead of the scroll instead of mounting hundreds of cards up front. The
-  // rootMargin gives it a head start so the next page is ready before the edge.
-  useEffect(() => {
-    const el = listSentinelRef.current;
-    if (!el || typeof IntersectionObserver === 'undefined') return;
-    const io = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((e) => e.isIntersecting)) setRenderLimit((n) => n + LIST_PAGE);
-      },
-      { root: screenRef.current, rootMargin: '800px 0px' },
-    );
-    io.observe(el);
-    return () => io.disconnect();
-  }, [visible.length, focusedId, focusedHostedId]);
-
-  const compareModels = useMemo(
-    () =>
-      compareIds
-        .map((id) => catalog?.models.find((m) => m.id === id))
-        .filter((m): m is CatalogModel => Boolean(m)),
-    [compareIds, catalog],
-  );
-
-  // Hosted models that answer the current search or capability. Hardware,
-  // license, size, and source facets are about downloads, so any of those set
-  // keeps hosted rows out of the list (hostedFacetsApply).
+  // Hosted models that answer the search. A cloud model is part of the
+  // store, not of the library's shelves, so it shows beside the picks.
   const hostedMatches = useMemo(
-    () =>
-      hostedFacetsApply(facets)
-        ? sortHostedNewest(filterHosted(hosted, facets.query, facets.capability))
-        : [],
-    [hosted, facets],
+    () => (query.trim() ? sortHostedNewest(filterHosted(hosted, query, undefined)) : []),
+    [hosted, query],
   );
   const hostedShelf = useMemo(() => sortHostedNewest(hosted), [hosted]);
-  const hostedHero = useMemo(() => newestHosted(hosted), [hosted]);
 
-  // The store front (App Store "Apps" tab) shows when nothing is being searched
-  // or filtered: a featured row and themed shelves to browse. The moment a
-  // search term or any facet is set, we fall back to the full sortable list.
+  // The store front (the App Store's front page) shows when nothing is being
+  // searched and no page is open: the "Made for" row and the categories.
   const browsing =
-    !focusedId &&
-    !focusedHostedId &&
-    !focusedFamilyId &&
-    !facets.query.trim() &&
-    activeFacetCount(facets) === 0;
+    !focusedId && !focusedHostedId && !focusedCategory && !focusedCollection && !query.trim();
   const focusedModel = focusedId ? catalog?.models.find((m) => m.id === focusedId) : undefined;
   const focusedHosted = focusedHostedId ? hosted.find((m) => m.id === focusedHostedId) : undefined;
-
-  const featured = useMemo(() => (catalog ? featuredModels(catalog.models) : []), [catalog]);
-  const shelves = useMemo(
-    () => (catalog ? buildShelves(catalog.models, memoryGB, { phone: isPhone() }) : []),
-    [catalog, memoryGB],
-  );
-  // Families: the browse axis a person thinks in. Built once per catalog.
-  const families = useMemo(() => (catalog ? groupByFamily(catalog.models) : []), [catalog]);
-  const focusedFamily = focusedFamilyId
-    ? families.find((f) => f.id === focusedFamilyId)
-    : undefined;
-  // The three phone packs, resolved against whatever catalog is loaded.
+  const category = focusedCategory ? libraryCategory(focusedCategory) : undefined;
+  const collection = focusedCollection ? libraryCollection(focusedCollection) : undefined;
+  // The phone packs, resolved against whatever catalog is loaded.
   const packs = useMemo(
     () => (catalog ? DEVICE_PACKS.map((p) => resolvePack(p, catalog.models)) : []),
     [catalog],
   );
+  // The device the library chooses for: this phone, or this computer by its
+  // memory once the desktop bridge has read it (a laptop until then, never
+  // the biggest on a guess).
+  const device = useMemo(
+    () =>
+      libraryDevice({
+        phone: isPhone(),
+        ...(systemGB ? { memoryGB: systemGB } : {}),
+        // The same fit the product page's pill reads, so the two agree.
+        ...(systemGB
+          ? { fitsHere: (sizeGB: number) => fitFor(sizeGB, memoryGB) !== 'too-big' }
+          : {}),
+      }),
+    [systemGB, memoryGB],
+  );
+  const results = useMemo(
+    () => (catalog && query.trim() ? searchLibrary(catalog, query) : []),
+    [catalog, query],
+  );
 
-  // The catalog model ids currently on screen: the store front (featured plus
-  // every shelf) when browsing, the list window when searching or filtering, or
-  // the one focused model. This is what the community summaries are fetched for,
-  // so hero, shelves, and rows all show a crowd star from a single batched call.
+  // The catalog model ids on screen, for the community summaries: the open
+  // page's picks, the search results, or the one focused model.
   const onScreenModelIds = useMemo(() => {
+    if (!catalog) return [];
     if (focusedId) return [focusedId];
-    if (browsing) {
-      const ids = new Set<string>();
-      for (const m of featured) ids.add(m.id);
-      for (const shelf of shelves) for (const m of shelf.models) ids.add(m.id);
-      return [...ids];
+    if (category) return categoryPicks(catalog, category.id).map((p) => p.model.id);
+    if (collection) {
+      return collection.shelves.flatMap((id) => shelfPicks(catalog, id).map((p) => p.model.id));
     }
-    return visible.slice(0, renderLimit).map((m) => m.id);
-  }, [focusedId, browsing, featured, shelves, visible, renderLimit]);
+    return results.map((p) => p.model.id);
+  }, [catalog, focusedId, category, collection, results]);
 
   // Fetch community summaries for whatever is on screen, in ONE batched call, so
   // community-guided browsing costs a single request per view rather than one
@@ -821,139 +743,6 @@ export function MarketplaceScreen() {
     );
   }
 
-  const toggleCompare = (id: string) =>
-    setCompareIds((ids) =>
-      ids.includes(id) ? ids.filter((x) => x !== id) : ids.length >= 3 ? ids : [...ids, id],
-    );
-
-  // ---- stack bundles ------------------------------------------------------
-  // One tap fills the whole stack for a profile. Desktop: pull each model
-  // through the engine (the same install channel and progress UI as a single
-  // model), then set the orchestrator and specialists. Phone: the Pocket bundle
-  // downloads its on-device model and makes it the Reasoning model. Sizes are
-  // summed from the live catalog, never hardcoded.
-  const sizeOf = (id: string) => catalog?.models.find((m) => m.id === id)?.sizeGB;
-  const installBundle = async (bundle: StackBundle) => {
-    if (!catalog || bundleBusy) return;
-    const ids = bundleModelIds(bundle);
-    const models = ids.map((id) => catalog.models.find((m) => m.id === id));
-    if (models.some((m) => !m)) {
-      showToast('This bundle names a model the catalog does not have yet.');
-      return;
-    }
-    setBundleBusy(bundle.id);
-    try {
-      if (bundle.platform === 'phone') {
-        const m = models[0]!;
-        await pullToDevice(m);
-        await useApp.getState().setReasoning({ kind: 'device', modelId: m.id, modelName: m.name });
-        showToast(`${bundle.name} is your stack. Ready to chat, offline.`);
-        return;
-      }
-      const b = bridge();
-      if (!b) {
-        showToast('Computer bundles install from OpenShore on your computer.');
-        return;
-      }
-      for (const m of models) {
-        const r = await b.installModel(m!.id);
-        clearDownload(m!.id);
-        if (!r.ok) {
-          showToast(r.detail);
-          return;
-        }
-      }
-      const orch = models[0]!;
-      const set = await b.setOrchestrator(orch.source.ref);
-      if (!set.ok) {
-        showToast(set.detail);
-        return;
-      }
-      for (const [role, id] of Object.entries(bundle.specialists)) {
-        const m = catalog.models.find((x) => x.id === id);
-        if (m) await b.enableSpecialist(role, m.source.ref);
-      }
-      await useApp.getState().refreshDesktopStatus();
-      hapticSuccess();
-      logEvent('bundle_installed', { id: bundle.id });
-      showToast(`${bundle.name} is your stack. Ready to chat and build.`);
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Could not install the bundle.');
-    } finally {
-      setBundleBusy(undefined);
-    }
-  };
-
-  // Install by name, shared with Stack (components/InstallByName.tsx).
-  const renderInstallByName = () => (isPhone() ? null : <InstallByName key="install-by-name" />);
-
-  const renderBundleShelf = () => {
-    const list = bundlesFor(isPhone() ? 'phone' : 'desktop');
-    const other = bundlesFor(isPhone() ? 'desktop' : 'phone');
-    return (
-      <section className="shelf" key="bundles">
-        <div className="shelf-head">
-          <h2>Fill your stack in one tap</h2>
-          <p className="hint">
-            A bundle sets your Reasoning model and specialists for a profile. Each shows its total
-            download. Weights come straight from their source.
-          </p>
-        </div>
-        <div className="market-list">
-          {list.map((bundle) => {
-            const total = bundleTotalGB(bundle, sizeOf);
-            const names = bundleModelIds(bundle)
-              .map((id) => catalog?.models.find((m) => m.id === id)?.name ?? id)
-              .join(' · ');
-            const busy = bundleBusy === bundle.id;
-            const progressLine = busy
-              ? bundleModelIds(bundle)
-                  .map((id) => downloads[id]?.label)
-                  .find(Boolean)
-              : undefined;
-            return (
-              <div className="card" key={bundle.id}>
-                <div className="card-row">
-                  <div className="grow">
-                    <h3>{bundle.name}</h3>
-                    <div className="sub">{bundle.tagline}</div>
-                  </div>
-                  <span className="pill local">
-                    {total !== undefined ? `${total} GB` : 'size unknown'}
-                  </span>
-                </div>
-                <p className="hint" style={{ marginTop: 6 }}>
-                  {names}
-                  {bundle.minVramGB ? ` · needs about ${bundle.minVramGB} GB of GPU memory` : ''}
-                </p>
-                <button
-                  className="btn primary press-fb"
-                  style={{ width: '100%', marginTop: 8 }}
-                  disabled={Boolean(bundleBusy)}
-                  onClick={() => void installBundle(bundle)}
-                >
-                  {busy ? (progressLine ?? 'Installing...') : `Install ${bundle.name}`}
-                </button>
-              </div>
-            );
-          })}
-          {other.length ? (
-            <p className="hint">
-              {isPhone()
-                ? 'Computer bundles (Starter, Coding, Creative, Performance) install from OpenShore on your computer.'
-                : 'The Pocket bundle runs on your iPhone; get it there.'}
-            </p>
-          ) : null}
-        </div>
-      </section>
-    );
-  };
-
-  const presetsFor = (id: string) =>
-    catalog.presets.filter(
-      (p) => p.stack.orchestrator === id || Object.values(p.stack.specialists).includes(id),
-    );
-
   // ---- where it runs: the three homes, on the product page --------------
   // Phone / laptop / workstation, filled when the model fits there. The one
   // row that answers "can I run this here" before anything else on the page.
@@ -993,8 +782,6 @@ export function MarketplaceScreen() {
         note: homes.workstation ? 'Fits a 48 GB workstation.' : 'Needs a very large computer.',
       },
     ];
-    const fam = familyOf(model);
-    const siblings = families.find((f) => f.id === fam.id)?.models.length ?? 0;
     return (
       <div className="runs-on">
         <div className="runs-on-label">Where it runs</div>
@@ -1013,11 +800,6 @@ export function MarketplaceScreen() {
           ))}
         </div>
         {phone.state === 'over' ? <p className="runs-on-note">{phone.note}</p> : null}
-        {siblings > 1 ? (
-          <button className="runs-on-family press-fb" onClick={() => openFamily(fam.id)}>
-            See every {fam.name} size ({siblings})
-          </button>
-        ) : null}
       </div>
     );
   };
@@ -1183,100 +965,6 @@ export function MarketplaceScreen() {
     );
   };
 
-  // ---- browse by family ---------------------------------------------------
-  // A rail of makers. Each chip carries how many sizes the family has and how
-  // many of those run on this phone, so a phone shopper can see at a glance
-  // which families have anything for them.
-  const renderFamilyRail = () => {
-    if (!families.length) return null;
-    return (
-      <section className="shelf family-shelf" key="families">
-        <div className="shelf-head static">
-          <span className="shelf-head-text">
-            <span className="shelf-title">Browse by family</span>
-            <span className="shelf-sub">
-              Pick a maker, then the size that fits where you want it to run.
-            </span>
-          </span>
-        </div>
-        <div className="family-rail" role="list">
-          {families.map((f) => (
-            <button
-              key={f.id}
-              role="listitem"
-              className="family-chip press-fb"
-              onClick={() => openFamily(f.id)}
-              aria-label={`${f.name}, ${f.models.length} sizes, ${f.phoneCount} on this phone`}
-            >
-              <span className="family-chip-name">{f.name}</span>
-              <span className="family-chip-meta">
-                {f.models.length} {f.models.length === 1 ? 'size' : 'sizes'}
-                {f.phoneCount ? ` · ${f.phoneCount} on iPhone` : ''}
-              </span>
-            </button>
-          ))}
-        </div>
-      </section>
-    );
-  };
-
-  const renderFamilyPage = (fam: FamilyGroup) => {
-    const split = deviceSplit(bySizeAscending(fam.models));
-    const group = (title: string, sub: string, list: CatalogModel[]) =>
-      list.length ? (
-        <section className="family-group" key={title}>
-          <div className="family-group-head">
-            <span className="family-group-title">{title}</span>
-            <span className="family-group-sub">{sub}</span>
-          </div>
-          <div className="family-list">{list.map(renderRow)}</div>
-        </section>
-      ) : null;
-    return (
-      <div className="family-page">
-        <div className="family-hero">
-          <div className="family-hero-name">{fam.name}</div>
-          {fam.maker ? <div className="family-hero-maker">by {fam.maker}</div> : null}
-          {fam.blurb ? <p className="family-hero-blurb">{fam.blurb}</p> : null}
-          <p className="hint">
-            {fam.models.length} {fam.models.length === 1 ? 'size' : 'sizes'}, smallest first.
-            {fam.phoneCount
-              ? ` ${fam.phoneCount} ${fam.phoneCount === 1 ? 'runs' : 'run'} on an iPhone.`
-              : ' None run on a phone yet.'}
-          </p>
-        </div>
-        {group(
-          isPhone() ? 'On this iPhone' : 'On an iPhone or iPad',
-          'Downloads in the app. Works with no signal.',
-          split.phone,
-        )}
-        {group(
-          'Computers and home servers',
-          isPhone()
-            ? settings.daemon
-              ? `Installs on ${settings.daemon.name ?? 'your computer'} from here.`
-              : 'Installs from OpenShore on your computer, or onto a paired computer.'
-            : 'Installs on this computer through Ollama.',
-          split.desktop,
-        )}
-      </div>
-    );
-  };
-
-  // The line between what this phone can take and what it can only browse. On
-  // a phone the store front puts everything above it that installs here, and
-  // everything below it that installs on a desktop or a home server.
-  const renderDesktopDivider = () => (
-    <div className="store-divider" key="desktop-divider">
-      <span className="store-divider-title">Computers and home servers</span>
-      <span className="store-divider-sub">
-        {settings.daemon
-          ? `Browse here, install on ${settings.daemon.name ?? 'your computer'}. This phone uses them over Tailscale.`
-          : 'Browse here; these install from OpenShore on your computer, or onto a computer you pair. This phone uses them over Tailscale.'}
-      </span>
-    </div>
-  );
-
   // A soft crossfade for a view that changes shape with no tile to carry it:
   // the store front giving way to the list on the first typed character or
   // the first facet, the list handing the front back when the last one
@@ -1293,54 +981,94 @@ export function MarketplaceScreen() {
     doc.startViewTransition(() => flushSync(update));
   };
 
-  // Every search or filter change lands here. Any of them leaves a product
-  // page or a family page; crossing between the store front and the list
-  // crossfades.
-  const applyFacets = (next: Facets) => {
-    const toFront = !next.query.trim() && activeFacetCount(next) === 0;
+  // Every search change lands here. Typing leaves any open page; crossing
+  // between the store front and the results crossfades, never per keystroke.
+  const applyQuery = (next: string) => {
+    const toFront = !next.trim();
     const crossing =
-      Boolean(focusedId || focusedHostedId || focusedFamilyId) || toFront !== browsing;
+      Boolean(focusedId || focusedHostedId || focusedCategory || focusedCollection) ||
+      toFront !== browsing;
     const update = () => {
       setFocusedId(undefined);
       setFocusedHostedId(undefined);
-      setFocusedFamilyId(undefined);
-      setFamilyReturn(undefined);
-      setFacets(next);
+      setFocusedCategory(undefined);
+      setFocusedCollection(undefined);
+      setLibReturn(undefined);
+      setQuery(next);
     };
     if (crossing) fade(update);
     else update();
   };
 
-  // A family page is a page inside the room, like a product page: the top bar
-  // carries its name and a chevron back to the Marketplace. It crossfades in
-  // (no tile to carry it) and remembers itself as the way back from any model
-  // opened inside it.
-  const openFamily = (id: string) => {
+  // A category's page and a collection's are pages inside the room, like a
+  // product page: the top bar carries the name and a chevron back to the
+  // Marketplace. Each crossfades in (no tile to carry it) and is the way back
+  // from any model opened inside it.
+  const openCategory = (id: CategoryId) => {
     fade(() => {
-      setFacets(EMPTY_FACETS);
+      setQuery('');
       setFocusedId(undefined);
       setFocusedHostedId(undefined);
-      setFamilyReturn(undefined);
-      setFocusedFamilyId(id);
+      setFocusedCollection(undefined);
+      setLibReturn(undefined);
+      setFocusedCategory(id);
     });
     scrollToTop();
   };
 
-  const closeFamily = () => {
+  const openCollection = (id: string) => {
     fade(() => {
-      setFocusedFamilyId(undefined);
-      setFamilyReturn(undefined);
+      setQuery('');
+      setFocusedId(undefined);
+      setFocusedHostedId(undefined);
+      setFocusedCategory(undefined);
+      setLibReturn(undefined);
+      setFocusedCollection(id);
+    });
+    scrollToTop();
+  };
+
+  const closeLibraryPage = () => {
+    fade(() => {
+      setFocusedCategory(undefined);
+      setFocusedCollection(undefined);
+      setLibReturn(undefined);
     });
   };
 
-  const setFacet = <K extends keyof Facets>(key: K, value: Facets[K]) =>
-    applyFacets({ ...facets, [key]: value });
+  // ---- where it sits in the library, on the product page -----------------
+  // Every shelf and size the model is picked for, each with its reason; where
+  // it runs when that is not Ollama; and the condition its license sets on
+  // commercial use, said once and plainly.
+  const renderLibraryFacts = (model: CatalogModel) => {
+    if (!catalog) return null;
+    const picks = picksForModel(catalog, model.id);
+    const runtime = runtimeOf(model);
+    if (!picks.length && runtime === 'ollama' && !model.license.conditions) return null;
+    return (
+      <div className="lib-facts">
+        {picks.map((p) => (
+          <p className="lib-fact" key={`${p.shelf.id}-${p.size}`}>
+            <strong>
+              {libraryCategory(p.shelf.category).name}: {p.shelf.name},{' '}
+              {SIZE_CLASS_INFO[p.size].name}.
+            </strong>{' '}
+            {p.why}
+          </p>
+        ))}
+        {runtime !== 'ollama' ? <p className="hint">{RUNTIME_INFO[runtime].line}</p> : null}
+        {model.license.conditions ? (
+          <p className="hint">License: {model.license.conditions}</p>
+        ) : null}
+      </div>
+    );
+  };
 
   // `focused`: the card is the model's own product page, so it carries the
   // tile the hero or row flew in on (and the shared name for the way back).
   const renderCard = (model: CatalogModel, index: number, focused = false) => {
     const dl = downloads[model.id];
-    const target: 'device' | 'desktop' = model.onDevice ? 'device' : 'desktop';
+    const target: 'device' | 'desktop' = toDevice(model) ? 'device' : 'desktop';
     const owned = isOwned(model);
     const fit = fitFor(model.sizeGB, memoryGB);
     const pill = FIT_PILL[fit];
@@ -1350,7 +1078,6 @@ export function MarketplaceScreen() {
       (c) => model.categories.includes(c) && rated?.perCapability?.[c] !== undefined,
     );
     const detail = detailOpen === model.id;
-    const inCompare = compareIds.includes(model.id);
     const popLabel = popularityLabel(model);
     const stagger = { animationDelay: `${Math.min(index, 7) * 35}ms` };
 
@@ -1383,6 +1110,7 @@ export function MarketplaceScreen() {
         </div>
 
         {focused ? renderRunsOn(model) : null}
+        {focused ? renderLibraryFacts(model) : null}
 
         <div className="badge-row">
           {isRecommended ? (
@@ -1457,7 +1185,9 @@ export function MarketplaceScreen() {
           : null}
 
         <div className="market-meta">
-          {model.sizeGB} GB · {model.quantization} · {model.contextTokens.toLocaleString()} ctx
+          {runtimeOf(model) === 'ollama'
+            ? `${model.sizeGB} GB · ${model.quantization} · ${model.contextTokens.toLocaleString()} ctx`
+            : `${model.sizeGB} GB · runs in ${RUNTIME_INFO[runtimeOf(model)].name}`}
         </div>
         <div className="license-line">{licenseLabel(model)}</div>
 
@@ -1509,15 +1239,6 @@ export function MarketplaceScreen() {
             </span>
             {detail ? 'Hide details' : 'Details and license'}
           </button>
-          <label className="compare-check">
-            <input
-              type="checkbox"
-              checked={inCompare}
-              onChange={() => toggleCompare(model.id)}
-              disabled={!inCompare && compareIds.length >= 3}
-            />
-            Compare
-          </label>
         </div>
 
         {detail ? (
@@ -1529,9 +1250,11 @@ export function MarketplaceScreen() {
             <p className="detail-license">
               {model.license.name}
               {model.license.note ? `. ${model.license.note}` : '.'} Weights download straight from{' '}
-              {model.source.kind === 'ollama' ? 'the Ollama library' : 'Hugging Face'}, never from
-              OpenShore.
+              {SOURCE_NAME[model.source.kind]}, never from OpenShore.
             </p>
+            {model.license.attribution ? (
+              <p className="detail-license">{model.license.attribution}</p>
+            ) : null}
             {model.benchmarks ? (
               <div className="detail-benches">
                 {Object.entries(model.benchmarks).map(([k, v]) => (
@@ -1549,15 +1272,6 @@ export function MarketplaceScreen() {
             <div className="pull-cmd">
               <code>{model.source.pullCommand}</code>
             </div>
-            {presetsFor(model.id).length ? (
-              <p className="detail-presets">
-                In these stacks:{' '}
-                {presetsFor(model.id)
-                  .map((p) => p.name)
-                  .join(', ')}
-                .
-              </p>
-            ) : null}
           </div>
         ) : null}
       </div>
@@ -1570,9 +1284,11 @@ export function MarketplaceScreen() {
     if (screenRef.current) screenRef.current.scrollTop = 0;
   };
 
-  // Open one model as its own product page. From a hero, row, or preset
-  // member (anything with a tile) the tile hops into the page; the way back
-  // flies it home. Defined below with the hosted hop, which it shares.
+  // Open one model as its own product page. From a library pick (anything
+  // with a tile) the tile hops into the page; the way back flies it home.
+  // Defined below with the hosted hop, which it shares. A model opened from a
+  // category or a collection goes back there; one opened from the search
+  // results goes back to them, since the search stays as it was.
   const openModel = (
     model: CatalogModel,
     origin: Element | null = null,
@@ -1580,11 +1296,11 @@ export function MarketplaceScreen() {
   ) => {
     if (where) setTileHome({ id: model.id, where });
     hop(() => {
-      setFacets(EMPTY_FACETS);
       setFocusedHostedId(undefined);
-      // A model opened from a family page goes back to that family.
-      if (focusedFamilyId) setFamilyReturn(focusedFamilyId);
-      setFocusedFamilyId(undefined);
+      if (focusedCategory) setLibReturn({ kind: 'category', id: focusedCategory });
+      else if (focusedCollection) setLibReturn({ kind: 'collection', id: focusedCollection });
+      setFocusedCategory(undefined);
+      setFocusedCollection(undefined);
       setFocusedId(model.id);
       setDetailOpen(model.id);
     }, origin);
@@ -1596,9 +1312,10 @@ export function MarketplaceScreen() {
       () => {
         setFocusedId(undefined);
         setDetailOpen(undefined);
-        if (familyReturn) {
-          setFocusedFamilyId(familyReturn);
-          setFamilyReturn(undefined);
+        if (libReturn) {
+          if (libReturn.kind === 'category') setFocusedCategory(libReturn.id as CategoryId);
+          else setFocusedCollection(libReturn.id);
+          setLibReturn(undefined);
         }
       },
       screenRef.current?.querySelector('.product-page') ?? null,
@@ -1640,9 +1357,10 @@ export function MarketplaceScreen() {
   const openHosted = (m: HostedModel, origin: Element | null, where: TileHome['where']) => {
     setTileHome({ id: m.id, where });
     hop(() => {
-      setFacets(EMPTY_FACETS);
       setFocusedId(undefined);
       setDetailOpen(undefined);
+      setFocusedCategory(undefined);
+      setFocusedCollection(undefined);
       setFocusedHostedId(m.id);
     }, origin);
     scrollToTop();
@@ -1683,42 +1401,6 @@ export function MarketplaceScreen() {
     `${m.providerName} · ${m.contextTokens ? `${contextLabel(m.contextTokens)} context` : 'cloud'}${
       hostedIsNew(m) ? ' · New' : ''
     }`;
-
-  const renderHostedHero = (m: HostedModel, index: number) => (
-    <div
-      className="hero-card cloud"
-      key={m.id}
-      role="button"
-      tabIndex={0}
-      data-cap={m.categories[0] ?? 'reasoning'}
-      style={{ animationDelay: `${Math.min(index, 6) * 45}ms` }}
-      onClick={(e) => openHosted(m, e.currentTarget, 'hero')}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          openHosted(m, e.currentTarget, 'hero');
-        }
-      }}
-      aria-label={`${m.name}. ${m.tagline}`}
-    >
-      <div className="hero-eyebrow">
-        {hostedIsNew(m) ? 'New from ' : ''}
-        {m.providerName}
-      </div>
-      <div className="hero-title">{m.name}</div>
-      <div className="hero-tagline">{m.tagline}</div>
-      <div className="hero-foot">
-        <ModelTile name={m.name} cloud size={48} transitionName={tileName(m.id, 'hero')} />
-        <div className="hero-foot-meta">
-          <span className="pill cloud">On your key</span>
-          <span className="hero-size">
-            {m.contextTokens ? `${contextLabel(m.contextTokens)} context` : 'Cloud'}
-          </span>
-        </div>
-        <span className="hero-get-wrap">{hostedControl(m)}</span>
-      </div>
-    </div>
-  );
 
   const renderHostedRow = (m: HostedModel) => {
     const primaryCap = m.categories[0];
@@ -1930,13 +1612,22 @@ export function MarketplaceScreen() {
   // the paired machine's Ollama list.
   const inCloud = (model: CatalogModel): boolean => Boolean(settings.cloudModels?.[model.id]);
   const isOwned = (model: CatalogModel): boolean =>
-    model.onDevice
+    toDevice(model)
       ? Boolean(settings.deviceModels[model.id]) || inCloud(model)
-      : installedRefs.has(model.source.ref);
+      : runtimeOf(model) === 'ollama'
+        ? installedRefs.has(model.source.ref)
+        : mediaPlaced.has(model.id);
 
   // The plain label for an owned model's home, so the pill reads where it is.
+  // A media model reads as in the Stack, since Get also placed it.
   const ownedLabel = (model: CatalogModel): string =>
-    inCloud(model) ? 'in iCloud' : model.onDevice ? 'on device' : 'installed';
+    inCloud(model)
+      ? 'in iCloud'
+      : toDevice(model)
+        ? 'on device'
+        : runtimeOf(model) === 'ollama'
+          ? 'installed'
+          : 'in your Stack';
 
   // The footprint of the models already on this device, summed from the live
   // catalog, so the monitor can say what the downloads are spending, not only
@@ -1972,15 +1663,6 @@ export function MarketplaceScreen() {
       ? { count: s.count, average: s.average, dist: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } }
       : undefined;
     return communityScore(summary, model.ratings?.osCodeFit);
-  };
-
-  // A compact community star for a browse surface (hero, shelf row, list row),
-  // shown only once a model has reports so a cold catalog is not a wall of empty
-  // lines. Null off a configured build or before any review lands.
-  const communityChip = (model: CatalogModel) => {
-    if (!reviewsAvailable()) return null;
-    const s = reviewScoreFor(model);
-    return s.count > 0 ? <CommunityStars score={s} size={12} /> : null;
   };
 
   // This device, for the review hardware prefill and the "machines like yours"
@@ -2250,15 +1932,16 @@ export function MarketplaceScreen() {
   // that ends in a toast.
   const labelFor = (model: CatalogModel, failed?: boolean) =>
     installLabel({
-      onDevice: Boolean(model.onDevice),
+      onDevice: toDevice(model),
       hasBridge: Boolean(bridge()),
       hubName: settings.daemon ? (settings.daemon.name ?? 'your computer') : undefined,
       failed,
     });
 
-  const getControl = (model: CatalogModel) => {
+  /** A pick's Get carries its shelf, so a media model fills that job. */
+  const getControl = (model: CatalogModel, shelfId?: string) => {
     const dl = downloads[model.id];
-    const target: 'device' | 'desktop' = model.onDevice ? 'device' : 'desktop';
+    const target: 'device' | 'desktop' = toDevice(model) ? 'device' : 'desktop';
     const owned = isOwned(model);
     if (owned) {
       return <span className="pill local">{ownedLabel(model)}</span>;
@@ -2284,7 +1967,7 @@ export function MarketplaceScreen() {
         onClick={(e) => {
           e.stopPropagation();
           if (target === 'device') void pullToDevice(model);
-          else void pullToDesktop(model);
+          else void pullToDesktop(model, shelfId);
         }}
       >
         {label.text}
@@ -2292,632 +1975,200 @@ export function MarketplaceScreen() {
     );
   };
 
-  const renderHero = (model: CatalogModel, index: number) => {
-    const fit = fitFor(model.sizeGB, memoryGB);
-    const pill = FIT_PILL[fit];
-    const eyebrow = model.recommended?.isRecommended ? 'OpenShore pick' : 'Featured';
-    return (
-      // A div, not a button: it contains the Get button, and a button inside a
-      // button is invalid and fires unpredictably. role/tabIndex/onKeyDown keep
-      // it keyboard reachable (MP-F10).
-      <div
-        className={`hero-card${model.onDevice ? ' on-device' : ''}`}
-        key={model.id}
-        role="button"
-        tabIndex={0}
-        data-cap={model.categories[0] ?? 'reasoning'}
-        style={{ animationDelay: `${Math.min(index, 6) * 45}ms` }}
-        onClick={(e) => openModel(model, e.currentTarget, 'hero')}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            openModel(model, e.currentTarget, 'hero');
-          }
-        }}
-        aria-label={`${model.name}. ${model.tagline}`}
-      >
-        <div className="hero-eyebrow">{eyebrow}</div>
-        <div className="hero-title">{model.name}</div>
-        <div className="hero-tagline">{model.tagline}</div>
-        <div className="hero-foot">
-          <ModelTile
-            name={model.name}
-            onDevice={Boolean(model.onDevice)}
-            size={48}
-            transitionName={tileName(model.id, 'hero')}
-          />
-          <div className="hero-foot-meta">
-            <span className={`pill ${pill.cls}`}>{pill.text}</span>
-            <span className="hero-size">{model.sizeGB} GB</span>
-            {communityChip(model)}
-          </div>
-          <span className="hero-get-wrap">{getControl(model)}</span>
-        </div>
-      </div>
-    );
-  };
-
-  const renderRow = (model: CatalogModel) => {
-    const primaryCap = model.categories[0];
-    const meta = model.onDevice
-      ? `On device · ${model.sizeGB} GB`
-      : `${model.sizeGB} GB · ${model.quantization}`;
-    return (
-      <div
-        className="store-row"
-        key={model.id}
-        role="button"
-        tabIndex={0}
-        onClick={(e) => openModel(model, e.currentTarget, 'row')}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            openModel(model, e.currentTarget, 'row');
-          }
-        }}
-      >
-        <ModelTile
-          name={model.name}
-          onDevice={Boolean(model.onDevice)}
-          size={52}
-          transitionName={tileName(model.id, 'row')}
-        />
-        <div className="store-row-body">
-          <div className="store-row-name">{model.name}</div>
-          <div className="store-row-sub">{model.tagline}</div>
-          <div className="store-row-meta">
-            {primaryCap ? <CapIcon cap={primaryCap} size={12} /> : null}
-            {meta}
-          </div>
-          {(() => {
-            const chip = communityChip(model);
-            return chip ? <div className="store-row-community">{chip}</div> : null;
-          })()}
-        </div>
-        <span className="store-row-get">{getControl(model)}</span>
-      </div>
-    );
-  };
-
-  // Rows are chunked into columns of three so a shelf pages horizontally, three
-  // models to a screen, exactly like the App Store's "Must-Have Apps" rail.
-  const renderShelf = (shelf: Shelf) => {
-    const columns: CatalogModel[][] = [];
-    for (let i = 0; i < shelf.models.length; i += 3) {
-      columns.push(shelf.models.slice(i, i + 3));
-    }
-    const openShelf = () => {
-      if (shelf.capability) {
-        applyFacets({ ...EMPTY_FACETS, capability: shelf.capability });
-      } else {
-        applyFacets({ ...EMPTY_FACETS });
-        setSort(shelf.sort ?? 'recommended');
-      }
-    };
-    return (
-      <section className="shelf" key={shelf.key}>
-        <button className="shelf-head" onClick={openShelf}>
-          <span className="shelf-head-text">
-            <span className="shelf-title">{shelf.title}</span>
-            {shelf.subtitle ? <span className="shelf-sub">{shelf.subtitle}</span> : null}
-          </span>
-          <span className="shelf-more" aria-hidden="true">
-            <Icon size={16}>
-              <path d="M9 6l6 6-6 6" />
-            </Icon>
-          </span>
-        </button>
-        <div className="shelf-scroll">
-          {columns.map((col, i) => (
-            <div className="shelf-col" key={i}>
-              {col.map(renderRow)}
-            </div>
-          ))}
-        </div>
-      </section>
-    );
-  };
-
-  // Preset stacks as a browsable "Starter stacks" shelf: each card names the
-  // stack, its member models (tap one to open its product page), the combined
-  // size, and whether it fits this machine. The catalog ships these and the CLI
-  // can apply them; here they are at least discoverable and drillable.
-  const presetMembers = (preset: (typeof catalog.presets)[number]): CatalogModel[] => {
-    const ids = [preset.stack.orchestrator, ...Object.values(preset.stack.specialists)].filter(
-      (v): v is string => Boolean(v),
-    );
-    const seen = new Set<string>();
-    const out: CatalogModel[] = [];
-    for (const id of ids) {
-      if (seen.has(id)) continue;
-      seen.add(id);
-      const m = catalog!.models.find((mm) => mm.id === id);
-      if (m) out.push(m);
-    }
-    return out;
-  };
-
-  const renderPresetShelf = () => (
-    <section className="shelf preset-shelf" key="starter-stacks">
-      <div className="shelf-head static">
-        <span className="shelf-head-text">
-          <span className="shelf-title">Starter stacks</span>
-          <span className="shelf-sub">Curated combinations to set up in one look.</span>
-        </span>
-      </div>
-      <div className="shelf-scroll">
-        {catalog!.presets.map((preset) => {
-          const members = presetMembers(preset);
-          const totalGB = members.reduce((sum, m) => sum + m.sizeGB, 0);
-          const pill = FIT_PILL[fitFor(totalGB, memoryGB)];
-          return (
-            <div className="preset-card" key={preset.id}>
-              <div className="preset-name">{preset.name}</div>
-              <div className="preset-tagline">{preset.tagline}</div>
-              <div className="preset-members">
-                {members.map((m) => (
-                  <button
-                    key={m.id}
-                    className="preset-member press-fb"
-                    onClick={(e) => openModel(m, e.currentTarget, 'preset')}
-                    aria-label={`${m.name} in ${preset.name}`}
-                  >
-                    <ModelTile
-                      name={m.name}
-                      onDevice={Boolean(m.onDevice)}
-                      size={34}
-                      transitionName={tileName(m.id, 'preset')}
-                    />
-                    <span className="preset-member-name">{m.name}</span>
-                  </button>
-                ))}
-              </div>
-              <div className="preset-foot">
-                <span className={`pill ${pill.cls}`}>{pill.text}</span>
-                <span className="preset-size">
-                  {totalGB.toFixed(1)} GB
-                  {preset.minVramGB > 0 ? ` · needs ${preset.minVramGB} GB VRAM` : ''}
-                </span>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </section>
-  );
-
-  const categoryRail = (
-    <div className="cat-rail" role="tablist" aria-label="Browse by capability">
-      <button
-        role="tab"
-        aria-selected={browsing}
-        className={`cat-chip${browsing ? ' active' : ''}`}
-        onClick={() => applyFacets({ ...EMPTY_FACETS })}
-      >
-        <span className="cat-chip-glyph all" aria-hidden="true">
-          <Icon size={16}>
-            <path d="M4 6h16M4 12h16M4 18h16" />
-          </Icon>
-        </span>
-        Discover
-      </button>
-      {CAP_ORDER.map((cap) => (
-        <button
-          key={cap}
-          role="tab"
-          aria-selected={facets.capability === cap}
-          className={`cat-chip${facets.capability === cap ? ' active' : ''}`}
-          onClick={() => setFacet('capability', facets.capability === cap ? undefined : cap)}
-        >
-          <span className="cat-chip-glyph" aria-hidden="true">
-            <CapIcon cap={cap} size={16} />
-          </span>
-          {CAPABILITIES[cap].plain}
-        </button>
-      ))}
-    </div>
-  );
-
-  const capChip = (cap: CapabilityCategory) => (
-    <button
-      key={cap}
-      className={`facet-chip${facets.capability === cap ? ' active' : ''}`}
-      onClick={() => setFacet('capability', facets.capability === cap ? undefined : cap)}
-    >
-      {CAPABILITIES[cap].plain}
-    </button>
-  );
-
-  const filterRail = (
-    <div className="filter-rail">
-      <div className="facet-group">
-        <div className="facet-title">Your computer</div>
-        <div className="facet-chips">
-          {MEMORY_TIERS.map((t) => (
-            <button
-              key={t}
-              className={`facet-chip${memoryGB === t ? ' active' : ''}`}
-              onClick={() => setMemoryGB(t)}
-            >
-              {t} GB
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="facet-group">
-        <div className="facet-title">Good at</div>
-        <div className="facet-chips">{CAP_ORDER.map(capChip)}</div>
-      </div>
-
-      {facets.capability ? (
-        <div className="facet-group">
-          <div className="facet-title">
-            Minimum stars in {CAPABILITIES[facets.capability].plain}
-          </div>
-          <div className="facet-chips">
-            {[3, 4, 4.5].map((s) => (
-              <button
-                key={s}
-                className={`facet-chip${facets.minStar === s ? ' active' : ''}`}
-                onClick={() => setFacet('minStar', facets.minStar === s ? undefined : s)}
-              >
-                {s}+
-              </button>
-            ))}
-          </div>
-        </div>
-      ) : null}
-
-      <div className="facet-group">
-        <div className="facet-title">License</div>
-        <div className="facet-chips">
-          {(['commercial-ok', 'non-commercial', 'gated'] as const).map((p) => (
-            <button
-              key={p}
-              className={`facet-chip${facets.posture === p ? ' active' : ''}`}
-              onClick={() => setFacet('posture', facets.posture === p ? undefined : p)}
-            >
-              {p === 'commercial-ok'
-                ? 'Commercial OK'
-                : p === 'non-commercial'
-                  ? 'Non-commercial'
-                  : 'Gated'}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="facet-group">
-        <div className="facet-title">Source</div>
-        <div className="facet-chips">
-          {(['ollama', 'huggingface'] as const).map((s) => (
-            <button
-              key={s}
-              className={`facet-chip${facets.source === s ? ' active' : ''}`}
-              onClick={() => setFacet('source', facets.source === s ? undefined : s)}
-            >
-              {s === 'ollama' ? 'Ollama' : 'Hugging Face'}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="facet-group">
-        <div className="facet-chips">
-          <button
-            className={`facet-chip${facets.fits ? ' active' : ''}`}
-            onClick={() => setFacet('fits', !facets.fits)}
-          >
-            Runs on my computer
-          </button>
-          <button
-            className={`facet-chip${facets.onDeviceOnly ? ' active' : ''}`}
-            onClick={() => setFacet('onDeviceOnly', !facets.onDeviceOnly)}
-          >
-            On my phone
-          </button>
-          <button
-            className={`facet-chip${facets.orchestratorOnly ? ' active' : ''}`}
-            onClick={() => setFacet('orchestratorOnly', !facets.orchestratorOnly)}
-          >
-            Can run the show
-          </button>
-        </div>
-      </div>
-
-      {activeFacetCount(facets) > 0 ? (
-        <button
-          className="btn quiet"
-          onClick={() => applyFacets({ ...EMPTY_FACETS, query: facets.query })}
-        >
-          Clear filters
-        </button>
-      ) : null}
-    </div>
-  );
-
-  // A product page is a page inside the room, so the top bar shows its name
-  // and a chevron back to the Marketplace (the same hop as "All models"),
-  // not the menu. Maintainer, 2026-09-03, from the Kimi page.
-  const returnFamily = familyReturn ? families.find((f) => f.id === familyReturn) : undefined;
+  // A page inside the room shows its own name in the top bar and a chevron
+  // back where it came from (founder, 2026-09-03, from the Kimi page): a
+  // product page goes back to the category or collection it was opened from,
+  // or to the Marketplace; a category or collection page to the Marketplace.
+  const returnName = libReturn
+    ? libReturn.kind === 'category'
+      ? libraryCategory(libReturn.id as CategoryId).name
+      : libraryCollection(libReturn.id)?.name
+    : undefined;
   const page = focusedHosted
     ? { title: focusedHosted.name, back: { to: 'Marketplace', onBack: closeHosted } }
     : focusedModel
       ? {
           title: focusedModel.name,
-          back: { to: returnFamily ? returnFamily.name : 'Marketplace', onBack: closeModel },
+          back: { to: returnName ?? 'Marketplace', onBack: closeModel },
         }
-      : focusedFamily
-        ? { title: focusedFamily.name, back: { to: 'Marketplace', onBack: closeFamily } }
-        : undefined;
+      : category
+        ? { title: category.name, back: { to: 'Marketplace', onBack: closeLibraryPage } }
+        : collection
+          ? { title: collection.name, back: { to: 'Marketplace', onBack: closeLibraryPage } }
+          : undefined;
+
+  // What every library view needs to show a pick.
+  const pickProps = {
+    device,
+    control: (model: CatalogModel, pick?: LibraryPick) => getControl(model, pick?.shelf.id),
+    onOpen: (model: CatalogModel, origin: Element | null) => openModel(model, origin, 'pick'),
+    tileName: (id: string) => tileName(id, 'pick'),
+  };
 
   return (
     <>
       <div className="screen" ref={screenRef}>
         <BackBar title={page?.title ?? 'Marketplace'} back={page?.back} />
         <div className="screen-inner">
-          <h1>Models, in plain language</h1>
-          <p className="lead">Curated for what they are actually good at. {note ?? ''}</p>
+          {browsing || query.trim() ? (
+            <>
+              <h1>Models for every job</h1>
+              <p className="lead">
+                {LIBRARY_LEAD} {note ?? ''}
+              </p>
 
-          {settings.harborReady || harborDownload ? (
-            <div className="card">
-              <div className="card-row">
-                <div className="grow">
-                  <h3>
-                    Harbor <span className="sub">(preferred guide)</span>
-                  </h3>
-                  <div className="sub">
-                    Bigger, reasons better, searches the web when it needs to.
+              {settings.harborReady || harborDownload ? (
+                <div className="card">
+                  <div className="card-row">
+                    <div className="grow">
+                      <h3>
+                        Harbor <span className="sub">(preferred guide)</span>
+                      </h3>
+                      <div className="sub">
+                        Bigger, reasons better, searches the web when it needs to.
+                      </div>
+                    </div>
+                    {settings.harborReady ? <span className="pill local">on device</span> : null}
                   </div>
+                  {harborDownload && !harborDownload.failed ? (
+                    <>
+                      <div className="progress-track" style={{ marginTop: 10 }}>
+                        <div
+                          className={`progress-fill${harborDownload.indeterminate ? ' indeterminate' : ''}`}
+                          style={
+                            harborDownload.indeterminate
+                              ? undefined
+                              : { transform: `scaleX(${harborDownload.percent / 100})` }
+                          }
+                        />
+                      </div>
+                      <div className="hint" style={{ marginTop: 6 }}>
+                        {harborDownload.label}
+                      </div>
+                    </>
+                  ) : null}
                 </div>
-                {settings.harborReady ? <span className="pill local">on device</span> : null}
-              </div>
-              {harborDownload && !harborDownload.failed ? (
-                <>
-                  <div className="progress-track" style={{ marginTop: 10 }}>
-                    <div
-                      className={`progress-fill${harborDownload.indeterminate ? ' indeterminate' : ''}`}
-                      style={
-                        harborDownload.indeterminate
-                          ? undefined
-                          : { transform: `scaleX(${harborDownload.percent / 100})` }
-                      }
-                    />
-                  </div>
-                  <div className="hint" style={{ marginTop: 6 }}>
-                    {harborDownload.label}
-                  </div>
-                </>
               ) : null}
-            </div>
-          ) : null}
 
-          {settings.harborMiniReady || harborMiniDownload ? (
-            <div className="card">
-              <div className="card-row">
-                <div className="grow">
-                  <h3>
-                    Harbor Lite <span className="sub">(smaller guide)</span>
-                  </h3>
-                  <div className="sub">The first model in your stack. Built to be replaced.</div>
+              {settings.harborMiniReady || harborMiniDownload ? (
+                <div className="card">
+                  <div className="card-row">
+                    <div className="grow">
+                      <h3>
+                        Harbor Lite <span className="sub">(smaller guide)</span>
+                      </h3>
+                      <div className="sub">
+                        The first model in your stack. Built to be replaced.
+                      </div>
+                    </div>
+                    {settings.harborMiniReady ? (
+                      <span className="pill local">on device</span>
+                    ) : null}
+                  </div>
+                  {harborMiniDownload && !harborMiniDownload.failed ? (
+                    <>
+                      <div className="progress-track" style={{ marginTop: 10 }}>
+                        <div
+                          className={`progress-fill${harborMiniDownload.indeterminate ? ' indeterminate' : ''}`}
+                          style={
+                            harborMiniDownload.indeterminate
+                              ? undefined
+                              : { transform: `scaleX(${harborMiniDownload.percent / 100})` }
+                          }
+                        />
+                      </div>
+                      <div className="hint" style={{ marginTop: 6 }}>
+                        {harborMiniDownload.label}
+                      </div>
+                    </>
+                  ) : null}
                 </div>
-                {settings.harborMiniReady ? <span className="pill local">on device</span> : null}
-              </div>
-              {harborMiniDownload && !harborMiniDownload.failed ? (
-                <>
-                  <div className="progress-track" style={{ marginTop: 10 }}>
-                    <div
-                      className={`progress-fill${harborMiniDownload.indeterminate ? ' indeterminate' : ''}`}
-                      style={
-                        harborMiniDownload.indeterminate
-                          ? undefined
-                          : { transform: `scaleX(${harborMiniDownload.percent / 100})` }
-                      }
-                    />
-                  </div>
-                  <div className="hint" style={{ marginTop: 6 }}>
-                    {harborMiniDownload.label}
-                  </div>
-                </>
               ) : null}
-            </div>
+
+              <input
+                className="market-search"
+                type="search"
+                placeholder="Search models and jobs"
+                value={query}
+                onChange={(e) => applyQuery(e.target.value)}
+                aria-label="Search models and jobs"
+              />
+            </>
           ) : null}
-
-          <input
-            className="market-search"
-            type="search"
-            placeholder="Search models"
-            value={facets.query}
-            onChange={(e) => setFacet('query', e.target.value)}
-            aria-label="Search models"
-          />
-
-          {categoryRail}
 
           {renderCapacityChip()}
 
           {browsing ? (
-            <div className="store-front" key="store">
-              {featured.length || hostedHero ? (
-                <div className="hero-scroll">
-                  {hostedHero ? renderHostedHero(hostedHero, 0) : null}
-                  {featured.map((m, i) => renderHero(m, hostedHero ? i + 1 : i))}
-                </div>
-              ) : null}
-
-              {isPhone() ? (
-                // The phone's store front reads top to bottom as "what this
-                // iPhone can take, then what it can only browse": the packs,
-                // the families, the pocket shelf, then a divider, then the
-                // desktop world.
-                <>
-                  {renderPackShelf()}
-                  {renderFamilyRail()}
-                  {shelves.filter((s) => s.key === 'pocket').map(renderShelf)}
-                  {renderDesktopDivider()}
-                  {renderHostedShelf()}
-                  {shelves.filter((s) => s.key !== 'pocket').map(renderShelf)}
-                  {catalog.presets.length ? renderPresetShelf() : null}
-                </>
-              ) : (
-                <>
-                  {renderHostedShelf()}
-                  {renderBundleShelf()}
-                  {renderInstallByName()}
-                  {renderFamilyRail()}
-                  {shelves.map(renderShelf)}
-                  {catalog.presets.length ? renderPresetShelf() : null}
-                </>
-              )}
-            </div>
-          ) : focusedFamily ? (
-            <div className="focused-view" key={`family-${focusedFamily.id}`}>
-              <button className="btn quiet market-back" onClick={closeFamily}>
-                All models
-              </button>
-              {renderFamilyPage(focusedFamily)}
-            </div>
+            <>
+              <LibraryFront
+                key="store"
+                catalog={catalog}
+                onCategory={(c) => openCategory(c.id)}
+                onCollection={(c) => openCollection(c.id)}
+                onRequest={() => setRequestOpen(true)}
+                hosted={renderHostedShelf()}
+              />
+              {renderPackShelf()}
+            </>
           ) : focusedHosted ? (
             <div className="focused-view">
-              <button className="btn quiet market-back" onClick={closeHosted}>
-                All models
-              </button>
               <div className="market-list">{renderHostedPage(focusedHosted)}</div>
             </div>
           ) : focusedModel ? (
             <div className="focused-view">
-              <button className="btn quiet market-back" onClick={closeModel}>
-                All models
-              </button>
               <div className="market-list">{renderCard(focusedModel, 0, true)}</div>
             </div>
+          ) : category ? (
+            <div className="focused-view" key={`category-${category.id}`}>
+              <LibraryCategoryPage
+                catalog={catalog}
+                category={category}
+                onRequest={() => setRequestOpen(true)}
+                {...pickProps}
+              />
+            </div>
+          ) : collection ? (
+            <div className="focused-view" key={`collection-${collection.id}`}>
+              <LibraryCollectionPage
+                catalog={catalog}
+                collection={collection}
+                onRequest={() => setRequestOpen(true)}
+                {...pickProps}
+              />
+            </div>
           ) : (
-            <>
-              <div className="segmented seg-scroll" role="tablist" aria-label="Sort">
-                {sorts.map((s) => (
-                  <button
-                    key={s.key}
-                    role="tab"
-                    aria-selected={sort === s.key}
-                    className={`seg press-fb${sort === s.key ? ' active' : ''}`}
-                    onClick={() => setSort(s.key)}
-                  >
-                    {s.label}
-                  </button>
-                ))}
-              </div>
-
-              {SORT_SUBHEAD[sort] ? <p className="sort-honesty">{SORT_SUBHEAD[sort]}</p> : null}
-
-              <div className="market-body">
-                {!isPhone() ? <aside className="rail-desktop">{filterRail}</aside> : null}
-
-                <div className="market-main">
-                  <div className="result-bar">
-                    <span className="result-count" key={visible.length + hostedMatches.length}>
-                      {visible.length + hostedMatches.length} model
-                      {visible.length + hostedMatches.length === 1 ? '' : 's'}
+            <div className="focused-view" key="results">
+              {hostedMatches.length ? (
+                <section className="shelf hosted-group" key="hosted-matches">
+                  <div className="shelf-head static">
+                    <span className="shelf-head-text">
+                      <span className="shelf-title">{HOSTED_SHELF.title}</span>
+                      <span className="shelf-sub">{HOSTED_SHELF.subtitle}</span>
                     </span>
-                    {isPhone() ? (
-                      <button className="filter-open press-fb" onClick={() => setShowFilters(true)}>
-                        Filters{activeFacetCount(facets) ? ` (${activeFacetCount(facets)})` : ''}
-                      </button>
-                    ) : null}
                   </div>
-
-                  {isPhone() ? (
-                    <p className="hint" style={{ marginBottom: 10 }}>
-                      Browse here; computer models install from OpenShore on your computer, and this
-                      phone uses them over Tailscale.
-                    </p>
-                  ) : null}
-
-                  {hostedMatches.length ? (
-                    <section className="shelf hosted-group" key="hosted-matches">
-                      <div className="shelf-head static">
-                        <span className="shelf-head-text">
-                          <span className="shelf-title">{HOSTED_SHELF.title}</span>
-                          <span className="shelf-sub">{HOSTED_SHELF.subtitle}</span>
-                        </span>
-                      </div>
-                      {hostedMatches.map(renderHostedRow)}
-                    </section>
-                  ) : null}
-
-                  <div className="market-list" key={sort}>
-                    {visible.length ? (
-                      <>
-                        {visible.slice(0, renderLimit).map((m, i) => renderCard(m, i))}
-                        {renderLimit < visible.length ? (
-                          <div ref={listSentinelRef} className="list-sentinel" aria-hidden="true" />
-                        ) : null}
-                      </>
-                    ) : hostedMatches.length ? null : (
-                      <div className="market-empty">
-                        <p className="hint">No models match these filters yet.</p>
-                        {activeFacetCount(facets) > 0 || facets.query.trim() ? (
-                          <button className="btn quiet" onClick={() => applyFacets(EMPTY_FACETS)}>
-                            Clear filters
-                          </button>
-                        ) : null}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </>
+                  {hostedMatches.map(renderHostedRow)}
+                </section>
+              ) : null}
+              <LibrarySearchResults
+                results={results}
+                onRequest={() => setRequestOpen(true)}
+                {...pickProps}
+              />
+            </div>
           )}
         </div>
       </div>
-
-      {compareIds.length >= 2 ? (
-        <div className="compare-bar">
-          <span>{compareIds.length} selected</span>
-          <button className="btn primary" onClick={() => setCompareOpen(true)}>
-            Compare
-          </button>
-          <button className="btn quiet" onClick={() => setCompareIds([])}>
-            Clear
-          </button>
-        </div>
-      ) : null}
-
-      {compareOpen && compareModels.length >= 2 ? (
-        <CompareSheet
-          models={compareModels}
-          memoryGB={memoryGB}
-          onClose={() => setCompareOpen(false)}
-        />
-      ) : null}
 
       <Sheet open={storageSheetOpen} onClose={() => setStorageSheetOpen(false)}>
         {storageSheetOpen ? renderStorageSheetBody() : null}
       </Sheet>
 
-      <Sheet open={Boolean(showFilters)} onClose={() => setShowFilters(false)}>
-        {showFilters ? (
-          <>
-            <h2>Filters</h2>
-            <div className="sheet-sub">
-              <span className="count-tick" key={visible.length + hostedMatches.length}>
-                {visible.length + hostedMatches.length}
-              </span>{' '}
-              models match.
-            </div>
-            {filterRail}
-            <div className="sheet-actions">
-              <button className="btn primary" onClick={() => setShowFilters(false)}>
-                Show{' '}
-                <span className="count-tick" key={visible.length + hostedMatches.length}>
-                  {visible.length + hostedMatches.length}
-                </span>{' '}
-                models
-              </button>
-            </div>
-          </>
-        ) : null}
-      </Sheet>
+      <ModelRequestSheet
+        open={requestOpen}
+        onClose={() => setRequestOpen(false)}
+        onOpenStack={() => setView('stack')}
+        desktop={isDesktop()}
+      />
 
       {libraryIntro ? <LibraryIntro onDone={endLibraryIntro} /> : null}
     </>

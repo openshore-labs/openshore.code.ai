@@ -32,6 +32,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "build:catalog": "tsx scripts/build-catalog/index.ts",
+    "sign:catalog": "tsx scripts/build-catalog/sign.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "typecheck:scripts": "tsc -p tsconfig.scripts.json",
     "lint": "eslint . --ext .ts,.tsx --max-warnings 0",

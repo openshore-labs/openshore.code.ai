@@ -4,6 +4,7 @@
 //   node app/scripts/release-keygen.mjs            # both key pairs
 //   node app/scripts/release-keygen.mjs mac        # only the Mac pair
 //   node app/scripts/release-keygen.mjs desktop    # only the Windows and Linux pair
+//   node app/scripts/release-keygen.mjs catalog    # the published catalog's pair
 //
 // Each pair is a new Ed25519 key. The private half (base64 of its PKCS#8 DER)
 // goes into a build service's secret and nowhere else; the public half
@@ -30,6 +31,7 @@ export const RELEASE_KEYS = {
     where:
       "Codemagic: the app's settings, Environment variables. Group: openshore-mac-signing. Tick Secure.",
     constant: 'MAC_RELEASE_PUBLIC_KEY',
+    file: 'app/electron/releaseKeys.ts',
   },
   desktop: {
     title: 'Windows and Linux',
@@ -37,6 +39,18 @@ export const RELEASE_KEYS = {
     where:
       'GitHub: the repository Settings, Environments, release, Environment secrets, Add environment secret.',
     constant: 'DESKTOP_RELEASE_PUBLIC_KEY',
+    file: 'app/electron/releaseKeys.ts',
+  },
+  // The model library's published catalog (security review, 2026-10-12):
+  // its signature is checked by the engine and the app before a catalog is
+  // trusted (os-code/src/market/catalogSignature.ts).
+  catalog: {
+    title: 'Published catalog',
+    secret: 'CATALOG_SIGNING_KEY',
+    where:
+      'GitHub: the repository Settings, Secrets and variables, Actions, New repository secret.',
+    constant: 'CATALOG_PUBLIC_KEY',
+    file: 'os-code/src/market/catalogSignature.ts',
   },
 };
 
@@ -59,7 +73,7 @@ export function keygenReport(which = ['mac', 'desktop'], make = makeReleaseKeyPa
       `   ${pair.privateKey}`,
       '',
       `2. Public key. Paste it between the quotes of ${k.constant}`,
-      '   in app/electron/releaseKeys.ts, then commit and push.',
+      `   in ${k.file}, then commit and push.`,
       '',
       `   ${pair.publicKey}`,
       '',
@@ -76,7 +90,9 @@ export function keygenReport(which = ['mac', 'desktop'], make = makeReleaseKeyPa
 function main(argv) {
   const arg = argv[0];
   if (arg && !(arg in RELEASE_KEYS)) {
-    console.error(`Unknown key "${arg}". Use mac, desktop, or nothing for both.`);
+    console.error(
+      `Unknown key "${arg}". Use mac, desktop, catalog, or nothing for mac and desktop.`,
+    );
     process.exit(2);
   }
   console.log(keygenReport(arg ? [arg] : ['mac', 'desktop']));

@@ -4,10 +4,17 @@
 // sample as the last resort. Always something to show, and on a standalone
 // phone the storefront now carries the real ratings, popularity, and staff
 // picks the published catalog holds (the bundled sample has none of those).
-import { CatalogSchema, type Catalog } from 'os-code/protocol';
+import {
+  CATALOG_PUBLIC_KEY,
+  CatalogSchema,
+  olderThanTrusted,
+  verifyCatalogBytes,
+  withLibrary,
+  type Catalog,
+} from 'os-code/protocol';
 import bundled from 'os-code/catalog.sample.json';
 import { bridge } from './electronBridge.js';
-import { isDesktop, storeGetJson, storeSetJson } from './platform.js';
+import { isDesktop, storeDelete, storeGetJson, storeSetJson } from './platform.js';
 import { nativeFetch } from './nativeFetch.js';
 import type { DaemonTarget } from '../drivers/remoteDriver.js';
 
@@ -16,11 +23,16 @@ export interface LoadedCatalog {
   note?: string;
 }
 
-// The same feed the desktop engine defaults to (config.catalog.url). Cloudflare
-// Pages serves it with no CORS headers, so the fetch goes through nativeFetch
-// (native URLSession on iOS) rather than a WebView fetch the origin would block.
-const PUBLISHED_CATALOG_URL = 'https://openshore.ai/os-code/catalog.json';
-const CATALOG_CACHE_KEY = 'oscode.cache.catalog.v1';
+// The same feed the desktop engine defaults to (config.catalog.url): the
+// library file since 2026-10-12. Cloudflare Pages serves it with no CORS
+// headers, so the fetch goes through nativeFetch (native URLSession on iOS)
+// rather than a WebView fetch the origin would block. The cache key moved with
+// it, so a cache from before the library is not read as fresh.
+const PUBLISHED_CATALOG_URL = 'https://openshore.ai/os-code/catalog.v2.json';
+const CATALOG_CACHE_KEY = 'oscode.cache.catalog.v2';
+// The key before the library, cleared once a library catalog is saved, so
+// the old copy does not sit on the device for good.
+const OLD_CATALOG_CACHE_KEY = 'oscode.cache.catalog.v1';
 // Mirrors the engine's config.catalog.refreshHours default (24h).
 const REFRESH_MS = 24 * 60 * 60 * 1000;
 
@@ -29,7 +41,14 @@ interface CachedCatalog {
   fetchedAt: number;
 }
 
+/** Every catalog the store shows carries the library: one from an older
+ *  computer or an older cache borrows the library bundled with this app. */
 export async function loadAppCatalog(daemon?: DaemonTarget): Promise<LoadedCatalog> {
+  const loaded = await loadFromSource(daemon);
+  return { ...loaded, catalog: withLibrary(loaded.catalog, CatalogSchema.parse(bundled)) };
+}
+
+async function loadFromSource(daemon?: DaemonTarget): Promise<LoadedCatalog> {
   if (isDesktop() && bridge()) {
     try {
       return await bridge()!.catalog();
@@ -60,26 +79,57 @@ async function loadPublishedCatalog(): Promise<LoadedCatalog> {
     if (parsed) return { catalog: parsed };
   }
 
+  // The published catalog is taken only when its signature checks against
+  // the pinned key and it is not older than the copy already trusted
+  // (security review, 2026-10-12; os-code/src/market/catalogSignature.ts).
+  let refused = false;
   try {
-    const res = await nativeFetch(PUBLISHED_CATALOG_URL, { responseType: 'json' });
+    const res = await nativeFetch(PUBLISHED_CATALOG_URL, { responseType: 'text' });
     if (res.ok) {
-      const catalog = CatalogSchema.parse(await res.json());
-      await storeSetJson(CATALOG_CACHE_KEY, { catalog, fetchedAt: Date.now() } as CachedCatalog);
-      return { catalog };
+      const text = await res.text();
+      const check = await verifyCatalogBytes(
+        new TextEncoder().encode(text),
+        await signature(),
+        CATALOG_PUBLIC_KEY,
+      );
+      const catalog = CatalogSchema.parse(JSON.parse(text));
+      const trusted = cached ? safeParse(cached.catalog) : undefined;
+      refused = check.verdict === 'refused' || olderThanTrusted(catalog, trusted);
+      if (!refused) {
+        await storeSetJson(CATALOG_CACHE_KEY, { catalog, fetchedAt: Date.now() } as CachedCatalog);
+        void storeDelete(OLD_CATALOG_CACHE_KEY).catch(() => {});
+        return { catalog };
+      }
     }
   } catch {}
 
-  // The fetch failed or answered non-2xx. A stale cache still beats the bundled
-  // starter, so fall back to it (with an honest note) before the bundle.
+  // The fetch failed, answered non-2xx, or could not be verified. A stale
+  // cache still beats the bundled starter, so fall back to it (with an honest
+  // note) before the bundle.
   if (cached) {
     const parsed = safeParse(cached.catalog);
     if (parsed)
-      return { catalog: parsed, note: 'Showing the last saved catalog. Reconnect to refresh.' };
+      return {
+        catalog: parsed,
+        note: refused
+          ? 'The new catalog could not be verified, so the last verified copy is shown.'
+          : 'Showing the last saved catalog. Reconnect to refresh.',
+      };
   }
   return {
     catalog: CatalogSchema.parse(bundled),
     note: 'Showing the built-in starter catalog.',
   };
+}
+
+/** The published catalog's detached signature, beside it as `.sig`. */
+async function signature(): Promise<string | undefined> {
+  try {
+    const res = await nativeFetch(`${PUBLISHED_CATALOG_URL}.sig`, { responseType: 'text' });
+    return res.ok ? (await res.text()).trim() : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 async function readCache(): Promise<CachedCatalog | undefined> {

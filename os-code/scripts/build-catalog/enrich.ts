@@ -31,8 +31,13 @@ export function enrichCatalog(inputs: BuildInputs): EnrichResult {
   // is missing this run carries its prior number forward instead of blanking.
   const prevPopularity = previousPopularityById(inputs.previous);
 
+  // The model library's picks (library.ts): a picked model clears the quality
+  // bar on the curators' word, since the pick carries its reason and the
+  // benchmark-star table has no row for a media model.
+  const picked = pickedIds(seed);
+
   for (const base of seed.models) {
-    const built = buildModel(base, inputs, prevPopularity);
+    const built = buildModel(base, inputs, prevPopularity, picked.has(base.id));
     if ('drop' in built) {
       drops.push({ id: base.id, reason: built.drop });
       continue;
@@ -50,12 +55,30 @@ export function enrichCatalog(inputs: BuildInputs): EnrichResult {
     return refs.every((r) => ids.has(r));
   });
 
+  // A pick survives only if its model survived; a pick of a dropped model is
+  // removed (and logged) rather than published broken.
+  let library: Catalog['library'];
+  if (seed.library) {
+    const picks: NonNullable<Catalog['library']>['picks'] = {};
+    for (const [shelf, row] of Object.entries(seed.library.picks)) {
+      const keptRow: (typeof picks)[string] = {};
+      for (const [size, pick] of Object.entries(row ?? {})) {
+        if (!pick) continue;
+        if (ids.has(pick.model)) keptRow[size as keyof typeof keptRow] = pick;
+        else drops.push({ id: pick.model, reason: `its ${shelf} ${size} pick was removed` });
+      }
+      if (Object.keys(keptRow).length) picks[shelf] = keptRow;
+    }
+    library = { picks };
+  }
+
   const today = new Date().toISOString().slice(0, 10);
   const built: Catalog = {
     version: seed.version,
     updated: today,
     models: kept,
     presets,
+    ...(library ? { library } : {}),
   };
   // P2-19: only advance `updated` when catalog content OTHER than `updated`
   // itself actually changed since the last publish. Stamping today's date on
@@ -112,10 +135,20 @@ function previousPopularityById(previousRaw: unknown): Map<string, Popularity> {
 
 type BuildOutcome = { model: CatalogModel } | { drop: string };
 
+/** Every model id the seed's library picks, on any shelf at any size. */
+function pickedIds(seed: Catalog): Set<string> {
+  const out = new Set<string>();
+  for (const row of Object.values(seed.library?.picks ?? {})) {
+    for (const pick of Object.values(row ?? {})) if (pick) out.add(pick.model);
+  }
+  return out;
+}
+
 function buildModel(
   base: CatalogModel,
   inputs: BuildInputs,
   prevPopularity: Map<string, Popularity>,
+  picked = false,
 ): BuildOutcome {
   // Gate 1, license fail-closed: id/name/url come ONLY from the allow-list. An
   // unmapped or missing license id drops the model. We never synthesize one.
@@ -141,6 +174,11 @@ function buildModel(
     commercial: licenseRow.commercial,
     ...(licenseRow.url ? { url: licenseRow.url } : {}),
     ...(overlay?.licenseNote ? { note: overlay.licenseNote } : {}),
+    // The condition and attribution a license puts on commercial use are
+    // curated with the pick (catalog.sample.json), checked against the
+    // license's own text, and carried through as written.
+    ...(base.license.conditions ? { conditions: base.license.conditions } : {}),
+    ...(base.license.attribution ? { attribution: base.license.attribution } : {}),
   };
 
   // MP-A-5: license drift signal. The assigned id/name come fail-closed from the
@@ -185,12 +223,16 @@ function buildModel(
   // no eval and no benchmarks by definition, so it clears no bar. It is kept
   // AS unrated, labelled `discovery`, never orchestrator-capable, so absence
   // shows as absence; the bar still governs every curated model.
+  // A library pick clears on the curators' word for its shelf, but a pick that
+  // claims it can run the show still needs the eval report: the library never
+  // loosens the orchestrator bar (tenet 2).
   const maxCapStar = capStars.reduce((m, s) => Math.max(m, s.stars), 0);
+  const clearsOrchestrator = hasEval && osCodeFitFromEval(evalAvg!) >= MIN_ORCHESTRATOR_FIT;
   const clearsQuality = base.discovery
     ? !base.orchestratorCapable
     : base.orchestratorCapable
-      ? hasEval && osCodeFitFromEval(evalAvg!) >= MIN_ORCHESTRATOR_FIT
-      : maxCapStar >= MIN_SPECIALIST_STAR;
+      ? clearsOrchestrator
+      : picked || maxCapStar >= MIN_SPECIALIST_STAR;
   if (!clearsQuality) {
     return {
       drop: base.orchestratorCapable

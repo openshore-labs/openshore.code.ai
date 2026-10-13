@@ -28,6 +28,7 @@ import {
   GuardedProvider,
   type GuardContext,
 } from '../core/ethics/guardedProvider.js';
+import { MediaGuard } from '../core/ethics/guardedMedia.js';
 
 export class ProviderRegistry {
   private providers = new Map<string, Provider>();
@@ -102,6 +103,14 @@ export class ProviderRegistry {
 
   imageProvider(): ImageProvider | undefined {
     return this.image;
+  }
+
+  /** The ethics layer for the media jobs (photo editing, video, voices,
+   *  music and sound): every prompt they send is screened, every picture
+   *  they make is labeled. The media host gets it only from here, so a media
+   *  tool has no unguarded path, the same rule as every provider above. */
+  mediaGuard(): MediaGuard {
+    return new MediaGuard(this.ethics);
   }
 
   /** Register or replace a provider (tests and the eval harness use this). The

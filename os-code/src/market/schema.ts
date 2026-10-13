@@ -1,11 +1,42 @@
 // The catalog schema. The marketplace is a CATALOG, not a weight host: a
-// static JSON manifest OpenShore publishes, pointing at Hugging Face and
-// Ollama with license flags. The client pulls weights straight from the
+// static JSON manifest OpenShore publishes, pointing at each model's own home
+// (Ollama, Hugging Face, a GitHub release, Civitai, or the publisher's own
+// site) with license flags. The client pulls weights straight from the
 // source; OpenShore never rehosts or proxies them.
+//
+// Two files are published (the model library, 2026-10-12): `catalog.v2.json`,
+// this schema, and `catalog.json`, the same catalog narrowed to the shape apps
+// released before the library can read (scripts/build-catalog/v1.ts), since
+// those apps reject a source kind or a category they do not know.
 import { z } from 'zod';
 
+/** Where a model's files come from. The kinds name the host family; every
+ *  host a download may touch is on SOURCE_HOSTS and on the What leaves this
+ *  device list (app/src/lib/egressManifest.ts), which a test holds together. */
+export const SOURCE_KINDS = ['ollama', 'huggingface', 'github', 'civitai', 'publisher'] as const;
+
+/** One file a model needs, fetched straight from its source. `dest` is where it
+ *  goes inside its runtime's model folder (for ComfyUI, for example,
+ *  `diffusion_models/flux1-schnell.safetensors`). */
+export const CatalogFileSchema = z.object({
+  url: z.string(),
+  /** The SHA-256 the download must match. The builder fills it from the
+   *  source (market/sources.ts, filePinned) and the downloader refuses a
+   *  file without one. */
+  sha256: z
+    .string()
+    .regex(/^[0-9a-f]{64}$/)
+    .optional(),
+  sizeGB: z.number().positive().optional(),
+  dest: z.string(),
+  /** The file's own license id (scripts/build-catalog/licenses.table.ts),
+   *  when it is not the model's: a file from another repository must name
+   *  one, or the builder drops its model (fileLicenses.ts). */
+  license: z.string().optional(),
+});
+
 export const CatalogSourceSchema = z.object({
-  kind: z.enum(['ollama', 'huggingface']),
+  kind: z.enum(SOURCE_KINDS),
   /** The pullable reference, e.g. "qwen2.5-coder:14b" or an HF repo id. */
   ref: z.string(),
   /** The exact command a user runs to fetch it, shown before install. */
@@ -16,6 +47,39 @@ export const CatalogSourceSchema = z.object({
    *  number (never a fabricated one). Ignored for HF-distributed models, which
    *  read their own ref. */
   popularityRef: z.string().optional(),
+  /** The files to fetch, for a model that is not one Ollama pull (a ComfyUI
+   *  model is a diffusion model, its text encoders and its VAE, for example).
+   *  Absent for an Ollama model, whose `ref` is the whole download. */
+  files: z.array(CatalogFileSchema).optional(),
+});
+
+/** How a model runs (os-code/src/market/library.ts, RUNTIME_INFO). Absent means
+ *  Ollama, which is every entry from before the library. */
+export const RuntimeEnum = z.enum(['ollama', 'comfyui', 'speech', 'separator', 'denoiser']);
+
+/** What the runtime is told when the Stack calls this model: the ComfyUI
+ *  workflow family it fills (and the file names in it), the speech server's
+ *  model id and voice, audio-separator's model file, or DeepFilterNet's model.
+ *  `install` is the runtime's own name for fetching it, where the runtime
+ *  fetches its own files (a speech server's gallery id). */
+export const CatalogRunnerSchema = z.object({
+  /** A ComfyUI workflow OpenShore ships (os-code/src/media/graphs.ts). */
+  graph: z.string().optional(),
+  /** The runtime's own name for the model. */
+  model: z.string().optional(),
+  /** Files the workflow names, by the role each plays (`unet`, `clip`,
+   *  `vae`, `lora`, `checkpoint`), so one workflow serves every size of a
+   *  family. Plain file names, never paths. */
+  files: z.record(z.string(), z.string()).optional(),
+  /** The ComfyUI custom node pack the workflow needs beyond core, by name. */
+  nodePack: z.string().optional(),
+  /** True when every output carries the model's own watermark (a voice that
+   *  copies a person's voice must). */
+  watermark: z.boolean().optional(),
+  /** A speech server's default voice. */
+  voice: z.string().optional(),
+  /** The runtime's own install name (LocalAI's gallery id, `localai@kokoro`). */
+  install: z.string().optional(),
 });
 
 export const CatalogLicenseSchema = z.object({
@@ -28,6 +92,11 @@ export const CatalogLicenseSchema = z.object({
    *  SPDX allow-list. OPTIONAL for back-compat: older catalogs omit it and the
    *  client falls back to its own id-to-posture table. */
   commercial: z.enum(['ok', 'non-commercial', 'gated']).optional(),
+  /** The exact condition a `gated` license puts on commercial use (a revenue
+   *  or user threshold, a use policy, attribution), in one plain sentence. */
+  conditions: z.string().optional(),
+  /** Text the license asks to be shown with the model or its output. */
+  attribution: z.string().optional(),
 });
 
 // The capability taxonomy (router/roles.ts). Promoted to a shared const so the
@@ -41,6 +110,11 @@ export const CapabilityEnum = z.enum([
   'image-gen',
   'embedding',
   'fast',
+  'image-edit',
+  'video',
+  'listen',
+  'voice',
+  'audio',
 ]);
 
 // A 0..5 star, in 0.5 steps. n*2 is exact for halves, so the integer check is
@@ -62,6 +136,9 @@ export const CatalogModelSchema = z.object({
   /** May this model serve as the mandatory reasoning orchestrator? */
   orchestratorCapable: z.boolean(),
   source: CatalogSourceSchema,
+  /** How it runs; absent means Ollama. */
+  runtime: RuntimeEnum.optional(),
+  runner: CatalogRunnerSchema.optional(),
   sizeGB: z.number().positive(),
   quantization: z.string(),
   contextTokens: z.number().int().positive(),
@@ -178,11 +255,35 @@ export const CatalogPresetSchema = z.object({
   }),
 });
 
+// One pick: the model, and one factual line on why it is the pick at its size.
+export const LibraryPickSchema = z.object({
+  model: z.string(),
+  why: z.string(),
+});
+
+/** A shelf's picks, keyed by size class, so a shelf holds at most one model per
+ *  size by its shape (os-code/src/market/library.ts). */
+export const LibraryShelfPicksSchema = z.object({
+  phone: LibraryPickSchema.optional(),
+  laptop: LibraryPickSchema.optional(),
+  workstation: LibraryPickSchema.optional(),
+  server: LibraryPickSchema.optional(),
+});
+
+/** The model library: the curators' picks, by shelf id. The shelves, categories
+ *  and collections themselves are product copy in library.ts. */
+export const LibrarySchema = z.object({
+  picks: z.record(z.string(), LibraryShelfPicksSchema),
+});
+
 export const CatalogSchema = z.object({
   version: z.number().int(),
   updated: z.string(),
   models: z.array(CatalogModelSchema),
   presets: z.array(CatalogPresetSchema),
+  /** OPTIONAL: a catalog from before the library has none, and the app then
+   *  shows the library bundled with it. */
+  library: LibrarySchema.optional(),
   /** The day (YYYY-MM-DD) the community review aggregates on the models were
    *  snapshotted, set by the builder only when the reviews snapshot actually ran.
    *  Its PRESENCE is the signal that per-model `community` fields are complete as
@@ -197,3 +298,7 @@ export const CatalogSchema = z.object({
 export type Catalog = z.infer<typeof CatalogSchema>;
 export type CatalogModel = z.infer<typeof CatalogModelSchema>;
 export type CatalogPreset = z.infer<typeof CatalogPresetSchema>;
+export type CatalogFile = z.infer<typeof CatalogFileSchema>;
+export type CatalogRunner = z.infer<typeof CatalogRunnerSchema>;
+export type SourceKind = (typeof SOURCE_KINDS)[number];
+export type Library = z.infer<typeof LibrarySchema>;

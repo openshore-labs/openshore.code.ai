@@ -11,6 +11,7 @@
 // record never uploads a named person, and the repository sign-in exchange
 // keeps no copy of the token.
 
+import { allSourceHosts } from 'os-code/protocol';
 import { featureOn, type ReleaseTier, type TieredFeature, RELEASE_TIER } from './focus.js';
 import type { Platform } from './platform.js';
 import { followsList } from './profile.js';
@@ -129,7 +130,7 @@ export const EGRESS: EgressEntry[] = [
   {
     id: 'catalog',
     recipient: 'OpenShore (us)',
-    what: 'A request for the model list. Nothing about you rides along; the server sees your network address, as any website does.',
+    what: 'A request for the model list and the signature published beside it. Nothing about you rides along; the server sees your network address, as any website does.',
     when: 'When you open Stack or the Marketplace, at most once a day.',
     start: 'on',
     hosts: ['openshore.ai'],
@@ -258,10 +259,22 @@ export const EGRESS: EgressEntry[] = [
   {
     id: 'weights',
     recipient: 'Model downloads',
-    what: 'A request for the model you picked (and the Ollama installer, on first run). For a model that runs on your computer, nothing about you rides along. An Ollama cloud model (a :cloud tag) works only under your Ollama account, which Ollama itself signs in with.',
+    // The model library (2026-10-12): a download starts at the source's own
+    // host, by kind (os-code/src/market/sources.ts), held equal by a test.
+    what: "A request for the model you picked, straight to where it lives: the Ollama library, Hugging Face, Civitai, or the publisher's own GitHub releases (and the Ollama installer, on first run). The source may hand the download to its own file storage on the way. For a model that runs on your computer, nothing about you rides along. A model for a speech server is fetched by that server, from its own gallery, when you tap Get. A program you installed for stems or voice cleanup (audio-separator, DeepFilterNet) fetches its own model file from its publisher (GitHub, and Meta's file server for Demucs) the first time it runs. An Ollama cloud model (a :cloud tag) works only under your Ollama account, which Ollama itself signs in with.",
     when: 'Only when you tap to download a model or set up Ollama.',
     start: 'tap',
-    hosts: ['ollama.com', 'huggingface.co'],
+    hosts: [...new Set(['ollama.com', ...allSourceHosts()])].sort(),
+  },
+  {
+    // The model library's media jobs (2026-10-12): ComfyUI and the speech
+    // server are programs the person runs, at an address they set.
+    id: 'media-servers',
+    recipient: 'Services you connect',
+    what: 'The picture, recording or words a media job works on (a photo to edit, a recording to transcribe, text to read aloud), to ComfyUI or the speech server at the address you set, on this computer unless you set another. One off this network gets the file, over https only, and the coding agent asks first; a file the privacy rules keep on this computer is not sent to it. ComfyUI keeps a copy of each picture it is sent and each one it makes, in its own input and output folders, on the machine it runs on.',
+    when: 'Only when a photo, video, voice or music model is placed in your Stack and a task uses it.',
+    start: 'off',
+    hosts: [],
   },
   {
     id: 'icloud-models',

@@ -61,6 +61,12 @@ contextBridge.exposeInMainWorld('oscode', {
   setOrchestrator: invoke('osc:setOrchestrator'),
   enableSpecialist: invoke('osc:enableSpecialist'),
   disableSpecialist: invoke('osc:disableSpecialist'),
+  mediaServers: invoke('osc:mediaServers'),
+  setMediaServer: invoke('osc:setMediaServer'),
+  removeMedia: invoke('osc:removeMedia'),
+  mediaRemoval: invoke('osc:mediaRemoval'),
+  mediaOutputs: invoke('osc:mediaOutputs'),
+  clearMediaOutputs: invoke('osc:clearMediaOutputs'),
 
   setAnthropicKey: invoke('osc:setAnthropicKey'),
   setOpenAIKey: invoke('osc:setOpenAIKey'),

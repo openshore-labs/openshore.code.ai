@@ -161,6 +161,14 @@ import {
   type CallOutcome,
 } from './window.js';
 import { logger } from '../../util/log.js';
+import {
+  MEDIA_JOB_INFO,
+  callFiles,
+  isMediaTool,
+  type MediaSlot,
+  type MediaToolName,
+} from '../../media/jobs.js';
+import type { MediaHost } from '../../media/host.js';
 
 const log = logger('agent');
 
@@ -318,6 +326,16 @@ const HANDOFF_CATEGORY: Readonly<Record<string, string>> = {
   imageGen: 'image creation',
 };
 
+/** The Stack's category for a media job's slot, as the card names it. */
+const MEDIA_CATEGORY: Readonly<Record<MediaSlot, string>> = {
+  imageGen: 'image creation',
+  imageEdit: 'photo editing',
+  video: 'video',
+  listen: 'transcription',
+  voice: 'voice',
+  audio: 'music and sound',
+};
+
 /** A profile with nobody to ask (a routine) never sends a step to a cloud
  *  model: no headless run registers the handoff tools today, so this is the
  *  belt behind that. */
@@ -366,6 +384,11 @@ function vaultCardLine(toolName: string): string {
  *  this computer: the vision seat is off this network (D5). */
 export const IMAGE_LOCAL_ONLY_DENIED =
   'This image is in your vault and stays on this computer, so it is not handed to a cloud model.';
+
+/** The same for a file a media job would send to a media server off this
+ *  network (security review, 2026-10-12). */
+export const MEDIA_LOCAL_ONLY_DENIED =
+  'This file is in your vault and stays on this computer, so it is not sent to a media server off this network.';
 
 /** How one task runs (AgentSession.run). */
 export interface RunOptions {
@@ -468,6 +491,9 @@ export class AgentSession {
    *  may quote it: its replies are marked `localOnly` too (tech review I5), the same
    *  rule seed.ts applies to a journaled reply. */
   private readLocalOnlyThisTask = false;
+  /** Files a media call made from a local-only file (security review,
+   *  2026-10-12): local-only too, for the rest of the session. */
+  private readonly privateMediaOutputs = new Set<string>();
   /** The active model's window, from the last turn's capabilities; 0 until then. */
   private contextTokens = 0;
   /** The model-class profile for the active model this turn (the discipline
@@ -2334,6 +2360,23 @@ export class AgentSession {
         }
       }
     }
+    // Further paths the call reads (an edit's mask) are jailed and judged the
+    // same way, so a glob rule sees every file the call touches.
+    const morePaths: string[] = [];
+    for (const raw of tool.morePathsOf?.(call.args) ?? []) {
+      try {
+        morePaths.push(realRelativePath(toolContext.jail.resolve(raw), toolContext.jail.root));
+      } catch (err) {
+        if (!(err instanceof JailViolation)) throw err;
+        this.emit({ type: 'tool-denied', call, reason: err.message });
+        this.pushObservation(
+          call,
+          `Denied: ${err.message} Use a path inside the workspace.`,
+          toolMode,
+        );
+        return 'refused';
+      }
+    }
     // A workspace write that lands inside the vault asks every time, the way
     // vaultWrite does: a picked vault can sit inside a project, and the coding
     // tools must not edit its notes quietly (review M1-4). Judged by the
@@ -2406,6 +2449,19 @@ export class AgentSession {
       cwd: toolContext.cwd,
       alwaysAsk,
     });
+    // The strictest decision over every path the call reads stands.
+    const STRICTNESS = { allow: 0, ask: 1, deny: 2 } as const;
+    for (const more of morePaths) {
+      const other = permissions.decide({
+        toolName: call.name,
+        risk: tool.risk,
+        path: more,
+        command,
+        cwd: toolContext.cwd,
+        alwaysAsk,
+      });
+      if (STRICTNESS[other.decision] > STRICTNESS[decision.decision]) decision = other;
+    }
 
     // The permission mode sits on top of the policy, the way Claude Code's
     // does. Plan mode never mutates. Bypass and acceptEdits turn an "ask" into
@@ -2547,7 +2603,10 @@ export class AgentSession {
     // server. Keyed by provider and model, so the orchestrator's yes does not
     // cover it. Judged last, with the refusals above, right before it runs.
     const handoff =
-      call.name === 'delegate' || call.name === 'analyzeImage' || call.name === 'generateImage'
+      call.name === 'delegate' ||
+      call.name === 'analyzeImage' ||
+      call.name === 'generateImage' ||
+      isMediaTool(call.name)
         ? this.handoffTarget(call)
         : undefined;
     if (handoff?.leaves) {
@@ -2592,6 +2651,7 @@ export class AgentSession {
         : {}),
     });
     const startedAt = Date.now();
+    const mediaBefore = isMediaTool(call.name) ? toolContext.media?.savedCount() : undefined;
     let result;
     try {
       result = approved
@@ -2609,6 +2669,12 @@ export class AgentSession {
     // on this computer: marked before anything records it (D5).
     if (((nearVault && !leavesNow) || image.marked) && !result.localOnly) {
       result = { ...result, localOnly: true as const };
+    }
+    // What a media call made from a local-only file stays local-only.
+    if (image.marked && mediaBefore !== undefined) {
+      for (const file of toolContext.media?.savedAfter(mediaBefore) ?? []) {
+        this.privateMediaOutputs.add(resolve(file));
+      }
     }
     this.emit({ type: 'tool-end', call, result, durationMs });
     // A volatile call takes its place in the cycle watch by what it showed:
@@ -2887,6 +2953,10 @@ export class AgentSession {
     if (call.name === 'webSearch') {
       return this.deps.toolContext.config.search.backend === 'perplexity' ? denied() : undefined;
     }
+    // A media job goes to the server its job is placed on (generateImage too,
+    // when a picture model from the library is placed), judged by address.
+    const media = this.mediaTarget(call);
+    if (media) return media.leaves ? denied() : undefined;
     if (call.name === 'generateImage') {
       const server = this.deps.config.imageGen;
       return server && !isLocalUrl(server.baseUrl) ? denied() : undefined;
@@ -2910,6 +2980,26 @@ export class AgentSession {
   private handoffTarget(call: ParsedToolCall): HandoffTarget | undefined {
     const { router, config } = this.deps;
     if (router.offline()) return undefined;
+    const media = this.mediaTarget(call);
+    if (media) {
+      let host = media.where;
+      try {
+        host = new URL(media.where).host;
+      } catch {
+        // A program's name, or the address as written.
+      }
+      const model = media.placement.model?.trim() || media.placement.catalogId || host;
+      const sends = callFiles(call.name as MediaToolName, call.args ?? {}).length
+        ? 'The file the agent named and the step it wrote go'
+        : 'The step the agent wrote goes';
+      return {
+        model,
+        leaves: media.leaves,
+        key: seatKey(`media:${media.placement.runtime}`, model),
+        category: MEDIA_CATEGORY[MEDIA_JOB_INFO[media.job].slot],
+        detail: `${sends} to ${host}. Nothing is sent without this approval.`,
+      };
+    }
     if (call.name === 'generateImage') {
       const server = config.imageGen;
       if (!server) return undefined;
@@ -3041,6 +3131,7 @@ export class AgentSession {
    *  goes only to a vision seat on this network (offline the router keeps it
    *  there), and the answer is marked. */
   private vaultImage(call: ParsedToolCall): { refusal?: string; marked?: boolean } {
+    if (isMediaTool(call.name)) return this.vaultMediaFiles(call, call.name);
     const path = call.args?.path;
     if (call.name !== 'analyzeImage' || typeof path !== 'string') return {};
     let visibility: VaultVisibility;
@@ -3058,6 +3149,50 @@ export class AgentSession {
         return { refusal: IMAGE_LOCAL_ONLY_DENIED };
     }
     return { marked: true };
+  }
+
+  /** The files a media job sends, judged as a note is (D5; security review,
+   *  2026-10-12): a hidden one is refused; a local-only one is refused when
+   *  the job's server is off this network, and otherwise marks the result
+   *  local-only, so a transcript of a private recording stays private. A
+   *  file outside the workspace (OpenShore's own media folder) is the tool's
+   *  to resolve and carries no vault mark. */
+  private vaultMediaFiles(
+    call: ParsedToolCall,
+    tool: MediaToolName,
+  ): { refusal?: string; marked?: boolean } {
+    const target = this.mediaTarget(call);
+    let marked = false;
+    for (const path of callFiles(tool, call.args ?? {})) {
+      // A file an earlier media call made from a local-only file is
+      // local-only too (the stems of a private recording).
+      if (this.privateMediaOutputs.has(resolve(this.deps.toolContext.cwd, path))) {
+        if (target?.leaves) return { refusal: MEDIA_LOCAL_ONLY_DENIED };
+        marked = true;
+        continue;
+      }
+      let visibility: VaultVisibility;
+      try {
+        visibility = this.workspaceFileVisibility(this.deps.toolContext.jail.resolve(path));
+      } catch {
+        continue;
+      }
+      if (visibility === 'hidden') return { refusal: noteClosed(path) };
+      if (visibility !== 'local-only') continue;
+      if (target?.leaves) return { refusal: MEDIA_LOCAL_ONLY_DENIED };
+      marked = true;
+    }
+    return marked ? { marked: true } : {};
+  }
+
+  /** Where a media tool call goes (MediaHost.target), or undefined for any
+   *  other tool, and for generateImage when no picture model from the
+   *  library is placed (it then goes to the image server, judged as before). */
+  private mediaTarget(call: ParsedToolCall): ReturnType<MediaHost['target']> {
+    const media = this.deps.toolContext.media;
+    if (!media || !isMediaTool(call.name)) return undefined;
+    if (call.name === 'generateImage' && !media.placement('create')) return undefined;
+    return media.target(call.name, call.args ?? {});
   }
 
   /** Record a tool's observation. `localOnly` (a local-only vault note's

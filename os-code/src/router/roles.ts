@@ -12,7 +12,14 @@ export type CapabilityCategory =
   | 'vision'
   | 'image-gen'
   | 'embedding'
-  | 'fast';
+  | 'fast'
+  // The media specialists (the model library, founder 2026-10-12). Each runs
+  // on its own local server, called as a tool, never as a chat seat.
+  | 'image-edit'
+  | 'video'
+  | 'listen'
+  | 'voice'
+  | 'audio';
 
 export interface CapabilityInfo {
   id: CapabilityCategory;
@@ -84,6 +91,41 @@ export const CAPABILITIES: Record<CapabilityCategory, CapabilityInfo> = {
     benchmarks: ['latency, tokens per second'],
     orchestratorDimension: false,
   },
+  'image-edit': {
+    id: 'image-edit',
+    plain: 'edits photos',
+    blurb: 'Removes objects and backgrounds, sharpens, and edits a picture when you ask.',
+    benchmarks: ['GEdit-Bench', 'ImgEdit'],
+    orchestratorDimension: false,
+  },
+  video: {
+    id: 'video',
+    plain: 'makes video',
+    blurb: 'Turns a prompt or a picture into a short video clip.',
+    benchmarks: ['VBench'],
+    orchestratorDimension: false,
+  },
+  listen: {
+    id: 'listen',
+    plain: 'turns speech into text',
+    blurb: 'Transcribes recordings, meetings, and voice notes.',
+    benchmarks: ['Open ASR Leaderboard (WER)'],
+    orchestratorDimension: false,
+  },
+  voice: {
+    id: 'voice',
+    plain: 'reads aloud',
+    blurb: 'Reads text aloud in a natural voice.',
+    benchmarks: ['TTS Arena'],
+    orchestratorDimension: false,
+  },
+  audio: {
+    id: 'audio',
+    plain: 'makes music and sound',
+    blurb: 'Makes music and sound effects, and separates a song into its parts.',
+    benchmarks: ['MUSDB18 (SDR)'],
+    orchestratorDimension: false,
+  },
 };
 
 /** The specialist slots a stack can fill (everything except the Reasoning model). */
@@ -97,6 +139,15 @@ export const SPECIALIST_ROLES = [
   'fast',
 ] as const;
 export type SpecialistRole = (typeof SPECIALIST_ROLES)[number];
+
+/** The media specialist slots (the model library, 2026-10-12): each holds one
+ *  model per job on a local server, called as a tool (media/jobs.ts). Kept
+ *  apart from SPECIALIST_ROLES, which the router resolves as chat providers. */
+export const MEDIA_SPECIALIST_ROLES = ['imageEdit', 'video', 'listen', 'voice', 'audio'] as const;
+export type MediaSpecialistRole = (typeof MEDIA_SPECIALIST_ROLES)[number];
+
+/** Every specialist slot the Stack has, chat and media. */
+export const ALL_SPECIALIST_SLOTS = [...SPECIALIST_ROLES, ...MEDIA_SPECIALIST_ROLES] as const;
 
 /** Chat-delegable roles (everything a specialist chat model can take on). */
 export type DelegableRole = 'coding' | 'writing' | 'analysis' | 'fast' | 'vision';

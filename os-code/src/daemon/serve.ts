@@ -80,7 +80,8 @@ import {
 import { applyOutboxItem, verifyCommit, type OutboxApplyRequest } from '../git/outbox.js';
 import { withKeyLock } from '../git/applyQueue.js';
 import { loadCatalog, findModel } from '../market/catalog.js';
-import { installModel, type InstallProgress } from '../market/install.js';
+import { type InstallProgress } from '../market/install.js';
+import { getModel } from '../media/install.js';
 import { computeStackHealth } from '../insights/stackHealth.js';
 import type { StackHealthRange } from '../insights/stackHealthTypes.js';
 import { EgressPolicy } from '../core/security/egress.js';
@@ -766,13 +767,18 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
       if (!requireAdmin()) return;
       const body = await readJson(req);
       const modelId = typeof body.modelId === 'string' ? body.modelId : '';
+      // A media model from the library fills the job of the shelf its Get
+      // came from (the model library, 2026-10-12).
+      const shelfId = typeof body.shelfId === 'string' ? body.shelfId : undefined;
       if (!modelId) {
         sendJson(res, 400, { error: 'Send {"modelId": "..."}.' });
         return;
       }
       let model;
+      let catalog;
       try {
         const loaded = await loadCatalog(options.config, egress);
+        catalog = loaded.catalog;
         model = findModel(loaded.catalog, modelId);
       } catch (err) {
         sendJson(res, 502, { error: `Could not load the catalog: ${(err as Error).message}` });
@@ -788,9 +794,15 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         return;
       }
       installs.set(modelId, { line: 'starting', done: false });
-      void installModel(model, (p) => {
-        installs.set(modelId, { ...p, done: false });
-      })
+      void getModel(
+        model,
+        catalog!,
+        loadConfig().config,
+        (p) => {
+          installs.set(modelId, { ...p, done: false });
+        },
+        shelfId ? { shelfId } : {},
+      )
         .then((result) => {
           const prev = installs.get(modelId);
           installs.set(modelId, {

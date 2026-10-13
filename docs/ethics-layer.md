@@ -10,18 +10,19 @@ claims alignment with.
 The code is meant to be read in this order, and each file says the same at its
 top:
 
-| File | What lives there |
-| --- | --- |
-| `os-code/src/core/ethics/signals.ts` | What the layer can see. Evidence, no judgement. |
-| `os-code/src/core/ethics/classify.ts` | The three tiers. Every decision is made here. |
-| `os-code/src/core/ethics/chokepoint.ts` | The single entry point. Fail closed, both sides. |
-| `os-code/src/core/ethics/stream.ts` | Screening a streamed answer without buffering it whole. |
-| `os-code/src/core/ethics/guardedProvider.ts` | Why the engine cannot get around it. |
-| `os-code/src/core/ethics/enforcement.ts` | The account ladder, the review queue, the report hook. |
-| `os-code/src/core/ethics/provenance.ts` | What is attached to generated media. |
-| `os-code/src/core/ethics/journal.ts` | What is written to disk, and what is not. |
-| `app/src/drivers/guardedDriver.ts` | Why the app cannot get around it. |
-| `app/src/lib/ethics.ts` | Where consents live and how a record reaches the account. |
+| File                                         | What lives there                                          |
+| -------------------------------------------- | --------------------------------------------------------- |
+| `os-code/src/core/ethics/signals.ts`         | What the layer can see. Evidence, no judgement.           |
+| `os-code/src/core/ethics/classify.ts`        | The three tiers. Every decision is made here.             |
+| `os-code/src/core/ethics/chokepoint.ts`      | The single entry point. Fail closed, both sides.          |
+| `os-code/src/core/ethics/stream.ts`          | Screening a streamed answer without buffering it whole.   |
+| `os-code/src/core/ethics/guardedProvider.ts` | Why the engine cannot get around it.                      |
+| `os-code/src/core/ethics/enforcement.ts`     | The account ladder, the review queue, the report hook.    |
+| `os-code/src/core/ethics/provenance.ts`      | What is attached to generated media.                      |
+| `os-code/src/core/ethics/mediaProvenance.ts` | The same record, written into generated sound and video.  |
+| `os-code/src/core/ethics/journal.ts`         | What is written to disk, and what is not.                 |
+| `app/src/drivers/guardedDriver.ts`           | Why the app cannot get around it.                         |
+| `app/src/lib/ethics.ts`                      | Where consents live and how a record reaches the account. |
 
 ## The chokepoint, and why there is only one
 
@@ -122,17 +123,17 @@ last text is released, covers the complete answer.
 
 A block writes one record:
 
-| Field | Value |
-| --- | --- |
-| `category` | The tier 1 or tier 2 category, or `check-failed`. |
-| `tier` | 1, 2, or 3. |
-| `timestamp` | ISO 8601, UTC. |
-| `requestHash` | SHA-256 of the screened text. |
-| `modelPath` | `local` or `cloud`. |
-| `action` | `blocked` or `allowed-with-assertion`. |
-| `side` | `input` or `output`. |
-| `signals` | Signal names only, as evidence. |
-| `subject` | Tier 2 only, so an assertion can be audited. |
+| Field         | Value                                             |
+| ------------- | ------------------------------------------------- |
+| `category`    | The tier 1 or tier 2 category, or `check-failed`. |
+| `tier`        | 1, 2, or 3.                                       |
+| `timestamp`   | ISO 8601, UTC.                                    |
+| `requestHash` | SHA-256 of the screened text.                     |
+| `modelPath`   | `local` or `cloud`.                               |
+| `action`      | `blocked` or `allowed-with-assertion`.            |
+| `side`        | `input` or `output`.                              |
+| `signals`     | Signal names only, as evidence.                   |
+| `subject`     | Tier 2 only, so an assertion can be audited.      |
 
 The prompt is not in that list, and neither is the completion, or an excerpt of
 either. There is no field that could hold them. Retaining harmful material in
@@ -146,11 +147,11 @@ is sent.
 
 ## Enforcement
 
-| Level | Trigger | Action |
-| --- | --- | --- |
-| 0 | Any block | Block and log. |
-| 1 | Repeated Tier 2 blocks | Warning, then temporary restriction. |
-| 2 | Any Tier 1 attempt, or persistent abuse | Permanent termination. |
+| Level | Trigger                                 | Action                               |
+| ----- | --------------------------------------- | ------------------------------------ |
+| 0     | Any block                               | Block and log.                       |
+| 1     | Repeated Tier 2 blocks                  | Warning, then temporary restriction. |
+| 2     | Any Tier 1 attempt, or persistent abuse | Permanent termination.               |
 
 A Tier 1 attempt is level 2 on the first occurrence. There is no accumulation
 threshold for the hard-blocked categories.
@@ -185,6 +186,17 @@ assertion is not verified proof.
 
 It is written as a PNG `iTXt` chunk before `IEND`, leaving every other chunk
 byte-identical.
+
+Generated sound and video from the media jobs (the model library) carry the
+same record, where each format's own readers look for a note: a WAV `LIST/INFO`
+comment, a FLAC Vorbis comment, an MP3 ID3 `TXXX` frame, and an MP4 top-level
+`uuid` box appended at the end, so no offset inside the file moves. A picture
+or clip changed from one the person gave (an edit, an animation) is recorded as
+`c2pa.edited` with the IPTC `compositeWithTrainedAlgorithmicMedia` type. A file
+whose structure the labeler does not fully understand is left as it is, and
+then a Tier 2 likeness output from it is refused rather than kept unlabeled.
+The ethics layer reads text: an edit's screen reads the words and the input
+picture's file name, and does not classify the picture itself.
 
 **It is not a signed C2PA manifest.** A signed manifest requires an X.509
 certificate from a C2PA-recognized authority, and OpenShore has none. The

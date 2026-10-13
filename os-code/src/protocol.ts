@@ -56,9 +56,85 @@ export {
   type Catalog,
   type CatalogModel,
   type CatalogPreset,
+  type CatalogFile,
+  type CatalogRunner,
+  type Library,
+  type SourceKind,
 } from './market/schema.js';
+// The model library (founder, 2026-10-12): sections, categories (Stack
+// slots), shelves (jobs), collections, and the pure pick rules, shared by the
+// engine and every app.
+export {
+  SIZE_CLASSES,
+  SIZE_CLASS_INFO,
+  MEDIA_SLOTS,
+  MEDIA_JOBS,
+  MEDIA_JOB_INFO,
+  slotJobs,
+  RUNTIME_INFO,
+  LIBRARY_SECTIONS,
+  LIBRARY_CATEGORIES,
+  LIBRARY_SHELVES,
+  LIBRARY_COLLECTIONS,
+  isMediaSlot,
+  runtimeOf,
+  libraryCategory,
+  libraryShelf,
+  categoryShelves,
+  libraryCollection,
+  shelfSlot,
+  shelfPicks,
+  categoryPicks,
+  filledShelves,
+  filledCategories,
+  libraryModelIds,
+  picksForModel,
+  sizesFor,
+  bestPickFor,
+  collectionPicks,
+  filledCollections,
+  searchLibrary,
+  libraryProblems,
+  withLibrary,
+} from './market/library.js';
+export type {
+  SizeClass,
+  SizeClassInfo,
+  LibrarySlot,
+  MediaSlot,
+  MediaJob,
+  LibraryJob,
+  ModelRuntime,
+  RuntimeInfo,
+  SectionId,
+  CategoryId,
+  LibrarySection,
+  LibraryCategory,
+  LibraryShelf,
+  LibraryCollection,
+  LibraryPick,
+  LibraryDevice,
+} from './market/library.js';
+// The published catalog's signature (security review, 2026-10-12).
+export {
+  CATALOG_PUBLIC_KEY,
+  SIGNED_CATALOG_FILE,
+  olderThanTrusted,
+  verifyCatalogBytes,
+} from './market/catalogSignature.js';
+export type { CatalogVerdict } from './market/catalogSignature.js';
 
-export { CAPABILITIES, SPECIALIST_ROLES, ROLE_CATEGORY, plainLabel } from './router/roles.js';
+export {
+  CAPABILITIES,
+  SPECIALIST_ROLES,
+  MEDIA_SPECIALIST_ROLES,
+  ALL_SPECIALIST_SLOTS,
+  ROLE_CATEGORY,
+  plainLabel,
+} from './router/roles.js';
+export { MEDIA_RUNTIMES, toolJobs } from './media/jobs.js';
+export { SOURCE_NAMES, SOURCE_HOSTS, allSourceHosts } from './market/sources.js';
+export type { MediaRuntime, MediaToolName, MediaJobInfo } from './media/jobs.js';
 // The UX standard every coding model builds to by default (app-side chat
 // specialists share it with the engine's agent).
 export { UX_LAWS, HOUSE_STANDARD, uxStandardPrompt } from './core/agent/uxStandard.js';

@@ -12,6 +12,8 @@ import {
   networkToolsLeftOut,
   offlineCut,
 } from '../../src/core/agent/registry.js';
+import type { MediaHost } from '../../src/media/host.js';
+import type { MediaToolName } from '../../src/media/jobs.js';
 import type { MachineOffline } from '../../src/core/agent/offline.js';
 import { AgentSession, type AgentDeps } from '../../src/core/agent/loop.js';
 import { PermissionEngine, type PermissionConfig } from '../../src/core/permissions/index.js';
@@ -103,6 +105,9 @@ export interface TestSessionOptions {
    *  tests of the Jev judge. */
   harnessCurrents?: AgentDeps['harnessCurrents'];
   jevFetch?: AgentDeps['jevFetch'];
+  /** The media jobs placed in this Stack (the model library), registered
+   *  and wired as bootstrap does. */
+  media?: MediaHost;
 }
 
 export function makeTestSession(
@@ -169,6 +174,15 @@ export function makeTestSession(
     ...(options.processes
       ? { processes: true, processesOffered: () => agentRef.current?.permissionMode !== 'plan' }
       : {}),
+    ...(options.media
+      ? {
+          media: {
+            tools: options.media.tools(),
+            leaves: (tool: MediaToolName) => options.media!.anyLeaves(tool),
+            home: cwd,
+          },
+        }
+      : {}),
   };
   const tools = buildToolRegistry(registryOptions);
   const offlineTools = networkToolsLeftOut(registryOptions);
@@ -191,6 +205,7 @@ export function makeTestSession(
           delegate: (...args: Parameters<Router['delegate']>) => router.delegate(...args),
         }
       : {}),
+    ...(options.media ? { media: options.media } : {}),
   };
   const guardrails = new Guardrails(config.guardrails);
   const usage = new UsageTracker();

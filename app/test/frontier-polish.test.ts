@@ -12,35 +12,28 @@ import { fileURLToPath } from 'node:url';
 const SRC = resolve(fileURLToPath(import.meta.url), '../../src');
 const THEME = readFileSync(join(SRC, 'theme.css'), 'utf8');
 const MARKET = readFileSync(join(SRC, 'screens/MarketplaceScreen.tsx'), 'utf8');
+const LIBRARY = readFileSync(join(SRC, 'components/LibraryViews.tsx'), 'utf8');
 const STORE = readFileSync(join(SRC, 'state/store.ts'), 'utf8');
 
 describe('the tile hop (view transitions)', () => {
   it('names the product page tile as the shared element, hosted and catalog alike', () => {
     expect(THEME).toMatch(/\.product-page \.model-tile \{[^}]*view-transition-name: product-tile/);
-    // Both product pages carry the class, and every tile origin (hero, row,
-    // preset member) hands the page its tile.
+    // Both product pages carry the class, and every tile origin (a hosted
+    // row, a library pick) hands the page its tile.
     expect(MARKET).toMatch(/hosted-page product-page/);
     expect(MARKET).toMatch(/focused \? ' product-page' : ''/);
-    for (const where of ['hero', 'row', 'preset']) {
-      expect(MARKET, `${where} origin`).toMatch(new RegExp(`e\\.currentTarget, '${where}'`));
-    }
+    expect(MARKET).toMatch(/e\.currentTarget, 'row'/);
+    expect(MARKET).toMatch(/openModel\(model, origin, 'pick'\)/);
+    expect(LIBRARY).toMatch(/transitionName=\{tileName\?\.\(model\.id\)\}/);
   });
 
-  it('crossfades the front-to-list boundary only, with the field and rail held still', () => {
-    const apply = /const applyFacets[\s\S]*?\n  \};/.exec(MARKET)?.[0] ?? '';
+  it('crossfades the front-to-results boundary only, with the field held still', () => {
+    const apply = /const applyQuery[\s\S]*?\n  \};/.exec(MARKET)?.[0] ?? '';
     expect(apply).toMatch(/toFront !== browsing/);
     expect(apply).toMatch(/if \(crossing\) fade\(update\);\s*else update\(\);/);
     expect(THEME).toMatch(/\.market-search \{[^}]*view-transition-name: market-search/);
-    expect(THEME).toMatch(/\.cat-rail \{[^}]*view-transition-name: market-rail/);
-    // No facet change bypasses the boundary logic.
-    expect(MARKET).not.toMatch(/onClick=\{\(\) => setFacets\(/);
-  });
-
-  it('ticks the filter sheet count on the result bar pop', () => {
-    expect(THEME).toMatch(
-      /\.count-tick \{[^}]*animation: count-pop var\(--dur-3\) var\(--ease-spring\) backwards/,
-    );
-    expect((MARKET.match(/className="count-tick"/g) ?? []).length).toBe(2);
+    // No search change bypasses the boundary logic.
+    expect(MARKET).not.toMatch(/onChange=\{\(e\) => setQuery\(/);
   });
 
   it('shows real pull progress through Ollama on the hosted page', () => {
@@ -77,13 +70,11 @@ describe('the tile hop (view transitions)', () => {
 });
 
 describe('every store tappable answers the finger', () => {
-  it('the sort tabs, the details disclosure, and the filter button carry press-fb', () => {
-    expect(MARKET).toMatch(/className=\{`seg press-fb/);
+  it('the details disclosure, the library tiles and the request row carry press-fb', () => {
     expect(MARKET).toMatch(/className="disclosure press-fb"/);
-    expect(MARKET).toMatch(/className="filter-open press-fb"/);
-    // The sort tab's own transition shorthand must carry the scale release,
-    // or the spring-out is lost to the later, more specific rule.
-    expect(THEME).toMatch(/\.seg\.press-fb \{[^}]*scale var\(--press-out\)/);
+    expect(LIBRARY).toMatch(/className="lib-made press-fb press-fb--tile stagger-in"/);
+    expect(LIBRARY).toMatch(/className="lib-tile press-fb press-fb--tile stagger-in"/);
+    expect(LIBRARY).toMatch(/className="lib-request press-fb press-fb--row"/);
   });
 });
 

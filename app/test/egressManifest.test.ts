@@ -23,6 +23,7 @@ import { HARBOR_MINI_PERSONA } from '../src/lib/harborMini.js';
 import { APP_KNOWLEDGE } from '../src/lib/guideKnowledge.js';
 import { VAULT_CARRY_CAVEAT, VAULT_PRIVATE_OFF_CLOUD } from '../src/lib/vaultCopy.js';
 import { PROVIDERS } from '../src/lib/providers.js';
+import { allSourceHosts } from 'os-code/protocol';
 
 const ROOTS = [
   join(process.cwd(), 'src'),
@@ -276,6 +277,12 @@ describe('what leaves this device', () => {
     expect(tag.what).not.toMatch(/pill/);
     expect(by('weights').what).not.toMatch(/Nothing about you rides along\.$/);
     expect(by('weights').what).toMatch(/Ollama account/);
+  });
+
+  it('names every host a library download may start at (the model library, 2026-10-12)', () => {
+    const by = (id: string) => EGRESS.find((e) => e.id === id)!;
+    for (const host of allSourceHosts()) expect(by('weights').hosts, host).toContain(host);
+    expect(by('media-servers').what).toMatch(/asks first/);
   });
 });
 

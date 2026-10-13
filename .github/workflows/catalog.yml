@@ -8,10 +8,13 @@
 # OpenShore.ai-marketing-site repo (formerly a subpage of
 # Open-Shore-LLC-Homepage; that repo now serves openshorellc.com instead),
 # whose Eleventy build passes src/static through to the site root. So a file
-# committed to that repo at src/static/os-code/catalog.json is served at
-# openshore.ai/os-code/catalog.json, which is exactly what config.catalog.url
-# defaults to. This job builds the catalog here (where the os-code toolchain
-# lives) and commits it there; the Cloudflare Pages deploy then ships it. On
+# committed to that repo at src/static/os-code/catalog.v2.json is served at
+# openshore.ai/os-code/catalog.v2.json, which is what config.catalog.url
+# defaults to since the model library (2026-10-12). catalog.json beside it is
+# the same catalog narrowed for apps released before the library
+# (scripts/build-catalog/v1.ts), which still fetch that address. This job
+# builds both here (where the os-code toolchain lives) and commits them
+# there; the Cloudflare Pages deploy then ships them. On
 # any gate breach the job writes and publishes NOTHING, and the previously
 # published catalog keeps serving.
 #
@@ -43,6 +46,9 @@ on:
       - "os-code/catalog.sample.json"
       - "os-code/scripts/build-catalog/**"
       - "os-code/src/market/schema.ts"
+      - "os-code/src/market/library.ts"
+      - "os-code/src/market/sources.ts"
+      - "os-code/src/market/catalogSignature.ts"
       - ".github/workflows/catalog.yml"
   workflow_dispatch:
     inputs:
@@ -115,6 +121,20 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p os-code/build
+          # The library file is the baseline once it is live; before the first
+          # library publish it is a 404, and the file before it seeds instead
+          # (the builder reads catalog.v2.json first, then catalog.json).
+          v2tmp=os-code/build/catalog.v2.json.tmp
+          v2code="$(curl --retry 3 --retry-delay 2 -sSL -H 'Cache-Control: no-cache' \
+            -o "$v2tmp" -w '%{http_code}' \
+            "https://openshore.ai/os-code/catalog.v2.json?baseline=$(date +%s)")" || v2code=none
+          if [ "$v2code" = "200" ]; then
+            mv "$v2tmp" os-code/build/catalog.v2.json
+            echo 'Seeded the regression baseline from the live library catalog.'
+          else
+            rm -f "$v2tmp"
+            echo "No live library catalog (HTTP ${v2code}); seeding from catalog.json."
+          fi
           tmp=os-code/build/catalog.json.tmp
           rm -f "$tmp"
           # --fail: treat a 4xx/5xx as a curl error, not a 200 whose HTML error
@@ -148,6 +168,9 @@ jobs:
           # Optional: an authenticated Hugging Face token lifts the anonymous
           # rate limit on the popularity fetch. Absent, the build stays anonymous.
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          # The job's own read-only token, for reading a GitHub release asset's
+          # published SHA-256 when a media file is pinned (pinFiles.ts).
+          GITHUB_TOKEN: ${{ github.token }}
           # Optional: the reviews backend, so the builder bakes a community-review
           # snapshot into the catalog (the scale path: a browse row shows a crowd
           # star with no per-view request to Supabase). The anon key is enough,
@@ -160,6 +183,17 @@ jobs:
           # so a scheduled or push-triggered build is always gated.
           CATALOG_ALLOW_LARGE_DROP: ${{ inputs.allow_large_drop == true && '1' || '' }}
         run: pnpm --filter os-code build:catalog
+
+      # The library catalog is signed with the key whose public half the
+      # engine and the app pin (os-code/src/market/catalogSignature.ts), so
+      # whoever holds the publish token cannot change what every download
+      # points at. With no key pinned and no secret this signs nothing; with a
+      # key pinned and no secret (or the wrong one) it fails, and nothing is
+      # published.
+      - name: Sign the library catalog
+        env:
+          CATALOG_SIGNING_KEY: ${{ secrets.CATALOG_SIGNING_KEY }}
+        run: pnpm --filter os-code sign:catalog
 
       - name: Publish to the marketing site
         if: ${{ env.MARKETING_DEPLOY_CONFIGURED == 'true' }}
@@ -175,8 +209,13 @@ jobs:
             "https://x-access-token:${MARKETING_DEPLOY_TOKEN}@github.com/openshore-labs/OpenShore.ai-marketing-site.git" \
             marketing
           install -D os-code/build/catalog.json marketing/src/static/os-code/catalog.json
+          install -D os-code/build/catalog.v2.json marketing/src/static/os-code/catalog.v2.json
+          if [ -f os-code/build/catalog.v2.json.sig ]; then
+            install -D os-code/build/catalog.v2.json.sig marketing/src/static/os-code/catalog.v2.json.sig
+          fi
           cd marketing
-          git add src/static/os-code/catalog.json
+          git add src/static/os-code/catalog.json src/static/os-code/catalog.v2.json
+          if [ -f src/static/os-code/catalog.v2.json.sig ]; then git add src/static/os-code/catalog.v2.json.sig; fi
           # --cached so a brand-new (untracked) catalog file also counts as a
           # change; a plain git diff would miss it and skip the first publish.
           if git diff --cached --quiet; then
@@ -216,4 +255,8 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: catalog
-          path: os-code/build/catalog.json
+          path: |
+            os-code/build/catalog.json
+            os-code/build/catalog.v2.json
+            os-code/build/catalog.v2.json.sig
+          if-no-files-found: warn

@@ -1,14 +1,40 @@
 # The OS Code Marketplace
 
 The marketplace is a CATALOG, not a weight host. OpenShore publishes a static
-JSON manifest that points at Hugging Face and the Ollama library with honest
-license flags and computed ratings. The client pulls weights straight from the
+JSON manifest that points at where each model lives (the Ollama library,
+Hugging Face, a publisher's GitHub releases, and the other sources named in
+`src/market/sources.ts`) with honest license flags and computed ratings. The client pulls weights straight from the
 source. OpenShore never rehosts, proxies, or touches weights, and there is no
 ratings server: every star is computed from published benchmarks and the local
 eval, never collected from a crowd.
 
 This document covers the extended schema, the server-side builder, the star
 normalization tables, the client sorts and filters, and the editorial workflow.
+
+## The model library (founder, 2026-10-12)
+
+The store front is now a library of recommended models by Stack category:
+sections, then categories (the Stack's slots), then shelves (jobs), then at
+most one pick per size class (phone, laptop, workstation, server) on each
+shelf, plus Made for collections that point at shelves. The structure is code
+(`src/market/library.ts`); the picks ride the catalog as `library.picks`.
+Every pick's license allows commercial use, and `libraryProblems` in the
+builder refuses a pick that breaks a rule (license, runtime, size cap, file
+host). Media jobs (photo editing, video, transcription, voices, music and
+sound) run in ComfyUI, a speech server, audio-separator or DeepFilterNet
+(`src/media/`). The library publishes as `catalog.v2.json`; `catalog.json`
+is narrowed for apps released before it (`scripts/build-catalog/v1.ts`).
+Every file a media model downloads is pinned to its source's SHA-256 (and a
+Hugging Face file to its commit) by `scripts/build-catalog/pinFiles.ts`
+before publishing; a model left unpinned is not published, and the gate
+refuses an unpinned file, or a file from another repository that names no
+commercial license of its own. CI signs `catalog.v2.json`
+(`scripts/build-catalog/sign.ts`), and the engine and the app take it only
+when its signature checks against the pinned key
+(`src/market/catalogSignature.ts`). Live discovery now writes `build/candidates.json`
+for curators and fills no shelf. The plan, the picks and the licenses the founder must act on:
+`docs/design/model-library-plan.md`. The sections below that describe the
+family rail, compare, and discovery joining the storefront predate it.
 
 ## Schema diff (already shipped)
 

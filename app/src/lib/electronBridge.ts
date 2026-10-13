@@ -214,6 +214,13 @@ export interface PendingUpdate {
  *  refusal (it arrives as an error) and the ready marker. */
 export type FreeChatFrame = Exclude<FreeChatEvent, { type: 'refused' | 'open' }>;
 
+/** Where the media programs are (EngineHost.mediaServers). `modelsDir` is
+ *  the folder set, else the one found; `modelsDirSet` says which. */
+export interface MediaServers {
+  comfyui: { baseUrl: string; modelsDir?: string; modelsDirSet: boolean };
+  speech: { baseUrl: string };
+}
+
 export interface DesktopStatus {
   /** The first model server on this computer's network, judged by address:
    *  the one the Stack's picker lists and writes to. */
@@ -248,6 +255,8 @@ export interface DesktopStatus {
       kind?: 'local' | 'cloud';
       onThisComputer?: true;
     }>;
+    /** The media jobs placed (the model library); absent on an older engine. */
+    media?: Array<{ job: string; runtime: string; catalogId?: string }>;
   };
   connections: { anthropic: boolean; openai: boolean; github: boolean };
 }
@@ -441,8 +450,10 @@ export interface OscodeBridge {
   /** Fully local read of how the stack is being used, folded from the session
    *  journals on this machine. Read-only; nothing leaves the device. */
   stackHealth(range?: StackHealthRange): Promise<StackHealth>;
-  /** A failed pull carries why (`reason`), so a room words it plainly. */
-  installModel(modelId: string): Promise<PullResult>;
+  /** A failed pull carries why (`reason`), so a room words it plainly. A
+   *  media model from the library takes the shelf its Get came from, so it
+   *  fills that job in the Stack. */
+  installModel(modelId: string, shelfId?: string): Promise<PullResult>;
   onInstallProgress(cb: (payload: InstallProgressPayload) => void): () => void;
   /** Pull any Ollama model by its raw ref (progress arrives keyed by the ref on
    *  onInstallProgress), so the marketplace is not limited to catalog entries. */
@@ -450,6 +461,22 @@ export interface OscodeBridge {
   setOrchestrator(model: string): Promise<{ ok: boolean; detail: string }>;
   enableSpecialist(role: string, model: string): Promise<{ ok: boolean; detail: string }>;
   disableSpecialist(role: string): Promise<{ ok: boolean; detail: string }>;
+  /** The media programs (the model library): where ComfyUI and the speech
+   *  server are, set them, and take a placed job out of the Stack. */
+  mediaServers(): Promise<MediaServers>;
+  setMediaServer(
+    runtime: 'comfyui' | 'speech',
+    baseUrl?: string,
+    modelsDir?: string,
+  ): Promise<{ ok: boolean; detail: string }>;
+  /** Take a media job out of the Stack; `deleteFiles` also deletes the
+   *  files Get wrote for its model that nothing else placed needs. */
+  removeMedia(job: string, deleteFiles?: boolean): Promise<{ ok: boolean; detail: string }>;
+  /** What Remove could delete for a job's model. */
+  mediaRemoval(job: string): Promise<{ files: number; bytes: number }>;
+  /** The pictures, clips and sounds the media jobs saved on this computer. */
+  mediaOutputs(): Promise<{ files: number; bytes: number }>;
+  clearMediaOutputs(): Promise<{ files: number; bytes: number }>;
 
   // Connections (keys stay in the engine's credential store on this machine).
   /** Connect Claude to the engine on this machine. An identity-linked key

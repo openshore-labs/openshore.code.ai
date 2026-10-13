@@ -21,6 +21,9 @@ import { PROCESS_TOOLS } from '../tools/process.js';
 import { webSearchTool } from '../tools/webSearch.js';
 import { webFetchTool } from '../tools/webFetch.js';
 import { generateImageTool } from '../tools/generateImage.js';
+import { mediaTools } from '../tools/media.js';
+import type { MediaToolName } from '../../media/jobs.js';
+import type { MediaHost } from '../../media/host.js';
 import { analyzeImageTool, delegateTool, searchRepoTool } from '../tools/specialist.js';
 import { vaultWriteTool, vaultReadTool, vaultListTool } from '../tools/vault.js';
 import {
@@ -120,6 +123,16 @@ export interface ToolRegistryOptions {
   // are off the menu and a call to one finds no tool. Bootstrap says no in
   // plan mode (read only until the plan is approved). Unset offers them.
   processesOffered?: () => boolean;
+  // The media jobs placed in this Stack (the model library, 2026-10-12): the
+  // tools they need, whether each tool's server is off this network, and
+  // OpenShore's home for their outputs. They hand work to a model on a
+  // server, so they ride with the other handoffs: left out under egress
+  // lockdown and on an offline run. Unset registers none.
+  media?: {
+    tools: MediaToolName[];
+    leaves: (tool: MediaToolName) => boolean;
+    home: string;
+  };
 }
 
 /** The tools that reach the network (or hand work to something that can), in
@@ -146,6 +159,15 @@ function modelHandoffTools(options: ToolRegistryOptions): ToolDef[] {
   if (options.stackHasVision) out.push(analyzeImageTool);
   if (options.stackHasImageGen) out.push(generateImageTool);
   if (options.stackHasSpecialists) out.push(delegateTool);
+  if (options.media) {
+    out.push(
+      ...mediaTools({
+        tools: options.media.tools.filter((t) => t !== 'generateImage'),
+        leaves: options.media.leaves,
+        home: options.media.home,
+      }),
+    );
+  }
   return out;
 }
 
@@ -175,6 +197,10 @@ export function offlineCut(
 ): string[] {
   const names = networkTools({ ...options, webSearch: true }).map((t) => t.name);
   if (options.stackHasImageGen && options.imageServerLeaves) names.push(generateImageTool.name);
+  // A media tool whose server is off this network (the model library).
+  for (const tool of options.media?.tools ?? []) {
+    if (options.media!.leaves(tool) && !names.includes(tool)) names.push(tool);
+  }
   return names;
 }
 
@@ -429,6 +455,8 @@ export function buildToolContext(options: {
   /** This session's own vault root in place of the machine's (a member's on
    *  a shared hub, tech review J8). Ignored when `vault` is off. */
   vaultRoot?: string;
+  /** The media jobs placed in this Stack (the model library). */
+  media?: MediaHost;
   /** Whether this computer is offline now (Desktop Offline): repo search
    *  then keeps to the keyword index when the embedder is off this network,
    *  rather than failing on a request that cannot leave. */
@@ -494,6 +522,7 @@ export function buildToolContext(options: {
     searchRepo,
     vaultRoot,
     projectName,
+    ...(options.media ? { media: options.media } : {}),
   };
   // Which notes are hidden and which stay on this computer: the machine's
   // vault config (projectPolicy classes these keys machine) unioned with the

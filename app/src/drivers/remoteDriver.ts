@@ -104,11 +104,15 @@ export interface DaemonInstallProgress {
 }
 
 /** Start a model install on the paired desktop (MP-F2). Output is polled. */
-export async function daemonInstallModel(target: DaemonTarget, modelId: string): Promise<void> {
+export async function daemonInstallModel(
+  target: DaemonTarget,
+  modelId: string,
+  shelfId?: string,
+): Promise<void> {
   const res = await fetch(`${target.baseUrl}/models/install`, {
     method: 'POST',
     headers: { ...headers(target), 'content-type': 'application/json' },
-    body: JSON.stringify({ modelId }),
+    body: JSON.stringify(shelfId ? { modelId, shelfId } : { modelId }),
     signal: AbortSignal.timeout(10_000),
   });
   if (!res.ok) {

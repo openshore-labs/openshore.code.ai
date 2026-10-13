@@ -7,6 +7,7 @@ import type { Jail } from '../security/jail.js';
 import type { ToolRisk } from '../permissions/index.js';
 import type { OscConfig } from '../../config/schema.js';
 import type { ImageProvider } from '../../providers/types.js';
+import type { MediaHost } from '../../media/host.js';
 import type { ToolSpec } from '../../providers/types.js';
 import type { DelegatedUsage, DelegateOptions } from '../../router/router.js';
 import type { CurrentsHandles } from '../../currents/model.js';
@@ -112,6 +113,10 @@ export interface ToolContext {
   egress: EgressPolicy;
   config: OscConfig;
   imageProvider?: ImageProvider;
+  /** The media jobs placed in this Stack (the model library, 2026-10-12):
+   *  photo editing, video, transcription, voices, music and sound, and
+   *  pictures through ComfyUI. Unset when none is placed. */
+  media?: MediaHost;
   /** One-shot delegation to a specialist chat model, provided by the router. */
   delegate?: (
     role: 'coding' | 'writing' | 'analysis' | 'fast' | 'vision',
@@ -234,6 +239,11 @@ export interface ToolDef<S extends z.ZodType = z.ZodType> {
    *  session context so a tool whose path is derived from context (not from its
    *  arguments) can still report it; context-free tools ignore the second arg. */
   pathOf?: (args: z.infer<S>, ctx?: ToolContext) => string | undefined;
+  /** Further workspace paths the call reads (an edit's mask): each is
+   *  resolved through the jail and judged by permission rules as pathOf's is,
+   *  and the strictest decision stands, so a deny on any of them denies the
+   *  call. Workspace paths only. */
+  morePathsOf?: (args: z.infer<S>) => string[];
   /** Which root pathOf's path is relative to. 'workspace' (the default) has
    *  the loop resolve it through the workspace jail before any permission
    *  rule sees it, and deny outright when it leaves the jail; 'own' is for

@@ -26,6 +26,12 @@ export type KeyPolicy = Leaf | Special | { [key: string]: KeyPolicy };
 export const PROJECT_POLICY: Record<keyof OscConfig, KeyPolicy> = {
   providers: 'machine',
   imageGen: 'machine',
+  // Where the media servers are, what program runs stems, and where model
+  // files go are this computer's (the model library, 2026-10-12): a repo that
+  // could set them could point a tool at a host of its choosing or name the
+  // program it runs. Which model fills a media job is a model choice, under
+  // stack, trusted like the rest of it.
+  media: 'machine',
   stack: 'trusted',
   routing: {
     mode: 'trusted',

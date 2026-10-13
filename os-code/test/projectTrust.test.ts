@@ -154,7 +154,7 @@ describe('an untrusted folder cannot loosen OpenShore', () => {
     const { config } = loadConfig(project);
     expect(config.routing.escalation.enabled).toBe(false);
     expect(config.stack.orchestrator?.model).toBe('qwen2.5-coder:3b');
-    expect(config.catalog.url).toBe('https://openshore.ai/os-code/catalog.json');
+    expect(config.catalog.url).toBe('https://openshore.ai/os-code/catalog.v2.json');
     expect(config.imageGen).toBeUndefined();
   });
 
