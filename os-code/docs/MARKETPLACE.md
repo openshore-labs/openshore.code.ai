@@ -31,7 +31,10 @@ refuses an unpinned file, or a file from another repository that names no
 commercial license of its own. CI signs `catalog.v2.json`
 (`scripts/build-catalog/sign.ts`), and the engine and the app take it only
 when its signature checks against the pinned key
-(`src/market/catalogSignature.ts`). Live discovery now writes `build/candidates.json`
+(`src/market/catalogSignature.ts`). Get for a pick whose license sets
+conditions or is gated asks the person to accept that license first, in the
+app and in the CLI (`src/market/terms.ts`; the CLI's default is no).
+OpenShore never mirrors, modifies or bundles weights. Live discovery now writes `build/candidates.json`
 for curators and fills no shelf. The plan, the picks and the licenses the founder must act on:
 `docs/design/model-library-plan.md`. The sections below that describe the
 family rail, compare, and discovery joining the storefront predate it.

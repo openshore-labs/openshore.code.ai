@@ -182,6 +182,9 @@ export type { MachineOffline, OfflineReason } from './core/agent/offline.js';
 // way on, in the same words on the desktop and in the engine. Pure.
 export { pullFailedLine, pullFailure } from './market/pullLine.js';
 export type { PullFailure, PullResult } from './market/pullLine.js';
+// A pick with license conditions is got only after the person accepts them,
+// in the same words in the app and the CLI. Pure.
+export { needsTermsAccepted, termsQuestion, termsLines, TERMS_ACCEPT } from './market/terms.js';
 // The line diff approvals show, shared so the Vault's resolve sheet compares
 // two versions of a note with the exact same lines (Vault M1, 1.1). Pure and
 // import-free.

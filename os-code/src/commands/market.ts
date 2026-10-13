@@ -10,6 +10,7 @@ import { EgressPolicy } from '../core/security/egress.js';
 import { budgetFor, detectHardware } from '../router/resourceBudget.js';
 import { findModel, loadCatalog, rateModels } from '../market/catalog.js';
 import { licenseNotice } from '../market/install.js';
+import { needsTermsAccepted, termsLines, termsQuestion } from '../market/terms.js';
 import { getModel } from '../media/install.js';
 import {
   SIZE_CLASS_INFO,
@@ -126,7 +127,15 @@ export async function marketInstallCommand(id: string): Promise<void> {
   } else if (fit === 'tight') {
     warnLine('Tight fit: it will run, with slower responses when context gets long.');
   }
-  if (!(await confirm('Pull it now?', fit !== 'too-big'))) {
+  // A license with conditions is accepted by the person, typed, before any
+  // pull: the default is no.
+  if (needsTermsAccepted(model)) {
+    for (const line of termsLines(model)) out(line);
+    if (!(await confirm(termsQuestion(model), false))) {
+      out(t.muted('Nothing downloaded.'));
+      return;
+    }
+  } else if (!(await confirm('Pull it now?', fit !== 'too-big'))) {
     out(t.muted('Nothing downloaded.'));
     return;
   }

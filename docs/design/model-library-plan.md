@@ -226,12 +226,23 @@ counsel before release:
    VAE's Apache 2.0 on its card (named so, as BFL released it). The lightx2v
    Lightning LoRA's card says Apache 2.0 (read 2026-10-13), so it is named too
    and Qwen-Image-Edit 2511 is in the library.
-8. **Held for counsel, not in the library**: LTX-2.5 (community license under
-   $10M, and a use policy against competing with Lightricks), Qwen3.8-Flash-Next
-   (Qwen Community License with an assistant carve-out), and VibeVoice-ASR
-   (Microsoft, research and development only).
+8. **Held, not in the library**: LTX-2.5 (community license under $10M, and a
+   use policy against competing with Lightricks: the founder asks Lightricks
+   for a written OK), and Qwen3.8-Flash-Next (Qwen Community License with an
+   assistant carve-out: the license text is to be read before counsel).
+9. **Counsel, one question**: whether a catalog that names a file and an
+   installer that fetches it from the licensor's own host makes Open Shore a
+   "distributor" under each license's own definition (Gemma, HAI-DEF, SAM,
+   Stability Community, Llama), and with it HAI-DEF's section 4.5 indemnity.
 
-Excluded outright for non-commercial or territorial terms: FLUX.1 dev, Kontext
+Standing rule (founder, 2026-10-13): OpenShore never mirrors, caches,
+modifies or bundles model weights. They go from the publisher's own host to
+the person's machine, and Get for a pick whose license sets conditions or is
+gated asks the person to accept that license themselves first, in the app and
+in the CLI (`os-code/src/market/terms.ts`).
+
+Excluded outright for non-commercial or territorial terms: VibeVoice-ASR
+(research and development only, 2026-10-13), FLUX.1 dev, Kontext
 and Fill, FLUX.2 dev and klein 9B, MusicGen, YuE, MMAudio, TangoFlux, AudioLDM
 2, F5-TTS, Fish, XTTS-v2, Spark-TTS, RMBG, 4x-UltraSharp, GFPGAN, HunyuanVideo
 and HunyuanImage, MiniMax H3, SD 3.5 and Krea 2.

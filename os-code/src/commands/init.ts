@@ -7,6 +7,7 @@ import { loadConfig, saveGlobalConfig } from '../config/load.js';
 import { budgetFor, detectHardware, fitsBudget } from '../router/resourceBudget.js';
 import { loadCatalog, findModel } from '../market/catalog.js';
 import { installModel, licenseNotice, type InstallProgress } from '../market/install.js';
+import { needsTermsAccepted, termsLines, termsQuestion } from '../market/terms.js';
 import { EgressPolicy } from '../core/security/egress.js';
 import type { Catalog, CatalogPreset } from '../market/schema.js';
 import {
@@ -171,7 +172,10 @@ export async function initCommand(): Promise<void> {
           const fit = fitsBudget(model.sizeGB, budget);
           if (fit === 'tight')
             warnLine('This one is a tight fit; expect slower responses when context runs long.');
-          if (!(await confirm('Pull it now?', true))) continue;
+          if (needsTermsAccepted(model)) {
+            for (const line of termsLines(model)) out(line);
+            if (!(await confirm(termsQuestion(model), false))) continue;
+          } else if (!(await confirm('Pull it now?', true))) continue;
           const result = await installModel(
             model,
             (p) => process.stdout.write(`\r  ${renderPull(p)}`),

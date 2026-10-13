@@ -30,8 +30,12 @@ import {
   picksForModel,
   runtimeOf,
   searchLibrary,
+  needsTermsAccepted,
   shelfPicks,
   SIZE_CLASS_INFO,
+  TERMS_ACCEPT,
+  termsLines,
+  termsQuestion,
 } from 'os-code/protocol';
 import { useApp } from '../state/store.js';
 import { loadAppCatalog } from '../lib/catalog.js';
@@ -101,6 +105,7 @@ import {
 import { PROFILES, type ProfileId } from '../lib/profiles.js';
 import { stackForProfile } from '../lib/stack.js';
 import { Sheet } from '../components/Sheet.js';
+import { openExternal } from '../lib/platform.js';
 import { askForNotices, downloadNoticeCopy } from '../lib/notices.js';
 import { Icon } from '../components/Icon.js';
 
@@ -520,6 +525,24 @@ export function MarketplaceScreen() {
         },
       }));
     }
+  };
+
+  // Get for a pick whose license sets conditions opens the terms first: the
+  // person accepts the publisher's license themselves before anything moves
+  // (founder, 2026-10-13). Nothing about the tap is stored or sent.
+  const [terms, setTerms] = useState<{ model: CatalogModel; shelfId?: string } | undefined>();
+  const startGet = (model: CatalogModel, shelfId?: string) => {
+    if (toDevice(model)) void pullToDevice(model);
+    else void pullToDesktop(model, shelfId);
+  };
+  const get = (model: CatalogModel, shelfId?: string) => {
+    if (needsTermsAccepted(model)) setTerms({ model, shelfId });
+    else startGet(model, shelfId);
+  };
+  const acceptTerms = () => {
+    if (!terms) return;
+    setTerms(undefined);
+    startGet(terms.model, terms.shelfId);
   };
 
   const pullToDesktop = async (model: CatalogModel, shelfId?: string) => {
@@ -1068,7 +1091,6 @@ export function MarketplaceScreen() {
   // tile the hero or row flew in on (and the shared name for the way back).
   const renderCard = (model: CatalogModel, index: number, focused = false) => {
     const dl = downloads[model.id];
-    const target: 'device' | 'desktop' = toDevice(model) ? 'device' : 'desktop';
     const owned = isOwned(model);
     const fit = fitFor(model.sizeGB, memoryGB);
     const pill = FIT_PILL[fit];
@@ -1100,9 +1122,7 @@ export function MarketplaceScreen() {
           ) : dl && !dl.failed ? null : (
             <button
               className={`btn ghost market-get${labelFor(model, dl?.failed).kind === 'desktop-only' ? ' desktop-only' : ''}`}
-              onClick={() =>
-                target === 'device' ? void pullToDevice(model) : void pullToDesktop(model)
-              }
+              onClick={() => get(model)}
             >
               {labelFor(model, dl?.failed).text}
             </button>
@@ -1941,7 +1961,6 @@ export function MarketplaceScreen() {
   /** A pick's Get carries its shelf, so a media model fills that job. */
   const getControl = (model: CatalogModel, shelfId?: string) => {
     const dl = downloads[model.id];
-    const target: 'device' | 'desktop' = toDevice(model) ? 'device' : 'desktop';
     const owned = isOwned(model);
     if (owned) {
       return <span className="pill local">{ownedLabel(model)}</span>;
@@ -1966,8 +1985,7 @@ export function MarketplaceScreen() {
         }
         onClick={(e) => {
           e.stopPropagation();
-          if (target === 'device') void pullToDevice(model);
-          else void pullToDesktop(model, shelfId);
+          get(model, shelfId);
         }}
       >
         {label.text}
@@ -2161,6 +2179,38 @@ export function MarketplaceScreen() {
 
       <Sheet open={storageSheetOpen} onClose={() => setStorageSheetOpen(false)}>
         {storageSheetOpen ? renderStorageSheetBody() : null}
+      </Sheet>
+
+      <Sheet open={terms !== undefined} onClose={() => setTerms(undefined)} variant="confirm">
+        {terms ? (
+          <>
+            <h3>{termsQuestion(terms.model)}</h3>
+            {termsLines(terms.model).map((line) => (
+              <p key={line}>{line}</p>
+            ))}
+            {terms.model.license.url ? (
+              <button
+                type="button"
+                className="btn ghost block press-fb"
+                onClick={() => openExternal(terms.model.license.url!)}
+              >
+                Read the license
+              </button>
+            ) : null}
+            <div className="confirm-row">
+              <button
+                type="button"
+                className="btn ghost press-fb"
+                onClick={() => setTerms(undefined)}
+              >
+                Not now
+              </button>
+              <button type="button" className="btn primary press-fb" onClick={acceptTerms}>
+                {TERMS_ACCEPT}
+              </button>
+            </div>
+          </>
+        ) : null}
       </Sheet>
 
       <ModelRequestSheet
