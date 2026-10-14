@@ -70,6 +70,7 @@ export const SETTINGS_REACH: Record<keyof AppSettings, SettingReach> = {
   daemons: 'device',
   preferRemoteHub: 'device',
   pushRegisteredDaemons: 'device',
+  pushGrantIds: 'device',
   hubRoles: 'device',
   hubLastSeen: 'device',
   // Models, stacks, and connections: they name servers and keys on this device.

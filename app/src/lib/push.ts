@@ -38,25 +38,32 @@ async function tokenWithWait(): Promise<{
   });
 }
 
+/** What a registration left behind: the id of the grant the daemon now
+ *  holds (never the grant itself), so this device can delete it when it signs
+ *  out or forgets that computer (state/pushOps.ts). */
+export interface PushRegistration {
+  grantId?: string;
+}
+
 /**
- * Register this device with the user's daemon for completion push. Returns true
- * only when the whole chain succeeded, so the caller can remember not to ask
- * again. Any failure (permission denied, no token, an offline daemon) returns
- * false without throwing.
+ * Register this device with the user's daemon for completion push. Resolves to
+ * the registration only when the whole chain succeeded, so the caller can
+ * remember not to ask again. Any failure (permission denied, no token, an
+ * offline daemon) resolves to undefined without throwing.
  */
 export async function registerPushForDaemon(
   daemon: DaemonTarget,
   session: Session,
   deviceId?: string,
-): Promise<boolean> {
-  if (!isPhone()) return false;
+): Promise<PushRegistration | undefined> {
+  if (!isPhone()) return undefined;
   const sendUrl = functionUrl('push-send');
-  if (!sendUrl) return false; // sign-in / Supabase not configured on this build
+  if (!sendUrl) return undefined; // sign-in / Supabase not configured on this build
   try {
     const perm = await Llama.requestPushPermission();
-    if (!perm.granted) return false;
+    if (!perm.granted) return undefined;
     const tok = await tokenWithWait();
-    if (!tok) return false;
+    if (!tok) return undefined;
 
     // Bind the device token to this user (service-role write behind the function).
     await supabaseInvoke('push-register', session.accessToken, {
@@ -64,9 +71,11 @@ export async function registerPushForDaemon(
       environment: tok.environment,
     });
     // Mint an opaque grant and hand it, plus the push-send URL, to the daemon.
-    const { grant } = await supabaseInvoke<{ grant: string }>('push-grant', session.accessToken, {
-      label: 'iPhone',
-    });
+    const { grant, id } = await supabaseInvoke<{ grant: string; id?: string | null }>(
+      'push-grant',
+      session.accessToken,
+      { label: 'iPhone' },
+    );
     const res = await fetch(`${daemon.baseUrl}/push/register`, {
       method: 'POST',
       headers: { authorization: `Bearer ${daemon.token}`, 'content-type': 'application/json' },
@@ -74,9 +83,21 @@ export async function registerPushForDaemon(
       // phones on one account both get the push instead of the last one only.
       body: JSON.stringify({ grant, sendUrl, ...(deviceId ? { deviceId } : {}) }),
     });
-    return res.ok;
+    if (!res.ok) return undefined;
+    return typeof id === 'string' && id ? { grantId: id } : {};
   } catch {
-    return false;
+    return undefined;
+  }
+}
+
+/** This device's APNs token, if it already has one. Never asks for
+ *  permission, so a sign-out never raises a prompt. */
+export async function currentPushToken(): Promise<string | undefined> {
+  if (!isPhone()) return undefined;
+  try {
+    return (await Llama.getPushToken()).token ?? undefined;
+  } catch {
+    return undefined;
   }
 }
 

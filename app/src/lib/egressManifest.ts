@@ -97,7 +97,7 @@ export const EGRESS: EgressEntry[] = [
   {
     id: 'push',
     recipient: 'OpenShore (us)',
-    what: 'A notification token for your iPhone, and for each notification only a session id, its kind, and a number, relayed to Apple. Never the words of a chat.',
+    what: "A notification token for your iPhone, and for each notification only a session id, its kind, and a number, relayed to Apple. Never the words of a chat. The server keeps the session id only as a keyed hash, for two days, and signing out deletes this device's notification token.",
     when: 'Only after you allow notifications on your iPhone.',
     start: 'off',
     hosts: ['env:VITE_SUPABASE_URL'],

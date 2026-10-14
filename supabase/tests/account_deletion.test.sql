@@ -20,7 +20,7 @@
 -- check_violation (the caps and the request_hash check).
 
 begin;
-select plan(68);
+select plan(70);
 
 -- ------------------------------------------------------------ fixtures
 --   d1 = leaving: an active admin (not the owner) who invites, edits a shared
@@ -177,9 +177,15 @@ select is(
 
 -- ------------------------------------------------------------ tombstones
 select is(
-  public.enforcement_email_key('returner@example.com'),
+  public.enforcement_email_legacy_key('returner@example.com'),
   '83bac1dc27f294e2dddc84ed4adf8e854e28261f626cf27a129eecf62a0fc361',
-  'the tombstone key is the SHA-256 hex of the lowercased address');
+  'the old tombstone key is the SHA-256 hex of the lowercased address');
+
+select ok(
+  public.enforcement_email_key('returner@example.com') ~ '^[0-9a-f]{64}$'
+    and public.enforcement_email_key('returner@example.com')
+      <> public.enforcement_email_legacy_key('returner@example.com'),
+  'the tombstone key is keyed now, not a plain hash of the address (0030)');
 
 select is(
   public.enforcement_email_key('Returner@Example.COM'),
@@ -281,12 +287,22 @@ insert into saved
   select 'operator_at', created_at::text from public.enforcement_actions
    where user_id = 'd7000000-0000-0000-0000-000000000007' and actor <> 'system';
 
+-- A tombstone from before 0030 for the same address, older than the
+-- operator's decision: the write folds it into the keyed row.
+insert into public.enforcement_tombstones (email_sha256, terminated_at)
+values (public.enforcement_email_legacy_key('confirmed@example.com'), now() - interval '400 days');
+
 set local role service_role;
 select is(
   public.account_deletion_tombstone('d7000000-0000-0000-0000-000000000007'),
   true,
   'an operator''s confirmed termination leaves a tombstone');
 reset role;
+select is(
+  (select count(*) from public.enforcement_tombstones
+    where email_sha256 = public.enforcement_email_legacy_key('confirmed@example.com')),
+  0::bigint,
+  'and an old row under the plain key for that address is folded in (0030)');
 select is(
   (select row(level, terminated_at)::text from public.enforcement_tombstones
     where email_sha256 = public.enforcement_email_key('confirmed@example.com')),
@@ -322,7 +338,7 @@ insert into public.guardrail_events
 values
   ('d8000000-0000-0000-0000-000000000008', 'likeness', 2, repeat('f', 64), 'local', 'blocked', 'input', '{later}');
 insert into saved
-  values ('held_key', encode(sha256(convert_to('d8000000-0000-0000-0000-000000000008', 'UTF8')), 'hex'));
+  values ('held_key', public.deletion_hold_key('d8000000-0000-0000-0000-000000000008'));
 
 set local role service_role;
 select is(

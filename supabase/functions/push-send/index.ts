@@ -10,10 +10,18 @@
 // The request carries only { grant, sessionId, kind, seq }. No code, no prompt,
 // no titles from the run ever reach this function or Apple.
 //
-// Env: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, and the APNS_* secrets used by
-// _shared/apns.ts.
+// What is kept: push_sends holds one row per push for the cooldown, the dedupe
+// and the daily ceiling, and it never holds the session id itself, only a
+// keyed one-way hash of it (HMAC-SHA256 under PUSH_SESSION_HASH_KEY, 0029), so
+// the log cannot be matched to a session on the person's computer without the
+// key. The retention job deletes the rows after 2 days (0027).
+//
+// Env: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, PUSH_SESSION_HASH_KEY (at least
+// 32 characters; without it nothing is sent, so a raw session id is never
+// stored), and the APNS_* secrets used by _shared/apns.ts.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, json } from "../_shared/cors.ts";
+import { hmacSha256Hex, sessionHashKey } from "../_shared/push.ts";
 import {
   apnsConfigured,
   sendApns,
@@ -52,7 +60,9 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS")
     return new Response("ok", { headers: corsHeaders(req) });
   try {
-    if (!apnsConfigured()) {
+    const hashKey = sessionHashKey(Deno.env.get("PUSH_SESSION_HASH_KEY"));
+    if (!apnsConfigured() || !hashKey) {
+      if (!hashKey) console.error("push-send: PUSH_SESSION_HASH_KEY is not set");
       return json(
         { error: "Push is not configured on the server yet." },
         503,
@@ -68,7 +78,13 @@ Deno.serve(async (req) => {
       kind?: string;
       seq?: number;
     };
-    if (!grant || !sessionId || (kind !== "approval" && kind !== "done")) {
+    if (
+      typeof grant !== "string" ||
+      !grant ||
+      typeof sessionId !== "string" ||
+      !sessionId ||
+      (kind !== "approval" && kind !== "done")
+    ) {
       return json(
         { error: "grant, sessionId and a valid kind are required." },
         400,
@@ -95,6 +111,8 @@ Deno.serve(async (req) => {
       return json({ error: "That push grant is not valid." }, 403, req);
     }
     const userId = grantRow.user_id as string;
+    // The only form of the session id this function stores or queries.
+    const sessionHash = await hmacSha256Hex(hashKey, sessionId);
 
     // Daily ceiling across all of this user's sessions.
     const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
@@ -116,7 +134,8 @@ Deno.serve(async (req) => {
       const { count: recent, error: recentErr } = await admin
         .from("push_sends")
         .select("id", { count: "exact", head: true })
-        .eq("session_id", sessionId)
+        .eq("user_id", userId)
+        .eq("session_id", sessionHash)
         .gte("created_at", coolAgo);
       if (recentErr)
         throw new Error(
@@ -127,10 +146,11 @@ Deno.serve(async (req) => {
 
     // Idempotency: one row per (user, dedupe_key). If the insert conflicts, an
     // identical push already went out (a push-send retry), so do not buzz again.
-    const dedupeKey = `${sessionId}:${kind}:${seq ?? "na"}`;
+    // The dedupe key carries the hash too, never the raw id.
+    const dedupeKey = `${sessionHash}:${kind}:${seq ?? "na"}`;
     const { error: dedupeErr } = await admin.from("push_sends").insert({
       user_id: userId,
-      session_id: sessionId,
+      session_id: sessionHash,
       dedupe_key: dedupeKey,
     });
     if (dedupeErr) {

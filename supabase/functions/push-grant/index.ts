@@ -8,9 +8,9 @@
 //
 // This grant is the ONLY credential the daemon holds for pushing, and it can do
 // nothing but cause a content-free push to THIS user's own devices. It has no
-// expiry (a long run may finish hours after the app closed); the user or an
-// operator revokes it by clearing the row (see push_grants RLS / a future
-// settings screen).
+// expiry (a long run may finish hours after the app closed); the phone deletes
+// it through push-unregister when it signs out or forgets that computer, and
+// the retention job (0027) deletes one unused for 180 days.
 //
 // Env: SUPABASE_URL, SUPABASE_ANON_KEY (auto-injected), SUPABASE_SERVICE_ROLE_KEY.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -56,16 +56,21 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
     );
-    const { error } = await admin.from('push_grants').insert({
-      user_id: user.id,
-      token_sha256: tokenSha256,
-      label: typeof label === 'string' ? label.slice(0, 80) : null,
-    });
+    const { data: row, error } = await admin
+      .from('push_grants')
+      .insert({
+        user_id: user.id,
+        token_sha256: tokenSha256,
+        label: typeof label === 'string' ? label.slice(0, 80) : null,
+      })
+      .select('id')
+      .single();
     if (error) throw new Error(`push_grants insert failed: ${error.message}`);
 
-    // Returned exactly once. The phone forwards it to the daemon and does not
-    // need to keep it.
-    return json({ grant: token }, 200, req);
+    // The token is returned exactly once. The phone forwards it to the daemon
+    // and does not keep it; it keeps only the row's id, so it can delete this
+    // grant through push-unregister when it signs out or forgets the computer.
+    return json({ grant: token, id: row?.id ?? null }, 200, req);
   } catch (err) {
     console.error('push-grant error', err);
     return json({ error: 'Could not create a push grant. Try again.' }, 500, req);

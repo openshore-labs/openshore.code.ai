@@ -577,6 +577,17 @@ export function protectedWrite(path: string): 'deny' | 'ask' | undefined {
   return undefined;
 }
 
+/** Whether a rule's glob covers a path. A deny or an ask also matches
+ *  folded (NFC, lowercase), so `secrets/**` fences `Secrets/k`, which a Mac or
+ *  Windows disk opens as the same folder (security review 2026-09-29). An
+ *  allow matches the spelling exactly, so folding only ever makes a decision
+ *  stricter, never looser. Folded on every platform, as protectedWrite is: on
+ *  a disk that tells case apart it fences a sibling spelling too. */
+export function ruleMatchesPath(path: string, glob: string, decision: Decision): boolean {
+  if (minimatch(path, glob)) return true;
+  return decision !== 'allow' && minimatch(foldPath(path), foldPath(glob));
+}
+
 /** A path as the permission engine compares it: a backslash is a separator
  *  (the Windows spelling, and what a model writes there), then the dotted
  *  segments are folded away (`./a`, `a/../b`), so a glob sees one spelling. */
@@ -722,7 +733,7 @@ export class PermissionEngine {
     for (const rule of [...this.config.rules, ...this.sessionRules]) {
       if (rule.tool !== '*' && rule.tool !== q.toolName) continue;
       if (rule.pathGlob) {
-        if (!path || !minimatch(path, rule.pathGlob)) continue;
+        if (!path || !ruleMatchesPath(path, rule.pathGlob, rule.decision)) continue;
       }
       if (rule.commandPrefix) {
         if (!q.command || !commandMatchesPrefix(q.command, rule.commandPrefix)) continue;

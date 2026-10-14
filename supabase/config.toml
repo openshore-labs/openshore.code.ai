@@ -124,6 +124,12 @@ verify_jwt = true
 [functions.push-grant]
 verify_jwt = true
 
+# A signed-in user removes their own device token and the grants this device
+# minted (at sign-out, or when it forgets a computer), so the caller's JWT is
+# required.
+[functions.push-unregister]
+verify_jwt = true
+
 # The desktop daemon calls push-send with an opaque grant, not a user JWT, so no
 # JWT here; trust comes from the grant, which resolves the target user and
 # devices server-side (never from the request body).

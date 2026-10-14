@@ -127,7 +127,14 @@ import {
   loadStoredSession,
   saveSession,
 } from '../lib/authSession.js';
-import { beatDesktopSession, registerPushForDaemon } from '../lib/push.js';
+import { beatDesktopSession, currentPushToken, registerPushForDaemon } from '../lib/push.js';
+import {
+  forgetHubBody,
+  pushForgottenPatch,
+  signOutBody,
+  unregisterPush,
+  type UnregisterBody,
+} from './pushOps.js';
 import {
   approvalNotice,
   askForNotices,
@@ -790,6 +797,10 @@ export interface AppSettings {
    *  is minted once per daemon rather than on every desktop session. Device-local
    *  bookkeeping, not synced. */
   pushRegisteredDaemons?: string[];
+  /** The id of the push grant each of those daemons holds (never the grant
+   *  itself), keyed by base URL, so a sign-out or a forget deletes it through
+   *  push-unregister (state/pushOps.ts). Device-local, not synced. */
+  pushGrantIds?: Record<string, string>;
   /** Web search asks once on this device (the search words go to a search
    *  service, DuckDuckGo unless a key is set): 'allowed' after the person says
    *  yes, 'declined' after they turn it off in Settings; unset until asked
@@ -4124,12 +4135,35 @@ export const useApp = create<AppState>((set, get, api) => {
     const session = s.authSession;
     if (!isPhone() || !daemon || !session) return;
     if ((s.settings.pushRegisteredDaemons ?? []).includes(daemon.baseUrl)) return;
-    const ok = await registerPushForDaemon(daemon, session, s.settings.deviceId);
-    if (!ok) return;
-    const existing = get().settings.pushRegisteredDaemons ?? [];
+    const done = await registerPushForDaemon(daemon, session, s.settings.deviceId);
+    if (!done) return;
+    const now = get().settings;
+    const existing = now.pushRegisteredDaemons ?? [];
+    const patch: Partial<AppSettings> = {};
     if (!existing.includes(daemon.baseUrl)) {
-      await get().saveSettings({ pushRegisteredDaemons: [...existing, daemon.baseUrl] });
+      patch.pushRegisteredDaemons = [...existing, daemon.baseUrl];
     }
+    if (done.grantId) {
+      patch.pushGrantIds = { ...(now.pushGrantIds ?? {}), [daemon.baseUrl]: done.grantId };
+    }
+    if (Object.keys(patch).length) await get().saveSettings(patch);
+  }
+
+  // Turn push off for this device on the server before its sign-in ends
+  // (security review 2026-10-01): its token and its own grants, or with
+  // `everywhere` every device's, then forget the registrations here so the
+  // next sign-in registers afresh. Bounded and best-effort (state/pushOps.ts).
+  async function unregisterPushHere(session: Session, everywhere = false): Promise<void> {
+    const s = get().settings;
+    const body: UnregisterBody | undefined = everywhere
+      ? { all: true }
+      : signOutBody(s, await currentPushToken());
+    await unregisterPush(body, async (b) => {
+      const fresh = await freshSession(session);
+      return supabaseInvoke('push-unregister', fresh.accessToken, { ...b });
+    });
+    const patch = pushForgottenPatch(get().settings);
+    if (patch) await get().saveSettings(patch);
   }
 
   /**
@@ -10650,6 +10684,7 @@ export const useApp = create<AppState>((set, get, api) => {
       // Only this device's sign-in ends (UX review ruling 4), with a live token, and
       // the sign-out finishes here whatever the server says, offline too.
       const session = get().authSession;
+      if (session) await unregisterPushHere(session);
       if (session) await revokeHere(session, { fresh: freshSession, logout: supabaseSignOut });
       await forgetSession();
       if (session) get().showToast(SIGNED_OUT_HERE);
@@ -10657,6 +10692,10 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     async signOutEverywhere() {
+      // Every device's push goes first, while the sign-in still works; a
+      // refused sign-out below leaves push off, which only costs a banner.
+      const live = get().authSession;
+      if (live) await unregisterPushHere(live, true);
       const outcome = await revokeEverywhere({ fresh: freshAuth, logout: supabaseSignOut });
       if (outcome === 'failed') get().showToast(SIGN_OUT_EVERYWHERE_FAILED);
       if (outcome !== 'done') return false;
@@ -14939,6 +14978,17 @@ export const useApp = create<AppState>((set, get, api) => {
       // held here for that, so this device forgets the hub at once.
       const leaving = hubList(s).find((d) => d.baseUrl === baseUrl);
       const role = s.hubRoles?.[baseUrl];
+      // The push grant that computer holds is deleted too, so it can no longer
+      // buzz this account (security review 2026-10-01; state/pushOps.ts).
+      const session = get().authSession;
+      const pushBody = forgetHubBody(s, baseUrl);
+      if (session && pushBody) {
+        await unregisterPush(pushBody, async (b) => {
+          const fresh = await freshSession(session);
+          return supabaseInvoke('push-unregister', fresh.accessToken, { ...b });
+        });
+      }
+      const pushPatch = pushForgottenPatch(s, baseUrl);
       const daemons = hubList(s).filter((d) => d.baseUrl !== baseUrl);
       const daemon = s.daemon?.baseUrl === baseUrl ? daemons[0] : s.daemon;
       const hubRoles = { ...(s.hubRoles ?? {}) };
@@ -14950,6 +15000,7 @@ export const useApp = create<AppState>((set, get, api) => {
         daemon,
         hubRoles,
         ...(projects && projects !== s.projects ? { projects } : {}),
+        ...(pushPatch ?? {}),
       });
       // The credential leaves with the hub.
       await secretDelete(hubSecretKey(baseUrl));
