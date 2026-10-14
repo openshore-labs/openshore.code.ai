@@ -78,7 +78,7 @@ content_path = "./supabase/templates/no-password.html"
 # Passkeys (GoTrue's own, CTO 2026-10-12): the relying party is openshore.ai,
 # and only a native iOS ceremony (or a real browser on openshore.ai) can match
 # it. Production values. Off until
-# the founder's gate in docs/passwordless-runbook.md holds (0028's step-up
+# the founder's gate in docs/passwordless-runbook.md holds (0031's step-up
 # trigger is on auth.webauthn_credentials, the Apple association file is
 # served); the app's own switch is VITE_PASSKEYS.
 [auth.passkey]

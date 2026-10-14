@@ -1,4 +1,4 @@
--- 0028: passwordless sign-in (founder 2026-10-12; CTO ruling 2026-10-12, Q1
+-- 0031: passwordless sign-in (founder 2026-10-12; CTO ruling 2026-10-12, Q1
 -- and Q3, recorded in os-code/DECISIONS.md). OpenShore signs people in by an
 -- email code or link, and by a passkey once they add one. No password is kept
 -- anywhere: the Proton standard keeps the bare minimum.
@@ -80,7 +80,7 @@ revoke all on function public.oscode_passkey_step_up() from public, anon, authen
 do $$
 begin
   if to_regclass('auth.webauthn_credentials') is null then
-    raise notice '0028: auth.webauthn_credentials is not here yet; passkeys stay off until the step-up trigger is on it';
+    raise notice '0031: auth.webauthn_credentials is not here yet; passkeys stay off until the step-up trigger is on it';
     return;
   end if;
   begin
@@ -89,6 +89,6 @@ begin
                before insert on auth.webauthn_credentials
                for each row execute function public.oscode_passkey_step_up()';
   exception when insufficient_privilege then
-    raise notice '0028: no trigger allowed on auth.webauthn_credentials; passkeys stay off';
+    raise notice '0031: no trigger allowed on auth.webauthn_credentials; passkeys stay off';
   end;
 end $$;

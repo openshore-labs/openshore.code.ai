@@ -22,7 +22,7 @@ const BUILD_FLAG = import.meta.env.VITE_PASSKEYS as string | undefined;
 /** The relying party, as supabase/config.toml's [auth.webauthn] names it. */
 export const RP_ID = 'openshore.ai';
 
-/** How recent an email sign-in must be before a passkey can be added: 0028's
+/** How recent an email sign-in must be before a passkey can be added: 0031's
  *  step-up trigger holds the same 10 minutes on the server. */
 export const STEP_UP_MS = 10 * 60_000;
 
@@ -183,7 +183,7 @@ export function sessionMethods(accessToken: string): AmrEntry[] | undefined {
 }
 
 /** Whether this session signed in by email (code or link) recently enough to
- *  add a passkey. 0028's trigger is the line that holds; this only spares the
+ *  add a passkey. 0031's trigger is the line that holds; this only spares the
  *  person a refusal. */
 export function recentEmailProof(accessToken: string, now: number = Date.now()): boolean {
   const methods = sessionMethods(accessToken) ?? [];

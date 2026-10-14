@@ -5,11 +5,11 @@
 --
 -- on a local database built from exactly the files in
 -- supabase/production-history.tsv (0001 to 0027 when it was written), BEFORE
--- the pending files are pushed. It describes the push of 0028 (passwordless
+-- the pending files are pushed. It describes the push of 0031 (passwordless
 -- sign-in, 2026-10-12); CI skips it while nothing is pending, and the next
 -- push that adds a file replaces it with rows shaped like production then.
 -- CI applies migrations to an empty database, so without these rows nothing
--- 0028 does to existing data (clearing every stored password hash, and
+-- 0031 does to existing data (clearing every stored password hash, and
 -- leaving every live session alone) would ever run against a row.
 --
 -- Everything here uses its own id range (7e000000-...) and @replay.invalid
@@ -50,7 +50,7 @@ values
   ('7e000000-0000-0000-0000-0000000000c3', '7e000000-0000-0000-0000-000000000003', now() - interval '1 day',  now() - interval '3 hours');
 
 -- ------------------------------------------------------------ the snapshot
--- What 0028 must never change: who is signed in.
+-- What 0031 must never change: who is signed in.
 drop schema if exists replay_snapshot cascade;
 create schema replay_snapshot;
 revoke all on schema replay_snapshot from public, anon, authenticated;

@@ -3,7 +3,7 @@
 // iPhone or iPad, the plugin saying yes). Never a prompt right after an email
 // sign-in: one offer card here, whose "Not now" is final on this device, and a
 // list that stays put either way. Adding one needs an email sign-in in the
-// last 10 minutes (0028's step-up trigger); past that, a fresh code first.
+// last 10 minutes (0031's step-up trigger); past that, a fresh code first.
 import { useCallback, useEffect, useId, useState } from 'react';
 import { useApp } from '../state/store.js';
 import { Sheet } from './Sheet.js';

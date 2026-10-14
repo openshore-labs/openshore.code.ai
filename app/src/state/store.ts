@@ -10620,7 +10620,7 @@ export const useApp = create<AppState>((set, get, api) => {
     async addPasskey() {
       const token = await accessToken();
       if (!token) throw new Error('Sign in first.');
-      // 0028's trigger refuses a passkey without a fresh email sign-in; ask
+      // 0031's trigger refuses a passkey without a fresh email sign-in; ask
       // for the code first rather than meet that refusal.
       if (!recentEmailProof(token)) return 'confirm';
       await passkeyAdd(token);

@@ -1,4 +1,4 @@
--- pgTAP coverage for passwordless sign-in (0028). Run with `supabase test db`
+-- pgTAP coverage for passwordless sign-in (0031). Run with `supabase test db`
 -- against a database that has every migration applied. Its own transaction
 -- and its own plan().
 --

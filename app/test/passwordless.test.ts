@@ -12,7 +12,7 @@ const template = readFileSync(join(ROOT, 'supabase/templates/sign-in.html'), 'ut
   /<!--[\s\S]*?-->/g,
   '',
 );
-const migration = readFileSync(join(ROOT, 'supabase/migrations/0028_passwordless.sql'), 'utf8');
+const migration = readFileSync(join(ROOT, 'supabase/migrations/0031_passwordless.sql'), 'utf8');
 
 /** One `key = value` line from a [section] of config.toml. */
 function tomlValue(section: string, key: string): string | undefined {
@@ -115,7 +115,7 @@ describe('passkeys wait for the founder gate', () => {
     expect(tomlValue('auth.passkey', 'enabled')).toBe('false');
   });
 
-  it('0028 clears every password, keeps it clear, and steps up a new passkey', () => {
+  it('0031 clears every password, keeps it clear, and steps up a new passkey', () => {
     expect(migration).toMatch(/update auth\.users\s+set encrypted_password = ''/);
     expect(migration).toContain('before insert or update of encrypted_password on auth.users');
     expect(migration).toContain('before insert on auth.webauthn_credentials');
@@ -146,7 +146,7 @@ describe("no way in but a person's own email or passkey (CTO, App Review ruling)
     }
   });
 
-  it("0028's triggers exempt no address", () => {
+  it("0031's triggers exempt no address", () => {
     expect(migration).not.toMatch(/new\.email|\bemail\s*(=|<>|in\b|like\b)/i);
   });
 });

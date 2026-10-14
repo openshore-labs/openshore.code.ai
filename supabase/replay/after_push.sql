@@ -25,7 +25,7 @@ begin
     raise exception 'REPLAY FAIL 1: schema_migrations is %, expected %', v_got, v_want;
   end if;
 
-  -- 2. 0028 cleared every stored password hash, the null one included in
+  -- 2. 0031 cleared every stored password hash, the null one included in
   --    the count of none (GoTrue reads a null as no password too).
   select count(*) into n from auth.users where coalesce(encrypted_password, '') <> '';
   if n <> 0 then raise exception 'REPLAY FAIL 2: % account(s) still hold a password hash', n; end if;
