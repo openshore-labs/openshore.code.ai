@@ -14,7 +14,8 @@ import { scrubbedEnv } from '../exec/childEnv.js';
 
 /** Variables simple-git refuses in an explicit environment (editors, pagers,
  *  ssh and askpass helpers, config paths). Status, diff and commit need none
- *  of them, so they are left out rather than allowed. */
+ *  of them, so they are left out rather than allowed. simple-git 4 refuses
+ *  every `GIT_` name, so those are dropped by prefix too (below). */
 const GIT_UNSAFE_ENV = new Set([
   'editor',
   'git_askpass',
@@ -42,7 +43,8 @@ const GIT_UNSAFE_ENV = new Set([
 function gitAt(dir: string): SimpleGit {
   const env: NodeJS.ProcessEnv = {};
   for (const [name, value] of Object.entries(scrubbedEnv())) {
-    if (!GIT_UNSAFE_ENV.has(name.toLowerCase())) env[name] = value;
+    const lower = name.toLowerCase();
+    if (!GIT_UNSAFE_ENV.has(lower) && !lower.startsWith('git_')) env[name] = value;
   }
   return simpleGit(dir).env(env);
 }
