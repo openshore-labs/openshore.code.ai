@@ -223,30 +223,3 @@ export const SERVER_CLOUD_INIT = [
 /** What to know before pasting it, said once beside it. */
 export const SERVER_CLOUD_INIT_LINE =
   'Setting up more than one? When you create a server, paste this where your provider asks for cloud-init or user data. Put a one-off auth key from Tailscale in place of the capitals: your provider keeps what you paste, so use a key that works once. When the server is up, SSH in and run the code command below.';
-
-/** The ways to give OpenShore a brain, and the room each one lives in. The
- *  Computer room lists them so no one has to know where to look. */
-export type DockPath = 'computer' | 'server' | 'cloud' | 'device';
-
-export const DOCK_PATHS: { id: DockPath; title: string; detail: string }[] = [
-  {
-    id: 'computer',
-    title: 'Your computer at home',
-    detail: 'Dock to the desktop app over Tailscale. Its models and files do the work.',
-  },
-  {
-    id: 'server',
-    title: 'A server you rent',
-    detail: 'Dock to OpenShore on a Linux server. It keeps working while this device sleeps.',
-  },
-  {
-    id: 'cloud',
-    title: 'A cloud model on your key',
-    detail: 'Claude, OpenAI, Gemini, Kimi and more, set up in Cloud Connections.',
-  },
-  {
-    id: 'device',
-    title: 'A model on this device',
-    detail: 'Free and offline. Set one up in the Stack.',
-  },
-];

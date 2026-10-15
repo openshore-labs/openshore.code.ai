@@ -15836,50 +15836,9 @@ button.settings-row:active {
   margin-top: var(--section-gap);
 }
 
-/* Docking (connect-anywhere, 2026-10-07): the other ways in, the server's
-   steps, and its one command. Press and hover ride the tokens; nothing
-   transitions layout. */
-.dock-paths {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
-.dock-path {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-  padding: 12px;
-  text-align: left;
-  border-radius: var(--radius-md);
-  background: var(--bg-raised);
-  border: 1px solid var(--border);
-  color: var(--ink);
-  font: inherit;
-  cursor: pointer;
-  transition:
-    background var(--dur-1) var(--ease-standard),
-    border-color var(--dur-1) var(--ease-standard),
-    scale var(--press-out);
-}
-
-@media (hover: hover) {
-  .dock-path:hover {
-    background: var(--surface);
-    border-color: var(--border-strong);
-  }
-}
-
-.dock-path:active {
-  scale: var(--press-scale-row);
-}
-
-.dock-path-title {
-  font-weight: var(--weight-semibold);
-}
-
+/* Docking (connect-anywhere, 2026-10-07): the server's steps, and its one
+   command. Nothing transitions layout. The other ways in left the room
+   (founder, 2026-10-15). */
 .dock-steps {
   margin: 8px 0 12px;
   padding-left: 20px;
@@ -15958,6 +15917,21 @@ button.settings-row:active {
   display: flex;
   gap: 12px;
   flex: none;
+}
+
+/* The docked machine's card: naming it and forgetting it, side by side. */
+.connected-actions {
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 10px;
+}
+
+/* The info glyph that ends the Computer room's title (founder, 2026-10-15). */
+.title-info {
+  display: inline-grid;
+  vertical-align: middle;
+  margin-left: 4px;
+  color: var(--muted);
 }
 
 /* Choosing a live provider's models (Cloud Connections). */

@@ -6,7 +6,6 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  DOCK_PATHS,
   SERVER_INSTALL_COMMAND,
   SERVER_PAIR_COMMAND,
   SERVER_RENTED_LINE,
@@ -54,15 +53,27 @@ describe('docking, the words', () => {
     expect(ROOM_ACCOUNT.pair).toBe('pairing');
   });
 
-  it('lists every way in, in order, and two of them dock right here', () => {
-    expect(DOCK_PATHS.map((p) => p.id)).toEqual(['computer', 'server', 'cloud', 'device']);
+  it('the docking choice sits above Scan, with no other ways in (founder, 2026-10-15)', () => {
     const screen = read('src', 'screens', 'PairScreen.tsx');
-    // The two docking paths are one choice above Scan (Scan stays in the
-    // first screen); the other ways in sit below and open their rooms.
     const phone = screen.slice(screen.indexOf('function PhonePair'));
     expect(phone.indexOf('dock-choice')).toBeLessThan(phone.indexOf('<DockForm'));
-    expect(phone.indexOf('<OtherWaysIn')).toBeGreaterThan(phone.indexOf('<DockForm'));
-    expect(screen).toContain("setView(id === 'cloud' ? 'connections' : 'stack')");
+    expect(screen).not.toMatch(/OtherWaysIn|Other ways in|DOCK_PATHS/);
+  });
+
+  it('what docking is waits behind an info glyph, and forgetting sits in the docked card', () => {
+    const screen = read('src', 'screens', 'PairScreen.tsx');
+    const phone = screen.slice(
+      screen.indexOf('function PhonePair'),
+      screen.indexOf('function keysGoFirst'),
+    );
+    expect(phone).toMatch(/aria-label="About docking"/);
+    expect(phone).not.toMatch(/className="lead"/);
+    const card = screen.slice(
+      screen.indexOf('function ConnectedCard'),
+      screen.indexOf('function machineLine'),
+    );
+    expect(card).toContain("'Forget this computer'");
+    expect(card).toContain('onClick={onForget}');
   });
 });
 
@@ -78,11 +89,7 @@ describe('setting up a server', () => {
   });
 
   it('names no provider, never says always on, and says what renting means', () => {
-    const all = [
-      ...SERVER_STEPS.flatMap((s) => [s.title, s.detail]),
-      SERVER_RENTED_LINE,
-      ...DOCK_PATHS.flatMap((p) => [p.title, p.detail]),
-    ].join(' ');
+    const all = [...SERVER_STEPS.flatMap((s) => [s.title, s.detail]), SERVER_RENTED_LINE].join(' ');
     expect(all).not.toMatch(/always on|always-on/i);
     expect(all).not.toMatch(/hetzner|digitalocean|vultr|linode|aws|azure/i);
     expect(all).toMatch(/billed by the hour/);

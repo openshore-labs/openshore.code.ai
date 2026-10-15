@@ -1,7 +1,7 @@
 import { Icon } from './Icon.js';
 // The small stroked glyphs sheets, rows and the chat share: close, back,
 // chevron, check, plus, send, stop, terminal, file, paste, note, lock, more,
-// compose and the way out to a page outside the app.
+// compose, info and the way out to a page outside the app.
 // Typed characters never stand in for them. A text "×" or "‹" carries the
 // font's side bearings and baseline with it, so it lands low and to the left
 // of the circle it sits in (screenshot, 2026-09-03). A path in a
@@ -162,6 +162,16 @@ export function ExternalGlyph({ size = 12 }: { size?: number }) {
   return (
     <Icon size={size} className="external-glyph">
       <path d="M7 17L17 7M9 7h8v8" />
+    </Icon>
+  );
+}
+
+/** A room's "what is this": a ring with a drawn i, opening a short note. */
+export function InfoGlyph({ size = 20 }: { size?: number }) {
+  return (
+    <Icon size={size} className="sheet-glyph">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 11v5M12 8h.01" />
     </Icon>
   );
 }

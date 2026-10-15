@@ -20,6 +20,7 @@ import { hapticApproval } from '../lib/haptics.js';
 import { Icon } from '../components/Icon.js';
 import { Sheet } from '../components/Sheet.js';
 import { SheetHead } from '../components/SheetHead.js';
+import { InfoGlyph } from '../components/SheetGlyphs.js';
 import { ReplaceSharedKey } from '../components/ReplaceSharedKey.js';
 import { hubStatusLine, onLinux } from '../lib/hubStatus.js';
 import { DockForm, hostOf } from '../components/DockForm.js';
@@ -27,13 +28,11 @@ import { ServerSetup } from '../components/ServerSetup.js';
 import { ServerKeysLeftSheet, type KeysLeft } from '../components/ServerKeys.js';
 import type { HubKeysCleared } from '../state/serverKeysOps.js';
 import {
-  DOCK_PATHS,
   dockedNoun,
   machineFactsLine,
   machineKindLabel,
   machineKindOf,
   unreachableLine,
-  type DockPath,
   type DockPlace,
 } from '../lib/docking.js';
 import { THIS_COMPUTER, projectsOn } from '../lib/runsOn.js';
@@ -550,6 +549,9 @@ function DesktopServerCard() {
 function PhonePair() {
   const { settings, removeHub, showToast, startGuideChat, setView } = useApp();
   const [tailscaleOpen, setTailscaleOpen] = useState(false);
+  // What docking is, behind the info glyph beside the title (founder,
+  // 2026-10-15: the room opens on the work, not a paragraph).
+  const [aboutOpen, setAboutOpen] = useState(false);
   const [forgetting, setForgetting] = useState(false);
   // A forgotten server whose keys could not be deleted there.
   const [left, setLeft] = useState<KeysLeft | undefined>();
@@ -574,27 +576,24 @@ function PhonePair() {
     <div className="screen">
       <BackBar title={PHONE_TITLE} titleHiddenUntil={titleRef} />
       <div className="screen-inner">
-        <h1 ref={titleRef}>{PHONE_TITLE}</h1>
-        <p className="lead">
-          Docking links {thisDeviceNoun()} to a machine that does the work: your computer, a server
-          at home, or a server you rent. Dock to as many as you like; each project can choose the
-          one it runs on. It runs over your own private network, so a long task keeps going even
-          when you close the app.
-          {!paired ? (
-            <>
-              {' '}
-              <button
-                type="button"
-                className="linklike press-fb"
-                onClick={() => void startGuideChat('pair-computer')}
-              >
-                Walk me through it
-              </button>
-            </>
-          ) : null}
-        </p>
+        <h1 ref={titleRef}>
+          {PHONE_TITLE}
+          <button
+            type="button"
+            className="icon-btn title-info press-fb"
+            aria-label="About docking"
+            onClick={() => setAboutOpen(true)}
+          >
+            <InfoGlyph />
+          </button>
+        </h1>
 
-        {paired ? <ConnectedCard onTerminal={() => setView('terminalroom')} /> : null}
+        {paired ? (
+          <ConnectedCard
+            onTerminal={() => setView('terminalroom')}
+            onForget={() => setForgetting(true)}
+          />
+        ) : null}
 
         {/* Scan sits in the first screen (2026-10-07 review): the ways to
             dock are one small choice above it, and the other ways to give
@@ -665,17 +664,36 @@ function PhonePair() {
 
         <HubList />
 
-        <OtherWaysIn onPick={(id) => setView(id === 'cloud' ? 'connections' : 'stack')} />
-
-        {paired ? (
-          <button
-            type="button"
-            className="btn quiet block press-fb"
-            onClick={() => setForgetting(true)}
-          >
-            {paired.kind === 'server' ? 'Forget this server' : 'Forget this computer'}
-          </button>
-        ) : null}
+        <Sheet open={aboutOpen} onClose={() => setAboutOpen(false)} variant="confirm">
+          <h3>Docking</h3>
+          <p>
+            Docking links {thisDeviceNoun()} to a machine that does the work: your computer, a
+            server at home, or a server you rent. Dock to as many as you like; each project can
+            choose the one it runs on. It runs over your own private network, so a long task keeps
+            going even when you close the app.
+          </p>
+          <div className="confirm-row">
+            {!paired ? (
+              <button
+                type="button"
+                className="btn ghost press-fb"
+                onClick={() => {
+                  setAboutOpen(false);
+                  void startGuideChat('pair-computer');
+                }}
+              >
+                Walk me through it
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="btn primary press-fb"
+              onClick={() => setAboutOpen(false)}
+            >
+              Got it
+            </button>
+          </div>
+        </Sheet>
 
         <ForgetComputerConfirm
           name={forgetting && paired ? computerLabel(paired) : undefined}
@@ -720,30 +738,6 @@ function PhonePair() {
         </Sheet>
       </div>
     </div>
-  );
-}
-
-/** The other ways to give OpenShore a brain (lib/docking.ts): a cloud key
- *  and a model on this device, each in the room that holds it. */
-function OtherWaysIn({ onPick }: { onPick: (id: DockPath) => void }) {
-  return (
-    <>
-      <h2 className="dock-other-head">Other ways in</h2>
-      <div className="dock-paths" role="list">
-        {DOCK_PATHS.filter((p) => p.id === 'cloud' || p.id === 'device').map((p) => (
-          <button
-            key={p.id}
-            type="button"
-            role="listitem"
-            className="dock-path press-fb"
-            onClick={() => onPick(p.id)}
-          >
-            <span className="dock-path-title">{p.title}</span>
-            <span className="sub">{p.detail}</span>
-          </button>
-        ))}
-      </div>
-    </>
   );
 }
 
@@ -826,7 +820,7 @@ function ForgetComputerConfirm({
 /** The paired computer, live (UX review 2026-10-01): who it is and whether it
  *  answers right now, so the screen after pairing never looks like the
  *  screen before it. */
-function ConnectedCard({ onTerminal }: { onTerminal: () => void }) {
+function ConnectedCard({ onTerminal, onForget }: { onTerminal: () => void; onForget: () => void }) {
   const daemon = useApp((s) => s.settings.daemon);
   const noteMachineFacts = useApp((s) => s.noteMachineFacts);
   const [reach, setReach] = useState<'checking' | 'yes' | 'no' | 'refused'>('checking');
@@ -881,14 +875,16 @@ function ConnectedCard({ onTerminal }: { onTerminal: () => void }) {
             : 'Open a terminal on your computer'}
         </button>
       ) : null}
-      <button
-        type="button"
-        className="linklike press-fb"
-        style={{ marginTop: 10 }}
-        onClick={() => setEditing(true)}
-      >
-        {daemon.kind === 'server' ? 'Name it, or say where it is' : 'Name it'}
-      </button>
+      {/* Its own row holds forgetting it (founder, 2026-10-15), beside
+          naming it, the way each row in Your machines does. */}
+      <div className="machine-row-actions connected-actions">
+        <button type="button" className="linklike press-fb" onClick={() => setEditing(true)}>
+          {daemon.kind === 'server' ? 'Name it, or say where it is' : 'Name it'}
+        </button>
+        <button type="button" className="linklike press-fb" onClick={onForget}>
+          {daemon.kind === 'server' ? 'Forget this server' : 'Forget this computer'}
+        </button>
+      </div>
       <Sheet open={editing} onClose={() => setEditing(false)}>
         {editing ? (
           <HubNameForm
