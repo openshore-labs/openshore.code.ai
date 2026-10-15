@@ -3,9 +3,9 @@
 // trillion-parameter frontier models (Kimi K3, Claude Opus, GPT-5, Gemini Pro)
 // never run on a laptop, so they are never a download. This module derives a
 // browsable, searchable list from the bring-your-own-key providers so the two
-// can never drift; Cloud Connections renders it as the Frontier models sheet,
-// each row opening its provider. Pure: no React, no platform calls,
-// unit-tested directly.
+// can never drift. No room renders it as a sheet since the Frontier models
+// sheet left Cloud Connections (founder, 2026-10-15). Pure: no React, no
+// platform calls, unit-tested directly.
 import type { CapabilityCategory } from 'os-code/protocol';
 import { PROVIDERS, type ProviderInfo } from './providers.js';
 import type { StackModelRef } from './stack.js';

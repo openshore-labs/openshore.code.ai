@@ -141,9 +141,8 @@ describe('cloud models live in Cloud Connections only (founder, 2026-10-13)', ()
     );
   });
 
-  it('Cloud Connections lists every frontier model, newest first, each opening its provider', () => {
+  it('Cloud Connections has no Frontier models sheet: each provider row is the door (founder, 2026-10-15)', () => {
     const room = src('screens', 'ConnectionsScreen.tsx');
-    expect(room).toMatch(/sortHostedNewest\(hostedModels\(\)\)/);
-    expect(room).toMatch(/onClick=\{\(\) => pickFrontier\(m\.providerId\)\}/);
+    expect(room).not.toMatch(/lib\/hosted\.js|hostedModels|HOSTED_SHELF|pickFrontier/);
   });
 });

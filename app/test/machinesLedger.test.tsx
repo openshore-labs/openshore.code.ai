@@ -133,14 +133,12 @@ describe('Cloud Connections in the ledger', () => {
     await dom.render(<ConnectionsScreen />);
     const listed = rows();
     // Your server leads (connect-anywhere, 2026-10-07), then the familiar
-    // seven, then one row for the named providers on your key, and on a
-    // phone one for any other provider, by its address (2026-10-09).
+    // seven, then one row for the named providers on your key. Frontier
+    // models and Any other provider left (founder, 2026-10-15).
     expect(listed.map((r) => r.label)).toEqual([
       'Set up a server',
       ...FAMILIAR.map((p) => p.name),
-      'Frontier models',
       'More providers',
-      'Any other provider',
     ]);
     expect(FAMILIAR.map((p) => p.id)).toEqual([
       'anthropic',
@@ -339,23 +337,10 @@ describe('Cloud Connections in the ledger', () => {
     expect(sheetRows()).toHaveLength(NAMED.length - 1);
   });
 
-  it('on a phone, any other provider opens the Stack, where it connects by address', async () => {
-    const { ConnectionsScreen } = await import('../src/screens/ConnectionsScreen.js');
-    await dom.render(<ConnectionsScreen />);
-    const other = rows().find((r) => r.label === 'Any other provider')!;
-    // Part 2 (2026-10-09): any address, in either format.
-    expect(other.sub).toBe(
-      'Any address connects in the Stack, under Connect a model, in the OpenAI or Anthropic format.',
-    );
-    await tapRow('Any other provider');
-    expect(useApp.getState().view).toBe('stack');
-  });
-
   it('on the desktop, no row points to an address form its Stack does not have', async () => {
     shell.desktop = true;
     const { ConnectionsScreen } = await import('../src/screens/ConnectionsScreen.js');
     await dom.render(<ConnectionsScreen />);
-    expect(rows().map((r) => r.label)).not.toContain('Any other provider');
     await tapRow('More providers');
     await dom.type('Groq, Mistral, DeepSeek...', 'nothing like it');
     expect(dom.text()).toContain('No provider here by that name.');
