@@ -8,7 +8,7 @@
 // read on this computer comes back marked local-only. A program on this
 // computer (stems, cleanup) never leaves and never asks.
 import { afterEach, describe, expect, it } from 'vitest';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { MockProvider, textTurn, toolTurn } from './helpers/mockProvider.js';
@@ -36,7 +36,9 @@ function put(root: string, rel: string, text: string): void {
  *  speech and stems are placed, with ComfyUI and the speech server at the
  *  given addresses. Each job answers without a server. */
 function setup(where: { speech: string; comfy?: string }) {
-  const cwd = mkdtempSync(join(tmpdir(), 'osc-media-'));
+  // Resolved, so paths match the engine's on macOS, where the temp folder
+  // sits behind the /var to /private/var link.
+  const cwd = realpathSync(mkdtempSync(join(tmpdir(), 'osc-media-')));
   dirs.push(cwd);
   const vault = join(cwd, 'notes');
   put(vault, 'Private/call.wav', 'private audio');
