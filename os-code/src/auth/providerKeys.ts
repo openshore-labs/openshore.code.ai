@@ -49,8 +49,6 @@ export const KNOWN_PROVIDERS: Readonly<Record<string, { label: string; baseUrl: 
   google: { label: 'Gemini', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai' },
   moonshot: { label: 'Kimi (Moonshot)', baseUrl: 'https://api.moonshot.ai/v1' },
   perplexity: { label: 'Perplexity', baseUrl: 'https://api.perplexity.ai' },
-  venice: { label: 'Venice', baseUrl: 'https://api.venice.ai/api/v1' },
-  openrouter: { label: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1' },
   // The named providers of 2026-10-09, each base read in its own docs.
   groq: { label: 'Groq', baseUrl: 'https://api.groq.com/openai/v1' },
   together: { label: 'Together AI', baseUrl: 'https://api.together.ai/v1' },

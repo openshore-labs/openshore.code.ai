@@ -159,9 +159,10 @@ to a machine is **docking** in copy. A server runs `osc serve` (installed by
 `openshore-releases`) and its yes is typed in the SSH terminal by
 `osc pair --server`; it docks over the tailnet only, never a public bind.
 Cloud Connections sets up a server beside the providers; a docked server
-reads "Your server" everywhere (`app/src/lib/docking.ts`). Venice and
-OpenRouter list no typed model ids: their models load live
-(`liveModels` in `app/src/lib/providers.ts`). Docking is free. Copy never says
+reads "Your server" everywhere (`app/src/lib/docking.ts`). The providers
+under More providers list no typed model ids: their models load live
+(`liveModels` in `app/src/lib/providers.ts`); Venice and OpenRouter were
+removed (founder, 2026-10-15). Docking is free. Copy never says
 a server is "always on" or private; renting is said plainly once. Plan and
 follow-ups: `docs/design/connect-anywhere-proposal.md`, `os-code/PROGRESS.md`.
 

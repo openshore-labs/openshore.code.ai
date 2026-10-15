@@ -136,14 +136,14 @@ describe('the key routes on a server', () => {
     const empty = await call('GET', '/keys');
     expect(empty.json).toEqual({ keys: [] });
 
-    const put = await call('PUT', '/keys/openrouter', { key: KEY });
+    const put = await call('PUT', '/keys/xai', { key: KEY });
     texts.push(put.text);
     expect(put.status).toBe(200);
     expect(put.json).toEqual({
       ok: true,
-      provider: { id: 'openrouter', label: 'OpenRouter', host: 'openrouter.ai' },
+      provider: { id: 'xai', label: 'xAI', host: 'api.x.ai' },
     });
-    expect(getCredential('provider-key:openrouter')).toBe(KEY);
+    expect(getCredential('provider-key:xai')).toBe(KEY);
     expect(globalFile().providers.ollama).toBeDefined();
 
     const custom = await call('PUT', '/keys/mistral', {
@@ -156,7 +156,7 @@ describe('the key routes on a server', () => {
 
     const listed = await call('GET', '/keys');
     texts.push(listed.text);
-    expect(listed.json.keys.map((k: { id: string }) => k.id)).toEqual(['openrouter', 'mistral']);
+    expect(listed.json.keys.map((k: { id: string }) => k.id)).toEqual(['xai', 'mistral']);
 
     // Every refusal on the way names no key, even one whose shape the
     // redactor does not know.
@@ -165,7 +165,7 @@ describe('the key routes on a server', () => {
       ['/keys/unknownco', { key: PLAIN_KEY }],
       ['/keys/unknownco', { key: PLAIN_KEY, baseUrl: `http://${PLAIN_KEY}.example.org` }],
       ['/keys/unknownco', { key: PLAIN_KEY, baseUrl: `not a url ${PLAIN_KEY}` }],
-      ['/keys/openrouter', { key: PLAIN_KEY, workspaceId: 'wrkspc_1' }],
+      ['/keys/xai', { key: PLAIN_KEY, workspaceId: 'wrkspc_1' }],
       ['/keys/Bad%20Id', { key: PLAIN_KEY }],
     ] as const) {
       const refused = await call('PUT', path, body);
@@ -452,7 +452,7 @@ describe('a key on the server serves coding sessions only', () => {
   });
 
   it('the CLI help says so, and names the server account', () => {
-    expect(KEY_HELP).toContain(`${SERVER_ACCOUNT_PREFIX} osc key add openrouter`);
+    expect(KEY_HELP).toContain(`${SERVER_ACCOUNT_PREFIX} osc key add groq`);
     expect(KEY_HELP).toMatch(/Crew routines and the free chat run only on a local model/);
   });
 });

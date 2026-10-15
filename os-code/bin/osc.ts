@@ -277,7 +277,7 @@ const keyCmd = program
 keyCmd
   .command('add')
   .description('add or replace a key, read from the terminal or a pipe, never the command line')
-  .argument('<provider>', 'a provider id, like openrouter, groq or anthropic')
+  .argument('<provider>', 'a provider id, like groq, mistral or anthropic')
   .option('--base-url <url>', "the provider's OpenAI-compatible address (known providers have one)")
   .option('--label <name>', 'a name for it')
   .option('--workspace <id>', 'Claude only: the workspace an identity-linked key acts in')

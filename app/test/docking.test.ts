@@ -132,12 +132,10 @@ describe('the health check says what it docked to', () => {
 });
 
 describe('providers whose models load live', () => {
-  // Venice and OpenRouter (2026-10-07), then the named providers on your key
-  // (2026-10-09, bring your own keys): every one OpenAI-compatible, with
-  // nothing typed.
+  // The named providers on your key (2026-10-09, bring your own keys):
+  // every one OpenAI-compatible, with nothing typed. Venice and OpenRouter
+  // left Cloud Connections (founder, 2026-10-15).
   const LIVE = [
-    'venice',
-    'openrouter',
     'groq',
     'together',
     'deepseek',
@@ -163,8 +161,15 @@ describe('providers whose models load live', () => {
     expect(PROVIDERS.filter((p) => p.liveModels).map((p) => p.id)).toEqual(LIVE);
   });
 
-  it("reads Venice's list: text only, not offline, its own words on privacy", () => {
-    const models = parseLiveModels('venice', {
+  it('Venice and OpenRouter are no longer providers (founder, 2026-10-15)', () => {
+    expect(providerInfo('venice')).toBeUndefined();
+    expect(providerInfo('openrouter')).toBeUndefined();
+  });
+
+  // An address connected in the Stack may answer in either shape below, so
+  // the parser still reads them, in plain words of its own.
+  it("reads a list in Venice's shape: text only, not offline, no privacy words", () => {
+    const models = parseLiveModels('custom', {
       data: [
         {
           id: 'qwen-coder',
@@ -197,13 +202,13 @@ describe('providers whose models load live', () => {
       released: '2025-10-09',
     });
     expect(coder!.categories).toContain('coding');
-    expect(coder!.tagline).toBe('On Venice, on your key.');
-    expect(big!.tagline).toBe('On Venice, on your key.');
+    expect(coder!.tagline).toBe('On your key.');
+    expect(big!.tagline).toBe('On your key.');
     expect(big!.tools).toBe(false);
     for (const m of models) expect(m.tagline).not.toMatch(/private|never|secure/i);
   });
 
-  it("reads OpenRouter's list, and a first connection picks the newest per maker", () => {
+  it("reads a list in OpenRouter's shape, and a first set takes tool-taking models newest first", () => {
     const row = (id: string, created: number, tools = true, outputs = ['text']) => ({
       id,
       name: id,
@@ -212,7 +217,7 @@ describe('providers whose models load live', () => {
       architecture: { input_modalities: ['text', 'image'], output_modalities: outputs },
       supported_parameters: tools ? ['tools', 'temperature'] : ['temperature'],
     });
-    const all = parseLiveModels('openrouter', {
+    const all = parseLiveModels('custom', {
       data: [
         row('anthropic/old', 100),
         row('anthropic/new', 200),
@@ -226,19 +231,23 @@ describe('providers whose models load live', () => {
     });
     expect(all.find((m) => m.id === 'anthropic/new')?.categories).toContain('vision');
     expect(all.some((m) => m.id === 'google/imagegen')).toBe(false);
-    expect(pickLiveModels('openrouter', all).map((m) => m.id)).toEqual([
+    expect(pickLiveModels(all).map((m) => m.id)).toEqual([
+      'someone/else',
+      'openai/b:free',
       'anthropic/new',
       'openai/a',
+      'anthropic/old',
       'qwen/coder',
+      'qwen/chat-only',
     ]);
   });
 
   it('puts the picks where every reader looks, and takes them away again', () => {
-    const venice = providerInfo('venice')!;
-    applyLiveModels('venice', [{ id: 'm1', label: 'M1', tagline: 't', categories: ['coding'] }]);
-    expect(venice.models.map((m) => m.id)).toEqual(['m1']);
-    applyLiveModels('venice', []);
-    expect(venice.models).toEqual([]);
+    const groq = providerInfo('groq')!;
+    applyLiveModels('groq', [{ id: 'm1', label: 'M1', tagline: 't', categories: ['coding'] }]);
+    expect(groq.models.map((m) => m.id)).toEqual(['m1']);
+    applyLiveModels('groq', []);
+    expect(groq.models).toEqual([]);
     applyLiveModels('openai', []);
     expect(providerInfo('openai')!.models.length).toBeGreaterThan(0);
   });

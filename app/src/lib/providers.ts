@@ -48,7 +48,7 @@ export interface ProviderInfo {
    *  device (settings.providerModels) and put back at launch. */
   liveModels?: boolean;
   /** Listed under More providers in Cloud Connections until its key is in,
-   *  so the room keeps its familiar seven at the top (2026-10-09). */
+   *  so the room keeps its familiar five at the top (2026-10-09). */
   more?: boolean;
   /** The statuses its key check reads as a rejected key, when a provider
    *  answers a bad key with more than 401 or 403 (xAI answers 400). */
@@ -269,33 +269,7 @@ export const PROVIDERS: ProviderInfo[] = [
       },
     ],
   },
-  {
-    // Venice: open models behind one OpenAI-compatible key (maintainer,
-    // 2026-10-07, "my buddy uses Venice"). Its policy says it keeps no prompts
-    // or outputs, and that some models are served through other providers it
-    // binds not to train on them. We cannot check either, so copy only ever
-    // says "Venice says". Models load live (liveModels).
-    id: 'venice',
-    name: 'Venice',
-    keyHint: 'a Venice API key',
-    openaiBaseUrl: 'https://api.venice.ai/api/v1',
-    apiKeyUrl: 'https://venice.ai/settings/api',
-    models: [],
-    liveModels: true,
-  },
-  {
-    // OpenRouter: one key and one bill for models from many providers. It
-    // forwards each request to that model's own provider, whose policy then
-    // applies. Models load live; a first set is picked for you and you
-    // choose the rest (pickLiveModels).
-    id: 'openrouter',
-    name: 'OpenRouter',
-    keyHint: 'sk-or-...',
-    openaiBaseUrl: 'https://openrouter.ai/api/v1',
-    apiKeyUrl: 'https://openrouter.ai/settings/keys',
-    models: [],
-    liveModels: true,
-  },
+  // Venice and OpenRouter left Cloud Connections (founder, 2026-10-15).
   // Named providers on your own key (2026-10-09: bring your own keys,
   // any provider; OpenShore runs no gateway and resells nothing). Each one's
   // OpenAI-compatible base is the one its own documentation gives (read
@@ -575,13 +549,6 @@ export function parseLiveModels(providerId: string, body: unknown): LiveModel[] 
 
 /** One honest line per live model: whose words a privacy claim is, never ours. */
 function liveTagline(providerId: string): string {
-  // No privacy words for Venice yet (tech review 2026-10-08): the field they
-  // would read is unconfirmed until a real /models answer is pinned as a
-  // fixture, and a saved tagline would go stale when Venice changes a model.
-  if (providerId === 'venice') return 'On Venice, on your key.';
-  if (providerId === 'openrouter') {
-    return "Through OpenRouter, on your key. It goes on to the model's own provider.";
-  }
   if (providerId === 'huggingface') {
     return 'Through Hugging Face, on your key. It goes on to one of the providers it lists for the model.';
   }
@@ -589,42 +556,15 @@ function liveTagline(providerId: string): string {
   return name ? `On ${name}, on your key.` : 'On your key.';
 }
 
-/** The makers whose newest model a first OpenRouter connection picks, so the
- *  Bench opens with a sensible set instead of hundreds. By maker, never by a
- *  model id typed here: the newest one each maker lists is taken. */
-const OPENROUTER_FIRST_MAKERS = [
-  'anthropic',
-  'openai',
-  'google',
-  'moonshotai',
-  'qwen',
-  'deepseek',
-  'x-ai',
-  'mistralai',
-  'meta-llama',
-  'z-ai',
-];
-
 /** How many models a first connection puts on the Bench at most. */
 export const LIVE_FIRST_PICKS_MAX = 24;
 
-/** The models a first connection puts on the Bench: every one Venice lists
- *  (it lists few), for OpenRouter the newest model each well-known maker
- *  offers that can take tool calls, and for any other provider its models
- *  that take tool calls first (then those its list says nothing about),
- *  newest first where the list dates them, each model once. The person
- *  changes the set any time. */
-export function pickLiveModels(providerId: string, all: LiveModel[]): LiveModel[] {
-  if (providerId === 'venice') return all.slice(0, LIVE_FIRST_PICKS_MAX);
-  if (providerId !== 'openrouter') return firstPicks(all);
-  const picks: LiveModel[] = [];
-  for (const maker of OPENROUTER_FIRST_MAKERS) {
-    const newest = all
-      .filter((m) => m.tools && m.id.startsWith(`${maker}/`) && !m.id.endsWith(':free'))
-      .sort((a, b) => (b.created ?? 0) - (a.created ?? 0))[0];
-    if (newest) picks.push(newest);
-  }
-  return picks;
+/** The models a first connection puts on the Bench: its models that take
+ *  tool calls first (then those its list says nothing about), newest first
+ *  where the list dates them, each model once. The person changes the set
+ *  any time. */
+export function pickLiveModels(all: LiveModel[]): LiveModel[] {
+  return firstPicks(all);
 }
 
 function firstPicks(all: LiveModel[]): LiveModel[] {

@@ -6,7 +6,7 @@
 // Keychain, scoped to the provider, and are spent only with your approval.
 // The room is the Settings ledger (D14, 2026-10-07): one row per
 // provider, a tap opens its key sheet, and a connected row asks before it
-// disconnects. The familiar seven stay at the top; the named providers on
+// disconnects. The familiar five stay at the top; the named providers on
 // your key (2026-10-09) join them once connected, and until then wait under
 // one More providers row, a searchable sheet. A docked server that keeps
 // keys, with this device as its admin, gains two rows under Your server:
@@ -103,7 +103,7 @@ export function ConnectionsScreen() {
   // The More providers sheet, and what its search holds.
   const [browsing, setBrowsing] = useState(false);
   const [query, setQuery] = useState('');
-  // The familiar seven, then each named provider once its key is in; the
+  // The familiar five, then each named provider once its key is in; the
   // rest wait under More providers.
   const listed = PROVIDERS.filter((p) => !p.more || connectedProviders[p.id]);
   const more = PROVIDERS.filter((p) => p.more && !connectedProviders[p.id]);
@@ -526,7 +526,7 @@ export function ConnectionsScreen() {
 
       {/* The named providers not yet connected, searchable. A tap closes
           this list and opens that provider's key sheet, the same one the
-          familiar seven use. */}
+          familiar five use. */}
       <Sheet open={browsing} onClose={() => setBrowsing(false)}>
         {browsing ? (
           <>
@@ -780,7 +780,7 @@ function LiveModelPicker({
       if (!live) return;
       setAll(models ?? 'error');
       if (models && picked.size === 0) {
-        setPicked(new Set(pickLiveModels(providerId, models).map((m) => m.id)));
+        setPicked(new Set(pickLiveModels(models).map((m) => m.id)));
       }
     })();
     return () => {

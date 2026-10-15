@@ -516,8 +516,8 @@ export function SettingsScreen() {
               AES-256. The key that unlocks them stays on this device, held in its secure store, the{' '}
               {keyStoreLabel()}, whenever one is available, and it never leaves this device. API
               keys are held the same way. When you send a turn to a cloud provider, it goes from
-              this device to that provider on your own account, and we do not see it. OpenRouter and
-              Hugging Face pass it on to the model's own provider, as What leaves this device says.
+              this device to that provider on your own account, and we do not see it. Hugging Face
+              passes it on to the model's own provider, as What leaves this device says.
             </p>
             {facts ? <LiveSeal facts={facts} /> : null}
             <h3 className="settings-sheet-head">Local models, honestly</h3>

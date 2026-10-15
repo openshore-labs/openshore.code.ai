@@ -182,7 +182,7 @@ export const EGRESS: EgressEntry[] = [
     // Every provider in Cloud Connections (lib/providers.ts), the named ones
     // on your key included (2026-10-09); egressManifest.test holds the two
     // lists together.
-    what: `Your chat, and the notes and files it draws on, to Anthropic, OpenAI, Google, Moonshot, Perplexity, Venice, OpenRouter (which forwards it to the model's own provider), Groq, Together AI, DeepSeek, Mistral, xAI, Cerebras, Hugging Face (which forwards it to one of the providers it lists for the model), Nebius Token Factory, Novita AI, MiniMax, or NVIDIA, on your own key. ${VAULT_PRIVATE_OFF_CLOUD} An amber pill or dot marks a chat whose latest turn went to one. Saving a key sends it to its provider, which answers whether it works. To every provider but Anthropic, the same request then goes once more with a made-up key in place of yours, so one that answers anyone is not taken for a yes. For a provider whose models load from it, connecting and Choose models also ask it for the list of models it offers. A key you add with osc key add on your computer or a server you dock, or turn on here for a server you dock, goes from there to its own provider, or to an address you give.`,
+    what: `Your chat, and the notes and files it draws on, to Anthropic, OpenAI, Google, Moonshot, Perplexity, Groq, Together AI, DeepSeek, Mistral, xAI, Cerebras, Hugging Face (which forwards it to one of the providers it lists for the model), Nebius Token Factory, Novita AI, MiniMax, or NVIDIA, on your own key. ${VAULT_PRIVATE_OFF_CLOUD} An amber pill or dot marks a chat whose latest turn went to one. Saving a key sends it to its provider, which answers whether it works. To every provider but Anthropic, the same request then goes once more with a made-up key in place of yours, so one that answers anyone is not taken for a yes. For a provider whose models load from it, connecting and Choose models also ask it for the list of models it offers. A key you add with osc key add on your computer or a server you dock, or turn on here for a server you dock, goes from there to its own provider, or to an address you give.`,
     when: 'Only when you pick a cloud model or place one in your Stack, and only on the turns it answers. On your computer, the coding agent asks first in each task. Also when you save a provider key, and for one whose models load from it, when you open Choose models. A key kept on your computer or a server you dock, added there with osc key add or turned on here, is used there only by coding sessions on the model you place, and they ask first in each task.',
     start: 'off',
     hosts: [
@@ -191,8 +191,6 @@ export const EGRESS: EgressEntry[] = [
       'generativelanguage.googleapis.com',
       'api.moonshot.ai',
       'api.perplexity.ai',
-      'api.venice.ai',
-      'openrouter.ai',
       'api.groq.com',
       'api.together.ai',
       'api.deepseek.com',
@@ -339,7 +337,6 @@ export const LINK_ONLY_HOSTS: Record<string, string> = {
   'console.anthropic.com': 'where to get a key',
   'aistudio.google.com': 'where to get a key',
   'platform.kimi.ai': 'where to get a key',
-  'venice.ai': 'where to get a key',
   'console.groq.com': 'where to get a key',
   'platform.deepseek.com': 'where to get a key',
   'admin.mistral.ai': 'where to get a key',

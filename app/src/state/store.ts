@@ -853,7 +853,7 @@ export interface AppSettings {
    *  anthropic-workspace-id header. Blank for a workspace-scoped key. */
   anthropicWorkspaceId?: string;
   /** The models the person keeps on the Bench from a provider whose list
-   *  loads live (Venice, OpenRouter; lib/providers.ts liveModels), keyed by
+   *  loads live (lib/providers.ts liveModels), keyed by
    *  provider id. Put back on PROVIDERS at launch. */
   providerModels?: Record<string, ProviderModel[]>;
   /** Models the user pinned (swipe-left) from the Cloud Providers or Local LLMs
@@ -15165,7 +15165,7 @@ export const useApp = create<AppState>((set, get, api) => {
       // unless the person already chose some on this device.
       if (providerInfo(id)?.liveModels && !get().settings.providerModels?.[id]?.length) {
         const all = await fetchLiveModels(id, key.trim());
-        if (all) await get().setProviderModels(id, pickLiveModels(id, all));
+        if (all) await get().setProviderModels(id, pickLiveModels(all));
       }
       logEvent('provider_connected', { provider: id });
     },

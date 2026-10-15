@@ -242,7 +242,7 @@ export const DOCK_PATHS: { id: DockPath; title: string; detail: string }[] = [
   {
     id: 'cloud',
     title: 'A cloud model on your key',
-    detail: 'Claude, OpenAI, Gemini, Venice, OpenRouter and more, set up in Cloud Connections.',
+    detail: 'Claude, OpenAI, Gemini, Kimi and more, set up in Cloud Connections.',
   },
   {
     id: 'device',

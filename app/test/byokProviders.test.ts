@@ -9,8 +9,8 @@
 // pinned. Each yields its chat models and nothing else; a key check a
 // provider answers with its own status reads as rejected, and a list that
 // answers a made-up key too proves nothing; and a first connection puts a
-// sensible set on the Bench. Venice and OpenRouter keep their own pins in
-// docking.test.ts, unchanged.
+// sensible set on the Bench. Venice and OpenRouter left Cloud Connections
+// (founder, 2026-10-15).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -76,8 +76,8 @@ describe('the named providers', () => {
     ['nvidia', 'NVIDIA', 'https://integrate.api.nvidia.com/v1'],
   ];
 
-  it('follow OpenRouter in order, each live, waiting under More providers', () => {
-    const at = PROVIDERS.findIndex((p) => p.id === 'openrouter');
+  it('follow Perplexity in order, each live, waiting under More providers', () => {
+    const at = PROVIDERS.findIndex((p) => p.id === 'perplexity');
     expect(PROVIDERS.slice(at + 1).map((p) => p.id)).toEqual(NAMED.map(([id]) => id));
     for (const [id, name, base] of NAMED) {
       const p = providerInfo(id)!;
@@ -89,7 +89,7 @@ describe('the named providers', () => {
       expect(p.models, id).toEqual([]);
       expect(p.keyHint.trim(), id).not.toBe('');
     }
-    // The familiar seven are never under More providers.
+    // The familiar five are never under More providers.
     expect(PROVIDERS.slice(0, at + 1).some((p) => p.more)).toBe(false);
   });
 
@@ -160,10 +160,7 @@ describe('each list, in its documented shape', () => {
     // A plain list says nothing about tools, so nothing claims it.
     expect(models[0]!.categories).toEqual(['writing']);
     // Newest first.
-    expect(ids(pickLiveModels('groq', models))).toEqual([
-      'openai/gpt-oss-120b',
-      'llama-3.3-70b-versatile',
-    ]);
+    expect(ids(pickLiveModels(models))).toEqual(['openai/gpt-oss-120b', 'llama-3.3-70b-versatile']);
   });
 
   it('Together: a bare list, chat rows only, by their display name', () => {
@@ -213,7 +210,7 @@ describe('each list, in its documented shape', () => {
     expect(models![0]).toMatchObject({ contextTokens: 131072, toolsUnknown: true });
     expect(models![0]!.released).toBeUndefined();
     // No dates: the list's own order.
-    expect(ids(pickLiveModels('deepseek', models!))).toEqual(['deepseek-flash', 'deepseek-v4-pro']);
+    expect(ids(pickLiveModels(models!))).toEqual(['deepseek-flash', 'deepseek-v4-pro']);
   });
 
   it('Mistral: base and fine-tuned cards that chat, read from their capabilities, aliases once', () => {
@@ -274,7 +271,7 @@ describe('each list, in its documented shape', () => {
     expect(ft).toMatchObject({ tools: false });
     expect(ft!.toolsUnknown).toBeUndefined();
     // A first set takes a model once, whichever alias comes first, tools first.
-    expect(ids(pickLiveModels('mistral', models))).toEqual([
+    expect(ids(pickLiveModels(models))).toEqual([
       'mistral-large-2411',
       'pixtral-large-2411',
       'ft:open-mistral-7b:abc:20260101',
@@ -306,10 +303,7 @@ describe('each list, in its documented shape', () => {
     expect(ids(models)).toEqual(['gpt-oss-120b', 'qwen-3-235b-a22b-instruct-2507']);
     expect(models[0]!.created).toBeUndefined();
     // Dated before undated.
-    expect(ids(pickLiveModels('cerebras', models))).toEqual([
-      'qwen-3-235b-a22b-instruct-2507',
-      'gpt-oss-120b',
-    ]);
+    expect(ids(pickLiveModels(models))).toEqual(['qwen-3-235b-a22b-instruct-2507', 'gpt-oss-120b']);
   });
 
   it('Hugging Face: tools from any provider that serves it, the smallest window, and whose policy applies', () => {
@@ -417,7 +411,7 @@ describe('each list, in its documented shape', () => {
     expect(ids(models)).toEqual(['meta/llama-3.3-70b-instruct', 'deepseek-ai/deepseek-r1']);
     // Every row stamped alike is no release date.
     for (const m of models) expect(m.released, m.id).toBeUndefined();
-    expect(ids(pickLiveModels('nvidia', models))).toEqual(ids(models));
+    expect(ids(pickLiveModels(models))).toEqual(ids(models));
   });
 
   // A list stamped when it is asked (Mistral's may be) would date every model
@@ -439,7 +433,7 @@ describe('each list, in its documented shape', () => {
       expect(m.created, m.id).toBeUndefined();
     }
     // The list's own order, not a tie broken by a shared stamp.
-    expect(ids(pickLiveModels('mistral', models))).toEqual(ids(models));
+    expect(ids(pickLiveModels(models))).toEqual(ids(models));
     // One dated row is a date.
     const [one] = parseLiveModels('mistral', { data: [card('open-mistral-7b')] });
     expect(one!.released).toBe(new Date(now * 1000).toISOString().slice(0, 10));
@@ -464,7 +458,7 @@ describe('each list, in its documented shape', () => {
         },
       ],
     });
-    expect(ids(pickLiveModels('mistral', models))).toEqual(['mistral-large-latest']);
+    expect(ids(pickLiveModels(models))).toEqual(['mistral-large-latest']);
   });
 
   it('taglines name whose key it is, never a privacy or speed claim', () => {
@@ -493,16 +487,11 @@ describe('a first connection picks a sensible set', () => {
       live('new-tools', { created: 1_760_000_000, supported_parameters: ['tools'] }),
     ];
     const models = parseLiveModels('together-like', { data: rows });
-    expect(ids(pickLiveModels('groq', models))).toEqual([
-      'new-tools',
-      'old-tools',
-      'unsaid',
-      'chat-only',
-    ]);
+    expect(ids(pickLiveModels(models))).toEqual(['new-tools', 'old-tools', 'unsaid', 'chat-only']);
     const many = parseLiveModels('groq', {
       data: Array.from({ length: 40 }, (_, i) => live(`m${i}`, { created: 1_760_000_000 + i })),
     });
-    const picks = pickLiveModels('groq', many);
+    const picks = pickLiveModels(many);
     expect(picks).toHaveLength(LIVE_FIRST_PICKS_MAX);
     expect(picks[0]!.id).toBe('m39');
   });

@@ -63,15 +63,15 @@ afterEach(() => {
 
 describe('putting a key', () => {
   it('stores the key under its own name and writes the provider beside the default Ollama', () => {
-    const row = putProviderKey('openrouter', { key: SECRET });
-    expect(row).toMatchObject({ id: 'openrouter', label: 'OpenRouter', host: 'openrouter.ai' });
-    expect(getCredential('provider-key:openrouter')).toBe(SECRET);
+    const row = putProviderKey('xai', { key: SECRET });
+    expect(row).toMatchObject({ id: 'xai', label: 'xAI', host: 'api.x.ai' });
+    expect(getCredential('provider-key:xai')).toBe(SECRET);
     const file = globalFile();
-    expect(file.providers.openrouter).toEqual({
+    expect(file.providers.xai).toEqual({
       kind: 'openai-compatible',
-      baseUrl: 'https://openrouter.ai/api/v1',
-      apiKeyRef: 'provider-key:openrouter',
-      label: 'OpenRouter',
+      baseUrl: 'https://api.x.ai/v1',
+      apiKeyRef: 'provider-key:xai',
+      label: 'xAI',
       versionedBase: true,
     });
     // A fresh server has no config file: the first key keeps the model server
@@ -128,18 +128,18 @@ describe('putting a key', () => {
       ['Open Router', { key: SECRET }, /lower-case/],
       ['-x', { key: SECRET }, /lower-case/],
       ['a'.repeat(42), { key: SECRET }, /lower-case/],
-      ['openrouter', { key: '' }, /Send the API key/],
-      ['openrouter', { key: 'two words here' }, /no spaces/],
-      ['openrouter', { key: 42 }, /Send the API key/],
+      ['xai', { key: '' }, /Send the API key/],
+      ['xai', { key: 'two words here' }, /no spaces/],
+      ['xai', { key: 42 }, /Send the API key/],
       ['unknownco', { key: SECRET }, /does not know where unknownco answers/],
       ['unknownco', { key: SECRET, baseUrl: 'http://api.example.org/v1' }, /https/],
       ['unknownco', { key: SECRET, baseUrl: 'https://me:pw@api.example.org/v1' }, /no name/],
       ['unknownco', { key: SECRET, baseUrl: 'https://api.example.org/v1?key=1' }, /query/],
       ['unknownco', { key: SECRET, baseUrl: 'not a url' }, /not an address/],
-      ['openrouter', { key: SECRET, workspaceId: 'wrkspc_1' }, /only with a Claude key/],
-      ['openrouter', { key: SECRET, label: 'bad\u202elabel' }, /control or direction/],
-      ['openrouter', { key: SECRET, label: 'bad\u200blabel' }, /control or direction/],
-      ['openrouter', { key: SECRET, label: 'bad\u0007label' }, /control or direction/],
+      ['xai', { key: SECRET, workspaceId: 'wrkspc_1' }, /only with a Claude key/],
+      ['xai', { key: SECRET, label: 'bad\u202elabel' }, /control or direction/],
+      ['xai', { key: SECRET, label: 'bad\u200blabel' }, /control or direction/],
+      ['xai', { key: SECRET, label: 'bad\u0007label' }, /control or direction/],
       ['unknownco', { key: SECRET, baseUrl: 'https://127.0.0.1:4000/v1' }, /own network/],
       ['unknownco', { key: SECRET, baseUrl: 'http://192.168.1.20:4000/v1' }, /https/],
       ['constructor', { key: SECRET }, /does not know where constructor answers/],
@@ -234,12 +234,12 @@ function globalFileExists(): boolean {
 
 describe('listing keys', () => {
   it('answers which providers hold a key, never the key, a fingerprint, or a date', () => {
-    putProviderKey('openrouter', { key: SECRET });
+    putProviderKey('xai', { key: SECRET });
     putProviderKey('groq', { key: 'gsk_list_key_123456' });
     putProviderKey('anthropic', { key: 'sk-ant-api03-abcdefghijklmnop' });
     const rows = listProviderKeys();
     expect(rows).toEqual([
-      { id: 'openrouter', label: 'OpenRouter', host: 'openrouter.ai' },
+      { id: 'xai', label: 'xAI', host: 'api.x.ai' },
       { id: 'groq', label: 'Groq', host: 'api.groq.com' },
       { id: 'anthropic', label: 'Claude', host: 'api.anthropic.com' },
     ]);
@@ -287,20 +287,20 @@ describe('listing keys', () => {
 
 describe('removing keys', () => {
   it('deletes the key and the provider, and clears every slot that named it', () => {
-    putProviderKey('openrouter', { key: SECRET });
-    placeOrchestrator({ provider: 'openrouter', model: 'deepseek/deepseek-v4-pro' });
+    putProviderKey('xai', { key: SECRET });
+    placeOrchestrator({ provider: 'xai', model: 'deepseek/deepseek-v4-pro' });
     const file = globalFile();
     file.stack.specialists = {
-      coding: { provider: 'openrouter', model: 'qwen/qwen3-coder' },
+      coding: { provider: 'xai', model: 'qwen/qwen3-coder' },
       vision: { provider: 'ollama', model: 'llava:7b' },
     };
     writeGlobal(file);
 
-    const gone = removeProviderKey('openrouter');
-    expect(gone).toEqual({ removed: ['openrouter'], slotsCleared: ['orchestrator', 'coding'] });
-    expect(getCredential('provider-key:openrouter')).toBeUndefined();
+    const gone = removeProviderKey('xai');
+    expect(gone).toEqual({ removed: ['xai'], slotsCleared: ['orchestrator', 'coding'] });
+    expect(getCredential('provider-key:xai')).toBeUndefined();
     const after = globalFile();
-    expect(after.providers.openrouter).toBeUndefined();
+    expect(after.providers.xai).toBeUndefined();
     expect(after.providers.ollama).toBeDefined();
     expect(after.stack.orchestrator).toBeUndefined();
     expect(after.stack.specialists).toEqual({ vision: { provider: 'ollama', model: 'llava:7b' } });
@@ -329,16 +329,16 @@ describe('removing keys', () => {
       providers: { mine: { kind: 'openai-compatible', baseUrl: 'https://a.test' } },
       stack: { orchestrator: { provider: 'mine', model: 'm' } },
     });
-    putProviderKey('openrouter', { key: SECRET });
+    putProviderKey('xai', { key: SECRET });
     putProviderKey('groq', { key: 'gsk_all_key_123456' });
     putProviderKey('anthropic', { key: 'sk-ant-api03-abcdefghijklmnop', workspaceId: 'wrkspc_1' });
     placeOrchestrator({ provider: 'groq', model: 'openai/gpt-oss-120b' });
 
     const gone = removeAllProviderKeys();
-    expect(gone.removed.sort()).toEqual(['anthropic', 'groq', 'openrouter']);
+    expect(gone.removed.sort()).toEqual(['anthropic', 'groq', 'xai']);
     expect(gone.slotsCleared).toEqual(['orchestrator']);
     for (const name of [
-      'provider-key:openrouter',
+      'provider-key:xai',
       'provider-key:groq',
       'anthropic-api-key',
       'anthropic-workspace-id',
@@ -808,8 +808,6 @@ const KEY_SHAPES: Record<string, string | null> = {
   google: 'AIzaSyAbCdEfGhIjKlMnOpQrStUv0123456789',
   moonshot: 'sk-AbCdEfGhIjKlMnOpQrStUv0123456789abcdef',
   perplexity: 'pplx-AbCdEfGhIjKlMnOpQrStUv0123456789abcdef',
-  venice: null,
-  openrouter: 'sk-or-v1-0123456789abcdef0123456789abcdef0123456789abcdef',
   groq: 'gsk_AbCdEfGhIjKlMnOpQrStUv0123456789abcdef',
   together: 'tgp_v1_AbCdEfGhIjKlMnOpQrStUv0123456789-_abc',
   deepseek: 'sk-0123456789abcdef0123456789abcdef',

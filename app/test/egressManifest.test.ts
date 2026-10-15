@@ -91,8 +91,7 @@ describe('what leaves this device', () => {
     for (const p of PROVIDERS.filter((x) => x.liveModels)) {
       expect(cloud.what, p.id).toContain(p.name);
     }
-    // Both forwarders say they forward; no provider is called private or fast.
-    expect(cloud.what).toContain("OpenRouter (which forwards it to the model's own provider)");
+    // The forwarder says it forwards; no provider is called private or fast.
     expect(cloud.what).toContain(
       'Hugging Face (which forwards it to one of the providers it lists for the model)',
     );

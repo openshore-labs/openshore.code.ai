@@ -133,7 +133,7 @@ describe('Cloud Connections in the ledger', () => {
     await dom.render(<ConnectionsScreen />);
     const listed = rows();
     // Your server leads (connect-anywhere, 2026-10-07), then the familiar
-    // seven, then one row for the named providers on your key. Frontier
+    // five, then one row for the named providers on your key. Frontier
     // models and Any other provider left (founder, 2026-10-15).
     expect(listed.map((r) => r.label)).toEqual([
       'Set up a server',
@@ -146,8 +146,6 @@ describe('Cloud Connections in the ledger', () => {
       'google',
       'moonshot',
       'perplexity',
-      'venice',
-      'openrouter',
     ]);
     expect(listed.find((r) => r.label === 'More providers')!.sub).toBe(
       `Groq, Together AI, DeepSeek, and ${NAMED.length - 3} more, each on your own key.`,

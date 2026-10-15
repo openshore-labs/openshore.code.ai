@@ -34,10 +34,10 @@ export const SERVER_ACCOUNT_PREFIX = 'sudo -u openshore env HOME=/var/lib/opensh
 export const KEY_HELP = [
   '',
   "On a server, run it as the server's own account, so its sessions find the key:",
-  `  ${SERVER_ACCOUNT_PREFIX} osc key add openrouter`,
+  `  ${SERVER_ACCOUNT_PREFIX} osc key add groq`,
   '',
   'The key is read from this terminal (nothing shows as you paste it) or from a pipe:',
-  `  printf '%s' "$OPENROUTER_API_KEY" | ${SERVER_ACCOUNT_PREFIX} osc key add openrouter`,
+  `  printf '%s' "$GROQ_API_KEY" | ${SERVER_ACCOUNT_PREFIX} osc key add groq`,
   '',
   `Known providers (no --base-url needed): ${Object.keys(KNOWN_PROVIDERS).join(', ')}.`,
   "Keys serve coding sessions here. Crew routines and the free chat run only on a local model, so they do not run while a cloud model is this machine's model.",

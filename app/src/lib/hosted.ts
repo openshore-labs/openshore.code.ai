@@ -33,7 +33,7 @@ export const HOSTED_SHELF = {
   key: 'hosted',
   title: 'Frontier models',
   // Not "hosted by their makers": a live provider's picks sit here too, and
-  // Groq, Together AI or OpenRouter host other makers' models (2026-10-09).
+  // Groq, Together AI or Hugging Face host other makers' models (2026-10-09).
   subtitle:
     'Cloud models on your own key. Billed to you by their provider, spent only with your say.',
 };

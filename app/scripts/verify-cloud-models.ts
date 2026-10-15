@@ -81,8 +81,8 @@ async function main(): Promise<void> {
   let checked = 0;
 
   for (const provider of PROVIDERS) {
-    // A provider whose models load live (Venice, OpenRouter, and every one
-    // under More providers) lists nothing here: its models come from the
+    // A provider whose models load live (every one under More
+    // providers) lists nothing here: its models come from the
     // same endpoint on the person's key, so there is no typed id to go dead.
     if (provider.liveModels) {
       console.log(`- ${provider.name} (${provider.id}): models load live, nothing typed to check`);

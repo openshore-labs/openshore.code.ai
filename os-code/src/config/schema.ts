@@ -42,7 +42,7 @@ export const OpenAICompatibleEndpointSchema = z.object({
    */
   apiKeyRef: ProviderKeyRefSchema.optional(),
   /**
-   * The base already carries its version (https://openrouter.ai/api/v1), so
+   * The base already carries its version (https://api.groq.com/openai/v1), so
    * the engine adds /models, /chat/completions and /embeddings with no /v1 of
    * its own. Unset, the base excludes it (http://localhost:11434), as before.
    */
