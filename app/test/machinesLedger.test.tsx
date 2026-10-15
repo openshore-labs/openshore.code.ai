@@ -430,7 +430,7 @@ describe('the Stack names its image reader', () => {
     useApp.setState({ view: 'stack', connectedProviders: { anthropic: true } });
     const { StackManager } = await import('../src/components/StackManager.js');
     await dom.render(<StackManager />);
-    expect(reader).toBe('Claude Haiku 4.5');
+    expect(reader).toBe('Claude Haiku 5.5');
     // The stand-in reads a picture in a chat, after asking; it never takes a
     // plan's image step (UX and copy review, 2026-10-08, E), so no row names one.
     expect(cloudRow()).toBe(`None yet · ${reader} reads images for now. It asks before a picture.`);

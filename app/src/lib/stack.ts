@@ -8,6 +8,7 @@
 // The Reasoning model plans and routes each task to the specialist whose category
 // fits, and executes the task itself whenever no specialist is placed for it.
 import { HARBOR_MINI_MODEL_ID, HARBOR_MINI_MODEL_NAME } from './harborMini.js';
+import { HARBOR_MODEL_ID, HARBOR_MODEL_NAME } from './harbor.js';
 import { PROVIDERS, providerModelVision } from './providers.js';
 import { byomReach, type ByomWire } from './byom.js';
 import type { Effort } from './effort.js';
@@ -120,6 +121,12 @@ export function placementValid(p: Placement): boolean {
 
 export function harborRef(): StackModelRef {
   return { kind: 'device', modelId: HARBOR_MINI_MODEL_ID, modelName: HARBOR_MINI_MODEL_NAME };
+}
+
+/** The device StackModelRef for the flagship guide (Harbor), Harbor Lite's
+ *  bigger sibling. */
+export function harborFullRef(): StackModelRef {
+  return { kind: 'device', modelId: HARBOR_MODEL_ID, modelName: HARBOR_MODEL_NAME };
 }
 
 // ---- vision -------------------------------------------------------------

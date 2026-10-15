@@ -13,9 +13,9 @@ describe('Claude model catalog', () => {
     // The Claude app's picker shape: the current family up top.
     expect(CLAUDE_MODELS_PRIMARY.map((m) => m.id)).toEqual([
       'claude-fable-5-1',
-      'claude-opus-5',
-      'claude-sonnet-5',
-      'claude-haiku-4-5',
+      'claude-opus-5-5',
+      'claude-sonnet-5-5',
+      'claude-haiku-5-5',
     ]);
     expect(CLAUDE_MODELS_PRIMARY.every((m) => m.tier === 'primary')).toBe(true);
   });
@@ -23,10 +23,13 @@ describe('Claude model catalog', () => {
   it('lists the older, still-reachable models behind "more"', () => {
     expect(CLAUDE_MODELS_MORE.map((m) => m.id)).toEqual([
       'claude-fable-5',
+      'claude-opus-5',
+      'claude-sonnet-5',
       'claude-opus-4-8',
       'claude-opus-4-7',
       'claude-opus-4-6',
       'claude-sonnet-4-6',
+      'claude-haiku-4-5',
     ]);
     expect(CLAUDE_MODELS_MORE.every((m) => m.tier === 'more')).toBe(true);
   });
@@ -49,12 +52,12 @@ describe('Claude model catalog', () => {
   });
 
   it('names models by their short label, falling back to the id', () => {
-    expect(claudeModelLabel('claude-opus-5')).toBe('Opus 5');
+    expect(claudeModelLabel('claude-opus-5-5')).toBe('Opus 5.5');
     expect(claudeModelLabel('claude-opus-4-8')).toBe('Opus 4.8');
     expect(claudeModelLabel('unknown')).toBe('unknown');
   });
 
-  it('defaults to Opus 5', () => {
-    expect(DEFAULT_CLAUDE_MODEL).toBe('claude-opus-5');
+  it('defaults to Opus 5.5', () => {
+    expect(DEFAULT_CLAUDE_MODEL).toBe('claude-opus-5-5');
   });
 });

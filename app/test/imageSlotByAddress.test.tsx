@@ -336,7 +336,7 @@ describe('Image reading says who reads first, and when the Cloud model reads (K)
     await dom.render(<StackManager />);
     await tapRow('Cloud');
     expect(sheetSub()).toBe(
-      'Reads a picture only when your Local model cannot read here, or after you approve when it fails on one. Until you choose one, Claude Haiku 4.5 reads them. It asks before a picture.',
+      'Reads a picture only when your Local model cannot read here, or after you approve when it fails on one. Until you choose one, Claude Haiku 5.5 reads them. It asks before a picture.',
     );
   });
 });

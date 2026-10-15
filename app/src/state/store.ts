@@ -297,6 +297,7 @@ import {
 } from '../lib/routines.js';
 import {
   refKey as stackRefKey,
+  harborFullRef,
   harborRef,
   refReady,
   stackReady,
@@ -2876,12 +2877,6 @@ export function isOrgAdmin(account?: Account): boolean {
 export function stackAdmin(account?: Account): boolean {
   if (account?.previewAsMember) return false;
   return isOrgAdmin(account);
-}
-
-/** The device StackModelRef for the flagship guide (Harbor). Harbor Lite has
- *  its own harborRef() in stack.js; this is its bigger sibling. */
-function harborFullRef(): StackModelRef {
-  return { kind: 'device', modelId: HARBOR_MODEL_ID, modelName: HARBOR_MODEL_NAME };
 }
 
 /**

@@ -23,6 +23,7 @@ import {
   type BenchModel,
 } from '../lib/providers.js';
 import { isHarborMini } from '../lib/harborMini.js';
+import { HARBOR_MODEL_ID } from '../lib/harbor.js';
 import { isDesktop } from '../lib/platform.js';
 import { isPinned } from '../lib/pins.js';
 import {
@@ -52,6 +53,7 @@ import {
   STACK_CATEGORIES,
   STACK_LEAD,
   categoryLabel,
+  harborFullRef,
   harborRef,
   pickVisionRef,
   placementValid,
@@ -67,7 +69,8 @@ import {
 import { EFFORTS, effortLabel, DEFAULT_EFFORT, type Effort } from '../lib/effort.js';
 import { Sheet } from './Sheet.js';
 import { SheetHead, SheetTitle } from './SheetHead.js';
-import { MoreGlyph } from './SheetGlyphs.js';
+import { ChevronGlyph, MoreGlyph } from './SheetGlyphs.js';
+import { sheetExitMs } from '../lib/motion.js';
 import { SettingsGroup, SettingsRow } from './SettingsRow.js';
 import { ModelChecklist } from './ModelChecklist.js';
 import { Switch } from './Switch.js';
@@ -147,6 +150,35 @@ function KindChip({ refModel }: { refModel: StackModelRef }) {
   return <span className={`kind-chip ${cls}`}>{label}</span>;
 }
 
+/** One model in Who runs the show: its name and kind, and Current on the
+ *  one in the seat. */
+function ReasoningOption({
+  refModel,
+  current,
+  onPick,
+}: {
+  refModel: StackModelRef;
+  current: boolean;
+  onPick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={`btn ghost profile-option press-fb${current ? ' selected' : ''}`}
+      aria-current={current ? 'true' : undefined}
+      onClick={onPick}
+    >
+      <span className="profile-option-text">
+        <span className="profile-option-title">
+          {refName(refModel)}
+          <KindChip refModel={refModel} />
+        </span>
+        {current ? <span className="profile-option-blurb">Current</span> : null}
+      </span>
+    </button>
+  );
+}
+
 export function StackManager({
   computer,
 }: {
@@ -214,8 +246,11 @@ export function StackManager({
     (m) => m.placement.category !== 'vision' || (m !== slots.local && m !== slots.cloud),
   );
 
+  // Harbor is a ready flag, not a deviceModels entry, so it joins once
+  // downloaded (2026-10-15: the flag used to list Harbor Lite in its place,
+  // so Harbor never showed and could not be the Reasoning model).
   const deviceRefs: StackModelRef[] = [
-    ...(settings.harborReady ? [harborRef()] : []),
+    ...(settings.harborReady && !settings.deviceModels[HARBOR_MODEL_ID] ? [harborFullRef()] : []),
     ...Object.entries(settings.deviceModels).map(([modelId, modelName]): StackModelRef => ({
       kind: 'device',
       modelId,
@@ -246,6 +281,40 @@ export function StackManager({
   const placed = (r: StackModelRef) => refKey(r) === reasoningKey || activeKeys.has(refKey(r));
   // Every model but the anchor, for the Who runs the show picker.
   const others = available.filter((r) => refKey(r) !== reasoningKey);
+  // Who runs the show lists each connected cloud provider once; its models
+  // open a step in.
+  // The cloud provider whose models are open for choosing the Reasoning
+  // model: each provider is one row in Who runs the show, its models a step
+  // in (founder, 2026-10-15).
+  const [reasoningProvider, setReasoningProvider] = useState<string | undefined>();
+  // Harbor Lite, the default seat, stays a way back to it in the picker
+  // where it is on this device, though never a bench model of its own.
+  const liteBack =
+    settings.harborMiniReady && !isHarborMini(reasoning.kind === 'device' ? reasoning.modelId : '')
+      ? [harborRef()]
+      : [];
+  const reasoningProviders = PROVIDERS.filter(
+    (p) => connectedProviders[p.id] && providerBenchModels(p).length > 0,
+  );
+  const openProvider = PROVIDERS.find((p) => p.id === reasoningProvider);
+  const chooseReasoning = async (r: StackModelRef) => {
+    setPickReasoning(false);
+    setReasoningProvider(undefined);
+    if (refKey(r) === reasoningKey) return;
+    await setReasoning(r, editProfile);
+    showToast(`${refName(r)} is your Reasoning model.`);
+  };
+  const providerOption = (provider: string, m: BenchModel) => {
+    const r: StackModelRef = { kind: 'cloud', provider, model: m.id, label: m.label };
+    return (
+      <ReasoningOption
+        key={refKey(r)}
+        refModel={r}
+        current={refKey(r) === reasoningKey}
+        onPick={() => void chooseReasoning(r)}
+      />
+    );
+  };
   // The local bench holds on-device and bring-your-own-model refs, both placed
   // the same way; connected cloud providers get their own grouped section.
   const bench = [...deviceRefs, ...byomRefs].filter((r) => !placed(r));
@@ -875,36 +944,76 @@ export function StackManager({
               The Reasoning model plans and routes. It can be any model you have.
             </p>
             <div className="sheet-actions">
-              {[reasoning, ...others].map((r) => {
-                const current = refKey(r) === reasoningKey;
+              {[reasoning, ...others, ...liteBack]
+                .filter((r) => r.kind !== 'cloud')
+                .map((r) => (
+                  <ReasoningOption
+                    key={refKey(r)}
+                    refModel={r}
+                    current={refKey(r) === reasoningKey}
+                    onPick={() => void chooseReasoning(r)}
+                  />
+                ))}
+              {reasoningProviders.map((p) => {
+                const here = reasoning.kind === 'cloud' && reasoning.provider === p.id;
+                const n = providerBenchModels(p).length;
                 return (
                   <button
-                    key={refKey(r)}
+                    key={p.id}
                     type="button"
-                    className={`btn ghost profile-option press-fb${current ? ' selected' : ''}`}
-                    aria-current={current ? 'true' : undefined}
-                    onClick={async () => {
+                    className={`btn ghost profile-option press-fb${here ? ' selected' : ''}`}
+                    aria-current={here ? 'true' : undefined}
+                    onClick={() => {
                       setPickReasoning(false);
-                      if (current) return;
-                      await setReasoning(r, editProfile);
-                      showToast(`${refName(r)} is your Reasoning model.`);
+                      setTimeout(() => setReasoningProvider(p.id), sheetExitMs());
                     }}
                   >
                     <span className="profile-option-text">
                       <span className="profile-option-title">
-                        {refName(r)}
-                        <KindChip refModel={r} />
+                        {p.name}
+                        <KindChip
+                          refModel={{ kind: 'cloud', provider: p.id, model: '', label: p.name }}
+                        />
                       </span>
-                      {current ? <span className="profile-option-blurb">Current</span> : null}
+                      <span className="profile-option-blurb">
+                        {here
+                          ? `Current: ${refName(reasoning)}`
+                          : `${n} ${n === 1 ? 'model' : 'models'}`}
+                      </span>
                     </span>
+                    <ChevronGlyph dir="right" />
                   </button>
                 );
               })}
-              {others.length === 0 ? (
+              {others.length === 0 && liteBack.length === 0 ? (
                 <p className="hint">
                   Get Harbor in Settings, or connect a cloud provider, to choose another.
                 </p>
               ) : null}
+            </div>
+          </>
+        ) : null}
+      </Sheet>
+
+      {/* One cloud provider's models, for the Reasoning model. */}
+      <Sheet open={Boolean(openProvider)} onClose={() => setReasoningProvider(undefined)}>
+        {openProvider ? (
+          <>
+            <SheetHead
+              title={`${openProvider.name} models`}
+              onClose={() => setReasoningProvider(undefined)}
+            />
+            <p className="sheet-sub">Choose the one that plans and routes.</p>
+            <div className="sheet-actions">
+              {providerBenchModels(openProvider)
+                .filter((m) => m.tier !== 'more')
+                .map((m) => providerOption(openProvider.id, m))}
+              {providerBenchModels(openProvider).some((m) => m.tier === 'more') ? (
+                <p className="hint">Older models</p>
+              ) : null}
+              {providerBenchModels(openProvider)
+                .filter((m) => m.tier === 'more')
+                .map((m) => providerOption(openProvider.id, m))}
             </div>
           </>
         ) : null}

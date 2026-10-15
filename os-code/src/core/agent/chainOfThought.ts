@@ -171,7 +171,7 @@ function legacyClaudeThinking(model: string): boolean {
   const m = model.toLowerCase();
   return (
     /claude-3/.test(m) ||
-    m.includes('haiku') ||
+    /haiku-4-5|haiku-4-\d{8}|haiku-3/.test(m) ||
     /(opus|sonnet)-4-[015](-|$)/.test(m) ||
     /(opus|sonnet)-4-\d{8}/.test(m)
   );

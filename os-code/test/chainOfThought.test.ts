@@ -104,7 +104,17 @@ describe('the pure rules', () => {
   });
 
   it('asks Claude 4.6 and newer to think adaptively, with a readable summary', () => {
-    for (const m of ['claude-opus-4-6', 'claude-sonnet-4-6', 'claude-opus-4-8', 'claude-opus-5']) {
+    // Haiku 5.5 included: a fixed budget is a 400 there (2026-10-15).
+    for (const m of [
+      'claude-opus-4-6',
+      'claude-sonnet-4-6',
+      'claude-opus-4-8',
+      'claude-opus-5',
+      'claude-opus-5-5',
+      'claude-sonnet-5-5',
+      'claude-haiku-5-5',
+      'claude-fable-5-1',
+    ]) {
       const t = claudeThinking(m, 2048);
       expect(t.thinking, m).toEqual({ type: 'adaptive', display: 'summarized' });
       expect(t.maxTokens).toBeGreaterThanOrEqual(16000);

@@ -136,7 +136,7 @@ describe('visionSlots and the default cloud position', () => {
       model: claude.id,
       label: `Claude ${claudeModelLabel(claude.id)}`,
     });
-    expect(first!.label).toBe('Claude Haiku 4.5');
+    expect(first!.label).toBe('Claude Haiku 5.5');
     expect(first!.model).not.toBe(DEFAULT_CLAUDE_MODEL);
   });
 

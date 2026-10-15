@@ -68,23 +68,23 @@ export const PROVIDERS: ProviderInfo[] = [
     apiKeyUrl: 'https://console.anthropic.com/settings/keys',
     models: [
       {
-        id: 'claude-opus-5',
-        label: 'Claude Opus 5',
+        id: 'claude-opus-5-5',
+        label: 'Claude Opus 5.5',
         good: 'reasoning',
         tagline:
           'The deepest reasoner here. Plans long work and holds the whole repository in mind.',
         categories: ['reasoning', 'coding', 'writing', 'vision'],
       },
       {
-        id: 'claude-sonnet-5',
-        label: 'Claude Sonnet 5',
+        id: 'claude-sonnet-5-5',
+        label: 'Claude Sonnet 5.5',
         good: 'coding',
         tagline: 'The everyday coding brain: fast, careful edits, reliable with tools.',
         categories: ['coding', 'reasoning', 'vision'],
       },
       {
-        id: 'claude-haiku-4-5',
-        label: 'Claude Haiku 4.5',
+        id: 'claude-haiku-5-5',
+        label: 'Claude Haiku 5.5',
         good: 'fast',
         tagline: 'Quick and cheap for trivial edits and short answers.',
         categories: ['fast', 'coding'],

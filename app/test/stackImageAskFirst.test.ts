@@ -152,7 +152,7 @@ describe('an image when no local model can see', () => {
     expect(ask?.request).toMatchObject({
       kind: 'cloud-spend',
       risk: 'cloud-spend',
-      summary: 'Read this image with Claude Haiku 4.5?',
+      summary: 'Read this image with Claude Haiku 5.5?',
     });
     expect(ask?.request.detail).toContain('Nothing in Stack is set for Image reading');
     // The turn waits on the tap with no timer, so the card says Stop skips it,
@@ -173,7 +173,7 @@ describe('an image when no local model can see', () => {
     await settle();
     expect(events.some((e) => e.type === 'approval-resolved' && e.approved)).toBe(true);
     expect(h.streams).toBe(1);
-    expect(h.models).toEqual(['claude-haiku-4-5']);
+    expect(h.models).toEqual(['claude-haiku-5-5']);
     // Nothing is set for Image reading, so the line says so and names the
     // reader and the connection it runs on (2026-10-07).
     expect(
@@ -181,7 +181,7 @@ describe('an image when no local model can see', () => {
         (e) =>
           e.type === 'status' &&
           e.message ===
-            'No image model is set in Stack, so Claude Haiku 4.5 reads this image on your Claude connection.',
+            'No image model is set in Stack, so Claude Haiku 5.5 reads this image on your Claude connection.',
       ),
     ).toBe(true);
     const final = events.findLast((e) => e.type === 'text-final') as { text: string };
@@ -391,7 +391,7 @@ describe('an image when a model set for Image reading cannot read it', () => {
     await settle();
     const detail = asked(events)?.request.detail ?? '';
     expect(detail).toBe(
-      `Harbor Lite is set for Image reading, but a model on ${thisDeviceNoun()} cannot read images yet, so this image would go to Claude Haiku 4.5 on your own API key. Nothing is sent until you approve. Set a model that reads images for Image reading in Stack and images go to it without asking. ${ASK_STOP_LINE}`,
+      `Harbor Lite is set for Image reading, but a model on ${thisDeviceNoun()} cannot read images yet, so this image would go to Claude Haiku 5.5 on your own API key. Nothing is sent until you approve. Set a model that reads images for Image reading in Stack and images go to it without asking. ${ASK_STOP_LINE}`,
     );
     expect(detail).not.toContain('Nothing in Stack is set');
     expect(h.streams).toBe(0);
@@ -407,7 +407,7 @@ describe('an image when a model set for Image reading cannot read it', () => {
     driver.send('Who is this?', [photo]);
     await settle();
     expect(asked(events)?.request.detail).toMatch(
-      /^Sonar is set for Image reading, but it does not read images, so this image would go to Claude Haiku 4\.5 on your own API key\./,
+      /^Sonar is set for Image reading, but it does not read images, so this image would go to Claude Haiku 5\.5 on your own API key\./,
     );
     driver.dispose();
   });
@@ -445,15 +445,15 @@ describe('an image when a model set for Image reading cannot read it', () => {
     const haiku: StackModelRef = {
       kind: 'cloud',
       provider: 'anthropic',
-      model: 'claude-haiku-4-5',
-      label: 'Claude Haiku 4.5',
+      model: 'claude-haiku-5-5',
+      label: 'Claude Haiku 5.5',
     };
     expect(imageAskDetail(haiku, 2, { model: 'LLaVA 7B', why: 'out-of-reach' }, 'Offline')).toBe(
-      'LLaVA 7B is set for Image reading, but it is out of reach while Offline, so these 2 images would go to Claude Haiku 4.5 on your own API key. Nothing is sent until you approve. Once LLaVA 7B is in reach, images go to it without asking.',
+      'LLaVA 7B is set for Image reading, but it is out of reach while Offline, so these 2 images would go to Claude Haiku 5.5 on your own API key. Nothing is sent until you approve. Once LLaVA 7B is in reach, images go to it without asking.',
     );
     // Nothing set keeps its words.
     expect(imageAskDetail(haiku, 1)).toBe(
-      'Nothing in Stack is set for Image reading, so this image would go to Claude Haiku 4.5 on your own API key. Nothing is sent until you approve. Set a model for Image reading in Stack and images go to it without asking.',
+      'Nothing in Stack is set for Image reading, so this image would go to Claude Haiku 5.5 on your own API key. Nothing is sent until you approve. Set a model for Image reading in Stack and images go to it without asking.',
     );
   });
 });
