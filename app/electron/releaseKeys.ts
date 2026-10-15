@@ -9,8 +9,9 @@
 // the private halves went into Codemagic's openshore-mac-signing group and
 // GitHub's `release` environment first. The desktop key was rotated
 // 2026-10-15: its private half stayed in the pre-open-source repository's
-// secrets, which cannot be read out, so v0.1.66 and later carry a new one and
-// apps from v0.1.65 or earlier take that one update by hand (DECISIONS). An empty key is a deliberate state
+// secrets, which cannot be read out, so a new one is pinned from v0.1.67 (v0.1.66
+// pinned a mismatched half) and apps from v0.1.66 or earlier take that one
+// update by hand (DECISIONS). An empty key is a deliberate state
 // the code still handles (Mac: the Update click opens the release page;
 // Windows and Linux: electron-updater installs without a signature check, and
 // main.ts logs it), for a platform whose key has to be rotated.
@@ -24,4 +25,4 @@ export const MAC_RELEASE_PUBLIC_KEY = 'Ttc2v0Sp0xpEcOYljT7Wby+lO/GNoNyLMeCtqoxQM
 
 /** Checks the Windows installer and the Linux AppImage or deb before
  *  electron-updater installs it. */
-export const DESKTOP_RELEASE_PUBLIC_KEY = 'EFnnlo/ffRWBeKvGbVOS2w0dOn7WQMqZd4YeL8/Jqzk=';
+export const DESKTOP_RELEASE_PUBLIC_KEY = 'g2HeDHRpOh/2xnmkgRkWppzN4e9b+HwcflLLdkbxs5o=';

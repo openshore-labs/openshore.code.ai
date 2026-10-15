@@ -28,7 +28,7 @@ set -eu
 RELEASES="https://github.com/openshore-labs/openshore-releases/releases"
 # The desktop release key's public half (base64 of the 32 raw Ed25519 bytes).
 # Kept equal to DESKTOP_RELEASE_PUBLIC_KEY by os-code/test/installServer.test.ts.
-RELEASE_PUBLIC_KEY="EFnnlo/ffRWBeKvGbVOS2w0dOn7WQMqZd4YeL8/Jqzk="
+RELEASE_PUBLIC_KEY="g2HeDHRpOh/2xnmkgRkWppzN4e9b+HwcflLLdkbxs5o="
 PREFIX="/opt/openshore"
 SERVICE_USER="openshore"
 
