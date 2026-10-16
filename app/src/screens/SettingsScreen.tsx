@@ -83,6 +83,8 @@ import { PACK_BY_CLASS, TRUST_STATEMENT_LINES, type StackHealthSealFact } from '
 import { GREETING_STYLES, greetingStyleOf } from '../lib/greetingDecks.js';
 import { chatFilesOn, chatFilesPrivacyLine, chatFilesWhere } from '../lib/chatFiles.js';
 import { ChatFilesRow } from '../components/ChatFilesRow.js';
+import { PhoneBackupRow } from '../components/PhoneBackupRow.js';
+import { thisDeviceNoun } from '../lib/deviceNoun.js';
 
 const SEARCH_BACKEND_LABEL: Record<SearchBackend, string> = {
   duckduckgo: 'DuckDuckGo',
@@ -330,6 +332,7 @@ export function SettingsScreen() {
   const humanizeOn = settings.humanizeWriting !== false;
   const chainOfThoughtOn = settings.chainOfThought === true;
   const chatFilesSaved = chatFilesOn(settings);
+  const setPhoneBackup = useApp((s) => s.setPhoneBackup);
   const chatFilesSub = chatFilesWhere(platform());
   const chatFilesPrivacy = chatFilesPrivacyLine(platform());
   const greetingStyle = greetingStyleOf(settings.greetingStyle);
@@ -1357,6 +1360,17 @@ export function SettingsScreen() {
               where={chatFilesSub}
               on={chatFilesSaved}
               onSet={setChatFiles}
+              toast={showToast}
+            />
+          ) : null}
+          {/* iCloud Backup (founder, 2026-10-16): off by default, so the Vault
+              and Chats folders stay in the closed loop; on warns first. Only
+              the iPhone and the iPad have that backup. */}
+          {platform() === 'ios' ? (
+            <PhoneBackupRow
+              device={thisDeviceNoun()}
+              on={settings.phoneBackup === true}
+              onSet={setPhoneBackup}
               toast={showToast}
             />
           ) : null}

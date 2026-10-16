@@ -150,6 +150,11 @@ Each lands green on its own, behind `FEATURE_TIER` until M5.
 
 ## Risks and calls for review
 
+- **iCloud Backup (founder, 2026-10-16):** on the iPhone and iPad the Vault and
+  Chats folders are kept out of the device's backups by default, so notes and
+  chats stay in the closed loop of the person's own devices and computer.
+  Settings, Chats turns backup on only after a warning that it leaves that loop.
+
 - **Chats as plain files** (R7) trade the sealed store for readability: on the
   phone only the person (through Files) and OpenShore can read the app's
   Documents; on a computer any program running as the person can. The privacy

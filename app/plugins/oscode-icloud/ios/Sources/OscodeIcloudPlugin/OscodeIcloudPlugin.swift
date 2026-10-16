@@ -21,8 +21,13 @@ public class OscodeIcloudPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "list", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "read", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "write", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "remove", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "remove", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setBackupExcluded", returnType: CAPPluginReturnPromise)
     ]
+
+    /// The app's own Documents folders whose backup the person decides
+    /// (Settings, iCloud Backup, 2026-10-16). Fixed names, never a path from JS.
+    private let backupFolders: Set<String> = ["Vault", "Chats"]
 
     private let containerId = "iCloud.ai.openshore.oscode"
     private let coordinatorQueue = DispatchQueue(label: "ai.openshore.oscode.icloud")
@@ -239,6 +244,40 @@ public class OscodeIcloudPlugin: CAPPlugin, CAPBridgedPlugin {
             }
             call.resolve()
         }
+    }
+
+    /// Keep the app's Vault and Chats folders out of the device's backups, or
+    /// let them in. On a folder the flag covers everything inside it. The app
+    /// sets it at every launch, once its folder layout is made; a folder that
+    /// is not there yet is reported, never made here (the layout's one-time
+    /// move of an old export owns Documents/Vault until it has run).
+    @objc func setBackupExcluded(_ call: CAPPluginCall) {
+        guard let excluded = call.getBool("excluded") else {
+            call.reject("setBackupExcluded needs excluded.")
+            return
+        }
+        let names = (call.getArray("folders", String.self) ?? []).filter { backupFolders.contains($0) }
+        guard let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
+            call.reject("No Documents folder.")
+            return
+        }
+        var failed: [String] = []
+        for name in names {
+            var url = docs.appendingPathComponent(name, isDirectory: true)
+            var isDir: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue else {
+                failed.append(name)
+                continue
+            }
+            do {
+                var values = URLResourceValues()
+                values.isExcludedFromBackup = excluded
+                try url.setResourceValues(values)
+            } catch {
+                failed.append(name)
+            }
+        }
+        call.resolve(["failed": failed])
     }
 }
 

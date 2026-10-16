@@ -25,6 +25,13 @@ export interface IcloudPluginContract {
     text: string;
   }): Promise<{ updatedAt: string }>;
   remove(options: { resourceId: string; path: string }): Promise<void>;
+  /** Keep the app's own Vault and Chats folders out of the device's backups,
+   *  or let them in (Settings, iCloud Backup). Only those two names are
+   *  taken; `failed` names any the flag could not be set on. */
+  setBackupExcluded(options: {
+    folders: Array<'Vault' | 'Chats'>;
+    excluded: boolean;
+  }): Promise<{ failed: string[] }>;
 }
 
 const webMock: IcloudPluginContract = {
@@ -42,6 +49,10 @@ const webMock: IcloudPluginContract = {
   },
   async remove() {
     // Nothing to remove off-device; a no-op keeps callers simple.
+  },
+  async setBackupExcluded() {
+    // No device backup to keep anything out of here.
+    return { failed: [] };
   },
 };
 

@@ -64,6 +64,7 @@ export const SETTINGS_REACH: Record<keyof AppSettings, SettingReach> = {
   vaultHubOffer: 'device',
   vaultBeforeHub: 'device',
   vaultSync: 'device',
+  phoneBackup: 'device',
   vaultRecent: 'device',
   vaultEmptyFolders: 'device',
   // Save chats as files (2026-10-16): where this device writes its own chats,

@@ -307,7 +307,7 @@ describe('the Vault copy map (0.19)', () => {
       if (on === 'ios') {
         const line = vaultCopy(on, 'local').storage;
         expect(line).toBe(
-          `Plain .md files in the OpenShore folder on ${thisDeviceNoun()}, kept in its backups like your other files. The Files app shows them under ${filesAppPath('Vault')}.`,
+          `Plain .md files in the OpenShore folder on ${thisDeviceNoun()}, kept out of iCloud Backup unless you include them in Settings, Chats. The Files app shows them under ${filesAppPath('Vault')}.`,
         );
         expect(line).toMatch(/On My (iPhone|iPad) > OpenShore > Vault\.$/);
         expect(line).not.toMatch(/sealed|not a folder|Obsidian/i);

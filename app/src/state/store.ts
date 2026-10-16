@@ -921,6 +921,11 @@ export interface AppSettings {
    *  ON by default; undefined means on. Device local: it is about where this
    *  device writes. */
   chatFiles?: boolean;
+  /** Whether the iPhone or iPad's iCloud Backup carries the Vault and Chats
+   *  folders (Settings, Chats; founder, 2026-10-16). OFF by default, undefined
+   *  means off: they stay in the closed loop. Turning it on warns first.
+   *  Device local. */
+  phoneBackup?: boolean;
   /** The chat splash's Easter egg (lib/greetingDecks.ts): what a tap and a hold
    *  on the greeting line do. Languages (the default; undefined means it),
    *  Popsicle Jokes, Trivia Night, or Sunday Crossword. Device local. */
@@ -2555,6 +2560,9 @@ interface AppState {
    *  already written unless `removeFiles`, which the person chose in the
    *  switch's sheet; on writes the newest chats that have no file yet. */
   setChatFiles(on: boolean, opts?: { removeFiles?: boolean }): Promise<void>;
+  /** iCloud Backup for the Vault and Chats folders on the iPhone and iPad
+   *  (Settings, Chats), off by default; the row warns before it turns on. */
+  setPhoneBackup(on: boolean): Promise<void>;
   /** Send to the active chat. While the agent is busy the message queues and
    *  goes out the moment the current task ends, the way Claude Code takes a
    *  message typed mid-run. */
@@ -8903,13 +8911,17 @@ export const useApp = create<AppState>((set, get, api) => {
       // sync plan, M2). Only once the sealed store is readable, so a locked
       // launch never reads an empty sealed vault as moved. The vault's own
       // calls wait for the move; nothing else does.
-      if (!locked) void preparePhoneFolder();
+      const phoneFolderReady = locked ? Promise.resolve() : preparePhoneFolder();
 
       const settings = (await storeGetJson<AppSettings>(SETTINGS_KEY)) ?? {
         onboarded: false,
         claudeModel: DEFAULT_CLAUDE_MODEL,
         deviceModels: {},
       };
+      // iCloud Backup for the Vault and Chats folders, set at every launch once
+      // the folder layout is made, so a folder made since is covered. Off (kept
+      // out) unless the person turned it on.
+      void phoneFolderReady.then(() => applyPhoneBackup(settings.phoneBackup === true));
       // The picks for providers whose models load live, back on the list
       // every reader uses, before anything renders a Bench.
       for (const [id, models] of Object.entries(settings.providerModels ?? {})) {
@@ -14337,6 +14349,12 @@ export const useApp = create<AppState>((set, get, api) => {
       void clearHandoffs(handoffStorage, { conversationId: id }).catch(() => {});
     },
 
+    async setPhoneBackup(on) {
+      await get().saveSettings({ phoneBackup: on });
+      await applyPhoneBackup(on);
+      logEvent('phone_backup', { on });
+    },
+
     async setChatFiles(on, opts) {
       await get().saveSettings({ chatFiles: on });
       if (on) {
@@ -15598,6 +15616,18 @@ export const useApp = create<AppState>((set, get, api) => {
     },
   };
 });
+
+/** Keep the phone's Vault and Chats folders out of its backups, or let them in
+ *  (Settings, Chats, iCloud Backup). iOS only; quiet when it cannot. */
+async function applyPhoneBackup(on: boolean): Promise<void> {
+  if (platform() !== 'ios') return;
+  try {
+    const { Icloud } = await import('../lib/gitos/icloudPlugin.js');
+    await Icloud.setBackupExcluded({ folders: ['Vault', 'Chats'], excluded: !on });
+  } catch {
+    // The next launch sets it again.
+  }
+}
 
 interface PersistedConversations {
   order: string[];

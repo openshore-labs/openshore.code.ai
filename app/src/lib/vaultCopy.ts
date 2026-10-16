@@ -193,7 +193,7 @@ const STORAGE: Record<VaultCopyProvider, string> = {
  *  OpenShore folder, which the Files app shows (UIFileSharingEnabled). Asked
  *  for when said, so it names the device in hand. */
 export function phoneLocalStorageLine(): string {
-  return `Plain .md files in the OpenShore folder on ${thisDeviceNoun()}, kept in its backups like your other files. The Files app shows them under ${filesAppPath('Vault')}.`;
+  return `Plain .md files in the OpenShore folder on ${thisDeviceNoun()}, kept out of iCloud Backup unless you include them in Settings, Chats. The Files app shows them under ${filesAppPath('Vault')}.`;
 }
 
 /** A folder change asked for on a launch where the OpenShore folder could not

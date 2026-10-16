@@ -54,7 +54,7 @@ export function chatFilesPrivacyLine(on: Platform): string | undefined {
     return `${lead} this computer. Those files are not sealed: any program you run on this computer can read them.`;
   }
   if (on === 'ios') {
-    return `${lead} ${thisDeviceNoun()}. Those files are not sealed: you can open them in the Files app, and they go into ${thisDeviceNoun()}'s backups like your other files.`;
+    return `${lead} ${thisDeviceNoun()}. Those files are not sealed: you can open them in the Files app. They are kept out of iCloud Backup unless you include them in Settings, Chats.`;
   }
   return undefined;
 }
