@@ -302,6 +302,7 @@ import {
   refReady,
   stackReady,
   stackForProfile,
+  placeableIn,
   stackVisionReady as stackVisionReadyPure,
   type ReadinessSignals,
   type AppStack,
@@ -15261,6 +15262,7 @@ export const useApp = create<AppState>((set, get, api) => {
     async setReasoning(ref, profile) {
       const s = get();
       const p = profile ?? activeProfile(s.connectivity, s.settings.profileOverride);
+      if (!placeableIn(p, ref, hubTailnetSuffix(s.settings.daemon?.baseUrl))) return;
       const stack = stackForProfile(s.settings.stacks, p);
       const key = stackRefKey(ref);
       // A model promoted to Reasoning leaves the active specialists.
@@ -15274,6 +15276,7 @@ export const useApp = create<AppState>((set, get, api) => {
     async placeSpecialist(ref, placement, profile) {
       const s = get();
       const p = profile ?? activeProfile(s.connectivity, s.settings.profileOverride);
+      if (!placeableIn(p, ref, hubTailnetSuffix(s.settings.daemon?.baseUrl))) return;
       const stack = stackForProfile(s.settings.stacks, p);
       const key = stackRefKey(ref);
       const active = stack.active.filter((m) => stackRefKey(m.ref) !== key);

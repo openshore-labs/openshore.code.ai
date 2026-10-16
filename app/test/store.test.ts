@@ -5,7 +5,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DriverEvent } from 'os-code/protocol';
 import { stackForProfile, type StackModelRef } from '../src/lib/stack.js';
-import { autoProfile, effectiveProfile } from '../src/lib/profiles.js';
 import { emptyThread } from '../src/state/types.js';
 import { reduceEvents } from '../src/state/transcript.js';
 import type { StoredFileMeta } from '../src/lib/gitos/providers.js';
@@ -550,20 +549,19 @@ describe('bring your own model', () => {
         apiKey: 'k',
       })
     )[0]!;
-    // Make it the Reasoning anchor, then disconnect it.
-    await useApp.getState().setReasoning({
-      kind: 'byom',
-      id: conn.id,
-      label: conn.label,
-      baseUrl: conn.baseUrl,
-      model: conn.model,
-    });
-    // The anchor lands in the current status's stack (per-status stacks).
-    const currentStack = () => {
-      const s = useApp.getState();
-      const p = effectiveProfile(autoProfile(s.connectivity), s.settings.profileOverride);
-      return stackForProfile(s.settings.stacks, p);
-    };
+    // Make it the Reasoning anchor, then disconnect it. Online: the Offline
+    // stack takes no model at a public address.
+    await useApp.getState().setReasoning(
+      {
+        kind: 'byom',
+        id: conn.id,
+        label: conn.label,
+        baseUrl: conn.baseUrl,
+        model: conn.model,
+      },
+      'offshore',
+    );
+    const currentStack = () => stackForProfile(useApp.getState().settings.stacks, 'offshore');
     expect(currentStack().reasoning?.kind).toBe('byom');
 
     await useApp.getState().disconnectByom(conn.id);
@@ -597,11 +595,31 @@ describe('per-status stacks', () => {
   });
 
   it('a specialist placed for one status lands only in that status', async () => {
-    await useApp.getState().placeSpecialist(cloudRef, { category: 'fast' }, 'offline');
+    await useApp.getState().placeSpecialist(cloudRef, { category: 'fast' }, 'offshore');
     const stacks = () => useApp.getState().settings.stacks;
-    expect(stackForProfile(stacks(), 'offline').active).toHaveLength(1);
+    expect(stackForProfile(stacks(), 'offshore').active).toHaveLength(1);
     expect(stackForProfile(stacks(), 'docked').active).toHaveLength(0);
-    expect(stackForProfile(stacks(), 'offshore').active).toHaveLength(0);
+    expect(stackForProfile(stacks(), 'offline').active).toHaveLength(0);
+  });
+
+  it('the Offline stack takes no model that leaves this network', async () => {
+    const leaving: StackModelRef = {
+      kind: 'byom',
+      id: 'far',
+      label: 'Far',
+      baseUrl: 'https://api.example.com/v1',
+      model: 'm',
+    };
+    const device: StackModelRef = { kind: 'device', modelId: 'harbor', modelName: 'Harbor' };
+    await useApp.getState().setReasoning(cloudRef, 'offline');
+    await useApp.getState().placeSpecialist(cloudRef, { category: 'fast' }, 'offline');
+    await useApp.getState().placeSpecialist(leaving, { category: 'coding' }, 'offline');
+    const offline = () => stackForProfile(useApp.getState().settings.stacks, 'offline');
+    expect(offline().reasoning?.kind).toBe('device');
+    expect(offline().active).toHaveLength(0);
+    // A model on this device still goes in.
+    await useApp.getState().placeSpecialist(device, { category: 'coding' }, 'offline');
+    expect(offline().active.map((m) => m.ref)).toEqual([device]);
   });
 
   it('disconnecting a BYOM endpoint pulls it from every status', async () => {
@@ -652,12 +670,12 @@ describe('per-status stacks', () => {
     await useApp.getState().placeSpecialist(groq('llama-3.3-70b'), { category: 'fast' }, 'docked');
     await useApp
       .getState()
-      .placeSpecialist(groq('qwen/qwen3-32b'), { category: 'coding' }, 'offline');
-    await useApp.getState().benchSpecialist('cloud:groq:qwen/qwen3-32b', 'offline');
+      .placeSpecialist(groq('qwen/qwen3-32b'), { category: 'coding' }, 'docked');
+    await useApp.getState().benchSpecialist('cloud:groq:qwen/qwen3-32b', 'docked');
     await useApp.getState().placeSpecialist(cloudRef, { category: 'writing' }, 'offshore');
     await useApp.getState().placeSpecialist(other, { category: 'coding' }, 'offshore');
     const stacks = () => useApp.getState().settings.stacks;
-    expect(stackForProfile(stacks(), 'offline').saved['cloud:groq:qwen/qwen3-32b']).toBeTruthy();
+    expect(stackForProfile(stacks(), 'docked').saved['cloud:groq:qwen/qwen3-32b']).toBeTruthy();
 
     await useApp.getState().disconnectProvider('groq');
     expect(secrets.has('oscode.secret.groq')).toBe(false);
@@ -667,7 +685,7 @@ describe('per-status stacks', () => {
     expect(docked.reasoning?.kind).toBe('device');
     expect(docked.active).toHaveLength(0);
     // A benched placement is forgotten too.
-    expect(Object.keys(stackForProfile(stacks(), 'offline').saved)).not.toContain(
+    expect(Object.keys(stackForProfile(stacks(), 'docked').saved)).not.toContain(
       'cloud:groq:qwen/qwen3-32b',
     );
     // Claude and the other provider stay where they were.

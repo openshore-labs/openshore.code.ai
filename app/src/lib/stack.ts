@@ -192,6 +192,18 @@ export function refStaysLocal(ref: StackModelRef, ownTailnetSuffix: string | nul
   }
 }
 
+/** Can this model go into the given status's stack? The Offline stack holds
+ *  only models that stay on this network: no cloud provider, and no model you
+ *  connected at an address that leaves it. Its slots never offer one, and the
+ *  store refuses one that arrives anyway. */
+export function placeableIn(
+  profile: ProfileId,
+  ref: StackModelRef,
+  ownTailnetSuffix: string | null = null,
+): boolean {
+  return profile !== 'offline' || refStaysLocal(ref, ownTailnetSuffix);
+}
+
 /** The two Vision slots the manager shows: a local model (on-device or your own
  *  server, the ones "you control") and a cloud model. Both are ordinary vision
  *  placements; this just splits them by where they answer, judged by address

@@ -56,6 +56,7 @@ import {
   harborFullRef,
   harborRef,
   pickVisionRef,
+  placeableIn,
   placementValid,
   refKey,
   refName,
@@ -238,6 +239,10 @@ export function StackManager({
   // The two Vision slots (a local model and a cloud model), split out of the
   // active list so the manager shows a dedicated Image reading card.
   const slots = visionSlots(stack, staysLocal);
+  // What this status's stack can hold: the Offline stack offers no model that
+  // leaves this network, in any slot, picker, or bench row.
+  const fits = (r: StackModelRef) => placeableIn(editProfile, r, ownTailnetSuffix);
+  const cloudOn = locationAllowed(editProfile, 'cloud');
   // The Specialists rows: every placement but the two Image reading slots. A
   // second vision placement judged to the same side as its slot (one placed
   // before the slots split by address) is listed here too, so no placed model
@@ -280,7 +285,7 @@ export function StackManager({
   const reasoningKey = refKey(reasoning);
   const placed = (r: StackModelRef) => refKey(r) === reasoningKey || activeKeys.has(refKey(r));
   // Every model but the anchor, for the Who runs the show picker.
-  const others = available.filter((r) => refKey(r) !== reasoningKey);
+  const others = available.filter((r) => refKey(r) !== reasoningKey && fits(r));
   // Who runs the show lists each connected cloud provider once; its models
   // open a step in.
   // The cloud provider whose models are open for choosing the Reasoning
@@ -294,7 +299,7 @@ export function StackManager({
       ? [harborRef()]
       : [];
   const reasoningProviders = PROVIDERS.filter(
-    (p) => connectedProviders[p.id] && providerBenchModels(p).length > 0,
+    (p) => cloudOn && connectedProviders[p.id] && providerBenchModels(p).length > 0,
   );
   const openProvider = PROVIDERS.find((p) => p.id === reasoningProvider);
   const chooseReasoning = async (r: StackModelRef) => {
@@ -317,9 +322,9 @@ export function StackManager({
   };
   // The local bench holds on-device and bring-your-own-model refs, both placed
   // the same way; connected cloud providers get their own grouped section.
-  const bench = [...deviceRefs, ...byomRefs].filter((r) => !placed(r));
+  const bench = [...deviceRefs, ...byomRefs].filter((r) => !placed(r) && fits(r));
   const pins = settings.pinnedModels ?? [];
-  const cloudBench = PROVIDERS.filter((p) => connectedProviders[p.id])
+  const cloudBench = PROVIDERS.filter((p) => cloudOn && connectedProviders[p.id])
     .map((p) => ({
       provider: p,
       models: providerBenchModels(p).filter(
@@ -508,7 +513,6 @@ export function StackManager({
   // name it, so they say the model the approval card will ask about (D13,
   // 2026-10-07: the least costly Claude model, named, until the
   // person chooses one). A device model cannot read images on this build.
-  const cloudOn = locationAllowed(editProfile, 'cloud');
   const reach = (r: StackModelRef) =>
     r.kind !== 'device' &&
     cloudOn &&
@@ -608,9 +612,8 @@ export function StackManager({
       if (standIn) {
         return `None yet · ${refName(standIn)} reads images for now.${standInAsk}`;
       }
-      return cloudOn
-        ? 'None yet · Connect a cloud model in Cloud Connections to read images.'
-        : 'None yet · No cloud model is used while Offline.';
+      // The Offline stack has no Cloud row, so only an online status gets here.
+      return 'None yet · Connect a cloud model in Cloud Connections to read images.';
     }
     // The title already says yet, so the line does not say it again.
     return standIn
@@ -706,10 +709,14 @@ export function StackManager({
             Local model failed on one (UX and copy review, 2026-10-08, K). */}
         <SettingsGroup
           title="Image reading"
-          intro="Screenshots, photos, and video frames. The Local model reads them first. The Cloud model reads what it cannot, and asks before it takes a picture the Local model failed on."
+          intro={
+            cloudOn
+              ? 'Screenshots, photos, and video frames. The Local model reads them first. The Cloud model reads what it cannot, and asks before it takes a picture the Local model failed on.'
+              : 'Screenshots, photos, and video frames, read by a model that stays on this network. No cloud model is used while Offline.'
+          }
           index={1}
         >
-          {(['local', 'cloud'] as const).map((slot) => (
+          {(cloudOn ? (['local', 'cloud'] as const) : (['local'] as const)).map((slot) => (
             <SettingsRow
               key={slot}
               label={slot === 'local' ? 'Local' : 'Cloud'}
@@ -887,7 +894,11 @@ export function StackManager({
             {bench.length === 0 && cloudBench.length === 0 ? (
               <SettingsRow
                 label="Nothing waiting"
-                sub="Get Harbor in Settings, or connect a cloud provider or your own server. New models wait here until you place them."
+                sub={
+                  cloudOn
+                    ? 'Get Harbor in Settings, or connect a cloud provider or your own server. New models wait here until you place them.'
+                    : 'Get Harbor in Settings, or connect your own server. The Offline stack holds only models that stay on this network.'
+                }
               />
             ) : null}
             <SettingsRow
