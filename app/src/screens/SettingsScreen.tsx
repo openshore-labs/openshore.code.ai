@@ -80,6 +80,8 @@ import { APP_ICONS, appIconNote } from '../lib/appIcon.js';
 import { FOLLOWS_GROUP_ID, useSettingsJump } from '../lib/profile.js';
 import { PACK_BY_CLASS, TRUST_STATEMENT_LINES, type StackHealthSealFact } from 'os-code/protocol';
 import { GREETING_STYLES, greetingStyleOf } from '../lib/greetingDecks.js';
+import { chatFilesOn, chatFilesPrivacyLine, chatFilesWhere } from '../lib/chatFiles.js';
+import { ChatFilesRow } from '../components/ChatFilesRow.js';
 
 const SEARCH_BACKEND_LABEL: Record<SearchBackend, string> = {
   duckduckgo: 'DuckDuckGo',
@@ -265,6 +267,7 @@ type SheetName = 'account' | 'log' | 'search' | 'clear' | 'uninstallHarbor';
 export function SettingsScreen() {
   const {
     clearConversations,
+    setChatFiles,
     settings,
     showToast,
     saveSettings,
@@ -323,6 +326,9 @@ export function SettingsScreen() {
   const insightsOn = Boolean(settings.insightsOptIn);
   const humanizeOn = settings.humanizeWriting !== false;
   const chainOfThoughtOn = settings.chainOfThought === true;
+  const chatFilesSaved = chatFilesOn(settings);
+  const chatFilesSub = chatFilesWhere(platform());
+  const chatFilesPrivacy = chatFilesPrivacyLine(platform());
   const greetingStyle = greetingStyleOf(settings.greetingStyle);
   // Notices are an iPhone surface; read the standing permission once so a "no"
   // in iOS Settings is said plainly instead of toggles that do nothing.
@@ -519,6 +525,7 @@ export function SettingsScreen() {
               this device to that provider on your own account, and we do not see it. Hugging Face
               passes it on to the model's own provider, as What leaves this device says.
             </p>
+            {chatFilesPrivacy ? <p>{chatFilesPrivacy}</p> : null}
             {facts ? <LiveSeal facts={facts} /> : null}
             <h3 className="settings-sheet-head">Local models, honestly</h3>
             <p>
@@ -1321,7 +1328,18 @@ export function SettingsScreen() {
             different currents at once. Connecting one stays device-local, on
             its connect sheet, reached from the project row. */}
 
-        <SettingsGroup index={group++}>
+        <SettingsGroup title="Chats" index={group++}>
+          {/* Save chats as files (founder, 2026-10-16): on by default, and
+              off asks first whether the files already written go too. Not
+              offered where nothing is written (a plain browser). */}
+          {chatFilesSub ? (
+            <ChatFilesRow
+              where={chatFilesSub}
+              on={chatFilesSaved}
+              onSet={setChatFiles}
+              toast={showToast}
+            />
+          ) : null}
           <SettingsRow
             label="Clear chats"
             sub="Removes every chat from this device"

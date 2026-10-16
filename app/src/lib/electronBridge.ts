@@ -622,6 +622,16 @@ export interface OscodeBridge {
   /** Forget every handoff the engine on this computer keeps (Clear
    *  conversations, tech review J13). Optional: an older desktop build has none. */
   clearHandoffs?(): Promise<void>;
+  // Chats as files (folder and sync plan, M3): the mirror of each chat in
+  // ~/OpenShore/Chats. The renderer names only `YYYY-MM/<name>.md` inside that
+  // folder; main checks the shape, jails it there (no dot names, no link out)
+  // and writes temp then rename. Optional: an older desktop build has none.
+  // Keep in lockstep with electron/main.ts.
+  chatFileWrite?(path: string, text: string): Promise<void>;
+  /** Remove one chat file; true when it was there. */
+  chatFileRemove?(path: string): Promise<boolean>;
+  /** The chat files in one month folder, by name, with their modified times. */
+  chatFileList?(month: string): Promise<Array<{ name: string; mtimeMs: number }>>;
   /** Changes the watcher saw, debounced in main. Returns an unsubscribe. */
   onVaultChanged(cb: (change: VaultChange) => void): () => void;
   /** Where the vault folder is, whether it is there, and whether Obsidian

@@ -57,7 +57,7 @@ Machine settings, keys, tokens, indexes and session journals stay hidden
 | Desktop vault | `~/OSCode/Vault` or a picked folder | `~/OpenShore/Vault`; a picked folder (an Obsidian vault) stays where it is |
 | Desktop clones, sample, scratch | `~/OSCode/<name>`, `Try OpenShore`, `scratch` | `~/OpenShore/Projects/...`, scratch as `Projects/Scratch` (what a chat with no project made is the person's work, so it stays findable) |
 | Phone vault | sealed key-value store (`local` provider) | real files in `Documents/OpenShore/Vault` (a `folder`-style provider over the app's own Documents) |
-| Chats | sealed key-value store / Electron localStorage | `OpenShore/Chats/YYYY-MM/<title>-<id>.md`, with a small front-matter header the app reads back |
+| Chats | sealed key-value store / Electron localStorage | the sealed store stays the source of truth, mirrored to `OpenShore/Chats/YYYY-MM/<title>-<id>.md` with a small front-matter header (M3: not read back until M5) |
 | Phone models | `Application Support/Models` (hidden) | `Documents/OpenShore/Models/<name>/`, excluded from backup |
 | Desktop models | Ollama's own store | unchanged (Ollama owns the weights); `Models/` holds ComfyUI and other OpenShore-managed files, and a `README` pointing at Ollama's |
 | Exports | `Documents/Vault` (iOS export) | `OpenShore/Exports/` |
@@ -110,9 +110,20 @@ Each lands green on its own, behind `FEATURE_TIER` until M5.
   from the sealed store, models moved under `Models/` with backup excluded,
   exports under `Exports/`.
 - **M3. Chats as files.** One markdown file per chat with a front-matter
-  header, read back into the store at launch, written on each settled turn;
-  the move from the sealed store. Copy that says chats are not synced is
-  updated at M5, not before.
+  header, written on each settled turn. Copy that says chats are not synced is
+  updated at M5, not before. BUILT 2026-10-16, as a mirror, not read back:
+  the sealed store stays the source of truth, and each chat's file in
+  `OpenShore/Chats/YYYY-MM/<title slug>-<first 8 of id>.md` is a copy the app
+  keeps (written once a turn settles and the chat rests, moved on a rename,
+  removed with the chat, the newest 50 checked once at launch); editing a file
+  changes nothing in OpenShore. The setting is Settings, Chats, "Save chats as
+  files" (`chatFiles`, device local, on by default); off asks whether to
+  remove the files already written. No thinking, no attachment bytes (names
+  only), a tool step in one line. Code: `app/src/lib/chatFiles.ts` (renderer
+  and path), `lib/chatFileWriters.ts` (the phone's Documents, the desktop's
+  guarded `osc:chatFile*` jailed to `sectionDir('chats')`, none on the web),
+  `state/chatFileOps.ts`, `electron/chatFilesFs.ts`. Reading files back (and
+  the move from the sealed store) waits for M5, where sync needs it.
 - **M4. The sync engine.** The daemon's change cursor and batch routes, the
   device ledger, push, pull, deletes, renames, conflict copies; the Vault first.
   Tests: two simulated devices editing apart, every conflict shape, a dropped

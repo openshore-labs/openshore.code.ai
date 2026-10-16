@@ -365,7 +365,7 @@ export const LINK_ONLY_HOSTS: Record<string, string> = {
 /** What stays on this device, for the list's other half. */
 export const STAYS_ON_DEVICE: string[] = [
   'Everything you send a local model, and everything it answers, unless a cloud model in the same chat reads it later, on its own turn or as a step in a plan (a web search sends only its words, listed above).',
-  'Your chats, projects, settings, and session journals, sealed at rest.',
+  'Your chats, projects, settings, and session journals, sealed at rest. With Save chats as files on (the default), each chat is also a plain markdown file in OpenShore/Chats on this device.',
   'Your API keys: in the Keychain on iPhone and iPad; on a computer, encrypted under a key in its keychain. Each is sent only to its own provider, and to a server you dock only when you turn it on for that server, which then keeps it too.',
   'Your Vault notes and your code, as plain files you own.',
   'Undo snapshots of your files, in a folder on this computer.',
