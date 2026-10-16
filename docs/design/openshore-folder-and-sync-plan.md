@@ -108,7 +108,10 @@ Each lands green on its own, behind `FEATURE_TIER` until M5.
 - **M2. Real files on the phone.** The phone vault on files in
   `Documents/OpenShore/Vault` (passes `providerContract.test.ts`), the move
   from the sealed store, models moved under `Models/` with backup excluded,
-  exports under `Exports/`.
+  exports under `Exports/`. BUILT 2026-10-16 (`app/src/lib/gitos/phoneFolder.ts`,
+  `phoneVault.ts`, `app/src/lib/phoneFolder.ts`, the plugin's `ModelStore.swift`;
+  `test/phoneFolder.test.ts`). Files shows the folder as On My iPhone /
+  OpenShore / OpenShore (DECISIONS).
 - **M3. Chats as files.** One markdown file per chat with a front-matter
   header, read back into the store at launch, written on each settled turn;
   the move from the sealed store. Copy that says chats are not synced is

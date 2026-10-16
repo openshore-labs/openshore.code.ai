@@ -165,6 +165,10 @@ export function VaultSettingsHost({ open, setOpen, onOpenStorage }: VaultSetting
     : ((settings.gitosResources ?? []).find((r) => r.id === VAULT_RESOURCE_ID)?.providerId ??
       'local');
   const copyProvider = copyProviderOf(providerId) ?? 'local';
+  // This device is the sealed store, except on the iPhone and the iPad,
+  // where it is the OpenShore folder and keeps .oscode/vault.json like any
+  // other folder (folder and sync plan, M2).
+  const sealedLocal = providerId === 'local' && !isPhone();
   const unapplied = providerFor(providerId)?.unappliedSettings;
   const caps = vaultCapsNow();
   const storageCaps = vaultCapsNow({ storageOnly: true });
@@ -287,7 +291,7 @@ export function VaultSettingsHost({ open, setOpen, onOpenStorage }: VaultSetting
         admin: teamAdmin,
         ...(settings.account?.org?.name ? { org: settings.account.org.name } : {}),
       })
-    : providerId === 'local'
+    : sealedLocal
       ? VAULT_SETTINGS_FOOTER_LOCAL
       : VAULT_SETTINGS_FOOTER_FILE;
   const agent = Boolean(
@@ -376,11 +380,7 @@ export function VaultSettingsHost({ open, setOpen, onOpenStorage }: VaultSetting
         {...(lockLine ? { lockLine } : {})}
         {...(save ? { save } : {})}
         firstChange={
-          !team &&
-          caps.settingsWrite &&
-          providerId !== 'local' &&
-          s.fileState === 'absent' &&
-          !changed
+          !team && caps.settingsWrite && !sealedLocal && s.fileState === 'absent' && !changed
         }
         {...(conflict ? { conflict } : {})}
         caps={{

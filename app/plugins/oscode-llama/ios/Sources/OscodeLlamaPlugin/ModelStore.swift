@@ -5,8 +5,14 @@ import Foundation
 /// rehosts weights; this store is the phone reaching the source directly.
 ///
 /// A model lands in one of two homes:
-///   - device: the app's own Application Support/Models directory, excluded
-///     from device backup because the weights are re-downloadable.
+///   - device: the app's OpenShore folder, Documents/OpenShore/Models/<id>/
+///     (folder and sync plan, M2), so the person sees what is taking space in
+///     the Files app, beside their Vault and Exports. The folder and every
+///     weights file are excluded from device backup because the weights are
+///     re-downloadable. Builds before M2 kept them in Application
+///     Support/Models; the first launch moves each one over (one volume, so a
+///     rename, never a second download), and a file that could not move is
+///     still found where it was.
 ///   - icloud: the app's iCloud Drive container under Documents/Models, so a
 ///     model too big for the phone still has a home. iCloud may evict it to a
 ///     placeholder; ensureLocal pulls it back before a load, when online.
@@ -102,6 +108,10 @@ public final class ModelStore: NSObject, URLSessionDownloadDelegate {
 
     override init() {
         super.init()
+        // Weights a build before M2 left in Application Support/Models move
+        // into the OpenShore folder first, so every lookup below finds them in
+        // their new home. Renames on one volume: no bytes are copied.
+        migrateLegacyDeviceModels()
         // Realize the session now so its delegate is attached and the system
         // can immediately deliver any completion callbacks that piled up while
         // the app was not running, then reconnect to whatever is still going.
@@ -148,18 +158,85 @@ public final class ModelStore: NSObject, URLSessionDownloadDelegate {
 
     // ------------------------------------------------------------- inventory
 
-    /// The device home. Created lazily and marked do-not-back-up: the weights
-    /// are re-downloadable, so they never belong in a device or iCloud backup.
+    /// The device home: Documents/OpenShore/Models, one folder per model.
+    /// Created lazily and marked do-not-back-up (again on every look, which is
+    /// cheap and heals a folder made before the flag): the weights are
+    /// re-downloadable, so they never belong in a device or iCloud backup.
     var directory: URL {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        var dir = base.appendingPathComponent("Models", isDirectory: true)
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let dir = docs
+            .appendingPathComponent("OpenShore", isDirectory: true)
+            .appendingPathComponent("Models", isDirectory: true)
         if !FileManager.default.fileExists(atPath: dir.path) {
             try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-            var values = URLResourceValues()
-            values.isExcludedFromBackup = true
-            try? dir.setResourceValues(values)
         }
+        excludeFromBackup(dir)
         return dir
+    }
+
+    /// Where builds before M2 kept device models. Never created; only read
+    /// and emptied by the move.
+    private var legacyDirectory: URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        return base.appendingPathComponent("Models", isDirectory: true)
+    }
+
+    /// One model's own folder in the device home. Not created here.
+    private func modelFolder(for id: String) -> URL {
+        directory.appendingPathComponent(sanitize(id), isDirectory: true)
+    }
+
+    /// Make a model's folder, marked do-not-back-up.
+    private func ensureModelFolder(for id: String) throws -> URL {
+        let folder = modelFolder(for: id)
+        if !FileManager.default.fileExists(atPath: folder.path) {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        }
+        excludeFromBackup(folder)
+        return folder
+    }
+
+    /// Mark a file or folder do-not-back-up. Best effort: a failure leaves it
+    /// in the backup, never loses it.
+    private func excludeFromBackup(_ url: URL) {
+        var target = url
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        try? target.setResourceValues(values)
+    }
+
+    /// The pre-M2 path for a model, whether or not the file is there.
+    private func legacyURL(for id: String) -> URL {
+        legacyDirectory.appendingPathComponent("\(sanitize(id)).gguf")
+    }
+
+    /// Move every .gguf in Application Support/Models into its folder under
+    /// Documents/OpenShore/Models, once, by rename (the two are on the same
+    /// volume, so no bytes are copied and nothing downloads again). A model
+    /// already in its new home is left where it was, never written over; it
+    /// stays findable there (resolvedURL) and Delete removes both. The old
+    /// folder goes once it is empty. Safe on every launch: with nothing left
+    /// there it does nothing.
+    private func migrateLegacyDeviceModels() {
+        let fm = FileManager.default
+        let legacy = legacyDirectory
+        guard let files = try? fm.contentsOfDirectory(at: legacy, includingPropertiesForKeys: nil)
+        else { return }
+        for url in files where url.pathExtension == "gguf" {
+            let id = url.deletingPathExtension().lastPathComponent
+            let dest = deviceURL(for: id)
+            if fm.fileExists(atPath: dest.path) { continue }
+            do {
+                _ = try ensureModelFolder(for: id)
+                try fm.moveItem(at: url, to: dest)
+                excludeFromBackup(dest)
+            } catch {
+                // Stays where it was and is still found there.
+            }
+        }
+        if let left = try? fm.contentsOfDirectory(atPath: legacy.path), left.isEmpty {
+            try? fm.removeItem(at: legacy)
+        }
     }
 
     /// The iCloud home under the container's Documents/Models, or nil when
@@ -178,7 +255,18 @@ public final class ModelStore: NSObject, URLSessionDownloadDelegate {
     }
 
     func deviceURL(for id: String) -> URL {
-        directory.appendingPathComponent("\(sanitize(id)).gguf")
+        modelFolder(for: id).appendingPathComponent("\(sanitize(id)).gguf")
+    }
+
+    /// The device copy wherever it is: the OpenShore folder, else the pre-M2
+    /// place for a file that could not move. Nil when neither has it.
+    private func presentDeviceURL(for id: String) -> URL? {
+        let fm = FileManager.default
+        let device = deviceURL(for: id)
+        if fm.fileExists(atPath: device.path) { return device }
+        let legacy = legacyURL(for: id)
+        if fm.fileExists(atPath: legacy.path) { return legacy }
+        return nil
     }
 
     func iCloudURL(for id: String) -> URL? {
@@ -208,8 +296,7 @@ public final class ModelStore: NSObject, URLSessionDownloadDelegate {
     /// An iCloud copy that is still an evicted placeholder returns its real URL
     /// anyway; ensureLocal must run before a load to pull the bytes down.
     func resolvedURL(for id: String) -> URL? {
-        let device = deviceURL(for: id)
-        if FileManager.default.fileExists(atPath: device.path) { return device }
+        if let device = presentDeviceURL(for: id) { return device }
         if let cloud = iCloudURL(for: id), cloudItemPresent(cloud) { return cloud }
         // Last, the copy that ships inside the app bundle (Harbor Light). A
         // downloaded or iCloud copy wins over it, but the bundle guarantees the
@@ -237,19 +324,37 @@ public final class ModelStore: NSObject, URLSessionDownloadDelegate {
         return models
     }
 
+    /// Device models: each folder under Documents/OpenShore/Models that holds
+    /// its own "<folder>.gguf", then any file still in the pre-M2 place that
+    /// the move could not take (listed once per id).
     private func deviceModels() -> [LocalModel] {
-        let files = (try? FileManager.default.contentsOfDirectory(
-            at: directory, includingPropertiesForKeys: [.fileSizeKey])) ?? []
-        return files.compactMap { url in
-            guard url.pathExtension == "gguf" else { return nil }
+        let fm = FileManager.default
+        var out: [LocalModel] = []
+        var seen = Set<String>()
+        func add(_ url: URL) {
+            let id = url.deletingPathExtension().lastPathComponent
+            guard !seen.contains(id) else { return }
+            seen.insert(id)
             let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize).flatMap { Int64($0) } ?? 0
-            return LocalModel(
-                id: url.deletingPathExtension().lastPathComponent,
+            out.append(LocalModel(
+                id: id,
                 fileName: url.lastPathComponent,
                 sizeBytes: size,
                 location: .device,
-                evicted: false)
+                evicted: false))
         }
+        let folders = (try? fm.contentsOfDirectory(
+            at: directory, includingPropertiesForKeys: [.isDirectoryKey])) ?? []
+        for folder in folders {
+            let isDir = (try? folder.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
+            guard isDir else { continue }
+            let file = folder.appendingPathComponent("\(folder.lastPathComponent).gguf")
+            if fm.fileExists(atPath: file.path) { add(file) }
+        }
+        let legacy = (try? fm.contentsOfDirectory(
+            at: legacyDirectory, includingPropertiesForKeys: [.fileSizeKey])) ?? []
+        for url in legacy where url.pathExtension == "gguf" { add(url) }
+        return out
     }
 
     private func iCloudModels() -> [LocalModel] {
@@ -300,6 +405,13 @@ public final class ModelStore: NSObject, URLSessionDownloadDelegate {
         // removed; any downloaded or iCloud copy is deleted, and the bundle
         // copy keeps the model present. This is what makes "Built in" honest.
         try? FileManager.default.removeItem(at: deviceURL(for: id))
+        try? FileManager.default.removeItem(at: legacyURL(for: id))
+        // The model's own folder goes too once it is empty; anything the
+        // person put in it stays.
+        let folder = modelFolder(for: id)
+        if let left = try? FileManager.default.contentsOfDirectory(atPath: folder.path), left.isEmpty {
+            try? FileManager.default.removeItem(at: folder)
+        }
         if let cloud = iCloudURL(for: id) {
             var coordError: NSError?
             NSFileCoordinator().coordinate(writingItemAt: cloud, options: [.forDeleting], error: &coordError) { u in
@@ -315,7 +427,7 @@ public final class ModelStore: NSObject, URLSessionDownloadDelegate {
     /// once the background pull has had time to land.
     func ensureLocal(id: String) -> (ready: Bool, downloading: Bool) {
         let fm = FileManager.default
-        if fm.fileExists(atPath: deviceURL(for: id).path) { return (true, false) }
+        if presentDeviceURL(for: id) != nil { return (true, false) }
         // A bundled model is always local: its bytes ship with the app.
         if bundledURL(for: id) != nil { return (true, false) }
         guard let cloud = iCloudURL(for: id), cloudItemPresent(cloud) else {
@@ -367,8 +479,8 @@ public final class ModelStore: NSObject, URLSessionDownloadDelegate {
         // The weights may already be on disk in either home (a background
         // transfer that finished while the app was closed). Do not re-download;
         // report it done so the caller records it as present.
-        if FileManager.default.fileExists(atPath: deviceURL(for: id).path) {
-            reportComplete(id: id, location: .device, result: .success(deviceURL(for: id)))
+        if let device = presentDeviceURL(for: id) {
+            reportComplete(id: id, location: .device, result: .success(device))
             return
         }
         if let cloud = iCloudURL(for: id), cloudItemPresent(cloud) {
@@ -500,18 +612,12 @@ public final class ModelStore: NSObject, URLSessionDownloadDelegate {
         let fm = FileManager.default
         switch target {
         case .device:
-            let dest = deviceURL(for: id)
-            try? fm.removeItem(at: dest)
-            try fm.moveItem(at: temp, to: dest)
-            return dest
+            return try placeOnDevice(temp, id: id)
         case .icloud:
             guard let dest = iCloudURL(for: id) else {
                 // iCloud went away between the request and the finish. Fall back
                 // to the device home so the download is never lost.
-                let device = deviceURL(for: id)
-                try? fm.removeItem(at: device)
-                try fm.moveItem(at: temp, to: device)
-                return device
+                return try placeOnDevice(temp, id: id)
             }
             // setUbiquitous moves an item, and cannot move the session's temp
             // file directly, so stage it in the app's tmp first.
@@ -524,13 +630,22 @@ public final class ModelStore: NSObject, URLSessionDownloadDelegate {
             } catch {
                 // Could not hand it to iCloud; keep it on the device rather than
                 // drop it, so the user still has the model they downloaded.
-                let device = deviceURL(for: id)
-                try? fm.removeItem(at: device)
-                try fm.moveItem(at: staged, to: device)
-                return device
+                return try placeOnDevice(staged, id: id)
             }
             return dest
         }
+    }
+
+    /// Move a finished file into its folder in the device home, replacing an
+    /// older copy of the same model, and mark it do-not-back-up.
+    private func placeOnDevice(_ file: URL, id: String) throws -> URL {
+        let fm = FileManager.default
+        _ = try ensureModelFolder(for: id)
+        let dest = deviceURL(for: id)
+        try? fm.removeItem(at: dest)
+        try fm.moveItem(at: file, to: dest)
+        excludeFromBackup(dest)
+        return dest
     }
 
     public func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {

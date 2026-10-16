@@ -35,3 +35,14 @@ export function thisDeviceNoun(opts: { start?: boolean } = {}): string {
   cached ??= deviceNounFor(typeof navigator === 'undefined' ? {} : navigator);
   return opts.start ? cached[0]!.toUpperCase() + cached.slice(1) : cached;
 }
+
+/** Where the Files app shows a folder in this app's Documents, in its own
+ *  words: "On My iPad / OpenShore" on an iPad, "On My iPhone / OpenShore"
+ *  elsewhere, then `parts` (the folders under Documents), in the " / " style
+ *  the export toast uses. Files names the app's Documents folder by the app's
+ *  display name (Info.plist, CFBundleDisplayName), which is OpenShore, so the
+ *  OpenShore folder inside it reads "OpenShore / OpenShore". */
+export function filesAppPath(...parts: string[]): string {
+  const device = thisDeviceNoun() === 'this iPad' ? 'iPad' : 'iPhone';
+  return [`On My ${device}`, 'OpenShore', ...parts].join(' / ');
+}

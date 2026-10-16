@@ -22,8 +22,15 @@
 // - Obsidian opens a plain folder. Only This folder claims it today. The
 //   iCloud folder says nothing about Obsidian until a Mac opens it on a real
 //   device (8.1) and iCloud writes are safe for a second writer (2.1, 2.9).
-//   Local is a sealed store, Google Drive is held back, and the team vault is
-//   a server, so none of them claims Obsidian.
+//   Local is a sealed store (on the iPhone and the iPad, plain files in the
+//   app's OpenShore folder, which Obsidian there does not open), Google Drive
+//   is held back, and the team vault is a server, so none of them claims
+//   Obsidian.
+// - This device on the iPhone and the iPad is the OpenShore folder in the
+//   app's Documents (folder and sync plan, M2; lib/gitos/phoneVault.ts), so
+//   it says so and names where the Files app shows it. Everywhere else it is
+//   the sealed store and says that.
+import { filesAppPath, thisDeviceNoun } from './deviceNoun.js';
 import { SERVER_RENTED_LINE } from './docking.js';
 import type { Platform } from './platform.js';
 import { noteTitle } from './vault.js';
@@ -182,6 +189,13 @@ const STORAGE: Record<VaultCopyProvider, string> = {
   hub: 'Your computer, while it is on. Plain .md files in the vault folder there.',
 };
 
+/** This device on the iPhone and the iPad: plain files in the app's
+ *  OpenShore folder, which the Files app shows (UIFileSharingEnabled). Asked
+ *  for when said, so it names the device in hand. */
+export function phoneLocalStorageLine(): string {
+  return `Plain .md files in the OpenShore folder on ${thisDeviceNoun()}. The Files app shows them under ${filesAppPath('OpenShore', 'Vault')}.`;
+}
+
 const OBSIDIAN: Partial<Record<VaultCopyProvider, string>> = {
   files: 'Obsidian opens this folder as a vault.',
 };
@@ -197,7 +211,9 @@ export function vaultCopy(
     storage:
       provider === 'files' && !desktop
         ? 'Plain .md files in a folder on your computer.'
-        : STORAGE[provider],
+        : provider === 'local' && platform === 'ios'
+          ? phoneLocalStorageLine()
+          : STORAGE[provider],
   };
   const obsidian = OBSIDIAN[provider];
   if (obsidian) copy.obsidian = obsidian;
@@ -379,13 +395,15 @@ export function vaultOnboard(
 ): VaultOnboard {
   const c = vaultCopy(platform, provider, opts);
   const wayOut =
-    platform === 'ios'
-      ? 'Export writes your notes out as plain .md files in Files whenever you like.'
-      : platform === 'electron' && provider !== 'files'
-        ? 'Move the vault to This folder whenever you like, for plain .md files.'
-        : provider === 'files'
-          ? 'Each note is a file you can open, copy, or back up.'
-          : 'Copy any note out whenever you like.';
+    platform === 'ios' && provider === 'local'
+      ? 'Each note is a file you can open, copy, or back up.'
+      : platform === 'ios'
+        ? 'Export writes your notes out as plain .md files in Files whenever you like.'
+        : platform === 'electron' && provider !== 'files'
+          ? 'Move the vault to This folder whenever you like, for plain .md files.'
+          : provider === 'files'
+            ? 'Each note is a file you can open, copy, or back up.'
+            : 'Copy any note out whenever you like.';
   const points: VaultOnboard['points'] = [
     { glyph: 'doc', title: 'Plain markdown, yours', sub: `${wayOut} Nothing is locked in.` },
   ];
@@ -446,7 +464,7 @@ export function vaultGuideText(): string {
   const icloud = vaultCopy('ios', 'icloud');
   return [
     'Plain markdown notes with [[wikilinks]] and linked mentions. Where it lives picks the storage for your own vault.',
-    `This device: ${vaultCopy('ios', 'local').storage}`,
+    `This device, on the iPhone and the iPad: ${vaultCopy('ios', 'local').storage} On a computer or in a browser: ${vaultCopy('web', 'local').storage}`,
     `This folder, in OpenShore on your computer: ${desk.storage} ${desk.obsidian} ${desk.agent} ${desk.routines}`,
     `iCloud Drive, on the iPhone: ${icloud.storage}`,
     `Google Drive: ${vaultCopy('ios', 'gdrive').storage} A vault already there is read-only, and its card moves it off.`,

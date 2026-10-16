@@ -24,6 +24,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { filesAppPath, thisDeviceNoun } from '../src/lib/deviceNoun.js';
 import {
   VAULT_GONE_REASON,
   VAULT_UNSEEN_DRAFT_REASON,
@@ -298,11 +299,23 @@ describe('the Vault copy map (0.19)', () => {
     expect(OBSIDIAN_SAID.local).not.toContain('## Obsidian opens this vault as is.');
   });
 
-  it('Local says it is sealed here and not a folder; the team vault says it is shared, not Obsidian', () => {
+  it('Local says it is sealed here and not a folder, except on the phone, where it is the OpenShore folder; the team vault says it is shared, not Obsidian', () => {
     for (const on of VAULT_COPY_PLATFORMS) {
-      expect(vaultCopy(on, 'local').storage).toBe(
-        'Sealed on this device. Not a folder other apps can open.',
-      );
+      // On the iPhone and the iPad, This device is plain files in the app's
+      // OpenShore folder (folder and sync plan, M2), and says where Files
+      // shows them; it never claims Obsidian or a seal there.
+      if (on === 'ios') {
+        const line = vaultCopy(on, 'local').storage;
+        expect(line).toBe(
+          `Plain .md files in the OpenShore folder on ${thisDeviceNoun()}. The Files app shows them under ${filesAppPath('OpenShore', 'Vault')}.`,
+        );
+        expect(line).toMatch(/On My (iPhone|iPad) \/ OpenShore \/ OpenShore \/ Vault\.$/);
+        expect(line).not.toMatch(/sealed|not a folder|Obsidian/i);
+      } else {
+        expect(vaultCopy(on, 'local').storage).toBe(
+          'Sealed on this device. Not a folder other apps can open.',
+        );
+      }
       expect(vaultCopy(on, 'org').storage).toMatch(/Shared with your team/);
       expect(vaultCopy(on, 'org').storage).toMatch(/not an Obsidian folder/);
     }
