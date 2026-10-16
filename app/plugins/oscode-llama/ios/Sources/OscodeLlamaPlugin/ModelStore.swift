@@ -5,9 +5,9 @@ import Foundation
 /// rehosts weights; this store is the phone reaching the source directly.
 ///
 /// A model lands in one of two homes:
-///   - device: the app's OpenShore folder, Documents/OpenShore/Models/<id>/
-///     (folder and sync plan, M2), so the person sees what is taking space in
-///     the Files app, beside their Vault and Exports. The folder and every
+///   - device: the app's OpenShore folder, Documents/Models/<id>/ (folder
+///     and sync plan, M2; Files shows it as On My iPhone > OpenShore > Models),
+///     so the person sees what is taking space, beside their Vault and Exports. The folder and every
 ///     weights file are excluded from device backup because the weights are
 ///     re-downloadable. Builds before M2 kept them in Application
 ///     Support/Models; the first launch moves each one over (one volume, so a
@@ -158,15 +158,13 @@ public final class ModelStore: NSObject, URLSessionDownloadDelegate {
 
     // ------------------------------------------------------------- inventory
 
-    /// The device home: Documents/OpenShore/Models, one folder per model.
+    /// The device home: Documents/Models, one folder per model.
     /// Created lazily and marked do-not-back-up (again on every look, which is
     /// cheap and heals a folder made before the flag): the weights are
     /// re-downloadable, so they never belong in a device or iCloud backup.
     var directory: URL {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let dir = docs
-            .appendingPathComponent("OpenShore", isDirectory: true)
-            .appendingPathComponent("Models", isDirectory: true)
+        let dir = docs.appendingPathComponent("Models", isDirectory: true)
         if !FileManager.default.fileExists(atPath: dir.path) {
             try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         }
@@ -211,7 +209,7 @@ public final class ModelStore: NSObject, URLSessionDownloadDelegate {
     }
 
     /// Move every .gguf in Application Support/Models into its folder under
-    /// Documents/OpenShore/Models, once, by rename (the two are on the same
+    /// Documents/Models, once, by rename (the two are on the same
     /// volume, so no bytes are copied and nothing downloads again). A model
     /// already in its new home is left where it was, never written over; it
     /// stays findable there (resolvedURL) and Delete removes both. The old
@@ -324,7 +322,7 @@ public final class ModelStore: NSObject, URLSessionDownloadDelegate {
         return models
     }
 
-    /// Device models: each folder under Documents/OpenShore/Models that holds
+    /// Device models: each folder under Documents/Models that holds
     /// its own "<folder>.gguf", then any file still in the pre-M2 place that
     /// the move could not take (listed once per id).
     private func deviceModels() -> [LocalModel] {

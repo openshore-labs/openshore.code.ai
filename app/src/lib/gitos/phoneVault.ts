@@ -1,5 +1,5 @@
 // This device on the iPhone and the iPad (folder and sync plan, M2): the
-// personal vault as real files in Documents/OpenShore/Vault, through the phone
+// personal vault as real files in Documents/Vault, through the phone
 // folder (phoneFolder.ts), and the one-time move of what the sealed store held
 // there before.
 //
@@ -175,6 +175,11 @@ async function placeNote(
 let transport: PhoneFolderTransport | undefined;
 let provider: StorageProvider | undefined;
 let moving: Promise<unknown> | undefined;
+// Whether the folder holds the vault this launch: only once launch has made
+// the layout with the old export out of the way (lib/phoneFolder.ts). Until
+// then, and for good on a launch that could not move it, This device stays
+// the sealed store.
+let folderInUse = false;
 
 /** The phone folder's transport, made once. */
 export function phoneVaultTransport(): PhoneFolderTransport {
@@ -182,14 +187,15 @@ export function phoneVaultTransport(): PhoneFolderTransport {
   return transport;
 }
 
-/** Settles once the move started at launch has finished (or failed). */
-export function phoneVaultGate(): Promise<void> {
+/** Settles once the move started at launch has finished (or failed), with
+ *  whether the folder is in use. Before launch starts it, the sealed store. */
+export function phoneVaultGate(): Promise<boolean> {
   return moving
     ? moving.then(
-        () => undefined,
-        () => undefined,
+        () => folderInUse,
+        () => folderInUse,
       )
-    : Promise.resolve();
+    : Promise.resolve(false);
 }
 
 /** This device on the phone, made once. */
@@ -199,13 +205,18 @@ export function phoneVaultProvider(): StorageProvider {
 }
 
 /** Start the one-time move (once per launch), after `before` (the folder's
- *  layout) settles; every provider call waits for it. Never rejects. */
+ *  layout) settles true; every provider call waits for it. When the layout
+ *  could not be made safely, nothing moves and This device stays the sealed
+ *  store this launch. Never rejects. */
 export function startPhoneVaultMove(
-  before: Promise<unknown> = Promise.resolve(),
+  before: Promise<boolean> = Promise.resolve(true),
 ): Promise<PhoneVaultMoveResult | undefined> {
   moving ??= before
-    .catch(() => undefined)
-    .then(() => moveSealedVaultToFolder(phoneVaultTransport()))
+    .catch(() => false)
+    .then((ok) => {
+      folderInUse = ok;
+      return ok ? moveSealedVaultToFolder(phoneVaultTransport()) : undefined;
+    })
     .catch(() => undefined);
   return moving as Promise<PhoneVaultMoveResult | undefined>;
 }

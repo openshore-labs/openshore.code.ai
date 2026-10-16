@@ -307,9 +307,9 @@ describe('the Vault copy map (0.19)', () => {
       if (on === 'ios') {
         const line = vaultCopy(on, 'local').storage;
         expect(line).toBe(
-          `Plain .md files in the OpenShore folder on ${thisDeviceNoun()}. The Files app shows them under ${filesAppPath('OpenShore', 'Vault')}.`,
+          `Plain .md files in the OpenShore folder on ${thisDeviceNoun()}. The Files app shows them under ${filesAppPath('Vault')}.`,
         );
-        expect(line).toMatch(/On My (iPhone|iPad) \/ OpenShore \/ OpenShore \/ Vault\.$/);
+        expect(line).toMatch(/On My (iPhone|iPad) > OpenShore > Vault\.$/);
         expect(line).not.toMatch(/sealed|not a folder|Obsidian/i);
       } else {
         expect(vaultCopy(on, 'local').storage).toBe(

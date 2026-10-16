@@ -36,8 +36,13 @@ const { createPhoneFolderTransport, createPhoneVaultProvider, PHONE_VAULT_DIR } 
 const { moveSealedVaultToFolder, PHONE_VAULT_MOVE_KEY, PHONE_VAULT_RESOURCE_ID } =
   await import('../src/lib/gitos/phoneVault.js');
 const { localProvider } = await import('../src/lib/gitos/local.js');
-const { ensurePhoneFolder, PHONE_README, PHONE_SECTIONS } =
-  await import('../src/lib/phoneFolder.js');
+const {
+  ensurePhoneFolder,
+  moveEarlierExportAside,
+  OLD_EXPORT_MARKER_KEY,
+  PHONE_README,
+  PHONE_SECTIONS,
+} = await import('../src/lib/phoneFolder.js');
 const { createFakePhoneFs } = await import('./support/fakePhoneFs.js');
 
 const R = PHONE_VAULT_RESOURCE_ID;
@@ -141,18 +146,70 @@ describe('what lists', () => {
 });
 
 describe('the layout', () => {
-  it('makes OpenShore/Vault, Chats, Models and Exports, with no Projects, and the README once', async () => {
-    await ensurePhoneFolder(fs);
+  it('makes Vault, Chats, Models and Exports at the Documents root, with no Projects, and the README once', async () => {
+    expect(await ensurePhoneFolder(fs)).toBe(true);
     for (const name of Object.values(PHONE_SECTIONS)) {
-      expect((await fs.stat(`OpenShore/${name}`))?.type).toBe('directory');
+      expect((await fs.stat(name))?.type).toBe('directory');
     }
-    expect(await fs.stat('OpenShore/Projects')).toBeNull();
+    expect(PHONE_VAULT_DIR).toBe('Vault');
+    expect(await fs.stat('Projects')).toBeNull();
+    // Nothing nests under a second OpenShore folder.
+    expect(await fs.stat('OpenShore')).toBeNull();
     expect(Object.values(PHONE_SECTIONS)).toEqual(['Vault', 'Chats', 'Models', 'Exports']);
-    expect(fs.text('OpenShore/README.md')).toBe(PHONE_README);
+    expect(fs.text('README.md')).toBe(PHONE_README);
     // The person's own edit stays.
-    fs.put('OpenShore/README.md', 'my notes about this folder');
+    fs.put('README.md', 'my notes about this folder');
     await ensurePhoneFolder(fs);
-    expect(fs.text('OpenShore/README.md')).toBe('my notes about this folder');
+    expect(fs.text('README.md')).toBe('my notes about this folder');
+  });
+
+  it('moves the old export out of Documents/Vault before the live vault is made, once', async () => {
+    fs.put('Vault/Plan.md', 'exported copy');
+    fs.put('Vault/.obsidian/app.json', '{}');
+    expect(await ensurePhoneFolder(fs)).toBe(true);
+    expect(fs.text('Exports/Vault (earlier export)/Plan.md')).toBe('exported copy');
+    expect(fs.text('Exports/Vault (earlier export)/.obsidian/app.json')).toBe('{}');
+    // The live vault starts empty, and the marker is recorded.
+    expect(fs.paths('Vault')).toEqual(['Vault']);
+    expect(h.store.has(OLD_EXPORT_MARKER_KEY)).toBe(true);
+    // A note written to the live vault is never moved by a later launch.
+    fs.put('Vault/Mine.md', 'live note');
+    expect(await ensurePhoneFolder(fs)).toBe(true);
+    expect(fs.text('Vault/Mine.md')).toBe('live note');
+    expect(fs.paths('Exports').filter((p) => p.endsWith('Mine.md'))).toEqual([]);
+  });
+
+  it('puts the old export beside a name already taken in Exports', async () => {
+    fs.put('Exports/Vault (earlier export)/x.md', 'someone else');
+    fs.put('Vault/Plan.md', 'exported copy');
+    expect(await moveEarlierExportAside(fs)).toBe(true);
+    expect(fs.text('Exports/Vault (earlier export)/x.md')).toBe('someone else');
+    expect(fs.text('Exports/Vault (earlier export) 2/Plan.md')).toBe('exported copy');
+  });
+
+  it('with no old export, records the marker and moves nothing', async () => {
+    expect(await moveEarlierExportAside(fs)).toBe(true);
+    expect(fs.paths()).toEqual([]);
+    expect(h.store.has(OLD_EXPORT_MARKER_KEY)).toBe(true);
+  });
+
+  it('when the old export will not move, makes no live vault there and tries again next launch', async () => {
+    fs.put('Vault/Plan.md', 'exported copy');
+    const realRename = fs.rename;
+    fs.rename = async () => {
+      throw new Error('busy');
+    };
+    try {
+      expect(await ensurePhoneFolder(fs)).toBe(false);
+    } finally {
+      fs.rename = realRename;
+    }
+    expect(fs.text('Vault/Plan.md')).toBe('exported copy');
+    expect(await fs.stat('Chats')).toBeNull();
+    expect(h.store.has(OLD_EXPORT_MARKER_KEY)).toBe(false);
+    // The next launch moves it and goes on.
+    expect(await ensurePhoneFolder(fs)).toBe(true);
+    expect(fs.text('Exports/Vault (earlier export)/Plan.md')).toBe('exported copy');
   });
 
   it('the README says only what this build does', () => {
@@ -280,7 +337,7 @@ describe('the provider on the phone', () => {
   it('holds every call until the move settles', async () => {
     const t = createPhoneFolderTransport(fs);
     let open!: () => void;
-    const gate = new Promise<void>((r) => (open = r));
+    const gate = new Promise<boolean>((r) => (open = () => r(true)));
     const p = createPhoneVaultProvider(t, () => gate);
     fs.put(inVault('a.md'), 'a');
     let listed: string[] | undefined;
@@ -290,6 +347,23 @@ describe('the provider on the phone', () => {
     open();
     await pending;
     expect(listed).toEqual(['a.md']);
+  });
+
+  it('stays the sealed store on a launch whose folder is not in use', async () => {
+    const t = createPhoneFolderTransport(fs);
+    const p = createPhoneVaultProvider(t, async () => false);
+    fs.put(inVault('folder.md'), 'in the folder');
+    await sealNote('sealed.md', 'sealed');
+    expect((await p.list(R)).map((f) => f.path)).toEqual(['sealed.md']);
+    expect((await p.write(R, 'new.md', 'x', { ifAbsent: true })).ok).toBe(true);
+    expect(fs.text(inVault('new.md'))).toBeUndefined();
+    expect(await p.listFolders!(R)).toEqual([]);
+    await expect(p.createFolder!(R, 'Work')).rejects.toThrow(/Open OpenShore again/);
+  });
+
+  it('the launch gate keeps the sealed store until launch makes the folder', async () => {
+    const { phoneVaultGate } = await import('../src/lib/gitos/phoneVault.js');
+    expect(await phoneVaultGate()).toBe(false);
   });
 
   it('keeps the id local, compare-and-swap, and the folder rows', () => {

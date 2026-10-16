@@ -1,6 +1,7 @@
 // The phone's vault as real files (folder and sync plan, M2): on the iPhone
 // and the iPad, This device keeps the personal vault as plain .md files in
-// the app's Documents, under OpenShore/Vault, so the Files app shows them and
+// the app's Documents, under Vault, so the Files app shows them (as On My
+// iPhone > OpenShore > Vault: Files names the app's Documents by the app) and
 // other apps can open them in place (Info.plist has UIFileSharingEnabled and
 // LSSupportsOpeningDocumentsInPlace). It is the shared folder client
 // (folderClient.ts) over a transport that does the file work through
@@ -59,6 +60,7 @@ import {
 } from 'os-code/protocol';
 import { Directory, Encoding, Filesystem } from '@capacitor/filesystem';
 import {
+  PHONE_FOLDER_WAITS_LINE,
   VAULT_SETTINGS_NAME_REFUSED,
   VAULT_SETTINGS_TOO_LARGE,
   VAULT_SETTINGS_WRITE_REFUSED,
@@ -70,7 +72,7 @@ import {
   makeFolderProvider,
   type FolderTransport,
 } from './folderClient.js';
-import { VAULT_SETTINGS_PATH } from './local.js';
+import { localProvider, VAULT_SETTINGS_PATH } from './local.js';
 import {
   isNotePath,
   type CreateFolderResult,
@@ -201,10 +203,10 @@ export function capacitorPhoneFs(): PhoneFs {
 
 // ---- Where things are ------------------------------------------------------
 
-/** The app's own folder inside Documents (one name everywhere, R6). */
-export const PHONE_OPENSHORE_DIR = 'OpenShore';
-/** The personal vault's folder, relative to Documents. */
-export const PHONE_VAULT_DIR = `${PHONE_OPENSHORE_DIR}/Vault`;
+/** The personal vault's folder, relative to Documents. The sections sit at
+ *  the Documents root, which Files shows as the OpenShore folder (one name
+ *  everywhere, R6; flattened 2026-10-16, DECISIONS). */
+export const PHONE_VAULT_DIR = 'Vault';
 
 const TRASH_DIR = '.trash';
 const TRASH_MANIFEST = '.oscode-trash.json';
@@ -1009,14 +1011,34 @@ export const PHONE_VAULT_META = {
   ready: true,
 };
 
+/** The members the folder has and the sealed store does not, answered while
+ *  the folder is not in use this launch (the old export could not be moved
+ *  aside, so the live vault was never made): nothing to list, and a folder
+ *  change refused in plain words. */
+const SEALED_STANDINS: Record<string, (...args: unknown[]) => Promise<unknown>> = {
+  listFolders: async () => [],
+  listAttachments: async () => [],
+  readBytes: async () => ({ ok: false, reason: 'unsupported' }),
+  createFolder: async () => {
+    throw new Error(PHONE_FOLDER_WAITS_LINE);
+  },
+  renameFolder: async () => {
+    throw new Error(PHONE_FOLDER_WAITS_LINE);
+  },
+};
+
 /** This device on the phone: the folder client over the phone transport, its
  *  settings file, and every call held until `gate()` settles (the one-time
- *  move from the sealed store, so nothing reads a half-moved vault). The
- *  resource id is ignored, as on the desktop folder: there is one vault on
- *  this device. */
+ *  move from the sealed store, so nothing reads a half-moved vault). The gate
+ *  answers whether the folder is in use this launch; when it is not (launch
+ *  could not move an old export out of the way, so it never made the live
+ *  vault there), each call goes to `sealed`, the store the vault was in, and
+ *  the next launch tries again. The resource id is ignored, as on the desktop
+ *  folder: there is one vault on this device. */
 export function createPhoneVaultProvider(
   transport: PhoneFolderTransport,
-  gate: () => Promise<void> = () => Promise.resolve(),
+  gate: () => Promise<boolean> = () => Promise.resolve(true),
+  sealed: StorageProvider = localProvider,
 ): StorageProvider {
   const base: StorageProvider = {
     ...makeFolderProvider(transport, PHONE_VAULT_META),
@@ -1029,14 +1051,22 @@ export function createPhoneVaultProvider(
     },
   };
   const out: Record<string, unknown> = {};
+  const sealedMembers = sealed as unknown as Record<string, unknown>;
   for (const [key, value] of Object.entries(base)) {
-    out[key] =
-      typeof value === 'function'
-        ? async (...args: unknown[]) => {
-            await gate().catch(() => {});
-            return (value as (...a: unknown[]) => unknown).apply(base, args);
-          }
-        : value;
+    if (typeof value !== 'function') {
+      out[key] = value;
+      continue;
+    }
+    out[key] = async (...args: unknown[]) => {
+      const folder = await gate().catch(() => false);
+      if (folder) return (value as (...a: unknown[]) => unknown).apply(base, args);
+      const own = sealedMembers[key];
+      if (typeof own === 'function')
+        return (own as (...a: unknown[]) => unknown).apply(sealed, args);
+      const standIn = SEALED_STANDINS[key];
+      if (standIn) return standIn(...args);
+      throw new Error(PHONE_FOLDER_WAITS_LINE);
+    };
   }
   return out as unknown as StorageProvider;
 }

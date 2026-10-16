@@ -1,4 +1,4 @@
-// The vault export (0.11). BE-10: it writes Documents/OpenShore/Exports/Vault/<path>
+// The vault export (0.11). BE-10: it writes Documents/Exports/Vault/<path>
 // (folder and sync plan, M2: exports live in the one OpenShore folder)
 // recursively, so a note path that climbs out of the folder (a teammate's
 // "../../x.md" on the team vault) must be skipped on the device, whatever the
@@ -101,7 +101,7 @@ describe('exportVaultToFiles', () => {
       { path: 'b/c.md', text: 'C' },
     ]);
     expect(r).toMatchObject({ written: 2, total: 3 });
-    expect(writes).toEqual(['OpenShore/Exports/Vault/a.md', 'OpenShore/Exports/Vault/b/c.md']);
+    expect(writes).toEqual(['Exports/Vault/a.md', 'Exports/Vault/b/c.md']);
   });
 
   it('the desktop never exports, so it never reports a count', async () => {
@@ -120,39 +120,39 @@ describe('exportVaultToFiles', () => {
   });
 
   it('an unknown file and .obsidian/ survive an iOS re-export; only its own stale file goes', async () => {
-    disk.set('OpenShore/Exports/Vault/.obsidian/app.json', '{}');
-    disk.set('OpenShore/Exports/Vault/written by hand.md', 'mine');
+    disk.set('Exports/Vault/.obsidian/app.json', '{}');
+    disk.set('Exports/Vault/written by hand.md', 'mine');
     await exportVaultToFiles(notes('a.md', 'b.md'));
     // b.md is deleted from the vault; the next export drops only its copy.
     const r = await exportVaultToFiles(notes('a.md'));
     expect(r).toMatchObject({ written: 1, total: 1, removed: 1 });
     expect(Filesystem.rmdir).not.toHaveBeenCalled();
     expect([...disk.keys()].sort()).toEqual([
-      'OpenShore/Exports/Vault/.obsidian/app.json',
-      'OpenShore/Exports/Vault/a.md',
-      'OpenShore/Exports/Vault/written by hand.md',
+      'Exports/Vault/.obsidian/app.json',
+      'Exports/Vault/a.md',
+      'Exports/Vault/written by hand.md',
     ]);
   });
 
   it('a stale file changed there since the export is kept, then and after', async () => {
     await exportVaultToFiles(notes('a.md', 'b.md'));
-    disk.set('OpenShore/Exports/Vault/b.md', 'edited in another app');
+    disk.set('Exports/Vault/b.md', 'edited in another app');
     await exportVaultToFiles(notes('a.md'));
-    expect(disk.get('OpenShore/Exports/Vault/b.md')).toBe('edited in another app');
+    expect(disk.get('Exports/Vault/b.md')).toBe('edited in another app');
     // It is no longer this device's file, so no later export removes it.
     await exportVaultToFiles(notes('a.md'));
-    expect(disk.get('OpenShore/Exports/Vault/b.md')).toBe('edited in another app');
+    expect(disk.get('Exports/Vault/b.md')).toBe('edited in another app');
   });
 
   it('a note that could not be read keeps its file, and the count says N of M', async () => {
     await exportVaultToFiles(notes('a.md', 'b.md'));
     const r = await exportVaultToFiles(notes('a.md'), ['b.md']);
     expect(r).toMatchObject({ written: 1, total: 2, removed: 0 });
-    expect(disk.get('OpenShore/Exports/Vault/b.md')).toBe('# b.md');
+    expect(disk.get('Exports/Vault/b.md')).toBe('# b.md');
     expect(vaultExportLine(r!)).toMatch(/^1 of 2 notes exported/);
     // Once it reads again, it is still this device's to refresh or remove.
     await exportVaultToFiles(notes('a.md'));
-    expect(disk.has('OpenShore/Exports/Vault/b.md')).toBe(false);
+    expect(disk.has('Exports/Vault/b.md')).toBe(false);
   });
 
   // T7: an export overwrites only the copy it wrote. A file edited in Files
@@ -162,55 +162,55 @@ describe('exportVaultToFiles', () => {
       { path: 'ideas/Ideas.md', text: 'vault text' },
       { path: 'b.md', text: 'B' },
     ]);
-    disk.set('OpenShore/Exports/Vault/ideas/Ideas.md', 'my edit made in Files');
+    disk.set('Exports/Vault/ideas/Ideas.md', 'my edit made in Files');
     const r = await exportVaultToFiles([
       { path: 'ideas/Ideas.md', text: 'newer vault text' },
       { path: 'b.md', text: 'B2' },
     ]);
-    expect(disk.get('OpenShore/Exports/Vault/ideas/Ideas.md')).toBe('my edit made in Files');
-    expect(disk.get('OpenShore/Exports/Vault/b.md')).toBe('B2');
+    expect(disk.get('Exports/Vault/ideas/Ideas.md')).toBe('my edit made in Files');
+    expect(disk.get('Exports/Vault/b.md')).toBe('B2');
     expect(r).toMatchObject({ written: 1, total: 2, unread: 0, kept: ['ideas/Ideas.md'] });
     expect(vaultExportLine(r!)).toBe(
-      '1 note exported to Files, under On My iPhone / OpenShore / OpenShore / Exports / Vault. It is a one-way copy: edits made there do not come back into the vault. "Ideas" there is not the copy OpenShore last wrote, so it was left as it is. Delete it in Files to export a fresh copy.',
+      '1 note exported to Files, under On My iPhone > OpenShore > Exports > Vault. It is a one-way copy: edits made there do not come back into the vault. "Ideas" there is not the copy OpenShore last wrote, so it was left as it is. Delete it in Files to export a fresh copy.',
     );
     // It is no longer ours: a later export leaves it too, and the note's
     // removal from the vault never takes it.
     await exportVaultToFiles([{ path: 'ideas/Ideas.md', text: 'newer still' }]);
-    expect(disk.get('OpenShore/Exports/Vault/ideas/Ideas.md')).toBe('my edit made in Files');
+    expect(disk.get('Exports/Vault/ideas/Ideas.md')).toBe('my edit made in Files');
     await exportVaultToFiles([{ path: 'b.md', text: 'B2' }]);
-    expect(disk.get('OpenShore/Exports/Vault/ideas/Ideas.md')).toBe('my edit made in Files');
+    expect(disk.get('Exports/Vault/ideas/Ideas.md')).toBe('my edit made in Files');
     // Deleted in Files, it exports fresh and is ours again.
-    disk.delete('OpenShore/Exports/Vault/ideas/Ideas.md');
+    disk.delete('Exports/Vault/ideas/Ideas.md');
     const fresh = await exportVaultToFiles([{ path: 'ideas/Ideas.md', text: 'newer still' }]);
     expect(fresh).toMatchObject({ written: 1, kept: [] });
-    expect(disk.get('OpenShore/Exports/Vault/ideas/Ideas.md')).toBe('newer still');
+    expect(disk.get('Exports/Vault/ideas/Ideas.md')).toBe('newer still');
   });
 
   it("a file added by hand under a note's name is never overwritten", async () => {
-    disk.set('OpenShore/Exports/Vault/Plan.md', 'written by hand');
-    disk.set('OpenShore/Exports/Vault/Same.md', 'same words');
+    disk.set('Exports/Vault/Plan.md', 'written by hand');
+    disk.set('Exports/Vault/Same.md', 'same words');
     const r = await exportVaultToFiles([
       { path: 'Plan.md', text: 'vault plan' },
       { path: 'Same.md', text: 'same words' },
       { path: 'New.md', text: 'new' },
     ]);
-    expect(disk.get('OpenShore/Exports/Vault/Plan.md')).toBe('written by hand');
+    expect(disk.get('Exports/Vault/Plan.md')).toBe('written by hand');
     // A file that already holds the note's exact text is the note's copy.
-    expect(disk.get('OpenShore/Exports/Vault/Same.md')).toBe('same words');
-    expect(disk.get('OpenShore/Exports/Vault/New.md')).toBe('new');
+    expect(disk.get('Exports/Vault/Same.md')).toBe('same words');
+    expect(disk.get('Exports/Vault/New.md')).toBe('new');
     expect(r).toMatchObject({ written: 2, total: 3, kept: ['Plan.md'] });
     expect(vaultExportLine(r!)).toMatch(/"Plan" there is not the copy OpenShore last wrote/);
   });
 
   it('unread and kept counts never mix', async () => {
     await exportVaultToFiles(notes('a.md', 'b.md', 'c.md', 'd.md'));
-    disk.set('OpenShore/Exports/Vault/a.md', 'edited');
-    disk.set('OpenShore/Exports/Vault/b.md', 'edited too');
+    disk.set('Exports/Vault/a.md', 'edited');
+    disk.set('Exports/Vault/b.md', 'edited too');
     const r = await exportVaultToFiles(notes('a.md', 'b.md', 'c.md'), ['d.md']);
     expect(r).toMatchObject({ written: 1, total: 4, unread: 1, kept: ['a.md', 'b.md'] });
     const line = vaultExportLine(r!);
     expect(line).toBe(
-      '1 of 4 notes exported to Files, under On My iPhone / OpenShore / OpenShore / Exports / Vault. One note could not be read right now; export again to bring it. 2 files there are not the copies OpenShore last wrote, so they were left as they are. Delete them in Files to export fresh copies.',
+      '1 of 4 notes exported to Files, under On My iPhone > OpenShore > Exports > Vault. One note could not be read right now; export again to bring it. 2 files there are not the copies OpenShore last wrote, so they were left as they are. Delete them in Files to export fresh copies.',
     );
     // Kept files alone never read as unread, and unread notes alone never
     // read as kept.
@@ -231,7 +231,7 @@ describe('exportVaultToFiles', () => {
   it('says a whole export plainly, as a one-way copy', () => {
     const whole = { written: 3, total: 3, removed: 0, unread: 0, kept: [] };
     expect(vaultExportLine(whole)).toBe(
-      '3 notes exported to Files, under On My iPhone / OpenShore / OpenShore / Exports / Vault. It is a one-way copy: edits made there do not come back into the vault.',
+      '3 notes exported to Files, under On My iPhone > OpenShore > Exports > Vault. It is a one-way copy: edits made there do not come back into the vault.',
     );
     expect(vaultExportLine({ ...whole, written: 0, total: 2, unread: 2 })).toMatch(
       /nothing was exported/,
@@ -257,21 +257,21 @@ describe('the team export (M2 2.8)', () => {
     expect(r).toMatchObject({
       written: 2,
       total: 2,
-      where: 'to Files, under On My iPhone / OpenShore / OpenShore / Exports / Vault Team / Acme',
+      where: 'to Files, under On My iPhone > OpenShore > Exports > Vault Team > Acme',
     });
-    expect(disk.get('OpenShore/Exports/Vault Team/Acme/plan.md')).toBe('# plan.md');
-    expect(disk.get('OpenShore/Exports/Vault Team/Acme/ideas/next.md')).toBe('# ideas/next.md');
+    expect(disk.get('Exports/Vault Team/Acme/plan.md')).toBe('# plan.md');
+    expect(disk.get('Exports/Vault Team/Acme/ideas/next.md')).toBe('# ideas/next.md');
     for (const [path, text] of personalFiles) expect(disk.get(path)).toBe(text);
     // A later team export with a note gone removes only the team's own file.
     await exportTeamVaultToFiles(notes('plan.md'), [], org);
-    expect(disk.has('OpenShore/Exports/Vault Team/Acme/ideas/next.md')).toBe(false);
-    expect(disk.get('OpenShore/Exports/Vault/mine.md')).toBe('# mine.md');
+    expect(disk.has('Exports/Vault Team/Acme/ideas/next.md')).toBe(false);
+    expect(disk.get('Exports/Vault/mine.md')).toBe('# mine.md');
     // And the personal export's manifest is its own.
     const personalKey = JSON.parse(personalManifest)[0][0] as string;
     expect(sealed.get(personalKey)).toEqual(JSON.parse(personalManifest)[0][1]);
     // A personal export after it never removes the team's files.
     await exportVaultToFiles(notes('mine.md'));
-    expect(disk.get('OpenShore/Exports/Vault Team/Acme/plan.md')).toBe('# plan.md');
+    expect(disk.get('Exports/Vault Team/Acme/plan.md')).toBe('# plan.md');
   });
 
   it('on the desktop goes through main, and says where and that Obsidian opens it', async () => {

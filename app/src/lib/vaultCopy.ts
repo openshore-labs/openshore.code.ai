@@ -23,7 +23,7 @@
 //   iCloud folder says nothing about Obsidian until a Mac opens it on a real
 //   device (8.1) and iCloud writes are safe for a second writer (2.1, 2.9).
 //   Local is a sealed store (on the iPhone and the iPad, plain files in the
-//   app's OpenShore folder, which Obsidian there does not open), Google Drive
+//   app's folder in Files, which Obsidian there does not open), Google Drive
 //   is held back, and the team vault is a server, so none of them claims
 //   Obsidian.
 // - This device on the iPhone and the iPad is the OpenShore folder in the
@@ -193,8 +193,13 @@ const STORAGE: Record<VaultCopyProvider, string> = {
  *  OpenShore folder, which the Files app shows (UIFileSharingEnabled). Asked
  *  for when said, so it names the device in hand. */
 export function phoneLocalStorageLine(): string {
-  return `Plain .md files in the OpenShore folder on ${thisDeviceNoun()}. The Files app shows them under ${filesAppPath('OpenShore', 'Vault')}.`;
+  return `Plain .md files in the OpenShore folder on ${thisDeviceNoun()}. The Files app shows them under ${filesAppPath('Vault')}.`;
 }
+
+/** A folder change asked for on a launch where the OpenShore folder could not
+ *  be set up, so the vault stayed sealed this time (lib/gitos/phoneVault.ts). */
+export const PHONE_FOLDER_WAITS_LINE =
+  'Folders can be made here once OpenShore has set up its folder in Files. Open OpenShore again to try.';
 
 const OBSIDIAN: Partial<Record<VaultCopyProvider, string>> = {
   files: 'Obsidian opens this folder as a vault.',
