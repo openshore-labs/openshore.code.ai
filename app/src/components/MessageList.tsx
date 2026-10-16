@@ -47,6 +47,7 @@ import { Keyboard } from '@capacitor/keyboard';
 import { isPhone } from '../lib/platform.js';
 import { REWIND_ACTION } from '../state/rewindOps.js';
 import { appActionsAsked, type AppActionKey } from '../lib/appActions.js';
+import { mendEmDashes } from '../lib/replyDashes.js';
 
 /** The quiet line under a parked message while it waits to go. */
 export const PARKED_WAITING = 'Waiting to send';
@@ -136,7 +137,7 @@ function followBottom(el: HTMLElement): void {
 }
 
 function AssistantBubble({
-  text,
+  text: raw,
   streaming,
   model,
   showModel,
@@ -160,6 +161,8 @@ function AssistantBubble({
   /** A scripted guide message that writes itself (lib/introWalk.ts). */
   paced?: PacedKind;
 }) {
+  // A small seat writes em dashes it was told not to; prose reads them as commas.
+  const text = mendEmDashes(raw);
   const { text: shown, settling } = useSmoothedReveal(text, streaming && !paced);
   const ink = useInkSwell(text, streaming, paced);
   // Fires once per bubble mount, i.e. right as its first token lands. A
