@@ -187,11 +187,11 @@ describe('the vault folder is machine config', () => {
     }
   });
 
-  it('unset means ~/OSCode/Vault, and a relative path is refused, never resolved against a cwd', () => {
-    expect(loadVaultDir()).toEqual({ dir: join(homedir(), 'OSCode', 'Vault') });
+  it('unset means ~/OpenShore/Vault, and a relative path is refused, never resolved against a cwd', () => {
+    expect(loadVaultDir()).toEqual({ dir: join(homedir(), 'OpenShore', 'Vault') });
     writeFileSync(join(home, 'config.json'), JSON.stringify({ vault: { dir: 'Notes/Vault' } }));
     const vault = loadVaultDir();
-    expect(vault.dir).toBe(join(homedir(), 'OSCode', 'Vault'));
+    expect(vault.dir).toBe(join(homedir(), 'OpenShore', 'Vault'));
     expect(vault.warning).toMatch(/not an absolute path/);
     // doctor and the session warnings carry it.
     expect(loadConfig(home).warnings.join('\n')).toMatch(
@@ -214,7 +214,7 @@ describe('ensureVaultRoot', () => {
     const prev = saveHome();
     setHome(home);
     try {
-      expect(defaultVaultDir()).toBe(join(home, 'OSCode', 'Vault'));
+      expect(defaultVaultDir()).toBe(join(home, 'OpenShore', 'Vault'));
       expect(ensureVaultRoot(defaultVaultDir())).toBe(defaultVaultDir());
       expect(statSync(defaultVaultDir()).isDirectory()).toBe(true);
     } finally {

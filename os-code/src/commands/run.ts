@@ -8,6 +8,7 @@ import { App } from '../tui/app.js';
 import { runPlain } from '../tui/plain.js';
 import { setColorEnabled, t } from '../brand/theme.js';
 import { out } from './util.js';
+import { ensureOpenshoreFolder } from '../config/openshoreFolder.js';
 
 export interface RunOptions {
   prompt?: string;
@@ -17,6 +18,7 @@ export interface RunOptions {
 
 export async function runCommand(options: RunOptions): Promise<void> {
   const cwd = options.cwd ?? process.cwd();
+  ensureOpenshoreFolder();
   let session;
   try {
     session = bootstrapSession({ cwd, profile: 'local-interactive' });

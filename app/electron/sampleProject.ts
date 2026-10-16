@@ -1,12 +1,12 @@
 // The sample page for a first try (v1 Phase 1, desktop first run). A tiny
 // page for a bakery's news list whose Join button does nothing, because its
 // script looks for an id the page does not have: the most common way a
-// beginner's page silently breaks. One tap writes it to ~/OSCode/Try
+// beginner's page silently breaks. One tap writes it to ~/OpenShore/Projects/Try
 // OpenShore and opens a chat there that asks for the fix, so a first-time
 // person sees the whole loop (the edit, the check, the changed files, Undo)
 // on something that cannot hurt their own work. Nothing here touches Electron.
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { sectionDir } from 'os-code/dist/src/config/openshoreFolder.js';
 import { join } from 'node:path';
 
 export const SAMPLE_FOLDER_NAME = 'Try OpenShore';
@@ -60,7 +60,7 @@ export const SAMPLE_FILES: Record<string, string> = {
 
 /** Write the sample to `root`/Try OpenShore, keeping any file already there
  *  (a second tap reopens the same folder, never overwrites what changed). */
-export function createSampleProject(root = join(homedir(), 'OSCode')): {
+export function createSampleProject(root = sectionDir('projects')): {
   path: string;
   created: boolean;
 } {

@@ -198,13 +198,13 @@ describe.skipIf(!posix)('clone and the managed folder, against a stub git', () =
     ).rejects.toThrow('fatal: Authentication failed for [token]');
   });
 
-  it('clones into ~/OSCode once, even when asked twice at the same time', async () => {
+  it('clones into ~/OpenShore/Projects once, even when asked twice at the same time', async () => {
     const url = 'https://github.com/o/openshore-hq.git';
     const [a, b] = await Promise.all([
       cloneIntoManaged(url, 'openshore-hq', { token: 't' }),
       cloneIntoManaged(url, 'openshore-hq', { token: 't' }),
     ]);
-    expect(a).toBe(join(home, 'OSCode', 'openshore-hq'));
+    expect(a).toBe(join(home, 'OpenShore', 'Projects', 'openshore-hq'));
     expect(b).toBe(a);
     expect(readFileSync(join(out, 'count'), 'utf8').trim()).toBe('1');
     // Asked again later, the clone already there is the answer (ssh or https).
@@ -213,38 +213,42 @@ describe.skipIf(!posix)('clone and the managed folder, against a stub git', () =
   });
 
   it('refuses a folder of that name that holds a different repository', async () => {
-    const dir = join(home, 'OSCode', 'site', '.git');
+    const dir = join(home, 'OpenShore', 'Projects', 'site', '.git');
     mkdirSync(dir, { recursive: true });
     writeFileSync(
       join(dir, 'config'),
       '[remote "origin"]\n\turl = https://github.com/someone-else/site.git\n',
     );
     await expect(cloneIntoManaged('https://github.com/o/site.git', 'site')).rejects.toThrow(
-      /A different repository already uses the folder OSCode\/site/,
+      /A different repository already uses the folder OpenShore\/Projects\/site/,
     );
     expect(existsSync(join(out, 'count'))).toBe(false);
   });
 
-  it('lists recent folders first, then every clone under ~/OSCode, each with its origin', () => {
+  it('lists recent folders first, then every clone under ~/OpenShore/Projects, each with its origin', () => {
     const recent = join(home, 'work', 'app');
     mkdirSync(recent, { recursive: true });
-    const managed = join(home, 'OSCode', 'hq', '.git');
+    const managed = join(home, 'OpenShore', 'Projects', 'hq', '.git');
     mkdirSync(managed, { recursive: true });
     writeFileSync(
       join(managed, 'config'),
       '[remote "upstream"]\n\turl = https://github.com/up/hq.git\n[remote "origin"]\n\turl = https://x-access-token:ghu_leak@github.com/o/hq.git\n',
     );
-    mkdirSync(join(home, 'OSCode', '.hidden', '.git'), { recursive: true });
-    // The Vault and the desktop's scratch folder share ~/OSCode; not repositories.
-    mkdirSync(join(home, 'OSCode', 'Vault'), { recursive: true });
-    mkdirSync(join(home, 'OSCode', 'scratch'), { recursive: true });
+    mkdirSync(join(home, 'OpenShore', 'Projects', '.hidden', '.git'), { recursive: true });
+    // The Vault and the desktop's scratch folder share ~/OpenShore/Projects; not repositories.
+    mkdirSync(join(home, 'OpenShore', 'Vault'), { recursive: true });
+    mkdirSync(join(home, 'OpenShore', 'Projects', 'scratch'), { recursive: true });
     const rows = listWorkspaces([
       { cwd: recent, updatedAt: '2026-09-25T00:00:00Z' },
       { cwd: join(home, 'gone') },
     ]);
     expect(rows).toEqual([
       { cwd: recent, name: 'app', lastUsed: '2026-09-25T00:00:00Z' },
-      { cwd: join(home, 'OSCode', 'hq'), name: 'hq', remote: 'https://github.com/o/hq.git' },
+      {
+        cwd: join(home, 'OpenShore', 'Projects', 'hq'),
+        name: 'hq',
+        remote: 'https://github.com/o/hq.git',
+      },
     ]);
     expect(originUrl(recent)).toBeUndefined();
   });

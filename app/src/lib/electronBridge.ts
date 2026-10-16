@@ -376,7 +376,7 @@ export interface OscodeBridge {
    *  larger window from the next message, in every chat. Absent on an older
    *  shell. */
   giveMoreRoom?(provider: string): Promise<{ ok: true; provider: string } | { error: string }>;
-  /** The sample page for a first try (v1 Phase 1): written to ~/OSCode/Try
+  /** The sample page for a first try (v1 Phase 1): written to ~/OpenShore/Projects/Try
    *  OpenShore, kept as it is when already there. Absent on an older shell. */
   createSample?(): Promise<{ path: string; created: boolean } | { error: string }>;
   /** Undo or redo a task's changes, every file or one (the changed-files
@@ -491,13 +491,13 @@ export interface OscodeBridge {
 
   // Repos.
   pickFolder(): Promise<string | null>;
-  /** Clone into ~/OSCode. `token` is the connected platform's token for a
+  /** Clone into ~/OpenShore/Projects. `token` is the connected platform's token for a
    *  private repository, used for this one clone and never stored. */
   cloneRepo(
     url: string,
     token?: string,
   ): Promise<{ cwd: string; name: string } | { error: string }>;
-  /** Recent session folders, then every clone under ~/OSCode, each with its
+  /** Recent session folders, then every clone under ~/OpenShore/Projects, each with its
    *  origin address when it has one. */
   recentWorkspaces(): Promise<
     Array<{ cwd: string; name: string; lastUsed?: string; remote?: string }>
@@ -585,7 +585,7 @@ export interface OscodeBridge {
   hermesNotes(): Promise<{ home: string; notes: HermesNoteMeta[] }>;
   hermesNote(path: string): Promise<HermesNote | null>;
 
-  // On-disk vault: plain .md files under the agent's vault dir (~/OSCode/Vault),
+  // On-disk vault: plain .md files under the agent's vault dir (~/OpenShore/Vault),
   // so the app's Vault and the agent share one folder. Paths are jailed to that
   // directory in the main process, and only notes (.md, no dot segment) cross.
   // Every file carries its opaque version (the lstat token), and a write may

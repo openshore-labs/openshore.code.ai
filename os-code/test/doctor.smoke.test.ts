@@ -37,7 +37,7 @@ describe('osc doctor', () => {
     }
     // The folder the agent's notes land in, resolved the one way every
     // surface resolves it.
-    expect(output).toContain(`The agent's vault: ${join(homedir(), 'OSCode', 'Vault')}`);
+    expect(output).toContain(`The agent's vault: ${join(homedir(), 'OpenShore', 'Vault')}`);
     // The one missing prerequisite is named with its one-line fix.
     expect(output).toContain('osc init');
     // No stack traces reach the user's face.

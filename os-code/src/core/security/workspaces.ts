@@ -1,5 +1,5 @@
 // Which folders on this machine an unattended or remote actor may work in.
-// Admin-provisioned workspaces are the repos cloned under ~/OSCode (by the
+// Admin-provisioned workspaces are the repos cloned under ~/OpenShore/Projects (by the
 // daemon's clone route or the desktop app); the outbox roots are the explicit
 // extra repos an admin listed in daemon config. Both predicates resolve real
 // paths on both sides, so a symlink planted inside a managed root that points
@@ -8,12 +8,12 @@
 //
 // Lives here, below the daemon, so the routine scheduler (which the daemon
 // starts) can share the exact same gate without a circular import.
-import { join, resolve, sep } from 'node:path';
-import { homedir } from 'node:os';
+import { resolve, sep } from 'node:path';
 import { deepestRealpath } from './jail.js';
 import { loadDaemonConfig, loadVaultDir, type DaemonConfig } from '../../config/load.js';
 import type { OscConfig } from '../../config/schema.js';
 import { memberVaultsDir } from '../vault/memberRoots.js';
+import { sectionDir } from '../../config/openshoreFolder.js';
 
 /** Resolve a path to its real location (symlinks followed); one that does
  *  not exist yet resolves its deepest existing ancestor and keeps the rest. */
@@ -30,12 +30,12 @@ export function within(target: string, root: string): boolean {
 }
 
 export function managedRoot(): string {
-  return realOrResolve(join(homedir(), 'OSCode'));
+  return realOrResolve(sectionDir('projects'));
 }
 
 /**
  * Admin-provisioned workspaces are the repos an admin cloned onto the home
- * machine (under ~/OSCode). A member may only open sessions inside one of
+ * machine (under ~/OpenShore/Projects). A member may only open sessions inside one of
  * these: without this a member token could point a session at any path on
  * disk as its jail root and drive it (D1). Admins (and the legacy shared
  * token, which resolves as admin) are unrestricted for attended sessions.
@@ -46,8 +46,8 @@ export function isAdminProvisionedWorkspace(cwd: string): boolean {
 
 /**
  * Whether a workspace and the vault overlap: the workspace is the vault, lies
- * inside it, or holds it. The default vault sits under ~/OSCode, so ~/OSCode
- * itself holds it. A member's session must never open in such a workspace on
+ * inside it, or holds it. The default vault sits in ~/OpenShore, beside
+ * Projects, so ~/OpenShore itself holds it. A member's session must never open in such a workspace on
  * a shared hub: withholding the vault tools is not enough while readFile, grep,
  * and glob (which never ask) reach the owner's notes through the workspace.
  * Real paths on both sides, like the jail the file tools resolve through, so a
@@ -70,7 +70,7 @@ export function overlapsVault(cwd: string, vaultDir?: string): boolean {
 /**
  * The outbox apply/verify endpoints, and every unattended routine, take a repo
  * path. Both are restricted to the admin-provisioned workspaces plus any
- * explicit daemon.outboxAllowedRoots (a home repo outside ~/OSCode). Enforced
+ * explicit daemon.outboxAllowedRoots (a home repo outside ~/OpenShore/Projects). Enforced
  * for every caller, admins included: a bot that runs while the person sleeps
  * must never be pointed at an arbitrary folder.
  */

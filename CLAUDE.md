@@ -55,7 +55,7 @@ The plan is `docs/design/vault-v1-plan.md` (D1 to D15 ruled by the founder); the
 review behind it is `docs/design/vault-v1-review-findings.md`; each milestone's calls
 are in `os-code/DECISIONS.md`. Vault is one local-first plain-markdown vault on
 the gitOS seam that the person, every model seat, Crew routines, and Obsidian
-share: on the desktop the folder (`~/OSCode/Vault` or one the person picks,
+share: on the desktop the folder (`~/OpenShore/Vault` or one the person picks,
 an Obsidian vault included), on a paired phone "Your computer" while it is on.
 Before each turn the harness gives the seat a small cited pack sized to its
 served window, and a switch hands over what the next seat cannot fit. Code:

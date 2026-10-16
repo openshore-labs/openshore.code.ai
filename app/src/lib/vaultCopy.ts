@@ -7,7 +7,7 @@
 // (test/vaultCopy.test.ts fails on a false agent or Obsidian line).
 //
 // What is true today, and why the map reads the way it does:
-// - The agent's vault is a folder on the computer (vault.dir, ~/OSCode/Vault).
+// - The agent's vault is a folder on the computer (vault.dir, ~/OpenShore/Vault).
 //   Only "This folder" on the desktop IS that folder, so only there does the
 //   agent read these notes and write beside you (always asking first), and
 //   only there do routines leave their notes.

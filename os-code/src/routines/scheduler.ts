@@ -155,7 +155,7 @@ export class RoutineRefused extends Error {
 /** The plain line for a workspace the scheduler will not run in. Written for
  *  a solo person on their own computer, not an admin. */
 export const WORKSPACE_NOT_ALLOWED =
-  'A routine runs only in a folder on this computer that OpenShore knows: a repository under ~/OSCode, or a folder you allowed. Pick one from Repositories, or allow this folder.';
+  'A routine runs only in a folder on this computer that OpenShore knows: a repository in OpenShore/Projects, or a folder you allowed. Pick one from Repositories, or allow this folder.';
 
 /** A run refused because its folder left the allowed ones since the routine
  *  was made (taken off the list, or swapped for a link that leads elsewhere). */
@@ -455,7 +455,7 @@ export class RoutineScheduler {
     return this.allowedWorkspace(cwd);
   }
 
-  /** "Allow this folder": remember a folder outside ~/OSCode as one routines
+  /** "Allow this folder": remember a folder outside ~/OpenShore/Projects as one routines
    *  may run in. The folder has to exist; the person picked it themselves. */
   allowWorkspace(cwd: string): { ok: true } | { error: string } {
     if (!cwd || !existsSync(cwd)) return { error: 'That folder does not exist.' };

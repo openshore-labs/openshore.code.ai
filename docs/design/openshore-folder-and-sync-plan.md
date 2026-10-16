@@ -28,7 +28,9 @@ computer instead.
   holds per device, judged by address as today).
 - **R6. One name everywhere: OpenShore.** `~/OpenShore` on the computer,
   On My iPhone > OpenShore on the phone. An existing `~/OSCode` moves over once.
-- **R7. Real files for Vault, Models, Projects and Chats**, in this layout:
+- **R7. Real files for Vault, Models, Projects and Chats**, in this layout.
+  Chats as files is a setting, Settings, Chats, "Save chats as files", on by
+  default (founder, 2026-10-16); off, chats stay in the sealed store only.
 
 ```
 OpenShore/
@@ -53,7 +55,7 @@ Machine settings, keys, tokens, indexes and session journals stay hidden
 | What | Today | After |
 |---|---|---|
 | Desktop vault | `~/OSCode/Vault` or a picked folder | `~/OpenShore/Vault`; a picked folder (an Obsidian vault) stays where it is |
-| Desktop clones, sample, scratch | `~/OSCode/<name>`, `Try OpenShore`, `scratch` | `~/OpenShore/Projects/...`; `scratch` moves to `~/.os-code/scratch` (not the person's work) |
+| Desktop clones, sample, scratch | `~/OSCode/<name>`, `Try OpenShore`, `scratch` | `~/OpenShore/Projects/...`, scratch as `Projects/Scratch` (what a chat with no project made is the person's work, so it stays findable) |
 | Phone vault | sealed key-value store (`local` provider) | real files in `Documents/OpenShore/Vault` (a `folder`-style provider over the app's own Documents) |
 | Chats | sealed key-value store / Electron localStorage | `OpenShore/Chats/YYYY-MM/<title>-<id>.md`, with a small front-matter header the app reads back |
 | Phone models | `Application Support/Models` (hidden) | `Documents/OpenShore/Models/<name>/`, excluded from backup |
@@ -100,8 +102,9 @@ Each lands green on its own, behind `FEATURE_TIER` until M5.
 
 - **M1. The folder.** One path helper per host (`openshoreRoot()`), the layout
   and its `README.md`, the desktop move from `~/OSCode` (copy, verify, leave a
-  pointer file, never delete), the engine's workspace boundary widened to the
-  new root. Tests: the layout, the move on a fixture home, the boundary.
+  link at the old path, never delete), the engine's workspace boundary moved
+  to `Projects`. BUILT 2026-10-16 (`os-code/src/config/openshoreFolder.ts`,
+  `test/openshoreFolder.test.ts`). Tests: the layout, the move on a fixture home, the boundary.
 - **M2. Real files on the phone.** The phone vault on files in
   `Documents/OpenShore/Vault` (passes `providerContract.test.ts`), the move
   from the sealed store, models moved under `Models/` with backup excluded,
@@ -126,8 +129,9 @@ Each lands green on its own, behind `FEATURE_TIER` until M5.
   Documents; on a computer any program running as the person can. The privacy
   page says so plainly, and the security-privacy review runs before M3 ships.
 - **The `~/OSCode` move** touches every desktop install and every repository
-  path a session recorded. The move keeps a symlink at the old path for one
-  release so recorded paths still resolve.
+  path a session recorded. Once emptied, `~/OSCode` becomes a link to
+  `Projects`, so recorded repository paths still resolve; a name already taken
+  in the new place stays in `~/OSCode` and the link waits until it is free.
 - **Phone storage:** a full working copy of a large vault, plus chats, sits on
   the phone. The setting's row shows the size; Keep on one computer is the way
   out.

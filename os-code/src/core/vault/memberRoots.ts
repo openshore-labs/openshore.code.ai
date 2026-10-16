@@ -1,13 +1,13 @@
 // Whose vault a caller works on (Vault M5, tech review J7, J8). One machine, one
-// owner's vault (the machine config's vault.dir, ~/OSCode/Vault by default),
+// owner's vault (the machine config's vault.dir, ~/OpenShore/Vault by default),
 // and on a shared hub one private root per member, so a member's phone, a
 // member's agent, and a member's Crew notes land in that member's own folder
 // and never in the owner's.
 //
 // A member's root is oscHome()/vaults/members/<sha256(userId), 16 hex>, mode
-// 0700, made on first use. It sits outside ~/OSCode and so outside every
+// 0700, made on first use. It sits outside ~/OpenShore/Projects and so outside every
 // admin-provisioned workspace (a member may only open a session under
-// ~/OSCode), and the daemon also refuses a member workspace that overlaps
+// ~/OpenShore/Projects), and the daemon also refuses a member workspace that overlaps
 // any root (workspaces.ts overlapsVault).
 //
 // Honesty (plan 0.13): these roots keep the daemon's own routes and a

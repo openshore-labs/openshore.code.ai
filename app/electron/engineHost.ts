@@ -67,6 +67,7 @@ import {
 } from 'os-code/dist/src/core/security/credentials.js';
 import { rotateSharedToken } from 'os-code/dist/src/core/security/daemonAuth.js';
 import { oscHome } from 'os-code/dist/src/config/load.js';
+import { scratchDir } from 'os-code/dist/src/config/openshoreFolder.js';
 import { shouldRebind } from './lifecycle.js';
 import {
   ollamaInstallPlan,
@@ -508,7 +509,7 @@ export class EngineHost {
     return giveMoreRoomHere(provider);
   }
 
-  /** The sample page for a first try, written to ~/OSCode/Try OpenShore
+  /** The sample page for a first try, written to ~/OpenShore/Projects/Try OpenShore
    *  (kept as it is when it already exists). */
   createSample(): { path: string; created: boolean } | { error: string } {
     try {
@@ -1473,7 +1474,7 @@ function firstLocalBaseUrl(): string {
 }
 
 function defaultWorkspace(): string {
-  const dir = join(homedir(), 'OSCode', 'scratch');
+  const dir = scratchDir();
   mkdirSync(dir, { recursive: true });
   return dir;
 }

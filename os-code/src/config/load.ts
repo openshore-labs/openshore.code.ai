@@ -23,6 +23,7 @@ import { isAbsolute, join, resolve } from 'node:path';
 import { ConfigSchema, DaemonSchema, type OscConfig } from './schema.js';
 import type { z } from 'zod';
 import { oscHome } from './home.js';
+import { sectionDir } from './openshoreFolder.js';
 import { applyProjectConfig } from './projectPolicy.js';
 import {
   addFolderGrant,
@@ -200,9 +201,9 @@ export function loadDaemonConfig(): DaemonConfig {
   return parsed.success ? parsed.data : DaemonSchema.parse({});
 }
 
-/** The vault folder when none is configured: beside the OSCode clones. */
+/** The vault folder when none is configured: ~/OpenShore/Vault. */
 export function defaultVaultDir(): string {
-  return join(homedir(), 'OSCode', 'Vault');
+  return sectionDir('vault');
 }
 
 export interface VaultDir {
@@ -217,7 +218,7 @@ export interface VaultDir {
  * and the result must be absolute, so a session, the routine scheduler, and the
  * desktop app land on the same folder whatever their working directory. A
  * relative path is never resolved against a process cwd: it falls back to the
- * default with a warning. Unset means ~/OSCode/Vault.
+ * default with a warning. Unset means ~/OpenShore/Vault.
  */
 export function resolveVaultDir(configured: string | undefined): VaultDir {
   const raw = configured?.trim();
@@ -254,7 +255,7 @@ export function loadVaultDir(): VaultDir {
 export const VAULT_FOLDER_MISSING = 'The vault folder is not there right now.';
 
 /**
- * The vault folder, ready to use: the default (~/OSCode/Vault) is made on
+ * The vault folder, ready to use: the default (~/OpenShore/Vault) is made on
  * first use; any other folder must already be there. A configured folder that
  * has gone missing (renamed, moved, or on a drive that is not connected) is
  * never recreated, since a fresh empty folder would scatter notes between two

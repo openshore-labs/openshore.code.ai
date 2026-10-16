@@ -378,7 +378,6 @@ export function ChatsScreen() {
     }, ROW_OUT_MS);
   };
 
-
   // The phone's bar carries the compose mark, and the list leads with a New
   // chat row. At 900px and wider the bar holds the labelled New chat, the
   // same button as Projects' New project (D11's grammar), and the row goes.

@@ -2,6 +2,7 @@
 // go; it binds loopback or the tailnet interface only.
 import { banner, t } from '../brand/theme.js';
 import { loadConfig, loadDaemonConfig } from '../config/load.js';
+import { ensureOpenshoreFolder } from '../config/openshoreFolder.js';
 import { startDaemon } from '../daemon/serve.js';
 import { installProcessGuards } from '../daemon/processGuard.js';
 import { okLine, out, warnLine } from './util.js';
@@ -13,6 +14,7 @@ export interface ServeOptions {
 
 export async function serveCommand(options: ServeOptions): Promise<void> {
   const { config } = loadConfig();
+  ensureOpenshoreFolder();
   // The daemon's own bind and port are machine config, read from the global
   // file alone (DAE-9): a project file in the cwd cannot move the listener.
   const daemon = loadDaemonConfig();

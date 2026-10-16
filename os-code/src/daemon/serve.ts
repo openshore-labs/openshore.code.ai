@@ -738,7 +738,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         return;
       }
       // The target name comes from the url's last segment; `.` or `..` would
-      // land the clone on ~/OSCode or ~ itself (DAE-16).
+      // land the clone on ~/OpenShore/Projects or ~ itself (DAE-16).
       const name = cloneFolderName(gitUrl);
       if (!name) {
         sendJson(res, 400, {
@@ -1410,7 +1410,7 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         return;
       }
       // A member session opened in a vault (the owner's, or the folder of
-      // member roots), or in a folder that holds one (~/OSCode itself, by
+      // member roots), or in a folder that holds one (~/OpenShore itself, by
       // default), would read those notes with readFile and grep, which never
       // ask, whatever vault tools it gets.
       if (!hasRole(auth, 'admin') && overlapsVault(cwd)) {
@@ -2237,7 +2237,7 @@ export { isAdminProvisionedWorkspace, isOutboxAllowedPath };
  *  admin-provisioned workspaces the member may open. */
 function recentWorkspaces(ownerUserId?: string): WorkspaceRow[] {
   // A member sees only its own sessions' folders; everyone sees the clones
-  // under ~/OSCode, the admin-provisioned workspaces a member may open.
+  // under ~/OpenShore/Projects, the admin-provisioned workspaces a member may open.
   const sessions = listSessions().filter(
     (s) => ownerUserId === undefined || s.ownerUserId === ownerUserId,
   );

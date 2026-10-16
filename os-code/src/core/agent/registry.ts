@@ -508,7 +508,7 @@ export function buildToolContext(options: {
   // The on-device vault lives outside the repo, so it is addressed by its own
   // absolute root, not the workspace jail. The machine config places it (never
   // a project file, which could steer what the agent reads without a prompt);
-  // unset means ~/OSCode/Vault, alongside the OSCode clones the daemon makes. A
+  // unset means ~/OpenShore/Vault, beside the Projects the daemon clones into. A
   // session without the vault (a member's, on a shared hub) gets no root.
   const vaultRoot = options.vault === false ? undefined : (options.vaultRoot ?? loadVaultDir().dir);
 

@@ -57,12 +57,12 @@ describe('paths behind a symlink', () => {
     const real = realpathSync(mkdtempSync(join(tmpdir(), 'osc-real-')));
     const link = join(mkdtempSync(join(tmpdir(), 'osc-link-')), 'home');
     symlinkSync(real, link);
-    expect(realOrResolve(join(link, 'OSCode', 'Vault'))).toBe(join(real, 'OSCode', 'Vault'));
+    expect(realOrResolve(join(link, 'OpenShore', 'Vault'))).toBe(join(real, 'OpenShore', 'Vault'));
     expect(realOrResolve(link)).toBe(real);
     // The guard sees the overlap from either side, made or not.
-    expect(overlapsVault(join(link, 'OSCode'), join(link, 'OSCode', 'Vault'))).toBe(true);
-    expect(overlapsVault(join(real, 'OSCode'), join(link, 'OSCode', 'Vault'))).toBe(true);
-    expect(overlapsVault(join(link, 'repo'), join(link, 'OSCode', 'Vault'))).toBe(false);
+    expect(overlapsVault(join(link, 'OpenShore'), join(link, 'OpenShore', 'Vault'))).toBe(true);
+    expect(overlapsVault(join(real, 'OpenShore'), join(link, 'OpenShore', 'Vault'))).toBe(true);
+    expect(overlapsVault(join(link, 'repo'), join(link, 'OpenShore', 'Vault'))).toBe(false);
   });
 
   it("name a syntax error by the file's own path, never the probe's", () => {

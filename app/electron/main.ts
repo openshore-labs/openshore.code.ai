@@ -50,6 +50,7 @@ import {
 import { machineVaultWire } from 'os-code/dist/src/core/agent/registry.js';
 import { VAULT_WIRE_NOTE_MAX_BYTES } from 'os-code/dist/src/daemon/vaultWire.js';
 import { managedRoot } from 'os-code/dist/src/core/security/workspaces.js';
+import { ensureOpenshoreFolder } from 'os-code/dist/src/config/openshoreFolder.js';
 import { isTokenHash } from 'os-code/dist/src/core/security/credentials.js';
 import {
   VAULT_INDEX_FILE_MAX_BYTES,
@@ -1392,7 +1393,7 @@ guarded('osc:ollamaInstall', async () => {
 guarded('osc:hardware', () => host.hardware());
 
 // On-disk vault: the SAME markdown folder the agent's daemon tools write
-// (~/OSCode/Vault, or the machine config's vault.dir), resolved through the
+// (~/OpenShore/Vault, or the machine config's vault.dir), resolved through the
 // engine's one helper, so the app's Vault, the agent, and the routines share
 // one folder whatever each process's working directory. The file work lives in
 // vaultFs.ts: every path must be a note (.md, no dot segment) and is jailed to
@@ -2022,6 +2023,9 @@ if (!app.requestSingleInstanceLock()) {
     // the person turned phone access off: that holds across launches. A
     // chosen Offline is already the engine's flag by now (restored where the
     // network watch is made), so the hub never serves a phone online first.
+    // One OpenShore folder (2026-10-16): made, and an old ~/OSCode moved
+    // over, before the hub or any session reaches for a path in it.
+    ensureOpenshoreFolder();
     hubPaused = readHubPaused(app.getPath('userData'));
     if (!hubPaused) {
       const started = await host.daemonStart();

@@ -285,8 +285,8 @@ export const DaemonSchema = z.object({
   bind: z.enum(['loopback', 'tailscale']).default('loopback'),
   port: z.number().int().min(1).max(65535).default(4816),
   // Repos the outbox apply/verify endpoints may touch, in addition to the
-  // admin-provisioned workspaces under ~/OSCode. Admin-owned config, so a home
-  // repo living outside ~/OSCode can still receive buffered commits. A request
+  // admin-provisioned workspaces under ~/OpenShore/Projects. Admin-owned config, so a home
+  // repo living outside ~/OpenShore/Projects can still receive buffered commits. A request
   // cwd outside every allowed root is rejected 403 for every caller, admins
   // included: there is no reason apply/verify should reach an arbitrary repo,
   // and the ambient-credential push path makes it a real escalation surface.
@@ -336,7 +336,7 @@ export const VaultSchema = z.object({
   // files, so Obsidian or any editor opens the folder directly. Machine config:
   // read from the global file alone (loadVaultDir in load.ts), never from a
   // project's os-code.config.json. A leading "~" expands to home and the path
-  // must be absolute; unset means ~/OSCode/Vault. The agent reads and writes it
+  // must be absolute; unset means ~/OpenShore/Vault. The agent reads and writes it
   // through the vault tools; every write asks first.
   dir: z.string().optional(),
   // Vault M4, tech review I3. Globs (`*`, `**`, `?`, a trailing `/`) matched on the

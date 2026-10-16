@@ -24,7 +24,7 @@ import type {
 import { thisDeviceNoun } from '../deviceNoun.js';
 
 // 'files' is the on-disk folder provider (desktop only): plain .md files under
-// the agent's vault directory (~/OSCode/Vault), so the app and the agent share
+// the agent's vault directory (~/OpenShore/Vault), so the app and the agent share
 // one folder that Obsidian opens directly. It IS a roster entry (a real place
 // to keep the personal vault). 'org' is the Team vault (Supabase-backed,
 // organization tier), a real provider behind the seam but deliberately NOT in

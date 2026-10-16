@@ -275,7 +275,7 @@ describe('the daemon vault routes, on the caller own root', () => {
       join(home, 'config.json'),
       JSON.stringify({ stack: { orchestrator: { provider: 'ollama', model: 'qwen' } } }),
     );
-    mkdirSync(join(home, 'OSCode', 'repo'), { recursive: true });
+    mkdirSync(join(home, 'OpenShore', 'Projects', 'repo'), { recursive: true });
     _resetRoutineScheduler();
     daemon = await startOnFreePort();
     base = `http://127.0.0.1:${daemon.port}`;
@@ -304,21 +304,22 @@ describe('the daemon vault routes, on the caller own root', () => {
   const member = (userId: string) =>
     mintCredential({ role: 'member', label: 'Phone', userId }).token;
 
-  it('picks one root per caller: the owner vault, or a member root outside ~/OSCode', () => {
+  it('picks one root per caller: the owner vault, or a member root outside ~/OpenShore/Projects', () => {
     const owner = vaultRootFor({ userId: 'legacy', role: 'admin' });
-    expect(owner).toBe(join(home, 'OSCode', 'Vault'));
+    expect(owner).toBe(join(home, 'OpenShore', 'Vault'));
     const m1 = vaultRootFor({ userId: 'u_one', role: 'member' });
     const m2 = vaultRootFor({ userId: 'u_two', role: 'member' });
     expect(m1).toBe(join(home, 'vaults', 'members', basename(m1)));
     expect(basename(m1)).toMatch(/^[0-9a-f]{16}$/);
     expect(m1).not.toBe(m2);
-    expect(m1.startsWith(join(home, 'OSCode'))).toBe(false);
+    expect(m1.startsWith(join(home, 'OpenShore', 'Projects'))).toBe(false);
     expect(vaultRootForOwner('u_one', false)).toBe(m1);
     expect(vaultRootForOwner(undefined)).toBe(owner);
     expect(vaultRootForOwner('legacy')).toBe(owner);
     // A member workspace can reach neither the owner's vault nor a member root.
-    expect(overlapsVault(join(home, 'OSCode', 'repo'))).toBe(false);
-    expect(overlapsVault(join(home, 'OSCode'))).toBe(true);
+    expect(overlapsVault(join(home, 'OpenShore', 'Projects', 'repo'))).toBe(false);
+    expect(overlapsVault(join(home, 'OpenShore', 'Projects'))).toBe(false);
+    expect(overlapsVault(join(home, 'OpenShore'))).toBe(true);
     expect(overlapsVault(memberVaultsDir())).toBe(true);
     expect(overlapsVault(m1)).toBe(true);
     expect(overlapsVault(home)).toBe(true);
@@ -329,7 +330,9 @@ describe('the daemon vault routes, on the caller own root', () => {
     expect(created.status).toBe(200);
     const { meta } = (await created.json()) as { meta: HubNoteMeta };
     expect(meta).toMatchObject({ path: 'Plans/Launch.md', size: 5 });
-    expect(readFileSync(join(home, 'OSCode', 'Vault', 'Plans', 'Launch.md'), 'utf8')).toBe('first');
+    expect(readFileSync(join(home, 'OpenShore', 'Vault', 'Plans', 'Launch.md'), 'utf8')).toBe(
+      'first',
+    );
 
     const listed = (await (await get(admin, VAULT_NOTES_ROUTE)).json()) as VaultNotesListResponse;
     expect(listed).toEqual({ notes: [meta], truncated: false });
@@ -360,13 +363,13 @@ describe('the daemon vault routes, on the caller own root', () => {
     expect(stale.status).toBe(409);
     const changed = (await stale.json()) as VaultNoteConflictResponse;
     expect(changed).toEqual({ conflict: 'changed', current: next });
-    expect(readFileSync(join(home, 'OSCode', 'Vault', 'Plans', 'Launch.md'), 'utf8')).toBe(
+    expect(readFileSync(join(home, 'OpenShore', 'Vault', 'Plans', 'Launch.md'), 'utf8')).toBe(
       'second',
     );
     // ifMatch on a note that is gone: 409 missing, never recreated.
     const missing = await put(admin, 'Plans/Gone.md', { text: 'x', ifMatch: meta.version });
     expect(((await missing.json()) as VaultNoteConflictResponse).conflict).toBe('missing');
-    expect(existsSync(join(home, 'OSCode', 'Vault', 'Plans', 'Gone.md'))).toBe(false);
+    expect(existsSync(join(home, 'OpenShore', 'Vault', 'Plans', 'Gone.md'))).toBe(false);
     // Both guards at once is refused.
     const both = await put(admin, 'Plans/Launch.md', {
       text: 'x',
@@ -384,17 +387,17 @@ describe('the daemon vault routes, on the caller own root', () => {
     expect((await del('')).status).toBe(400);
     expect((await del(`?ifMatch=${encodeURIComponent(meta.version)}`)).status).toBe(409);
     expect((await del(`?ifMatch=${encodeURIComponent(next.version)}`)).status).toBe(200);
-    expect(existsSync(join(home, 'OSCode', 'Vault', 'Plans', 'Launch.md'))).toBe(false);
+    expect(existsSync(join(home, 'OpenShore', 'Vault', 'Plans', 'Launch.md'))).toBe(false);
   });
 
   it('caps a note PUT', async () => {
     const big = 'x'.repeat(VAULT_WIRE_NOTE_MAX_BYTES + 1);
     expect((await put(admin, 'Big.md', { text: big })).status).toBe(413);
-    expect(existsSync(join(home, 'OSCode', 'Vault', 'Big.md'))).toBe(false);
+    expect(existsSync(join(home, 'OpenShore', 'Vault', 'Big.md'))).toBe(false);
   });
 
   it('never leaves the root: .., dot segments, backslashes, non-notes, and links', async () => {
-    const vault = join(home, 'OSCode', 'Vault');
+    const vault = join(home, 'OpenShore', 'Vault');
     mkdirSync(vault, { recursive: true });
     const outside = join(home, 'outside');
     mkdirSync(outside);
@@ -439,7 +442,7 @@ describe('the daemon vault routes, on the caller own root', () => {
       expect(statSync(oneRoot).mode & 0o777).toBe(0o700);
       expect(statSync(memberVaultsDir()).mode & 0o777).toBe(0o700);
     }
-    expect(existsSync(join(home, 'OSCode', 'Vault', 'Mine.md'))).toBe(false);
+    expect(existsSync(join(home, 'OpenShore', 'Vault', 'Mine.md'))).toBe(false);
 
     const paths = async (token: string) =>
       ((await (await get(token, VAULT_NOTES_ROUTE)).json()) as VaultNotesListResponse).notes.map(
@@ -492,7 +495,7 @@ describe('the daemon vault routes, on the caller own root', () => {
       packSize: 'normal',
     });
 
-    const vault = join(home, 'OSCode', 'Vault');
+    const vault = join(home, 'OpenShore', 'Vault');
     mkdirSync(join(vault, '.oscode'), { recursive: true });
     writeFileSync(join(vault, '.oscode', 'vault.json'), '{"a":1}');
     const cfg = await get(admin, `${VAULT_CONFIG_ROUTE}/${encodeURIComponent('oscode/vault')}`);
@@ -524,7 +527,7 @@ describe('the daemon vault routes, on the caller own root', () => {
   });
 
   it('a phone write reaches the engine index the pack reads', async () => {
-    const vault = join(home, 'OSCode', 'Vault');
+    const vault = join(home, 'OpenShore', 'Vault');
     mkdirSync(vault, { recursive: true });
     const handle = await engineVaultIndex(vault);
     await handle.whenReconciled(5000);
@@ -554,7 +557,7 @@ describe('the daemon vault routes, on the caller own root', () => {
     const res = await fetch(`${base}/sessions`, {
       method: 'POST',
       headers: hdr(one),
-      body: JSON.stringify({ cwd: join(home, 'OSCode', 'repo') }),
+      body: JSON.stringify({ cwd: join(home, 'OpenShore', 'Projects', 'repo') }),
     });
     expect(res.status).toBe(201);
     const root = vaultRootFor({ userId: 'u_one', role: 'member' });
@@ -571,7 +574,7 @@ describe('the daemon vault routes, on the caller own root', () => {
       method: 'POST',
       headers: hdr(admin),
       body: JSON.stringify({
-        cwd: join(home, 'OSCode', 'repo'),
+        cwd: join(home, 'OpenShore', 'Projects', 'repo'),
         handoff: 'x'.repeat(HANDOFF_MAX_BYTES + 1),
       }),
     });
@@ -581,7 +584,7 @@ describe('the daemon vault routes, on the caller own root', () => {
   // Vault M6 (tech review K13): rename, folders, Trash and attachments, on the
   // caller's own root, every path through the rules and the Jail.
   describe('M6 routes', () => {
-    const vault = () => join(home, 'OSCode', 'Vault');
+    const vault = () => join(home, 'OpenShore', 'Vault');
     const send = (method: string, route: string, body?: unknown, token = admin) =>
       fetch(`${base}${route}`, {
         method,
@@ -767,7 +770,7 @@ describe('the daemon vault routes, on the caller own root', () => {
   // The real writer (`writeVaultConfigFile`) and parser, end to end: no
   // stand-in (Vault M7 wave 2).
   describe('M7 settings write', () => {
-    const vault = () => join(home, 'OSCode', 'Vault');
+    const vault = () => join(home, 'OpenShore', 'Vault');
     const route = `${VAULT_CONFIG_ROUTE}/${VAULT_SETTINGS_CONFIG_NAME}`;
     it('writes through the engine writer and the core parser themselves', () => {
       expect(vaultSettingsWriteSeam.write).toBe(writeVaultConfigFile);
@@ -910,7 +913,7 @@ describe('the daemon vault routes, on the caller own root', () => {
         method: 'POST',
         headers: hdr(admin),
         body: JSON.stringify({
-          cwd: join(home, 'OSCode', 'repo'),
+          cwd: join(home, 'OpenShore', 'Projects', 'repo'),
           vaultOverrides: { context: 'off', handoff: 'on', packSize: 'giant' },
         }),
       });

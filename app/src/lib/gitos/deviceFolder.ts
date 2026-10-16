@@ -1,6 +1,6 @@
 // The on-disk folder storage provider (desktop only). The vault is a real
 // folder of markdown files on this computer, the SAME directory the agent's
-// daemon tools write (~/OSCode/Vault, or config vault.dir), so a note the agent
+// daemon tools write (~/OpenShore/Vault, or config vault.dir), so a note the agent
 // saves shows up here and a note you write here is one the agent can read. The
 // actual filesystem work happens in the Electron main process behind the
 // bridge; this provider is the shared folder client (folderClient.ts) over an
