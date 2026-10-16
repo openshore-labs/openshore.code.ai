@@ -66,6 +66,9 @@ export const SETTINGS_REACH: Record<keyof AppSettings, SettingReach> = {
   vaultSync: 'device',
   vaultRecent: 'device',
   vaultEmptyFolders: 'device',
+  // Save chats as files (2026-10-16): where this device writes its own chats,
+  // a folder on this device, so each device keeps its own answer.
+  chatFiles: 'device',
   // Pairing, hubs, and addresses on this person's network.
   daemon: 'device',
   daemons: 'device',

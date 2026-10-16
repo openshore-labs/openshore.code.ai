@@ -50,7 +50,8 @@ import {
 import { machineVaultWire } from 'os-code/dist/src/core/agent/registry.js';
 import { VAULT_WIRE_NOTE_MAX_BYTES } from 'os-code/dist/src/daemon/vaultWire.js';
 import { managedRoot } from 'os-code/dist/src/core/security/workspaces.js';
-import { ensureOpenshoreFolder } from 'os-code/dist/src/config/openshoreFolder.js';
+import { ensureOpenshoreFolder, sectionDir } from 'os-code/dist/src/config/openshoreFolder.js';
+import { listChatMonth, removeChatFile, writeChatFile } from './chatFilesFs.js';
 import { isTokenHash } from 'os-code/dist/src/core/security/credentials.js';
 import {
   VAULT_INDEX_FILE_MAX_BYTES,
@@ -1455,6 +1456,15 @@ guarded('osc:clearHandoffs', () => {
   clearHandoffs();
   return { cleared: true };
 });
+
+// Chats as files (folder and sync plan, M3): the mirror of each chat in
+// ~/OpenShore/Chats. The root is main's own, sectionDir('chats'), read on
+// every call; the renderer names only `YYYY-MM/<name>.md` inside it, and
+// chatFilesFs.ts checks that shape, jails it to the folder through every
+// link, accepts only .md, caps the text and writes temp then rename.
+guarded('osc:chatFileWrite', (p: unknown, t: unknown) => writeChatFile(sectionDir('chats'), p, t));
+guarded('osc:chatFileRemove', (p: unknown) => removeChatFile(sectionDir('chats'), p));
+guarded('osc:chatFileList', (month: unknown) => listChatMonth(sectionDir('chats'), month));
 
 // The same answer carries the machine's `vault.packSize` (Vault M8), read
 // only: the settings sheet says when this computer's sessions give notes

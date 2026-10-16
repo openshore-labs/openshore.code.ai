@@ -31,6 +31,9 @@ export type ThreadItem =
        *  session: what a rewind names (P2), and what a `rewound` marker cuts
        *  the transcript back to on every device. */
       seq?: number;
+      /** The names of the files sent with it (never their bytes), so a chat's
+       *  markdown file can name them (lib/chatFiles.ts). Absent when none. */
+      attachments?: string[];
     }
   | {
       kind: 'assistant';

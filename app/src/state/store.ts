@@ -199,6 +199,9 @@ import {
 } from '../lib/codemagicControl.js';
 import { hapticSuccess } from '../lib/haptics.js';
 import { NOTHING_SHOWN, celebratesTurn, turnShown } from './turnEndOps.js';
+import { createChatFileMirror } from './chatFileOps.js';
+import { chatFileWriter } from '../lib/chatFileWriters.js';
+import { nameAttachments } from '../lib/chatFiles.js';
 import type { Attachment } from '../lib/attachments.js';
 import { OnDeviceDriver } from '../drivers/onDeviceDriver.js';
 import { MockDriver } from '../drivers/mockDriver.js';
@@ -908,6 +911,12 @@ export interface AppSettings {
    *  API, every other model is prompted to think in tags. Off asks no model to
    *  think out loud and keeps any reasoning a model sends out of the chat. */
   chainOfThought?: boolean;
+  /** Save chats as files (Settings, Chats; founder, 2026-10-16): each chat is
+   *  also one markdown file in OpenShore/Chats on this device, a mirror of the
+   *  sealed store that the app keeps and never reads back (state/chatFileOps.ts).
+   *  ON by default; undefined means on. Device local: it is about where this
+   *  device writes. */
+  chatFiles?: boolean;
   /** The chat splash's Easter egg (lib/greetingDecks.ts): what a tap and a hold
    *  on the greeting line do. Languages (the default; undefined means it),
    *  Popsicle Jokes, Trivia Night, or Sunday Crossword. Device local. */
@@ -2538,6 +2547,10 @@ interface AppState {
    *  on the paired computer when this device owns it (a member has none to
    *  clear there). Journals on the computer stay. */
   clearConversations(): Promise<void>;
+  /** Save chats as files on or off (Settings, Chats). Off keeps the files
+   *  already written unless `removeFiles`, which the person chose in the
+   *  switch's sheet; on writes the newest chats that have no file yet. */
+  setChatFiles(on: boolean, opts?: { removeFiles?: boolean }): Promise<void>;
   /** Send to the active chat. While the agent is busy the message queues and
    *  goes out the moment the current task ends, the way Claude Code takes a
    *  message typed mid-run. */
@@ -3083,7 +3096,13 @@ export const useApp = create<AppState>((set, get, api) => {
       set((state) => {
         const c = state.conversations[conversationId];
         if (!c || c.thread.busy) return state;
-        const started = reduceEvent(c.thread, { type: 'task-start', input: text });
+        const begun = reduceEvent(c.thread, { type: 'task-start', input: text });
+        // The files' names ride the person's own line (never their bytes), so
+        // the chat's markdown file can name them (lib/chatFiles.ts).
+        const names = [...new Set((attachments ?? []).map((a) => a.name).filter(Boolean))];
+        const started = names.length
+          ? { ...begun, items: nameAttachments(begun.items, text, names) }
+          : begun;
         const thread = isRemote(conversationId, driver)
           ? { ...started, stepNote: REACHING_COMPUTER }
           : started;
@@ -9137,6 +9156,10 @@ export const useApp = create<AppState>((set, get, api) => {
       // Upgrade any pre-encryption data to sealed-at-rest, in the background.
       void sealExistingKeys([SETTINGS_KEY, CONVERSATIONS_KEY, ANTHROPIC_KEY_KEY]);
 
+      // Chats as files: write the newest chats whose file is missing or older
+      // than the chat, in the background, bounded (state/chatFileOps.ts).
+      void chatFileMirror.reconcile().catch(() => {});
+
       // Finish a web sign-in, or reconcile the restored one. On web a
       // magic-link or email-confirmation redirect lands on our own origin
       // with the tokens in the URL hash; complete it, then strip them from
@@ -14224,6 +14247,15 @@ export const useApp = create<AppState>((set, get, api) => {
       void clearHandoffs(handoffStorage, { conversationId: id }).catch(() => {});
     },
 
+    async setChatFiles(on, opts) {
+      await get().saveSettings({ chatFiles: on });
+      if (on) {
+        await chatFileMirror.reconcile();
+      } else if (opts?.removeFiles) {
+        await chatFileMirror.removeAll();
+      }
+    },
+
     async clearConversations() {
       for (const id of [...get().order]) get().deleteConversation(id);
       // Recent is cleared with the chats (UX review X4).
@@ -15525,7 +15557,21 @@ async function persistConversations(state: Pick<AppState, 'order' | 'conversatio
     };
   }
   await storeSetJson(CONVERSATIONS_KEY, { order: savedOrder, conversations });
+  // The chat files follow the sealed store, never the other way round.
+  try {
+    chatFileMirror.sync();
+  } catch {
+    // A mirror that cannot run never stops a save.
+  }
 }
+
+// Chats as files (folder and sync plan, M3): the sealed store above is the
+// source of truth, and each chat's markdown file in OpenShore/Chats is a
+// mirror this keeps, written when a turn settles and never read back.
+const chatFileMirror = createChatFileMirror({
+  getState: () => useApp.getState(),
+  writer: chatFileWriter,
+});
 
 function trimThread(thread: Conversation['thread']): Conversation['thread'] {
   return { ...thread, items: thread.items.slice(-200), pendingApprovals: [] };
