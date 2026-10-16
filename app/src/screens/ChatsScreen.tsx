@@ -378,7 +378,6 @@ export function ChatsScreen() {
     }, ROW_OUT_MS);
   };
 
-  const searchLabel = activeProject ? `Search chats in ${activeProject.name}` : 'Search chats';
 
   // The phone's bar carries the compose mark, and the list leads with a New
   // chat row. At 900px and wider the bar holds the labelled New chat, the
@@ -418,7 +417,7 @@ export function ChatsScreen() {
           <SearchPill
             value={query}
             onChange={setQuery}
-            label={searchLabel}
+            label="Search chats"
             onEnter={rows[0] ? () => openRow(rows[0]!) : undefined}
           />
         ) : null}
