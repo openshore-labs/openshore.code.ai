@@ -141,6 +141,17 @@ describe('the front-end open, backend private disclosure boundary', () => {
     );
   });
 
+  it('keeps the app out of an everyday answer', () => {
+    // A small seat read the app facts as a cue to tack "Note: OpenShore is a
+    // local coding assistant..." onto a question about what a CIO is.
+    expect(buildHarborSystemPrompt().toLowerCase()).toContain(
+      'never add a note about what openshore is',
+    );
+    expect(buildHarborMiniSystemPrompt().toLowerCase()).toContain(
+      'an everyday answer ends without a note about the app',
+    );
+  });
+
   it('has Harbor Lite own its limits and point to a bigger model', () => {
     const mini = buildHarborMiniSystemPrompt().toLowerCase();
     expect(mini).toContain('you are small, and you say so honestly');
