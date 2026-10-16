@@ -23,3 +23,7 @@ supabase/.branches/
 
 # Agent worktrees (local only)
 .claude/worktrees/
+
+# The server package stage (os-code/scripts/pack-server.sh), removed on exit.
+.pack-server.*/
+os-code/.pack-server.*/

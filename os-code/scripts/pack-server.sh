@@ -28,8 +28,14 @@ NAME="openshore-server-$VERSION-linux-$ARCH"
 NODE_VERSION=$(tr -d 'v[:space:]' <.nvmrc)
 NODE_DIST="node-v$NODE_VERSION-linux-$ARCH"
 
-STAGE=$(mktemp -d)
-trap 'rm -rf "$STAGE"' EXIT
+# Staged inside the checkout, not under /tmp. `pnpm deploy` links the engine's
+# bins a second time at the target's path taken relative to the repo root but
+# resolved from os-code/, so a /tmp target sends that write to /home/tmp, which
+# a CI runner refuses (EACCES; no server package shipped through v0.1.67). In
+# here the stray write lands in os-code/.pack-server.*, and both go on exit.
+STAGE=$(mktemp -d "$PWD/.pack-server.XXXXXX")
+STRAY="$PWD/os-code/$(basename "$STAGE")"
+trap 'rm -rf "$STAGE" "$STRAY"' EXIT
 ROOT="$STAGE/$NAME"
 mkdir -p "$ROOT/bin" "$OUT"
 
