@@ -412,9 +412,12 @@ import {
   HUB_REPOINT_TOAST,
   HUB_UNPAIR_TOAST,
   VAULT_SYNC_SWITCH_AWAY,
+  docSyncConflictToast,
   vaultSyncConflictToast,
   vaultSyncFrom,
 } from '../lib/vaultCopy.js';
+import { createDocSyncs } from './docSyncOps.js';
+import { bridgeDocTransport, httpDocTransport } from '../lib/docSync.js';
 import {
   VAULT_SYNC_TICK_MS,
   createVaultSync,
@@ -6703,8 +6706,86 @@ export const useApp = create<AppState>((set, get, api) => {
       if (hubReach() === 'reachable' && syncsVault()) vaultSync.soon(500);
     });
     setInterval(() => {
-      if (syncsVault() && document.visibilityState === 'visible') void vaultSync.run();
+      if (document.visibilityState === 'visible') void syncEverything();
     }, VAULT_SYNC_TICK_MS);
+  }
+
+  // Chats and projects ride the same switch (folder plan M5): a docked phone
+  // through the daemon's /sync routes, the desktop that is the computer
+  // straight into the same store through main (state/docSyncOps.ts).
+  const docSyncs = createDocSyncs({
+    transport: () => {
+      const s = get().settings;
+      if (vaultSyncMode(s.vaultSync) !== 'all') return undefined;
+      const b = isDesktop() ? bridge() : undefined;
+      if (b?.syncList && b.syncGet && b.syncPut && b.syncRemove) {
+        return {
+          key: 'this-computer',
+          transport: bridgeDocTransport({
+            syncList: b.syncList.bind(b),
+            syncGet: b.syncGet.bind(b),
+            syncPut: b.syncPut.bind(b),
+            syncRemove: b.syncRemove.bind(b),
+          }),
+        };
+      }
+      // A member on someone else's computer keeps their chats on their own
+      // device: only the owner's devices meet there.
+      if (isDesktop() || !s.daemon?.token || get().hubRole === 'member') return undefined;
+      return {
+        key: s.daemon.baseUrl,
+        transport: httpDocTransport({ baseUrl: s.daemon.baseUrl, token: s.daemon.token }),
+      };
+    },
+    from: () => vaultSyncFrom(isDesktop() ? 'this computer' : thisDeviceNoun()),
+    chats: {
+      all: () =>
+        get()
+          .order.map((id) => get().conversations[id])
+          .filter((c) => c !== undefined),
+      put: (id, chat) => {
+        if (!chat) {
+          if (get().conversations[id]) get().deleteConversation(id);
+          return;
+        }
+        set((s) => {
+          const conversations = { ...s.conversations, [id]: chat };
+          const rest = s.order.filter((x) => x !== id);
+          const at = rest.findIndex((x) => (conversations[x]?.updatedAt ?? '') < chat.updatedAt);
+          const order = at < 0 ? [...rest, id] : [...rest.slice(0, at), id, ...rest.slice(at)];
+          return { conversations, order };
+        });
+        persistConversationsSoon();
+      },
+    },
+    projects: {
+      all: () => get().settings.projects ?? [],
+      put: (id, project) => {
+        const list = get().settings.projects ?? [];
+        const next = project
+          ? list.some((p) => p.id === id)
+            ? list.map((p) => (p.id === id ? project : p))
+            : [...list, project]
+          : list.filter((p) => p.id !== id);
+        void get().saveSettings({ projects: next });
+      },
+    },
+    onResult: (kind, result) => {
+      if (result.conflicts.length)
+        get().showToast(docSyncConflictToast(kind, result.conflicts.length));
+      logEvent('docs_synced', {
+        kind,
+        pulled: result.pulled.length,
+        pushed: result.pushed.length,
+        conflicts: result.conflicts.length,
+      });
+    },
+  });
+
+  /** Every pass this device runs now: its vault, its chats, its projects. */
+  async function syncEverything(): Promise<void> {
+    if (syncsVault()) await vaultSync.run();
+    await docSyncs.run();
   }
 
   /** Sync on all devices, on pairing: a vault this device moved to the
@@ -6726,6 +6807,7 @@ export const useApp = create<AppState>((set, get, api) => {
     if (vaultProviderId(get().settings) !== 'local') return false;
     if (get().settings.vaultHubOffer) await get().saveSettings({ vaultHubOffer: undefined });
     await vaultSync.run();
+    void docSyncs.run();
     return true;
   }
 
@@ -6838,6 +6920,7 @@ export const useApp = create<AppState>((set, get, api) => {
     const prevBase = hubLinkKey?.split('\n')[0];
     if (prevBase && prevBase !== daemon?.baseUrl) {
       void vaultSync.forget(prevBase, VAULT_RESOURCE_ID);
+      void docSyncs.forget(prevBase);
     }
     hubLinkKey = key;
     const prev = hubVaultLink();
@@ -13881,7 +13964,7 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     async vaultSyncNow() {
-      if (syncsVault()) await vaultSync.run();
+      await syncEverything();
     },
 
     async setVaultSync(mode) {

@@ -76,18 +76,19 @@ computer (the base) and whether it changed since.
    Accepted: the base moves. Rejected because the computer's copy moved too:
    R3, the device's version lands beside it as a conflict copy, and both
    devices see the resolve sheet.
-3. **Pull:** the device asks for everything changed since its last agreed
-   point (a per-root change cursor on the daemon) and applies files it has not
-   touched; a file it has touched is the push case above.
+3. **Pull:** the device compares the computer's live, complete listing with
+   its ledger and applies files it has not touched; a file it has touched is
+   the push case above. (As built: no change cursor; a cut-short or kept
+   listing refuses the pass.)
 4. **Deletes and renames** ride as entries with their base, so a delete
    against an edited file is a conflict (Keep both keeps the edit), never a
    silent loss. Renames keep links following, as the vault's rename does.
 5. **Chats** sync by the same ledger. A chat is mostly appended to, so two
    devices adding turns to the same chat while apart become one conflict copy
    ("Chat title (from this iPad)") rather than an interleaving guess.
-6. **Projects** sync as one small file per project
-   (`Projects/<name>/.openshore/project.json`), the code itself staying where
-   the project runs (Runs on).
+6. **Projects** sync as one small document per project in the computer's
+   hidden sync store (as built), the code itself staying where the project
+   runs (Runs on).
 7. **Keep on one computer** turns the ledger off: the phone reads and writes
    the computer's copy while docked (today's `hub` provider) and keeps only the
    capped read cache.
@@ -140,7 +141,12 @@ Each lands green on its own, behind `FEATURE_TIER` until M5.
 - **M5. Chats and Projects ride sync; the setting.** Settings, Vault, "Where
   your files live" (Sync on all devices, Keep on one computer), copy through
   `vaultCopy.ts`, the guide's facts, the egress entry, the
-  security-privacy review.
+  security-privacy review. BUILT 2026-10-16: `os-code/src/core/sync/docStore.ts` and
+  `daemon/syncRoutes.ts` (the computer's store, one opaque document per chat
+  or project), `app/src/lib/docSync.ts` and `state/docSyncOps.ts` (the same
+  pass as the vault), main's `osc:sync*` channels for the desktop that is
+  the computer; tests in `os-code/test/syncRoutes.test.ts` and
+  `app/test/docSync.test.ts`.
 
 ## Risks and calls for review
 

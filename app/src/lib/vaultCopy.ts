@@ -321,10 +321,10 @@ export const VAULT_SYNC_COPY = {
   title: 'Where your notes live',
   all: 'Sync on all devices',
   allSub:
-    'Each device keeps its own copy and works offline. They catch up through your computer whenever they are docked.',
+    'Each device keeps its own copy of your notes, chats and projects, and works offline. They catch up through your computer whenever they are docked.',
   one: 'Keep on one computer',
   oneSub:
-    'Your notes stay on your computer. A docked device reads and writes them there while your computer is on.',
+    'Your notes stay on your computer, and a docked device reads and writes them there while your computer is on. Chats and projects stay on the device they were made on.',
 } as const;
 /** Keep on one computer, asked while the computer does not answer. */
 export const VAULT_SYNC_SWITCH_AWAY =
@@ -337,6 +337,15 @@ export function vaultSyncConflictToast(n: number): string {
   return n === 1
     ? 'A note changed here and on your computer. Both versions are kept, side by side.'
     : `${n.toLocaleString()} notes changed here and on your computer. Both versions are kept, side by side.`;
+}
+/** The toast after a sync kept both versions of chats or projects changed on
+ *  two devices. */
+export function docSyncConflictToast(kind: 'chats' | 'projects', n: number): string {
+  const what =
+    kind === 'chats' ? (n === 1 ? 'A chat' : 'chats') : n === 1 ? 'A project' : 'projects';
+  return n === 1
+    ? `${what} changed here and on your computer. Both versions are kept.`
+    : `${n.toLocaleString()} ${what} changed here and on your computer. Both versions are kept.`;
 }
 /** The words a conflict copy's name carries for this device, e.g. "from this iPhone". */
 export function vaultSyncFrom(deviceNoun: string): string {

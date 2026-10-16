@@ -909,7 +909,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     title: 'Account',
     where: 'Menu, Settings, Account, or the Sign in row',
     // There is nothing to buy: OpenShore is free and open source.
-    text: `Chatting needs no account. Signing in is free and opens building, Projects, Vault, Crew, and docking, and takes your theme and a few preferences to your other devices. Chats are not synced between devices; your phone reaches your computer's chats once docked.${teamsOn ? ' After creating one you choose personal or business; a business adds a company, admins, and a shared stack managed from Admin.' : ''}`,
+    text: `Chatting needs no account. Signing in is free and opens building, Projects, Vault, Crew, and docking, and takes your theme and a few preferences to your other devices. Your account never carries chats. With Sync on all devices on (the default), your chats, notes and projects sync between your own devices through your computer whenever they are docked; coding chats stay with the machine they run on.${teamsOn ? ' After creating one you choose personal or business; a business adds a company, admins, and a shared stack managed from Admin.' : ''}`,
     keywords: [
       'account',
       'sign in',

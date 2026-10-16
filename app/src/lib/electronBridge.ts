@@ -632,6 +632,20 @@ export interface OscodeBridge {
   chatFileRemove?(path: string): Promise<boolean>;
   /** The chat files in one month folder, by name, with their modified times. */
   chatFileList?(month: string): Promise<Array<{ name: string; mtimeMs: number }>>;
+  // Sync on all devices, chats and projects (2026-10-16): this desktop's own
+  // store, the one a docked phone reaches over /sync. Kinds and ids only; main
+  // checks both and never takes a path. Optional: an older build has none.
+  syncList?(
+    kind: string,
+  ): Promise<Array<{ id: string; version: string; updatedAt: string; size: number }>>;
+  syncGet?(kind: string, id: string): Promise<{ text: string; version: string } | undefined>;
+  syncPut?(
+    kind: string,
+    id: string,
+    text: string,
+    guard: { ifMatch: string } | { ifAbsent: true },
+  ): Promise<{ ok: true; version: string; updatedAt: string } | { ok: false; conflict: string }>;
+  syncRemove?(kind: string, id: string, ifMatch: string): Promise<{ ok: boolean }>;
   /** Changes the watcher saw, debounced in main. Returns an unsubscribe. */
   onVaultChanged(cb: (change: VaultChange) => void): () => void;
   /** Where the vault folder is, whether it is there, and whether Obsidian

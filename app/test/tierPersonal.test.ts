@@ -52,7 +52,11 @@ describe('a Personal build, loaded as one', () => {
     expect(text).not.toMatch(/Coming soon/i);
     // The old claim was false: chats live on the device.
     expect(text).not.toMatch(/syncs your chats/);
-    expect(GUIDE_CARDS.find((c) => c.id === 'account')!.text).toMatch(/not synced between devices/);
+    // The account carries no chats; they sync device to device through the
+    // person's own computer (Sync on all devices, 2026-10-16).
+    expect(GUIDE_CARDS.find((c) => c.id === 'account')!.text).toMatch(
+      /account never carries chats/,
+    );
   });
 
   it("the guide's grounding facts name only v1 rooms", async () => {

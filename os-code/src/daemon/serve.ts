@@ -110,6 +110,8 @@ import { isVaultNotePath } from '../core/vault/folderFs.js';
 import { vaultPackSize } from '../harness/vault/settings.js';
 import { HANDOFF_MAX_BYTES } from '../harness/handoff.js';
 import { buildChatPack, parseVaultOverrides, vaultRoute } from './vaultRoutes.js';
+import { syncRoute } from './syncRoutes.js';
+import { syncRootFor } from '../core/sync/docStore.js';
 import { freeChat, type FreeChatPackContext } from './freeChat.js';
 import { KEY_WRITE_BUCKET, isKeyRoute, keyRoute } from './keyRoutes.js';
 import { StackError } from '../router/stack.js';
@@ -1071,6 +1073,19 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
     // vaultRoutes.ts; no route takes a root. M6 (tech review K13) adds rename,
     // folders, Trash and attachments there; an attachment answers raw bytes
     // with its own headers, written as they come.
+    // ---- Chats and projects, synced from each docked device (2026-10-16). ----
+    // The caller's own folder only, like the vault.
+    if (parts[0] === 'sync') {
+      const answer = await syncRoute({
+        method: req.method ?? 'GET',
+        parts: parts.slice(1),
+        url,
+        root: syncRootFor(auth),
+        readBody: (maxBytes: number) => readJson(req, maxBytes),
+      });
+      sendJson(res, answer.status, answer.json);
+      return;
+    }
     if (parts[0] === 'vault') {
       const answer = await vaultRoute({
         method: req.method ?? 'GET',

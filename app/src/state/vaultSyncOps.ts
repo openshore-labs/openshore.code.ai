@@ -8,6 +8,7 @@ import {
   conflictCopyPath,
   syncPass,
   type SyncLedger,
+  type SyncOptions,
   type SyncResult,
   type SyncSide,
 } from '../lib/gitos/sync.js';
@@ -47,6 +48,8 @@ export interface VaultSyncDeps {
   from(): string;
   /** After a pass that changed anything here or kept both versions. */
   onResult(result: SyncResult): void;
+  /** What the pass carries, when it is not notes (chats, projects). */
+  pass?: Omit<Partial<SyncOptions>, 'conflictPath'> & Partial<Pick<SyncOptions, 'conflictPath'>>;
 }
 
 export interface VaultSync {
@@ -77,6 +80,7 @@ export function createVaultSync(deps: VaultSyncDeps): VaultSync {
     try {
       result = await syncPass(local, remote.side, ledger, {
         conflictPath: (p, taken) => conflictCopyPath(p, deps.from(), day, taken),
+        ...deps.pass,
       });
     } catch {
       // The computer is away, or its list was cut short: nothing changed.

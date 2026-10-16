@@ -69,13 +69,24 @@ export interface SyncOptions {
   /** The conflict copy's path for a note, given a taken-check. The caller
    *  names it (the copy's words live in vaultCopy.ts). */
   conflictPath(path: string, taken: (p: string) => boolean): string;
+  /** What a pass carries. Notes by default; chats and projects pass their
+   *  own (lib/docSync.ts). */
+  isItem?(path: string): boolean;
+  /** The text the conflict copy holds, given this device's text (a chat's
+   *  copy takes its new id and a title that says where it came from). */
+  copyText?(text: string, copyPath: string): string;
+  /** Whether the vault's settings file rides along. True by default. */
+  configs?: boolean;
 }
 
 type Meta = StoredFileMeta | undefined;
 
-function byPath(list: StoredFileMeta[]): Map<string, StoredFileMeta> {
+function byPath(
+  list: StoredFileMeta[],
+  isItem: (p: string) => boolean,
+): Map<string, StoredFileMeta> {
   const m = new Map<string, StoredFileMeta>();
-  for (const f of list) if (isNotePath(f.path)) m.set(f.path, f);
+  for (const f of list) if (isItem(f.path)) m.set(f.path, f);
   return m;
 }
 
@@ -125,8 +136,9 @@ export async function syncPass(
 ): Promise<SyncResult> {
   const listOf = (s: SyncSide) => (s.list ? s.list() : s.provider.list(s.resourceId));
   const [lList, rList] = await Promise.all([listOf(local), listOf(remote)]);
-  const L = byPath(lList);
-  const R = byPath(rList);
+  const isItem = opts.isItem ?? isNotePath;
+  const L = byPath(lList, isItem);
+  const R = byPath(rList, isItem);
   const next: SyncLedger = { ...ledger };
   const out: SyncResult = {
     ledger: next,
@@ -136,7 +148,7 @@ export async function syncPass(
     conflicts: [],
     skipped: [],
   };
-  const paths = new Set([...L.keys(), ...R.keys(), ...Object.keys(ledger).filter(isNotePath)]);
+  const paths = new Set([...L.keys(), ...R.keys(), ...Object.keys(ledger).filter(isItem)]);
   const taken = (p: string) => L.has(p) || R.has(p) || p in next;
 
   const agree = (path: string, l: string, r: string) => {
@@ -235,8 +247,9 @@ export async function syncPass(
       // Keep both: this device's text goes beside the note on both sides,
       // then the note here takes the computer's version.
       const copy = opts.conflictPath(path, taken);
-      const copyHere = await put(local, copy, mine.text, undefined);
-      const copyThere = await put(remote, copy, mine.text, undefined);
+      const copyBody = opts.copyText ? opts.copyText(mine.text, copy) : mine.text;
+      const copyHere = await put(local, copy, copyBody, undefined);
+      const copyThere = await put(remote, copy, copyBody, undefined);
       if (copyHere === undefined || copyThere === undefined) {
         skip(path, 'conflict-copy');
         continue;
@@ -254,7 +267,7 @@ export async function syncPass(
       skip(path, err instanceof Error ? err.message : 'failed');
     }
   }
-  for (const name of SYNCED_CONFIGS) {
+  for (const name of opts.configs === false ? [] : SYNCED_CONFIGS) {
     try {
       await syncConfig(local, remote, name, next, out);
     } catch (err) {

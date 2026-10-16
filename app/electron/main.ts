@@ -52,6 +52,17 @@ import { VAULT_WIRE_NOTE_MAX_BYTES } from 'os-code/dist/src/daemon/vaultWire.js'
 import { managedRoot } from 'os-code/dist/src/core/security/workspaces.js';
 import { ensureOpenshoreFolder, sectionDir } from 'os-code/dist/src/config/openshoreFolder.js';
 import { listChatMonth, removeChatFile, writeChatFile } from './chatFilesFs.js';
+import {
+  SYNC_DOC_MAX_BYTES,
+  isSyncId,
+  isSyncKind,
+  listDocs,
+  readDoc,
+  removeDoc,
+  syncRootFor,
+  writeDoc,
+  type SyncKind,
+} from 'os-code/dist/src/core/sync/docStore.js';
 import { isTokenHash } from 'os-code/dist/src/core/security/credentials.js';
 import {
   VAULT_INDEX_FILE_MAX_BYTES,
@@ -1465,6 +1476,44 @@ guarded('osc:clearHandoffs', () => {
 guarded('osc:chatFileWrite', (p: unknown, t: unknown) => writeChatFile(sectionDir('chats'), p, t));
 guarded('osc:chatFileRemove', (p: unknown) => removeChatFile(sectionDir('chats'), p));
 guarded('osc:chatFileList', (month: unknown) => listChatMonth(sectionDir('chats'), month));
+
+// Sync on all devices, chats and projects (2026-10-16): this desktop is the
+// computer, so its own chats and projects go straight into the store a docked
+// phone reaches over /sync, the owner's folder. Kinds and ids are checked
+// here; the store never takes a path.
+const OWNER_SYNC_ROOT = () => syncRootFor({ userId: 'owner', role: 'admin' });
+function syncKind(v: unknown): SyncKind {
+  const k = str(v, 'kind');
+  if (!isSyncKind(k)) throw new Error('blocked: not a sync kind');
+  return k;
+}
+function syncId(v: unknown): string {
+  const id = str(v, 'id');
+  if (!isSyncId(id)) throw new Error('blocked: not a document id');
+  return id;
+}
+guarded('osc:syncList', (k: unknown) => listDocs(OWNER_SYNC_ROOT(), syncKind(k)));
+guarded('osc:syncGet', (k: unknown, id: unknown) =>
+  readDoc(OWNER_SYNC_ROOT(), syncKind(k), syncId(id)),
+);
+guarded('osc:syncPut', (k: unknown, id: unknown, t: unknown, g: unknown) => {
+  const text = str(t, 'text');
+  if (Buffer.byteLength(text, 'utf8') > SYNC_DOC_MAX_BYTES) {
+    throw new Error('blocked: that document is too large to sync');
+  }
+  const guard = g as { ifMatch?: unknown; ifAbsent?: unknown } | null;
+  const parsed =
+    guard?.ifAbsent === true
+      ? ({ ifAbsent: true } as const)
+      : typeof guard?.ifMatch === 'string' && guard.ifMatch
+        ? { ifMatch: guard.ifMatch }
+        : undefined;
+  if (!parsed) throw new Error('blocked: a sync write needs ifMatch or ifAbsent');
+  return writeDoc(OWNER_SYNC_ROOT(), syncKind(k), syncId(id), text, parsed);
+});
+guarded('osc:syncRemove', (k: unknown, id: unknown, m: unknown) =>
+  removeDoc(OWNER_SYNC_ROOT(), syncKind(k), syncId(id), str(m, 'ifMatch')),
+);
 
 // The same answer carries the machine's `vault.packSize` (Vault M8), read
 // only: the settings sheet says when this computer's sessions give notes
