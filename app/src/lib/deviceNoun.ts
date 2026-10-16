@@ -35,3 +35,14 @@ export function thisDeviceNoun(opts: { start?: boolean } = {}): string {
   cached ??= deviceNounFor(typeof navigator === 'undefined' ? {} : navigator);
   return opts.start ? cached[0]!.toUpperCase() + cached.slice(1) : cached;
 }
+
+/** Where the Files app shows a folder in this app's Documents, in its own
+ *  words: "On My iPad > OpenShore" on an iPad, "On My iPhone > OpenShore"
+ *  elsewhere, then `parts` (the folders under Documents). Files names the
+ *  app's Documents folder by the app's display name (Info.plist,
+ *  CFBundleDisplayName), which is OpenShore, and the app's sections sit right
+ *  in it, so "On My iPhone > OpenShore > Vault" is the Vault. */
+export function filesAppPath(...parts: string[]): string {
+  const device = thisDeviceNoun() === 'this iPad' ? 'iPad' : 'iPhone';
+  return [`On My ${device}`, 'OpenShore', ...parts].join(' > ');
+}

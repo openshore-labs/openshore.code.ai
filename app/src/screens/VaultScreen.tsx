@@ -1551,7 +1551,11 @@ export function VaultScreen() {
   };
   const trashKind: 'folder' | 'local' | 'team' = team
     ? 'team'
-    : currentProviderId === 'files' || currentProviderId === 'hub'
+    : currentProviderId === 'files' ||
+        currentProviderId === 'hub' ||
+        // This device on the iPhone and the iPad is the OpenShore folder,
+        // with its Trash in .trash (folder and sync plan, M2).
+        (currentProviderId === 'local' && isPhone())
       ? 'folder'
       : 'local';
 

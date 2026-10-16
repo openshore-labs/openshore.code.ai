@@ -738,6 +738,7 @@ import {
   storeGetJson,
   storeSetJson,
 } from '../lib/platform.js';
+import { preparePhoneFolder } from '../lib/phoneFolder.js';
 
 export type ViewName =
   | 'chat'
@@ -8814,6 +8815,12 @@ export const useApp = create<AppState>((set, get, api) => {
       // absent and stays untouched, and the person is told below.
       const unlock = await dataUnlockState();
       const locked = unlock === 'locked';
+      // On the iPhone and the iPad: the OpenShore folder's layout, and the
+      // one-time move of the sealed vault into Documents/Vault (folder and
+      // sync plan, M2). Only once the sealed store is readable, so a locked
+      // launch never reads an empty sealed vault as moved. The vault's own
+      // calls wait for the move; nothing else does.
+      if (!locked) void preparePhoneFolder();
 
       const settings = (await storeGetJson<AppSettings>(SETTINGS_KEY)) ?? {
         onboarded: false,

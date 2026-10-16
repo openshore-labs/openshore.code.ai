@@ -56,9 +56,9 @@ Machine settings, keys, tokens, indexes and session journals stay hidden
 |---|---|---|
 | Desktop vault | `~/OSCode/Vault` or a picked folder | `~/OpenShore/Vault`; a picked folder (an Obsidian vault) stays where it is |
 | Desktop clones, sample, scratch | `~/OSCode/<name>`, `Try OpenShore`, `scratch` | `~/OpenShore/Projects/...`, scratch as `Projects/Scratch` (what a chat with no project made is the person's work, so it stays findable) |
-| Phone vault | sealed key-value store (`local` provider) | real files in `Documents/OpenShore/Vault` (a `folder`-style provider over the app's own Documents) |
-| Chats | sealed key-value store / Electron localStorage | the sealed store stays the source of truth, mirrored to `OpenShore/Chats/YYYY-MM/<title>-<id>.md` with a small front-matter header (M3: not read back until M5) |
-| Phone models | `Application Support/Models` (hidden) | `Documents/OpenShore/Models/<name>/`, excluded from backup |
+| Phone vault | sealed key-value store (`local` provider) | real files in `Documents/Vault` (Files: On My iPhone > OpenShore > Vault; a `folder`-style provider over the app's own Documents) |
+| Chats | sealed key-value store / Electron localStorage | the sealed store stays the source of truth, mirrored to `Chats/YYYY-MM/<title>-<id>.md` (in `~/OpenShore` on a computer, the app's Documents on a phone) with a small front-matter header, not read back; M5 syncs the chats themselves |
+| Phone models | `Application Support/Models` (hidden) | `Documents/Models/<id>/`, excluded from backup |
 | Desktop models | Ollama's own store | unchanged (Ollama owns the weights); `Models/` holds ComfyUI and other OpenShore-managed files, and a `README` pointing at Ollama's |
 | Exports | `Documents/Vault` (iOS export) | `OpenShore/Exports/` |
 
@@ -106,9 +106,14 @@ Each lands green on its own, behind `FEATURE_TIER` until M5.
   to `Projects`. BUILT 2026-10-16 (`os-code/src/config/openshoreFolder.ts`,
   `test/openshoreFolder.test.ts`). Tests: the layout, the move on a fixture home, the boundary.
 - **M2. Real files on the phone.** The phone vault on files in
-  `Documents/OpenShore/Vault` (passes `providerContract.test.ts`), the move
+  `Documents/Vault` (passes `providerContract.test.ts`), the move
   from the sealed store, models moved under `Models/` with backup excluded,
-  exports under `Exports/`.
+  exports under `Exports/`. BUILT 2026-10-16 (`app/src/lib/gitos/phoneFolder.ts`,
+  `phoneVault.ts`, `app/src/lib/phoneFolder.ts`, the plugin's `ModelStore.swift`;
+  `test/phoneFolder.test.ts`). Flattened: on iOS the sections sit at the
+  root of the app's Documents, which Files shows as On My iPhone > OpenShore,
+  and a pre-M2 export in Documents/Vault moves to Exports/Vault (earlier
+  export) first (DECISIONS).
 - **M3. Chats as files.** One markdown file per chat with a front-matter
   header, written on each settled turn. Copy that says chats are not synced is
   updated at M5, not before. BUILT 2026-10-16, as a mirror, not read back:

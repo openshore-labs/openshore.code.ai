@@ -25,6 +25,12 @@
 // where another writer is a note replaced on the computer with a fresh
 // version.
 //
+// This device on the iPhone and the iPad (folder and sync plan, M2) is the
+// OpenShore folder in the app's Documents: the real folder client and phone
+// transport (src/lib/gitos/phoneFolder.ts) over an in-memory stand-in for
+// @capacitor/filesystem (test/support/fakePhoneFs.ts), where another writer is
+// a file put there as another app would, with a fresh mtime.
+//
 // Remove joined the contract in Vault M2 wave 0 (tech review G7): it answers with a
 // RemoveResult, a stale ifMatch is 'changed' and leaves the file, and a file
 // already gone is ok.
@@ -153,6 +159,13 @@ setOrgVaultAuth(
 const { createHubProvider } = await import('../src/lib/gitos/hub.js');
 const { fakeHubDaemon } = await import('./support/fakeHubDaemon.js');
 
+const { createPhoneFolderTransport, createPhoneVaultProvider, PHONE_VAULT_DIR } =
+  await import('../src/lib/gitos/phoneFolder.js');
+const { createFakePhoneFs } = await import('./support/fakePhoneFs.js');
+const phoneFs = createFakePhoneFs();
+const phoneVault = createPhoneVaultProvider(createPhoneFolderTransport(phoneFs));
+const inPhone = (p: string) => `${PHONE_VAULT_DIR}/${p}`;
+
 const hub = fakeHubDaemon();
 const hubProvider = createHubProvider({
   baseUrl: 'http://mac.tail1234.ts.net:4816',
@@ -216,6 +229,14 @@ const enforcing: Array<{
     replace: (p, t) => hub.replace(p, t),
     remove: (p) => hub.remove(p),
   },
+  {
+    name: 'This device (the phone folder)',
+    provider: phoneVault,
+    bytes: (p) => phoneFs.text(inPhone(p)),
+    // Another writer (the Files app, another app editing in place).
+    replace: (p, t) => phoneFs.put(inPhone(p), t),
+    remove: (p) => phoneFs.drop(inPhone(p)),
+  },
 ];
 
 beforeAll(() => {
@@ -231,6 +252,7 @@ beforeEach(() => {
   h.team = createFakeOrgVaultServer(R);
   resetOrgVault();
   hub.reset();
+  phoneFs.reset();
 });
 
 const R = 'vault.personal';
@@ -636,6 +658,14 @@ const settingsRows: Array<{
       ),
     remove: () => h.store.delete(`oscode.gitos.config.${R}.vault`),
     obsidianUntouched: () => [...h.store.keys()].every((k) => !/obsidian/.test(k)),
+  },
+  {
+    name: 'This device (the phone folder)',
+    provider: phoneVault,
+    bytes: () => phoneFs.text(inPhone('.oscode/vault.json')),
+    replace: (t) => phoneFs.put(inPhone('.oscode/vault.json'), t),
+    remove: () => phoneFs.drop(inPhone('.oscode/vault.json')),
+    obsidianUntouched: () => phoneFs.paths(inPhone('.obsidian')).length === 0,
   },
   {
     name: 'Your computer (the hub)',

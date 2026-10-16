@@ -8,6 +8,8 @@ import { gdriveProvider } from './gdrive.js';
 import { orgVaultProvider, isOrgVaultAvailable } from './orgVault.js';
 import { deviceFolderProvider, isDeviceFolderAvailable } from './deviceFolder.js';
 import { hubProvider, isHubAvailable } from './hub.js';
+import { phoneVaultProvider } from './phoneVault.js';
+import { platform } from '../platform.js';
 import { PROVIDER_ROSTER, type StorageProvider, type StorageProviderId } from './providers.js';
 
 export * from './providers.js';
@@ -69,8 +71,12 @@ const PROVIDERS_BY_ID: Partial<Record<StorageProviderId, StorageProvider>> = {
 };
 
 /** The provider for an id, or undefined while its wiring is not landed.
- *  Callers must treat undefined as "not ready", never as an error to retry. */
+ *  Callers must treat undefined as "not ready", never as an error to retry.
+ *  On the iPhone and the iPad, This device ('local') is the OpenShore folder
+ *  in the app's Documents (folder and sync plan, M2; gitos/phoneVault.ts);
+ *  everywhere else it is the sealed store. */
 export function providerFor(id: StorageProviderId): StorageProvider | undefined {
+  if (id === 'local' && platform() === 'ios') return phoneVaultProvider();
   return PROVIDERS_BY_ID[id];
 }
 

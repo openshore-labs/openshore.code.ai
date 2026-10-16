@@ -621,3 +621,38 @@ async function readConfigBody(resourceId: string): Promise<Body | undefined> {
 export const VAULT_SETTINGS_PATH = `.${VAULT_CONFIG_FILES['oscode/vault'].dir}/${VAULT_CONFIG_FILES['oscode/vault'].file}`;
 
 const configFileOf = (b: Body): StoredFile => fileOf(VAULT_SETTINGS_PATH, b);
+
+// ---- The phone's one-time move to real files (folder and sync plan, M2) -----
+// On the iPhone, This device becomes the OpenShore folder (gitos/phoneVault.ts),
+// and its move reads what this store holds through the provider above, plus
+// these two: a Trash entry's notes, and the settings key's removal once the
+// folder holds the same text. Nothing else reads the layout from outside.
+
+/** One sealed Trash entry with its notes' text, or undefined when it is gone
+ *  or not one. */
+export async function readSealedTrash(
+  resourceId: string,
+  id: string,
+): Promise<
+  | {
+      kind: 'note' | 'folder';
+      path: string;
+      trashedAt: string;
+      notes: Array<{ path: string; text: string }>;
+    }
+  | undefined
+> {
+  const doc = await storeGetJson<unknown>(trashKey(resourceId, id)).catch(() => undefined);
+  if (!isTrashDoc(doc)) return undefined;
+  return {
+    kind: doc.kind,
+    path: doc.path,
+    trashedAt: doc.trashedAt,
+    notes: notesOf(doc).map((n) => ({ path: n.path, text: n.text })),
+  };
+}
+
+/** Drop the sealed settings key, once the folder holds the same settings. */
+export async function forgetSealedConfig(resourceId: string): Promise<void> {
+  await storeDelete(configKey(resourceId));
+}

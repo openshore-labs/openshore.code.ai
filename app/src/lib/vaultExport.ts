@@ -1,7 +1,12 @@
 // Export the vault as REAL files on the iPhone: every note written as a plain
-// .md under Documents/Vault, which iOS surfaces in the Files app ("On My
-// iPhone / OpenShore / Vault"). It is a one-way copy you hold, the true-compat
-// escape hatch the tech review required for keeping the bytes in the sealed store.
+// .md under Documents/Exports/Vault, which iOS surfaces in the Files app ("On
+// My iPhone > OpenShore > Exports > Vault"; folder and sync plan, M2:
+// everything the app saves sits in the one OpenShore folder, and what you
+// export in its Exports). It is a one-way copy you hold, the true-compat
+// escape hatch the tech review required for keeping the bytes in the sealed
+// store. An export made before M2 sat in Documents/Vault, where the live vault
+// now is; launch moves it aside once, to Exports/Vault (earlier export)
+// (lib/phoneFolder.ts), and nothing here ever writes or removes it.
 //
 // Only the iPhone exports the personal vault (0.11); the team vault exports
 // on the iPhone and the desktop, to its own folder (2.8, below). On the
@@ -18,14 +23,19 @@
 // counting it as its own, and names it (`kept`), so an export never
 // overwrites anything but the copy it wrote.
 import { Directory, Encoding, Filesystem } from '@capacitor/filesystem';
+import { filesAppPath } from './deviceNoun.js';
 import { bridge } from './electronBridge.js';
 import { platform, storeGetJson, storeSetJson, type Platform } from './platform.js';
 import type { StorageProviderId } from './gitos/providers.js';
 import { noteTitle } from './vault.js';
 
-const EXPORT_ROOT = 'Vault';
-// Path to the fingerprint of the text this device last exported there.
-const MANIFEST_KEY = 'oscode.vault.export.manifest';
+/** Where exports go, relative to Documents (lib/phoneFolder.ts). */
+export const EXPORTS_DIR = 'Exports';
+const EXPORT_ROOT = `${EXPORTS_DIR}/Vault`;
+// Path to the fingerprint of the text this device last exported there. A new
+// key with the new folder (M2), so the fingerprints of the old Documents/Vault
+// export never vouch for a file in the new one.
+const MANIFEST_KEY = 'oscode.vault.export.manifest.v2';
 type Manifest = Record<string, string>;
 
 /** Whether a note path may be written under the export root. A team vault
@@ -78,7 +88,7 @@ function fingerprint(text: string): string {
   return `${text.length}:${(h >>> 0).toString(16)}`;
 }
 
-/** Write every note to Documents/Vault/<path>. Returns undefined anywhere but
+/** Write every note to Documents/Exports/Vault/<path>. Returns undefined anywhere but
  *  the iPhone (the desktop moves to This folder instead). `failed` are the
  *  notes that could not be read this time: they count toward the total, and
  *  a file this device wrote for one earlier is kept, not treated as stale.
@@ -92,7 +102,8 @@ export async function exportVaultToFiles(
 }
 
 // ---- The team vault's export (Vault M2 2.8) ---------------------------------
-// The team vault exports to its own folder, "Vault Team/<org>", on every
+// The team vault exports to its own folder, "Vault Team/<org>" (under
+// Exports on the iPhone), on every
 // platform: through the Filesystem plugin on the iPhone (the same manifest
 // rule, under a manifest of its own), and through main on the desktop, so a
 // desktop team member can open the team vault in Obsidian. It never touches
@@ -132,12 +143,16 @@ export async function exportTeamVaultToFiles(
   const folder = teamFolderName(org.name);
   if (on === 'ios') {
     const r = await exportUnder(
-      `Vault Team/${folder}`,
+      `${EXPORTS_DIR}/Vault Team/${folder}`,
       `${MANIFEST_KEY}.team.${org.id}.${folder}`,
       notes,
       failed,
     );
-    return { ...r, where: `to Files, under OpenShore / Vault Team / ${folder}`, folder: false };
+    return {
+      ...r,
+      where: `to Files, under ${filesAppPath('Exports', 'Vault Team', folder)}`,
+      folder: false,
+    };
   }
   const b = on === 'electron' ? bridge() : undefined;
   if (!b?.vaultTeamExport) return undefined;
@@ -267,7 +282,7 @@ export function vaultExportLine(
   r: VaultExportResult,
   opts: { where?: string; folder?: boolean } = {},
 ): string {
-  const where = opts.where ?? 'to Files, under OpenShore / Vault';
+  const where = opts.where ?? `to Files, under ${filesAppPath('Exports', 'Vault')}`;
   if (r.total === 0) return 'Nothing to export yet. Write a note first.';
   if (r.unread >= r.total) {
     return 'None of your notes could be read right now, so nothing was exported. Try again shortly.';
