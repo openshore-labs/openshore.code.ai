@@ -72,6 +72,7 @@ import { storeDelete, storeGetJson, storeKeys, storeSetJson } from '../platform.
 import {
   HUB_AWAY_LINE,
   HUB_AWAY_NOT_KEPT,
+  HUB_SYNC_TOO_MANY,
   HUB_AWAY_READ_ONLY,
   HUB_PAIR_LINE,
   HUB_PAIRING_REFUSED,
@@ -269,6 +270,10 @@ export interface HubProvider extends StorageProvider {
   fetchIndex(): Promise<string | null>;
   /** Forget the stash (unpairing, sign-out). */
   forget(): Promise<void>;
+  /** Every note on the computer, live (sync, 2026-10-16). Unlike `list`, it
+   *  never answers from what was kept, and it throws on a listing cut short,
+   *  so a sync never reads a note missing from it as deleted. */
+  listComplete(): Promise<StoredFileMeta[]>;
 }
 
 export function createHubProvider(opts: HubProviderOptions): HubProvider {
@@ -607,6 +612,16 @@ export function createHubProvider(opts: HubProviderOptions): HubProvider {
       const files = notes.filter((n) => isNotePath(n.path)).map(metaOf);
       await keepList(files, body.truncated === true);
       return files;
+    },
+
+    async listComplete(): Promise<StoredFileMeta[]> {
+      const res = await call('GET', VAULT_NOTES_ROUTE);
+      if (res.status === 404) throw new HubRefusal(HUB_UPDATE_LINE);
+      if (!res.ok) throw await errorOf(res);
+      const body = (await res.json()) as { notes?: unknown; truncated?: unknown };
+      if (body.truncated === true) throw new HubRefusal(HUB_SYNC_TOO_MANY);
+      const notes = Array.isArray(body.notes) ? body.notes.filter(isHubNoteMeta) : [];
+      return notes.filter((n) => isNotePath(n.path)).map(metaOf);
     },
 
     async stat(_resourceId, path): Promise<StoredFileMeta | undefined> {
@@ -1077,7 +1092,8 @@ function linked(): HubProvider {
 
 /** The registered face: every call goes to the paired computer's provider,
  *  and with none paired it refuses in plain words. */
-export const hubProvider: StorageProvider = {
+export const hubProvider: StorageProvider & Pick<HubProvider, 'listComplete'> = {
+  listComplete: async () => linked().listComplete(),
   id: 'hub',
   label: 'Your computer',
   blurb: 'Your computer, while it is on. Plain .md files in the vault folder there.',

@@ -116,7 +116,11 @@ Each lands green on its own, behind `FEATURE_TIER` until M5.
 - **M4. The sync engine.** The daemon's change cursor and batch routes, the
   device ledger, push, pull, deletes, renames, conflict copies; the Vault first.
   Tests: two simulated devices editing apart, every conflict shape, a dropped
-  connection mid-pass.
+  connection mid-pass. BUILT 2026-10-16 for the Vault, with the setting:
+  `app/src/lib/gitos/sync.ts` (the pass, over the seam, no daemon change: the
+  computer's live, complete listing replaces a change cursor),
+  `app/src/state/vaultSyncOps.ts`, Settings' "Sync on all devices" switch,
+  `app/test/vaultSync.test.ts` and the store cases in `vaultStore.test.ts`.
 - **M5. Chats and Projects ride sync; the setting.** Settings, Vault, "Where
   your files live" (Sync on all devices, Keep on one computer), copy through
   `vaultCopy.ts`, the guide's facts, the egress entry, the

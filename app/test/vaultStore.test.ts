@@ -3204,8 +3204,103 @@ describe('the Vault index (M3 3.2)', () => {
 // whose move writes every copy ifAbsent; a storage the person chose is never
 // repointed; unpairing returns the vault to where it was and moves nothing
 // back.
-describe('pairing and the vault on your computer', () => {
+// Sync on all devices (founder, 2026-10-16): the default. A docked phone keeps its
+// vault here and syncs it with the computer's; nothing is repointed or moved.
+describe('sync on all devices', () => {
   beforeEach(reset);
+  const box = { baseUrl: 'http://box.tail1.ts.net:4820', token: 't' };
+  const providerNow = () =>
+    useApp.getState().settings.gitosResources?.find((r) => r.id === 'vault.personal');
+
+  it('docking keeps the vault here and brings both copies level, with no move card', async () => {
+    files.set('Mine.md', 'my note');
+    hub.files.set('Theirs.md', 'from the computer');
+    useApp.setState({
+      settings: { ...useApp.getState().settings, gitosResources: personalOn('local') },
+    });
+    await useApp.getState().saveHub(box, { role: 'admin' });
+    await vi.waitFor(() => expect(hub.files.get('Mine.md')).toBe('my note'));
+    await vi.waitFor(() => expect(files.get('Theirs.md')).toBe('from the computer'));
+    expect(providerNow()?.providerId).toBe('local');
+    expect(useApp.getState().settings.vaultHubOffer).toBeUndefined();
+  });
+
+  it('a vault the old rule moved to the computer comes back here, with every note', async () => {
+    hub.files.set('Kept there.md', 'on the computer');
+    useApp.setState({
+      settings: {
+        ...useApp.getState().settings,
+        gitosResources: personalOn('hub'),
+        vaultBeforeHub: { providerId: 'local', hub: box.baseUrl },
+      },
+    });
+    await useApp.getState().saveHub(box, { role: 'admin' });
+    await vi.waitFor(() => expect(providerNow()?.providerId).toBe('local'));
+    await vi.waitFor(() => expect(files.get('Kept there.md')).toBe('on the computer'));
+    expect(useApp.getState().settings.vaultBeforeHub).toBeUndefined();
+  });
+
+  it('an edit made apart goes up, and one made on the computer comes down', async () => {
+    useApp.setState({
+      settings: { ...useApp.getState().settings, gitosResources: personalOn('local') },
+    });
+    await useApp.getState().saveHub(box, { role: 'admin' });
+    files.set('Trip.md', 'packed');
+    await useApp.getState().vaultSyncNow();
+    expect(hub.files.get('Trip.md')).toBe('packed');
+    hub.files.set('Trip.md', 'packed, and the tickets');
+    await useApp.getState().vaultSyncNow();
+    expect(files.get('Trip.md')).toBe('packed, and the tickets');
+  });
+
+  it('a note changed on both keeps both, and says so once', async () => {
+    useApp.setState({
+      settings: { ...useApp.getState().settings, gitosResources: personalOn('local') },
+    });
+    await useApp.getState().saveHub(box, { role: 'admin' });
+    files.set('Plan.md', 'start');
+    await useApp.getState().vaultSyncNow();
+    files.set('Plan.md', 'written on the phone');
+    hub.files.set('Plan.md', 'written on the computer');
+    await useApp.getState().vaultSyncNow();
+    expect(files.get('Plan.md')).toBe('written on the computer');
+    const copies = [...files.keys()].filter((p) => p.startsWith('Plan (from '));
+    expect(copies).toHaveLength(1);
+    expect(files.get(copies[0]!)).toBe('written on the phone');
+    expect(hub.files.get(copies[0]!)).toBe('written on the phone');
+    expect(useApp.getState().toast).toMatch(/Both versions are kept/);
+  });
+
+  it('Keep on one computer levels both copies first, then reads the computer', async () => {
+    useApp.setState({
+      settings: { ...useApp.getState().settings, gitosResources: personalOn('local') },
+    });
+    await useApp.getState().saveHub(box, { role: 'admin' });
+    files.set('Last.md', 'typed before switching');
+    expect(await useApp.getState().setVaultSync('one')).toBe(true);
+    expect(hub.files.get('Last.md')).toBe('typed before switching');
+    expect(providerNow()?.providerId).toBe('hub');
+    expect(useApp.getState().settings.vaultSync).toBe('one');
+    // And back: the vault returns here and syncs.
+    hub.files.set('Later.md', 'written on the computer');
+    expect(await useApp.getState().setVaultSync('all')).toBe(true);
+    expect(providerNow()?.providerId).toBe('local');
+    await vi.waitFor(() => expect(files.get('Later.md')).toBe('written on the computer'));
+  });
+
+  it('does not sync on a desktop, or with no computer docked', async () => {
+    files.set('Alone.md', 'x');
+    await useApp.getState().vaultSyncNow();
+    expect(hub.counts.writes).toEqual([]);
+  });
+});
+
+describe('pairing and the vault on your computer', () => {
+  // Keep on one computer: the rule before sync on all devices (2026-10-16).
+  beforeEach(() => {
+    reset();
+    useApp.setState({ settings: { ...useApp.getState().settings, vaultSync: 'one' } });
+  });
   const box = { baseUrl: 'http://box.tail1.ts.net:4820', token: 't' };
   const providerNow = () =>
     useApp.getState().settings.gitosResources?.find((r) => r.id === 'vault.personal');

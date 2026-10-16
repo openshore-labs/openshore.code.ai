@@ -293,6 +293,35 @@ export function hubMoveOffer(n: number): string {
     : `Keep your ${n.toLocaleString()} notes on your computer, with your agent? They save there while your computer is on.`;
 }
 
+// ---- Sync on all devices (founder, 2026-10-16) ---------------------------------
+
+/** The two answers to where the vault's files live, in Settings. */
+export const VAULT_SYNC_COPY = {
+  title: 'Where your notes live',
+  all: 'Sync on all devices',
+  allSub:
+    'Each device keeps its own copy and works offline. They catch up through your computer whenever they are docked.',
+  one: 'Keep on one computer',
+  oneSub:
+    'Your notes stay on your computer. A docked device reads and writes them there while your computer is on.',
+} as const;
+/** Keep on one computer, asked while the computer does not answer. */
+export const VAULT_SYNC_SWITCH_AWAY =
+  'Your computer needs to be on to keep your notes there. Try again when it is.';
+/** A computer listing too many notes to sync in one pass. */
+export const HUB_SYNC_TOO_MANY =
+  'Your vault has more notes than one sync can carry, so this device keeps reading them on your computer.';
+/** The toast after a sync kept both versions of notes changed on two devices. */
+export function vaultSyncConflictToast(n: number): string {
+  return n === 1
+    ? 'A note changed here and on your computer. Both versions are kept, side by side.'
+    : `${n.toLocaleString()} notes changed here and on your computer. Both versions are kept, side by side.`;
+}
+/** The words a conflict copy's name carries for this device, e.g. "from this iPhone". */
+export function vaultSyncFrom(deviceNoun: string): string {
+  return `from ${deviceNoun}`;
+}
+
 /** Whether the storage sheet offers a provider on this platform at all. This
  *  folder exists only in OpenShore on a computer and iCloud Drive only on the
  *  iPhone, so neither shows as "Arriving" where it never arrives. */
@@ -452,6 +481,7 @@ export function vaultGuideText(): string {
     `Google Drive: ${vaultCopy('ios', 'gdrive').storage} A vault already there is read-only, and its card moves it off.`,
     'On the iPhone, Export writes the notes out as plain .md files in Files.',
     `On a phone paired with a computer, ${lowerFirst(PHONE_AGENT_LINE)}`,
+    `With ${VAULT_SYNC_COPY.all} on (the default), a docked phone or iPad: ${VAULT_SYNC_COPY.allSub} A note changed on both keeps both versions, side by side. Turn it off in Settings to keep your notes on your computer alone.`,
     "A member using someone else's computer has no vault in their sessions yet.",
     `The team vault: ${vaultCopy('ios', 'org').storage}`,
     VAULT_GUIDE_PICKER_LINE,

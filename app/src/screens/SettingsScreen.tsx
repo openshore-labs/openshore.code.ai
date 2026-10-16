@@ -64,6 +64,7 @@ import {
   VAULT_MEMORY_SUB,
   VAULT_SETTINGS_ROWS,
   VAULT_SETTINGS_TITLE,
+  VAULT_SYNC_COPY,
   VAULT_SWITCH_MEMORY_OFF,
   vaultHandoffToast,
   vaultNotesInChatsSub,
@@ -306,6 +307,8 @@ export function SettingsScreen() {
   // The ways out while their rooms are shut (signed out, tech review 2026-09-30):
   // exporting the iPhone's sealed vault and removing a git host's sign-in.
   const exportPersonalVault = useApp((s) => s.exportPersonalVault);
+  const setVaultSync = useApp((s) => s.setVaultSync);
+  const vaultSyncOn = (settings.vaultSync ?? 'all') === 'all';
   const vaultRoomShut = useApp((s) => s.needsAccountNow());
   const reposRoomShut = vaultRoomShut;
   const connectedRepoPlatforms = useApp((s) => s.connectedRepoPlatforms);
@@ -1262,6 +1265,23 @@ export function SettingsScreen() {
                       />
                     }
                   />
+                  {/* Sync on all devices (founder, 2026-10-16): a phone or iPad
+                      keeps its own copy and catches up through the docked
+                      computer; off keeps the notes on the computer alone. A
+                      desktop keeps its own folder, so it has no such choice. */}
+                  {!isDesktop() ? (
+                    <SettingsRow
+                      label={VAULT_SYNC_COPY.all}
+                      sub={vaultSyncOn ? VAULT_SYNC_COPY.allSub : VAULT_SYNC_COPY.oneSub}
+                      trailing={
+                        <Switch
+                          checked={vaultSyncOn}
+                          label={VAULT_SYNC_COPY.all}
+                          onChange={(next) => void setVaultSync(next ? 'all' : 'one')}
+                        />
+                      }
+                    />
+                  ) : null}
                   <SettingsRow
                     label={VAULT_SETTINGS_TITLE}
                     value={vaultStorageName}

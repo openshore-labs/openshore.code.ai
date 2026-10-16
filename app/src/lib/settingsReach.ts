@@ -63,6 +63,7 @@ export const SETTINGS_REACH: Record<keyof AppSettings, SettingReach> = {
   vaultMoveOffer: 'device',
   vaultHubOffer: 'device',
   vaultBeforeHub: 'device',
+  vaultSync: 'device',
   vaultRecent: 'device',
   vaultEmptyFolders: 'device',
   // Pairing, hubs, and addresses on this person's network.

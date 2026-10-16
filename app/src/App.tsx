@@ -356,19 +356,25 @@ export function App() {
   }, []);
 
   // When the app returns to the foreground, re-check a commercial org's seat
-  // billing: Stripe checkout completes in the system browser, so seats land
-  // on return. Native uses the Capacitor app-state event; web and Electron use
+  // billing (Stripe checkout completes in the system browser, so seats land
+  // on return), and catch the vault up with a docked computer. Native uses the Capacitor app-state event; web and Electron use
   // visibilitychange.
   useEffect(() => {
     let removeNative: (() => void) | undefined;
     const onVisible = () => {
-      if (document.visibilityState === 'visible') void reconcileEntitlementOnForeground();
+      if (document.visibilityState === 'visible') {
+        void reconcileEntitlementOnForeground();
+        void useApp.getState().vaultSyncNow();
+      }
     };
     if (platform() === 'ios') {
       void (async () => {
         const { App: CapApp } = await import('@capacitor/app');
         const l = await CapApp.addListener('appStateChange', ({ isActive }) => {
-          if (isActive) void reconcileEntitlementOnForeground();
+          if (!isActive) return;
+          void reconcileEntitlementOnForeground();
+          // Sync on all devices: coming forward is a moment to catch up.
+          void useApp.getState().vaultSyncNow();
         });
         removeNative = () => void l.remove();
       })();

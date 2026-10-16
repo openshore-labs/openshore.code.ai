@@ -405,7 +405,19 @@ import {
   type VaultNoteFacts,
   type VaultPickerNote,
 } from '../lib/vaultExcerpt.js';
-import { HUB_REPOINT_TOAST, HUB_UNPAIR_TOAST } from '../lib/vaultCopy.js';
+import {
+  HUB_REPOINT_TOAST,
+  HUB_UNPAIR_TOAST,
+  VAULT_SYNC_SWITCH_AWAY,
+  vaultSyncConflictToast,
+  vaultSyncFrom,
+} from '../lib/vaultCopy.js';
+import {
+  VAULT_SYNC_TICK_MS,
+  createVaultSync,
+  vaultSyncMode,
+  type VaultSyncMode,
+} from './vaultSyncOps.js';
 // The hub vault's link and pairing rule, from the module itself (not the
 // gitos barrel), so a test that fakes the storage roster still gets them.
 import {
@@ -415,7 +427,10 @@ import {
   hubReach,
   hubVaultLink,
   setHubVaultLink,
+  subscribeHubReach,
+  HUB_VAULT_RESOURCE_ID,
   type HubPairPlan,
+  type HubProvider,
   type VaultBeforeHub,
   type VaultHubOffer,
 } from '../lib/gitos/hub.js';
@@ -1024,6 +1039,11 @@ export interface AppSettings {
   vaultBeforeHub?: VaultBeforeHub;
   /** The one-time "keep one vault on your computer" card (J9). Device local. */
   vaultHubOffer?: VaultHubOffer;
+  /** Where the vault's files live while docked (founder, 2026-10-16): 'all'
+   *  keeps a working copy on this device that syncs through the computer,
+   *  'one' keeps the notes on the computer alone. Undefined is 'all'.
+   *  Device local. */
+  vaultSync?: VaultSyncMode;
   /** Paths the agent's approved vault writes named on this device, newest
    *  first, at most 20 (J15, "Recently from your agent"). Device local. */
   vaultAgentWrites?: string[];
@@ -2307,6 +2327,13 @@ interface AppState {
   /** Run the J9 pairing rule now (the store runs it after a pairing and on
    *  the Vault's first list); resolves to what it did. */
   vaultAfterPairing(): Promise<HubPairPlan>;
+  /** Sync this device's vault with the docked computer now (the app coming
+   *  forward). Does nothing unless it syncs (Sync on all devices). */
+  vaultSyncNow(): Promise<void>;
+  /** Where the vault's files live while docked (founder, 2026-10-16). Switching to
+   *  Keep on one computer first brings both copies level, so it needs the
+   *  computer to answer; false (with a toast) when it does not. */
+  setVaultSync(mode: VaultSyncMode): Promise<boolean>;
 
   // ---- Vault M5: pins, notes to a model, the switch handoff (tech review J12 to J15)
 
@@ -6597,6 +6624,91 @@ export const useApp = create<AppState>((set, get, api) => {
     }
   }
 
+  // ---- Sync on all devices (founder, 2026-10-16) ----------------------------
+  // A docked phone or iPad keeps its vault on this device and syncs it with
+  // the computer's (state/vaultSyncOps.ts), unless the person chose Keep on
+  // one computer. A desktop keeps its own folder.
+
+  /** Whether this device syncs its vault with a docked computer now. */
+  function syncsVault(): boolean {
+    const s = get().settings;
+    return (
+      !isDesktop() &&
+      Boolean(s.daemon) &&
+      vaultSyncMode(s.vaultSync) === 'all' &&
+      vaultProviderId(s) === 'local'
+    );
+  }
+
+  const vaultSync = createVaultSync({
+    local: () => {
+      const provider = syncsVault() ? providerFor('local') : undefined;
+      return provider ? { provider, resourceId: VAULT_RESOURCE_ID } : undefined;
+    },
+    remote: () => {
+      const provider = providerFor('hub');
+      const baseUrl = get().settings.daemon?.baseUrl;
+      if (!provider || !baseUrl) return undefined;
+      // The computer's live, complete listing: a note missing from a kept or
+      // cut-short list must never read as deleted.
+      const complete = (provider as Partial<Pick<HubProvider, 'listComplete'>>).listComplete;
+      return {
+        baseUrl,
+        side: {
+          provider,
+          resourceId: HUB_VAULT_RESOURCE_ID,
+          ...(complete ? { list: () => complete() } : {}),
+        },
+      };
+    },
+    from: () => vaultSyncFrom(thisDeviceNoun()),
+    onResult: (result) => {
+      if (result.conflicts.length) get().showToast(vaultSyncConflictToast(result.conflicts.length));
+      // The vault's own settings may have come down (its privacy marks among
+      // them): read them again before anything is sent.
+      forgetVaultSettings();
+      logEvent('vault_synced', {
+        pulled: result.pulled.length,
+        pushed: result.pushed.length,
+        conflicts: result.conflicts.length,
+      });
+      if (get().view === 'vault' && get().vaultScope === 'personal') void get().vaultRefresh();
+    },
+  });
+
+  // The computer coming back, and a slow tick while docked and in view, each
+  // run a pass; a pass with nothing to sync with returns at once.
+  if (typeof window !== 'undefined') {
+    subscribeHubReach(() => {
+      if (hubReach() === 'reachable' && syncsVault()) vaultSync.soon(500);
+    });
+    setInterval(() => {
+      if (syncsVault() && document.visibilityState === 'visible') void vaultSync.run();
+    }, VAULT_SYNC_TICK_MS);
+  }
+
+  /** Sync on all devices, on pairing: a vault this device moved to the
+   *  computer under the old rule comes back here, and a pass brings both
+   *  copies level. Returns false when the old rule applies (Keep on one
+   *  computer, a desktop, or a storage the person chose). */
+  async function syncPairingStep(): Promise<boolean> {
+    const s = get().settings;
+    if (isDesktop() || vaultSyncMode(s.vaultSync) !== 'all') return false;
+    if (vaultProviderId(s) === 'hub') {
+      const before = s.vaultBeforeHub;
+      const back = before?.providerId && before.providerId !== 'hub' ? before.providerId : 'local';
+      await get().saveSettings({
+        gitosResources: withVaultProvider(back, before?.chosenAt),
+        vaultBeforeHub: undefined,
+      });
+      await afterVaultRepoint();
+    }
+    if (vaultProviderId(get().settings) !== 'local') return false;
+    if (get().settings.vaultHubOffer) await get().saveSettings({ vaultHubOffer: undefined });
+    await vaultSync.run();
+    return true;
+  }
+
   /** The J9 rule after a pairing (D2): an empty vault on This device by
    *  default points at the computer with one toast; one with notes gets the
    *  one-time move card; a storage the person chose is never repointed. The
@@ -6614,6 +6726,7 @@ export const useApp = create<AppState>((set, get, api) => {
       return 'stay';
     }
     pairingWaitsForLink = false;
+    if (await syncPairingStep()) return 'stay';
     let notes: number | undefined;
     if ((resource?.providerId ?? 'local') === 'local' && !resource?.chosenAt) {
       const local = providerFor('local');
@@ -6700,6 +6813,12 @@ export const useApp = create<AppState>((set, get, api) => {
   ): Promise<boolean> {
     const key = daemon?.token ? `${daemon.baseUrl}\n${daemon.token}` : undefined;
     if (key === hubLinkKey && !opts.forget) return false;
+    // A computer this device no longer docks with: its sync ledger (note
+    // paths and versions) goes with it.
+    const prevBase = hubLinkKey?.split('\n')[0];
+    if (prevBase && prevBase !== daemon?.baseUrl) {
+      void vaultSync.forget(prevBase, VAULT_RESOURCE_ID);
+    }
     hubLinkKey = key;
     const prev = hubVaultLink();
     // The first link at launch changes nothing that is open; every later
@@ -6770,6 +6889,7 @@ export const useApp = create<AppState>((set, get, api) => {
       patchVaultFiles(owner ? { providerId, resourceId, owner } : { providerId, resourceId }, {
         saved: r.file,
       });
+      if (providerId === 'local' && resourceId === VAULT_RESOURCE_ID) vaultSync.soon();
     }
     return r;
   }
@@ -13728,6 +13848,37 @@ export const useApp = create<AppState>((set, get, api) => {
 
     vaultAfterPairing() {
       return hubPairingStep().catch(() => 'stay' as const);
+    },
+
+    async vaultSyncNow() {
+      if (syncsVault()) await vaultSync.run();
+    },
+
+    async setVaultSync(mode) {
+      const s = get().settings;
+      if (vaultSyncMode(s.vaultSync) === mode) return true;
+      const hub = s.daemon?.baseUrl;
+      if (mode === 'one' && hub && syncsVault()) {
+        // Level first, so the computer holds everything typed here.
+        const result = await vaultSync.run();
+        if (!result || result.skipped.length) {
+          get().showToast(VAULT_SYNC_SWITCH_AWAY);
+          return false;
+        }
+        await get().saveSettings({
+          vaultSync: mode,
+          gitosResources: withVaultProvider('hub', undefined),
+          vaultBeforeHub: { providerId: 'local', hub },
+          vaultHubOffer: undefined,
+        });
+        await afterVaultRepoint();
+      } else {
+        await get().saveSettings({ vaultSync: mode });
+        if (mode === 'all' && hub) await syncPairingStep().catch(() => false);
+      }
+      logEvent('vault_sync_mode', { mode });
+      if (get().view === 'vault' && get().vaultScope === 'personal') void get().vaultRefresh();
+      return true;
     },
 
     canEditProjectPins(projectId) {
