@@ -18,6 +18,8 @@ import { useSmoothedReveal } from '../hooks/useSmoothedReveal.js';
 import {
   REVEAL_SKIP_EVENT,
   WORD_FADE_MS,
+  cancelFrame,
+  onNextFrame,
   prefersReducedMotion,
   skipReveals,
 } from '../lib/streamSmoothing.js';
@@ -134,6 +136,21 @@ function RewindableMessage({ text, onRewind }: { text: string; onRewind: () => v
  *  otherwise animate every follow, so streaming text trails below the fold. */
 function followBottom(el: HTMLElement): void {
   el.scrollTo({ top: el.scrollHeight, behavior: 'instant' });
+}
+
+/** The follow glide's time constant: a new line (about 24px) is mostly
+ *  covered in a third of a second, eased out, the way a critically damped
+ *  spring settles, so the thread drifts up with the words instead of
+ *  stepping a line at a time (docs/design/flowing-reveal.md). */
+export const FOLLOW_GLIDE_TAU_MS = 110;
+
+/** One frame of the follow glide: the new scroll position, closing the gap
+ *  to the foot exponentially, never past it, always at least a pixel. */
+export function glideStep(top: number, foot: number, dtMs: number): number {
+  const gap = foot - top;
+  if (gap <= 1) return foot;
+  const k = 1 - Math.exp(-Math.max(0, dtMs) / FOLLOW_GLIDE_TAU_MS);
+  return Math.min(foot, top + Math.max(1, gap * k));
 }
 
 function AssistantBubble({
@@ -391,6 +408,32 @@ export function MessageList({
     thread.items.flatMap((i) => (i.kind === 'user' && !i.withheld ? [i.text] : [])),
   );
   const pinnedRef = useRef(true);
+  // The follow glide (glideStep): its frame, and whether a finger is on the
+  // thread, which always wins over the glide.
+  const glideRaf = useRef(0);
+  const touching = useRef(false);
+  const stopGlide = useCallback(() => {
+    cancelFrame(glideRaf.current);
+    glideRaf.current = 0;
+  }, []);
+  const glideToBottom = useCallback((el: HTMLElement) => {
+    if (prefersReducedMotion()) {
+      followBottom(el);
+      return;
+    }
+    if (glideRaf.current) return;
+    let last = 0;
+    const frame = (now: number) => {
+      const dt = last ? now - last : 16;
+      last = now;
+      const foot = el.scrollHeight - el.clientHeight;
+      const top = glideStep(el.scrollTop, foot, dt);
+      el.scrollTo({ top, behavior: 'instant' });
+      glideRaf.current = top >= foot || touching.current ? 0 : onNextFrame(frame);
+    };
+    glideRaf.current = onNextFrame(frame);
+  }, []);
+  useEffect(() => stopGlide, [stopGlide]);
   const prevCount = useRef(0);
   const [unseen, setUnseen] = useState(0);
   // True once the reader has scrolled up a meaningful distance from the foot,
@@ -414,7 +457,9 @@ export function MessageList({
     if (!el) return;
     const onScroll = () => {
       const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-      const pinned = distanceFromBottom < 48;
+      // The glide's own scrolling can sit a line or two off the foot for a
+      // moment; only the reader's own scroll unpins.
+      const pinned = distanceFromBottom < 48 || (glideRaf.current !== 0 && !touching.current);
       pinnedRef.current = pinned;
       if (pinned) setUnseen(0);
       // The chip earns its place once the latest is a real distance off: half a
@@ -422,9 +467,27 @@ export function MessageList({
       // time is not being lost, so it stays out of the way until you are.
       setScrolledUp(distanceFromBottom > Math.max(240, el.clientHeight * 0.5));
     };
+    // A finger or a wheel takes the thread from the glide at once.
+    const onTouchStart = () => {
+      touching.current = true;
+      stopGlide();
+    };
+    const onTouchEnd = () => {
+      touching.current = false;
+    };
     el.addEventListener('scroll', onScroll, { passive: true });
-    return () => el.removeEventListener('scroll', onScroll);
-  }, []);
+    el.addEventListener('touchstart', onTouchStart, { passive: true });
+    el.addEventListener('touchend', onTouchEnd, { passive: true });
+    el.addEventListener('touchcancel', onTouchEnd, { passive: true });
+    el.addEventListener('wheel', stopGlide, { passive: true });
+    return () => {
+      el.removeEventListener('scroll', onScroll);
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchend', onTouchEnd);
+      el.removeEventListener('touchcancel', onTouchEnd);
+      el.removeEventListener('wheel', stopGlide);
+    };
+  }, [stopGlide]);
 
   // Stay on the latest when the room around the thread changes: the keyboard
   // rising, the field growing a line, chips or the todo card arriving all
@@ -482,18 +545,22 @@ export function MessageList({
     prevCount.current = itemCount;
     if (newUserTurn) pinnedRef.current = true;
     if (pinnedRef.current) {
-      followBottom(el);
+      // A new turn lands at once; a growing reply is followed on the glide.
+      if (grew) {
+        stopGlide();
+        followBottom(el);
+      } else glideToBottom(el);
     } else if (grew) {
       setUnseen((n) => n + 1);
     }
-  }, [itemCount, streamingLen, lastItem?.kind]);
+  }, [itemCount, streamingLen, lastItem?.kind, glideToBottom, stopGlide]);
 
   // The reveal keeps typing after the stream ends, so a pinned thread follows
   // the revealed text, not only the incoming deltas.
   const followReveal = useCallback(() => {
     const el = threadRef.current;
-    if (el && pinnedRef.current) followBottom(el);
-  }, []);
+    if (el && pinnedRef.current) glideToBottom(el);
+  }, [glideToBottom]);
 
   const jumpToBottom = () => {
     const el = threadRef.current;

@@ -1,81 +1,120 @@
-// Streaming smoother for the transcript. Cousin of os-code/src/tui/smoothing.ts
-// (the terminal keeps its brisker cadence; this one is tuned for the phone).
-// Local model token streams arrive in bursts, and a fast cloud model can land a
-// whole paragraph inside one tick. Painted verbatim, either reads as a jolt.
-// The smoother reveals text at a calm, steady typing pace and lets the backlog
-// grow only so far: past a bounded lag it catches up proportionally, so a long
-// code answer never trails by ten seconds, and the reveal keeps going after the
-// stream itself has ended, so the tail settles at the same pace instead of
-// snapping in (2026-09-03: "a more graceful typing of the response").
+// Streaming reveal for the transcript, paced from the stream itself
+// (2026-10-18, docs/design/flowing-reveal.md). A model's text rarely arrives
+// evenly: a local model on a busy phone sends a burst, then pauses for
+// seconds; a fast cloud model lands a paragraph in one tick. Painting either
+// as it comes reads as a jolt, and so did the fixed typing clock before this
+// one, which raced each burst out in a second and then sat frozen through
+// the pause. The reveal works like a video player's playout buffer instead:
+// it measures how fast text is arriving and plays words out at that rate,
+// so a burst flows into the pause after it, and it never trails the stream
+// by more than a couple of seconds. Words land whole, one after another, and
+// each fades up from nothing (`.md-live .w`), so several are mid-fade at once
+// and the edge of the reply reads as one soft wave rather than typing.
 
-/** The reveal interval. About 40 frames a second, the TUI's cadence. */
-export const TICK_MS = 24;
+/** How quickly the measured arrival rate follows the stream, in ms: the time
+ *  constant of its moving average. Long enough to carry a burst across the
+ *  pause that follows it, short enough to notice a model speeding up. */
+export const ARRIVAL_TAU_MS = 1600;
 
-/** The calm pace: characters per tick while the backlog is within reach.
- *  4 per 24ms tick is about 165 characters a second, brisk enough that a
- *  short answer lands in a couple of seconds, slow enough to read as typing. */
-export const PACE_CHARS = 4;
+/** The calmest the reveal plays out while text is waiting, in characters a
+ *  second: about seven words, a brisk reading pace. */
+export const FLOOR_CPS = 40;
 
-/** How far the reveal may trail the stream, in ticks, before it speeds up.
- *  50 ticks is 1.2 seconds; beyond that the chunk grows with the backlog. */
-export const LAG_TICKS = 50;
+/** How far behind a live stream the reveal may drift, in seconds: the
+ *  backlog always shrinks by at least this fraction of itself each second, so
+ *  a burst eases out over a few seconds and a long answer never lags far. */
+export const MAX_LAG_S = 2;
 
-/**
- * Given how much of the target is already shown and its full length, return
- * the next reveal length for this tick: the calm pace, or one fiftieth of the
- * backlog when that is larger, never past the target.
- */
-export function nextRevealLength(shownLen: number, targetLen: number): number {
-  if (shownLen >= targetLen) return targetLen;
-  const backlog = targetLen - shownLen;
-  const chunk = Math.max(PACE_CHARS, Math.ceil(backlog / LAG_TICKS));
-  return Math.min(targetLen, shownLen + chunk);
+/** Once the stream has ended, whatever is left plays out within this. */
+export const DRAIN_S = 1.2;
+
+/** One step of the reveal: how far it has played (a fractional length, so
+ *  slow rates still advance) and the measured arrival rate. */
+export interface RevealPace {
+  /** Characters played out, fractional. The visible text is whole words up
+   *  to here. */
+  played: number;
+  /** The arrival rate's moving average, in characters a second. */
+  rate: number;
+  /** How much of the target had arrived at the last step. */
+  seen: number;
+  /** Once the stream has ended: the ms left to finish playing out. */
+  left?: number;
+}
+
+export function startPace(shown = 0, seen = shown): RevealPace {
+  return { played: shown, rate: 0, seen };
 }
 
 /**
- * How many ticks it takes to fully reveal a backlog. For tests and for
- * reasoning about worst-case latency; not on any hot path.
+ * Advance the reveal by `dtMs`. `limit` is how far it may go (revealLimit),
+ * `arrived` how much text has come in so far. The play rate is the arrival
+ * rate, never below FLOOR_CPS while text waits, and never slower than the
+ * backlog over MAX_LAG_S while live. Once the stream ends, what is left is
+ * spread evenly over what remains of DRAIN_S, so it lands on time.
  */
-export function ticksToDrain(backlog: number): number {
-  let shown = 0;
-  let ticks = 0;
-  while (shown < backlog && ticks < 10_000) {
-    shown = nextRevealLength(shown, backlog);
-    ticks += 1;
+export function stepPace(
+  pace: RevealPace,
+  opts: { arrived: number; limit: number; dtMs: number; live: boolean },
+): RevealPace {
+  const dt = Math.max(0, Math.min(opts.dtMs, 250)) / 1000;
+  const fresh = Math.max(0, opts.arrived - pace.seen);
+  const instant = dt > 0 ? fresh / dt : 0;
+  const k = dt > 0 ? 1 - Math.exp(-(dt * 1000) / ARRIVAL_TAU_MS) : 0;
+  const rate = pace.rate + (instant - pace.rate) * k;
+  const backlog = opts.limit - pace.played;
+  const left = opts.live ? undefined : (pace.left ?? DRAIN_S * 1000) - dt * 1000;
+  if (backlog <= 0) {
+    return { played: Math.min(pace.played, opts.limit), rate, seen: opts.arrived, left };
   }
-  return ticks;
+  if (left !== undefined && left <= 0) {
+    return { played: opts.limit, rate, seen: opts.arrived, left: 0 };
+  }
+  const due = left === undefined ? backlog / MAX_LAG_S : backlog / ((left + dt * 1000) / 1000);
+  const speed = Math.max(FLOOR_CPS, rate, due);
+  return {
+    played: Math.min(opts.limit, pace.played + speed * dt),
+    rate,
+    seen: opts.arrived,
+    left,
+  };
 }
 
-/**
- * Word pacing (2026-09-23: "like in Claude"). A reply arrives in whole
- * words, never a half-typed one, and each new group fades in. Two helpers:
- * `revealLimit` is how far the reveal may go right now (while the stream is
- * live, only up to the last complete word, so a word still arriving is held
- * back rather than shown and then grown), and `toWordEnd` rounds a paced
- * length forward to the end of the word it lands in.
- */
-/** How long one word takes to fade up to full ink. Mirrors `--dur-6`, the
- *  token the `.md-live .w` animation rides; the bubble keeps its words split
- *  this long after the last one lands so the tail finishes its fade. */
-export const WORD_FADE_MS = 420;
-
+/** While a stream is live, the reveal stops at the last complete word, so a
+ *  word still arriving is held back rather than shown and then grown. */
 export function revealLimit(text: string, streaming: boolean): number {
   if (!streaming) return text.length;
   const m = /\s\S*$/.exec(text);
   return m ? m.index : 0;
 }
 
-export function toWordEnd(text: string, len: number, limit: number): number {
-  if (len >= limit) return limit;
-  const rest = text.slice(len, limit).search(/\s/);
-  return rest === -1 ? limit : len + rest;
+/** The visible length for a played length: whole words only, so a word
+ *  appears all at once when the pace reaches its end. */
+export function wholeWordsUpTo(text: string, played: number, limit: number): number {
+  const at = Math.min(Math.floor(played), limit);
+  if (at >= limit) return limit;
+  // Inside a word, or just past one: back up to the end of the last whole word.
+  if (/\s/.test(text[at] ?? ' ')) return at;
+  const before = text.slice(0, at);
+  const m = /\s\S*$/.exec(before);
+  return m ? m.index : 0;
 }
 
-/** How long a settled text takes to reveal from nothing and finish its last
- *  word's fade: the paced ticks plus one fade. The guided walk waits this long
- *  (plus a reading pause) before its next line, so lines never overlap. */
-export function revealDurationMs(text: string): number {
-  return ticksToDrain(text.length) * TICK_MS + WORD_FADE_MS;
+/** How long one word takes to fade up to full ink. Mirrors `--dur-swell`, the
+ *  token the `.md-live .w` animation rides; the bubble keeps its words split
+ *  this long after the last one lands so the tail finishes its fade. */
+export const WORD_FADE_MS = 600;
+
+/** The display's frame clock, or a 16ms timer where there is none (a test
+ *  renderer, a page in the background on some engines). */
+export function onNextFrame(fn: (now: number) => void): number {
+  if (typeof requestAnimationFrame === 'function') return requestAnimationFrame(fn);
+  return setTimeout(() => fn(Date.now()), 16) as unknown as number;
+}
+
+export function cancelFrame(id: number): void {
+  if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(id);
+  else clearTimeout(id);
 }
 
 /** The event a tap on the transcript sends to finish every reveal at once:

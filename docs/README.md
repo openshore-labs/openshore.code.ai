@@ -35,6 +35,7 @@ behind a choice; the code is the source of truth for what ships.
 
 | Doc | What it covers |
 | --- | --- |
+| [`design/flowing-reveal.md`](design/flowing-reveal.md) | How a reply arrives: paced from the stream, whole words on the ink curve, the follow glide. |
 | [`design/model-library-plan.md`](design/model-library-plan.md) | The Local Library as a library: one pick per size for each job, media jobs, sources and licenses. |
 | [`design/connect-anywhere-proposal.md`](design/connect-anywhere-proposal.md) | Docking a phone to a computer or a rented server. |
 | [`design/byok-any-provider-plan.md`](design/byok-any-provider-plan.md) | Bring your own keys, any provider, and keys on your server. |

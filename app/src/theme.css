@@ -3730,18 +3730,23 @@ button.vault-tag {
   border-radius: 999px;
 }
 
-/* The Claude-style arrival (2026-09-23). A live reply is split into
-   word spans (lib/fadeWords.ts); each new group mounts light and fades up to
-   full ink over --dur-6, while words already on screen keep their nodes and
-   never replay. No caret: the arrival is the signal. Opacity only, never
-   layout; `backwards` holds the light start through the frame it mounts. The
-   global reduced-motion reset zeroes it, and the kill below says so plainly. */
+/* The flowing arrival (2026-10-18, docs/design/flowing-reveal.md). A live
+   reply is split into word spans (lib/fadeWords.ts); words land whole at the
+   pace text is arriving (lib/streamSmoothing.ts), and each comes up from
+   nothing on the swell's own ink curve, out of a faint blur, over
+   --dur-swell. Several words are mid-fade at once, so the reply's edge reads
+   as one soft wave, not typing. Words already on screen keep their nodes and
+   never replay. No caret: the arrival is the signal. Opacity and a paint-only
+   filter, never layout; `backwards` holds the start through the frame it
+   mounts. The global reduced-motion reset zeroes it, and the kill below says
+   so plainly. */
 .md-live .w {
-  animation: word-in var(--dur-6) var(--ease-standard) backwards;
+  animation: word-in var(--dur-swell) var(--ease-ink) backwards;
 }
 @keyframes word-in {
   from {
-    opacity: 0.28;
+    opacity: 0;
+    filter: blur(2px);
   }
 }
 @media (prefers-reduced-motion: reduce) {

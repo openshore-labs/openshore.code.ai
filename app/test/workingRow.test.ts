@@ -149,7 +149,7 @@ describe('the seam', () => {
     expect(list).toMatch(/useExitPresence\(live && !paced, WORD_FADE_MS\)/);
     expect(list).toContain('fade={fading}');
     expect(read('components/Markdown.tsx')).toContain('rehypeFadeWords');
-    expect(theme).toMatch(/\.md-live \.w \{[^}]*animation: word-in var\(--dur-6\)/);
+    expect(theme).toMatch(/\.md-live \.w \{[^}]*animation: word-in var\(--dur-swell\)/);
     expect(theme).not.toContain('steps(1)');
   });
 
