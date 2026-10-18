@@ -136,7 +136,7 @@ describe('the setup page (D9, D23)', () => {
       expect(card.className).toContain('press-fb');
     }
     expect(cards[0]!.querySelector('.sub')?.textContent).toBe(
-      'A coding model on this phone, about\u00a02.5\u00a0GB',
+      'A coding model on this phone, about\u00a03.5\u00a0GB',
     );
   });
 

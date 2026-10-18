@@ -222,7 +222,7 @@ export function setupAdvice(eq: GuideEquipment): string[] {
   const lines: string[] = [];
   if (eq.phoneOnly) {
     lines.push(
-      'With only a phone: keep Harbor Lite for help with the app, get Harbor (about 2.5 GB) to write and explain code on the phone, and connect your own cloud key (Claude, OpenAI, or Gemini) under Cloud Connections when you want the strongest model. DeepBlue needs a computer.',
+      'With only a phone: keep Harbor Lite for help with the app, get Harbor (about 3.5 GB) to write and explain code and read screenshots on the phone, and connect your own cloud key (Claude, OpenAI, or Gemini) under Cloud Connections when you want the strongest model. DeepBlue needs a computer.',
     );
     return lines;
   }

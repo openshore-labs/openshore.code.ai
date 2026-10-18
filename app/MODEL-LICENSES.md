@@ -21,15 +21,18 @@ attribution ship in the app.
 
 ## Harbor (downloaded)
 
-- **Weights:** Qwen3-4B-Instruct-2507 (GGUF, Q4_K_M quantization), about 2.5 GB.
-- **Source:** via Hugging Face (`unsloth/Qwen3-4B-Instruct-2507-GGUF`),
-  downloaded on demand (`HARBOR_MODEL_URL` in `app/src/lib/harbor.ts`).
+- **Weights:** Qwen3.5-4B (GGUF, Q4_K_M quantization), about 2.7 GB, and its
+  vision file (the multimodal projector, `mmproj-F16.gguf`) from the same
+  repository, so Harbor reads pictures. About 3.5 GB in all.
+- **Source:** via Hugging Face (`unsloth/Qwen3.5-4B-GGUF`), downloaded on
+  demand (`HARBOR_MODEL_URL` and `HARBOR_VISION_URL` in `app/src/lib/harbor.ts`).
 - **License:** Apache License 2.0, free for commercial use. Downloaded from the
   source, not redistributed by us.
 - **History:** until 2026-09-30 Harbor was Qwen2.5-Coder-3B-Instruct, which is
   under the Qwen Research License (research and non-commercial use). It moved
-  so Harbor can be sold; a phone still holding those weights deletes them at
-  launch.
+  so Harbor can be sold, to Qwen3-4B-Instruct-2507, which read text only; on
+  2026-10-18 it moved to Qwen3.5-4B so it reads pictures too. A phone still
+  holding older weights deletes them at launch.
 
 ## DeepBlue (pulled through Ollama, on the desktop)
 

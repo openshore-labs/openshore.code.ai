@@ -158,7 +158,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     title: 'Harbor',
     where:
       'Menu, Settings, Harbor, Harbor on the phone, or Get Harbor on the Set up OpenShore page',
-    text: `Harbor is a coding model (Qwen3 4B Instruct, about 2.5 GB, for a phone with 6 GB of memory) that runs fully on the iPhone, private and even in airplane mode. It writes and explains code in chat and can search the web; it does not edit files or run commands yet. How to get it:\n${guideStepsCompact('get-harbor')}`,
+    text: `Harbor is a coding model (Qwen3.5 4B, about 3.5 GB, for a phone with 6 GB of memory) that runs fully on the iPhone, private and even in airplane mode. It writes and explains code in chat, reads the screenshots, photos and video frames you send it, and can search the web; it does not edit files or run commands yet. How to get it:\n${guideStepsCompact('get-harbor')}`,
     keywords: [
       'harbor',
       'get harbor',
@@ -373,7 +373,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     id: 'image-reading',
     title: 'Reading images',
     where: 'Menu, Stack, Image reading',
-    text: `A picture in a Stack chat goes to the model set under Image reading, without asking. With both set, the Local model reads first, and the Cloud model takes a picture the Local one failed on only after you approve. With none set, another model that can read it (your Reasoning model, or a cloud model you connected) gets it after you approve. A plan never carries a picture, so with none set its image step goes to your Reasoning model, which works from the text. When nothing can read images, the chat says so and offers two ways: Source a local model (${LOCAL_IMAGE_READER.name}, ${aboutGB(LOCAL_IMAGE_READER)}, on your computer through Ollama, or ${SMALL_IMAGE_READER.name}, ${aboutGB(SMALL_IMAGE_READER)}, for a computer with little room; a model on ${thisDeviceNoun()} cannot read images yet), or Connect a cloud model on your own API key (Claude reads images out of the box). Each opens a step-by-step guide.`,
+    text: `A picture in a Stack chat goes to the model set under Image reading, without asking. With both set, the Local model reads first, and the Cloud model takes a picture the Local one failed on only after you approve. With none set, another model that can read it (your Reasoning model, or a cloud model you connected) gets it after you approve. A plan never carries a picture, so with none set its image step goes to your Reasoning model, which works from the text. When nothing can read images, the chat says so and offers two ways: Source a local model (${LOCAL_IMAGE_READER.name}, ${aboutGB(LOCAL_IMAGE_READER)}, on your computer through Ollama, or ${SMALL_IMAGE_READER.name}, ${aboutGB(SMALL_IMAGE_READER)}, for a computer with little room; on ${thisDeviceNoun()}, Harbor reads images), or Connect a cloud model on your own API key (Claude reads images out of the box). Each opens a step-by-step guide.`,
     keywords: [
       'read images',
       'read image',

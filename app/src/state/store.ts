@@ -280,8 +280,11 @@ import {
   HARBOR_MODEL_NAME,
   HARBOR_MODEL_URL,
   HARBOR_MODEL_VERSION,
+  HARBOR_VISION_MODEL_ID,
+  HARBOR_VISION_URL,
   harborWeightsStale,
   isHarbor,
+  setHarborVision,
 } from '../lib/harbor.js';
 import { resolveHarborMaster } from '../lib/harborMaster.js';
 import { hardwareFromSummary } from '../lib/firstSeat.js';
@@ -440,7 +443,7 @@ import {
   type VaultBeforeHub,
   type VaultHubOffer,
 } from '../lib/gitos/hub.js';
-import { DEVICE_CONTEXT_TOKENS, ensureDeviceModel } from '../drivers/deviceModel.js';
+import { DEVICE_CONTEXT_TOKENS, deviceLoadFor, ensureDeviceModel } from '../drivers/deviceModel.js';
 import { canEdit, projectPermissionFor } from '../lib/projectAccess.js';
 import {
   createOrgProject,
@@ -807,6 +810,10 @@ export interface AppSettings {
   /** The HARBOR_MODEL_VERSION of the Harbor weights on this device, recorded at
    *  download. Older (or unrecorded) weights are dropped at launch. */
   harborVersion?: string;
+  /** Whether Harbor's vision file is on this device, so Harbor reads
+   *  pictures (2026-10-18). Kept true to the files at launch, like
+   *  harborReady, which since 4.0 needs the vision file too. */
+  harborVisionReady?: boolean;
   /** Web search backend for local models, when the user has brought their own key.
    *  Undefined means the zero-config DuckDuckGo default. */
   searchBackend?: SearchBackend;
@@ -2125,8 +2132,9 @@ interface AppState {
   ensureHarbor(): Promise<boolean>;
   /** Cancel an in-progress Harbor download. */
   cancelHarbor(): void;
-  /** Remove Harbor's weights from this device and drop its ready flag. Harbor
-   *  is a real download (about 2.5 GB), so it is uninstallable; Harbor Lite is
+  /** Remove Harbor's weights and vision file from this device and drop its
+   *  ready flags. Harbor is a real download (about 3.5 GB), so it is
+   *  uninstallable; Harbor Lite is
    *  bundled with the app and has no counterpart here. */
   removeHarbor(): Promise<void>;
   /** Desktop only. Pull the DeepBlue size that fits this computer through
@@ -4141,10 +4149,12 @@ export const useApp = create<AppState>((set, get, api) => {
   // says plainly what went wrong.
   async function warmHarbor(): Promise<void> {
     if (Object.values(get().conversations).some((c) => c.thread.busy)) return;
+    // The same window and vision file a Harbor chat loads with, so the first
+    // message finds the slot already filled.
     const warm = await ensureDeviceModel({
       id: HARBOR_MODEL_ID,
       name: HARBOR_MODEL_NAME,
-      contextSize: DEVICE_CONTEXT_TOKENS,
+      ...deviceLoadFor(HARBOR_MODEL_ID),
     }).catch(() => ({ ok: false }) as const);
     logEvent(warm.ok ? 'harbor_warm' : 'harbor_warm_failed');
   }
@@ -8999,15 +9009,27 @@ export const useApp = create<AppState>((set, get, api) => {
             changed = true;
           }
           let harborHere = present.has(HARBOR_MODEL_ID);
-          // Weights from an older Harbor (the research-licensed 3B before 3.0)
-          // are deleted, so the person gets the current Harbor from its row.
+          let visionHere = present.has(HARBOR_VISION_MODEL_ID);
+          // Weights from an older Harbor (the research-licensed 3B before 3.0,
+          // the text-only Qwen3 4B before 4.0) are deleted, with any vision
+          // file beside them, so the person gets the current Harbor from its row.
           if (harborHere && harborWeightsStale(settings.harborVersion)) {
             await Llama.deleteModel({ id: HARBOR_MODEL_ID }).catch(() => {});
+            if (visionHere) await Llama.deleteModel({ id: HARBOR_VISION_MODEL_ID }).catch(() => {});
             logEvent('harbor_stale_removed');
             harborHere = false;
+            visionHere = false;
           }
-          if (Boolean(settings.harborReady) !== harborHere) {
-            settings.harborReady = harborHere;
+          // Harbor is one unit, the weights and the vision file: with either
+          // missing it reads as not downloaded, and its row's Get fetches only
+          // what is gone.
+          const harborWhole = harborHere && visionHere;
+          if (Boolean(settings.harborReady) !== harborWhole) {
+            settings.harborReady = harborWhole;
+            changed = true;
+          }
+          if (Boolean(settings.harborVisionReady) !== harborWhole) {
+            settings.harborVisionReady = harborWhole;
             changed = true;
           }
           if (changed) await persistSettings(settings);
@@ -9142,6 +9164,8 @@ export const useApp = create<AppState>((set, get, api) => {
       setActiveEffort(settings.effort ?? DEFAULT_EFFORT);
       // And Chain of Thought (off on a fresh device).
       setChainOfThought(settings.chainOfThought === true);
+      // And whether Harbor reads pictures here (its vision file is present).
+      setHarborVision(settings.harborVisionReady === true);
       // And prompt caching (off until the eval says otherwise, tech review J19).
       setPromptCache(settings.promptCache === true);
       // The hub vault links to the paired computer before anything lists it.
@@ -9246,7 +9270,10 @@ export const useApp = create<AppState>((set, get, api) => {
             if (ids.includes(HARBOR_MINI_MODEL_ID) && !get().settings.harborMiniReady) {
               void get().ensureHarborMini();
             }
-            if (ids.includes(HARBOR_MODEL_ID) && !get().settings.harborReady) {
+            if (
+              (ids.includes(HARBOR_MODEL_ID) || ids.includes(HARBOR_VISION_MODEL_ID)) &&
+              !(get().settings.harborReady && get().settings.harborVisionReady)
+            ) {
               void get().ensureHarbor();
             }
           } catch {
@@ -11551,28 +11578,63 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     async ensureHarbor() {
-      if (get().settings.harborReady) return true;
+      if (get().settings.harborReady && get().settings.harborVisionReady) return true;
       logEvent('harbor_download_start');
       set({ harborDownload: { percent: 0, label: 'Connecting', indeterminate: true } });
+      // Two files, one download for the person: the weights and the vision
+      // file that lets Harbor read pictures, fetched side by side so both keep
+      // going in the background, with one progress line across both. The
+      // weights carry the "Harbor is ready" notice: the larger file, it lands
+      // last.
+      const progress = new Map<string, { completed: number; total: number }>();
+      // How many files this try fetches, so the line waits for every size.
+      let fetching = 2;
       const handle = await Llama.addListener('downloadProgress', ({ id, completed, total }) => {
-        if (id !== HARBOR_MODEL_ID) return;
+        if (id !== HARBOR_MODEL_ID && id !== HARBOR_VISION_MODEL_ID) return;
+        progress.set(id, { completed, total });
+        const parts = [...progress.values()];
+        const known = parts.length >= fetching && parts.every((p) => p.total > 0);
+        const done = parts.reduce((n, p) => n + p.completed, 0);
+        const all = parts.reduce((n, p) => n + p.total, 0);
         set({
           harborDownload: {
-            percent: total ? (completed / total) * 100 : 0,
-            label: total
-              ? `${Math.round((completed / total) * 100)}% of ${formatBytes(total)}`
-              : 'Downloading',
-            indeterminate: !total,
+            percent: known && all ? (done / all) * 100 : 0,
+            label:
+              known && all
+                ? `${Math.round((done / all) * 100)}% of ${formatBytes(all)}`
+                : 'Downloading',
+            indeterminate: !(known && all),
           },
         });
       });
       try {
         void askForNotices();
-        await Llama.downloadModel({
-          id: HARBOR_MODEL_ID,
-          url: HARBOR_MODEL_URL,
-          notice: downloadNoticeCopy('Harbor', HARBOR_MODEL_ID),
-        });
+        // A file already here (a download that finished while the app was
+        // closed, or one kept from a try that stopped at the other file) is
+        // not fetched again. Stale weights never get this far: launch deletes
+        // them before anything can ask for Harbor.
+        let present = new Set<string>();
+        try {
+          present = new Set((await Llama.listModels()).models.map((m) => m.id));
+        } catch {
+          // Native side unreachable: fetch both, as a first download does.
+        }
+        fetching = [HARBOR_MODEL_ID, HARBOR_VISION_MODEL_ID].filter(
+          (id) => !present.has(id),
+        ).length;
+        await Promise.all([
+          present.has(HARBOR_MODEL_ID)
+            ? undefined
+            : Llama.downloadModel({
+                id: HARBOR_MODEL_ID,
+                url: HARBOR_MODEL_URL,
+                notice: downloadNoticeCopy('Harbor', HARBOR_MODEL_ID),
+              }),
+          present.has(HARBOR_VISION_MODEL_ID)
+            ? undefined
+            : Llama.downloadModel({ id: HARBOR_VISION_MODEL_ID, url: HARBOR_VISION_URL }),
+        ]);
+        await get().saveSettings({ harborVersion: HARBOR_MODEL_VERSION, harborVisionReady: true });
         // Warming up is the last step of the download (2026-10-01):
         // Harbor loads into the phone's model slot before it is called ready,
         // so the first message answers without a "Warming up" wait.
@@ -11606,6 +11668,7 @@ export const useApp = create<AppState>((set, get, api) => {
 
     cancelHarbor() {
       void Llama.cancelDownload({ id: HARBOR_MODEL_ID }).catch(() => {});
+      void Llama.cancelDownload({ id: HARBOR_VISION_MODEL_ID }).catch(() => {});
       logEvent('harbor_download_cancel');
       set({ harborDownload: undefined });
     },
@@ -11617,8 +11680,9 @@ export const useApp = create<AppState>((set, get, api) => {
       // keeps working instead of pointing at a model that is gone. Harbor is
       // re-downloadable from the same row, so nothing is lost for good.
       await Llama.deleteModel({ id: HARBOR_MODEL_ID }).catch(() => {});
+      await Llama.deleteModel({ id: HARBOR_VISION_MODEL_ID }).catch(() => {});
       logEvent('harbor_removed');
-      await get().saveSettings({ harborReady: false });
+      await get().saveSettings({ harborReady: false, harborVisionReady: false });
       const stacks = get().settings.stacks;
       if (stacks) {
         let changed = false;
@@ -15389,6 +15453,7 @@ export const useApp = create<AppState>((set, get, api) => {
       setInsightsEnabled(settings.insightsOptIn ?? false);
       setActiveEffort(settings.effort ?? DEFAULT_EFFORT);
       setChainOfThought(settings.chainOfThought === true);
+      setHarborVision(settings.harborVisionReady === true);
       setPromptCache(settings.promptCache === true);
       // New privacy rules apply to the next read, not a minute later.
       if ('vaultPrivacy' in patch) privacyCache = undefined;

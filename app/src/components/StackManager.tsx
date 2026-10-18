@@ -1479,7 +1479,7 @@ export function StackManager({
                   model cannot read here, or after a card when it fails on a
                   picture (K). */}
               {visionEdit.slot === 'local'
-                ? `A model on this device or your own server. A model on this device cannot read images yet${standIn ? `, so ${refName(standIn)} reads them until one can.` : '.'}`
+                ? `A model on this device or your own server. On this device, only Harbor reads images${standIn ? `; until one is set, ${refName(standIn)} reads them.` : '.'}`
                 : `${
                     slots.local
                       ? 'Reads a picture only when your Local model cannot read here, or after you approve when it fails on one.'

@@ -101,9 +101,9 @@ export const HARBOR_READY_MESSAGE = `Harbor is ready on ${thisDeviceNoun()}. ${H
 export const STEP_COPY: Record<SetupStepId, SetupStepCopy> = {
   harbor: {
     title: 'Get Harbor',
-    what: `Harbor is a coding model, Qwen3 4B Instruct, that runs on ${thisDeviceNoun()}.`,
-    why: "I'm a guide. Harbor does the real work: it writes and explains code right here, even in airplane mode, and searches the web when you're online.",
-    how: "Tap Get Harbor. It downloads straight from its source, about 2.5 GB, a few minutes on wifi. It keeps going in the background while we set up the rest, and I'll tell you when it's ready and how to switch to it.",
+    what: `Harbor is a coding model, Qwen3.5 4B, that runs on ${thisDeviceNoun()}.`,
+    why: "I'm a guide. Harbor does the real work: it writes and explains code right here, even in airplane mode, reads the screenshots and photos you send it, and searches the web when you're online.",
+    how: "Tap Get Harbor. It downloads straight from its source, about 3.5 GB, a few minutes on wifi. It keeps going in the background while we set up the rest, and I'll tell you when it's ready and how to switch to it.",
     action: 'Get Harbor',
     ask: 'Tell me more about Harbor before I download it.',
     done: 'Harbor is downloading in the background. I will tell you when it is ready.',

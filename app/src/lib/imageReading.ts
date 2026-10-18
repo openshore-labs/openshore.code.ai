@@ -55,7 +55,7 @@ export function placedHeldLine(
   where: string = '',
 ): string {
   return placed.why === 'device'
-    ? `${placed.model} is set for Image reading, but a model on ${thisDeviceNoun()} cannot read images yet`
+    ? `${placed.model} is set for Image reading, but it cannot read images on ${thisDeviceNoun()}`
     : placed.why === 'cannot-see'
       ? `${placed.model} is set for Image reading, but it does not read images`
       : `${placed.model} is set for Image reading, but it is out of reach${where}`;

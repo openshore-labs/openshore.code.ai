@@ -56,7 +56,7 @@ const ALL_SETUP_GUIDES: Partial<Record<SetupGuideId, SetupGuide>> = {
     goal: `Add Harbor, a coding model that runs on ${thisDeviceNoun()} and can help me build for real.`,
     steps: [
       'Open Settings and find the Harbor section. Harbor Lite, the built-in guide, is already there. Harbor is the coder that runs alongside it.',
-      'On the Harbor row, tap Install. It downloads straight from the source, about 2.5 GB, roughly a few minutes on wifi. You can keep chatting while it lands.',
+      'On the Harbor row, tap Install. It downloads straight from the source, about 3.5 GB, roughly a few minutes on wifi. You can keep chatting while it lands.',
       'When it finishes, the row shows Uninstall and Harbor becomes your Reasoning model automatically. Start a new chat to talk to it.',
     ],
     done: 'Harbor writes and explains code, reasons, and can search the web. For heavier repository work, add a cloud key or dock to your computer.',
@@ -158,17 +158,17 @@ const ALL_SETUP_GUIDES: Partial<Record<SetupGuideId, SetupGuide>> = {
   },
   // The two doors a Stack chat offers when nothing can read images (maintainer,
   // 2026-10-07). The model names, sizes and pull commands come from the
-  // catalog through imageReading.ts. A model on the phone cannot read images
-  // on this build (stack.ts visionCapable), so the local reader runs on the
-  // computer and the phone reaches it as a model you connect (byom.ts): an
-  // Ollama address on the tailnet is local, so plain http is allowed.
+  // catalog through imageReading.ts. On the phone only Harbor reads images
+  // (stack.ts visionCapable), so this local reader runs on the computer and
+  // the phone reaches it as a model you connect (byom.ts): an Ollama address
+  // on the tailnet is local, so plain http is allowed.
   'image-reader-local': {
     id: 'image-reader-local',
     title: 'Source a local model',
     goal: 'Read images with a model on my own computer, so pictures stay on my network.',
     steps: [
       {
-        text: `A model on ${thisDeviceNoun()} cannot read images yet, so this one runs on your computer through Ollama, and ${thisDeviceNoun()} reaches it over Tailscale. If Ollama is not on your computer yet, install it. On Linux, paste this in a terminal (macOS and Windows use the installer from ollama.com):`,
+        text: `This reader runs on your computer through Ollama, and ${thisDeviceNoun()} reaches it over Tailscale. (On ${thisDeviceNoun()} itself, Harbor reads images.) If Ollama is not on your computer yet, install it. On Linux, paste this in a terminal (macOS and Windows use the installer from ollama.com):`,
         paste: 'curl -fsSL https://ollama.com/install.sh | sh',
       },
       {

@@ -391,7 +391,15 @@ describe('the fork after Harbor', () => {
 });
 
 const { useApp } = await import('../src/state/store.js');
+const { Llama } = await import('../src/lib/llamaPlugin.js');
+const { HARBOR_MODEL_ID, HARBOR_VISION_MODEL_ID } = await import('../src/lib/harbor.js');
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/** Each test starts with no Harbor files on the web stub, so Get Harbor
+ *  downloads (the store skips a file already present). */
+async function noHarborFiles(): Promise<void> {
+  await Llama.deleteModel({ id: HARBOR_MODEL_ID });
+  await Llama.deleteModel({ id: HARBOR_VISION_MODEL_ID });
+}
 const guided = () => useApp.getState().settings.guidedSetup!;
 const texts = () =>
   useApp
@@ -401,7 +409,8 @@ const texts = () =>
     );
 
 describe('the guided walk in the store', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    await noHarborFiles();
     mem.clear();
     useApp.setState({
       settings: {
@@ -619,7 +628,8 @@ describe('the guided walk in the store', () => {
 });
 
 describe('the fork after Harbor, in the store', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    await noHarborFiles();
     mem.clear();
     deviceSends.length = 0;
     useApp.setState({

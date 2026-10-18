@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { StackModelRef } from '../src/lib/stack.js';
 
 const mem = new Map<string, string>();
-const h = vi.hoisted(() => ({ calls: [] as string[] }));
+const h = vi.hoisted(() => ({ calls: [] as string[], loads: [] as unknown[] }));
 
 vi.mock('../src/lib/llamaPlugin.js', () => ({
   Llama: {
@@ -14,8 +14,9 @@ vi.mock('../src/lib/llamaPlugin.js', () => ({
       h.calls.push(`download:${id}`);
     },
     ensureLocal: async () => ({ ready: true }),
-    load: async ({ id }: { id: string }) => {
-      h.calls.push(`load:${id}`);
+    load: async (options: { id: string }) => {
+      h.calls.push(`load:${options.id}`);
+      h.loads.push(options);
       return { ok: true };
     },
     cancelDownload: async () => {},
@@ -62,7 +63,8 @@ vi.mock('../src/lib/insights.js', () => ({
 
 const { useApp } = await import('../src/state/store.js');
 const { harborRef } = await import('../src/lib/stack.js');
-const { HARBOR_MODEL_ID } = await import('../src/lib/harbor.js');
+const { HARBOR_CONTEXT_TOKENS, HARBOR_MODEL_ID, HARBOR_VISION_MODEL_ID } =
+  await import('../src/lib/harbor.js');
 const { forgetDeviceModel, loadedDeviceModel } = await import('../src/drivers/deviceModel.js');
 
 const CLOUD: StackModelRef = {
@@ -91,6 +93,7 @@ function seed(busy = false) {
 describe('Harbor download, warm-up, and the phone model', () => {
   beforeEach(() => {
     h.calls = [];
+    h.loads = [];
     mem.clear();
     forgetDeviceModel();
   });
@@ -108,9 +111,15 @@ describe('Harbor download, warm-up, and the phone model', () => {
     });
     expect(await useApp.getState().ensureHarbor()).toBe(true);
     unsub();
-    expect(h.calls).toEqual([`download:${HARBOR_MODEL_ID}`, `load:${HARBOR_MODEL_ID}`]);
+    // The weights and the vision file, side by side, then one warm load.
+    const fetched = [`download:${HARBOR_MODEL_ID}`, `download:${HARBOR_VISION_MODEL_ID}`];
+    expect(h.calls).toEqual([...fetched, `load:${HARBOR_MODEL_ID}`]);
+    expect(h.loads).toEqual([
+      { id: HARBOR_MODEL_ID, contextSize: HARBOR_CONTEXT_TOKENS, visionId: HARBOR_VISION_MODEL_ID },
+    ]);
     expect(seen).toContain('Warming up');
-    expect(seen).toContain(`ready after download:${HARBOR_MODEL_ID},load:${HARBOR_MODEL_ID}`);
+    expect(seen).toContain(`ready after ${fetched.join(',')},load:${HARBOR_MODEL_ID}`);
+    expect(useApp.getState().settings.harborVisionReady).toBe(true);
     expect(loadedDeviceModel()).toBe(HARBOR_MODEL_ID);
     expect(useApp.getState().harborDownload).toBeUndefined();
   });
@@ -127,7 +136,7 @@ describe('Harbor download, warm-up, and the phone model', () => {
   it('skips the warm-up while a chat is writing, since a load would end that reply', async () => {
     seed(true);
     expect(await useApp.getState().ensureHarbor()).toBe(true);
-    expect(h.calls).toEqual([`download:${HARBOR_MODEL_ID}`]);
+    expect(h.calls).toEqual([`download:${HARBOR_MODEL_ID}`, `download:${HARBOR_VISION_MODEL_ID}`]);
     expect(useApp.getState().settings.harborReady).toBe(true);
   });
 });

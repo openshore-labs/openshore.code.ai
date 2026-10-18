@@ -13,7 +13,7 @@ import type {
 import type { BuildStatus } from '../lib/codemagic.js';
 import type { ImageReaderGap } from '../lib/imageReading.js';
 import type { AccountType, PlanTierId } from '../lib/plans.js';
-import { isHarbor } from '../lib/harbor.js';
+import { harborReadsImages, isHarbor } from '../lib/harbor.js';
 import { isHarborMini } from '../lib/harborMini.js';
 import { claudeModelLabel } from '../lib/claudeModels.js';
 import { providerInfo, providerModelLabel, providerModelVision } from '../lib/providers.js';
@@ -749,11 +749,12 @@ export function clarifyText(item: Extract<ThreadItem, { kind: 'clarify' }>): str
 // Can this brain actually see an attached image? Resolved at send time, per the
 // tech review's ruling: default false everywhere, opt in only where vision genuinely
 // works, so an image is never silently dropped into a text-only model. Today
-// that is Claude on its own driver (every current Claude 5 model reads images).
-// Extend here when a direct BYOM/OpenAI/Gemini vision chat or a vision pocket
-// model lands, or when the desktop daemon carries image blocks; keep the
-// default false.
+// that is Claude on its own driver (every current Claude 5 model reads images),
+// another provider's vision model, and Harbor on this device once its vision
+// file is here. Extend here when a direct BYOM vision chat lands, or when the
+// desktop daemon carries image blocks; keep the default false.
 export function sourceSupportsVision(source?: ConversationSource): boolean {
+  if (source?.kind === 'device') return isHarbor(source.modelId) && harborReadsImages();
   if (source?.kind !== 'cloud') return false;
   // Claude's whole lineup reads images; any other provider's model does when
   // its catalog lists the vision capability, so the attach button shows only

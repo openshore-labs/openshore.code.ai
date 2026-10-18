@@ -537,10 +537,10 @@ export function SettingsScreen() {
             <p>
               Harbor and Harbor Lite, and any model you run on this device, are AI. They can be
               confidently wrong. Harbor Lite (SmolLM2-135M-Instruct) is a guide, not a coder. Harbor
-              (Qwen3 4B Instruct) writes and explains code, but it does not edit files or run
-              commands. For real work, use DeepBlue on your computer or connect a bigger model. What
-              you type to a local model stays on this device. Harbor Lite and Harbor are used under
-              the Apache License 2.0. {HARBOR_MASTER_ATTRIBUTION}
+              (Qwen3.5 4B) writes and explains code and reads pictures, but it does not edit files
+              or run commands. For real work, use DeepBlue on your computer or connect a bigger
+              model. What you type to a local model stays on this device. Harbor Lite and Harbor are
+              used under the Apache License 2.0. {HARBOR_MASTER_ATTRIBUTION}
             </p>
             <p>
               OpenShore does not editorialize what a model says. Three narrow limits are enforced on

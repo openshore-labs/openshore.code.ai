@@ -8,11 +8,14 @@ import { ThinkTagSplitter, type ApprovalAnswer, type ThoughtPiece } from 'os-cod
 import { Llama } from '../lib/llamaPlugin.js';
 import {
   ABORT_BEAT_MS,
-  DEVICE_CONTEXT_TOKENS,
   STALL_TIMEOUT_MS,
+  deviceLoadFor,
+  deviceMessages,
+  devicePictures,
+  deviceReadsImages,
+  deviceSamplingFor,
   emptyReplyMessage,
   ensureDeviceModel,
-  fitDeviceHistory,
   forgetDeviceModel,
 } from './deviceModel.js';
 import { buildHarborSystemPrompt, isHarbor } from '../lib/harbor.js';
@@ -33,6 +36,7 @@ import { packSeatFor } from '../lib/vaultSeat.js';
 import { chainOfThoughtLine, chainOfThoughtOn } from '../lib/chainOfThought.js';
 import { writingVoiceLine } from '../lib/writingVoice.js';
 import { appActionsContract } from '../lib/appActions.js';
+import type { Attachment } from '../lib/attachments.js';
 import type { SeedTurn } from '../state/types.js';
 
 const EM_DASH = String.fromCharCode(8212);
@@ -55,7 +59,9 @@ let requestSeq = 0;
 export class OnDeviceDriver implements ChatDriver {
   readonly kind = 'device' as const;
   private emitter = new DriverEmitter();
-  private history: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+  /** The conversation this model reads. A person's turn keeps the pictures
+   *  it carried (base64), for a model that reads them. */
+  private history: Array<{ role: 'user' | 'assistant'; content: string; images?: string[] }> = [];
   private answer = '';
   private activeRequestId?: string;
   private listenersReady: Promise<void>;
@@ -265,8 +271,8 @@ export class OnDeviceDriver implements ChatDriver {
     return this.emitter.subscribe(sink);
   }
 
-  send(text: string): void {
-    this.running = this.running.then(() => this.run(text)).catch(() => undefined);
+  send(text: string, attachments?: Attachment[]): void {
+    this.running = this.running.then(() => this.run(text, attachments)).catch(() => undefined);
   }
 
   /** Every event leaves through here: nothing after a turn has ended. */
@@ -277,8 +283,14 @@ export class OnDeviceDriver implements ChatDriver {
     this.emitter.emit(event);
   }
 
-  private async run(text: string): Promise<void> {
+  private async run(text: string, attachments?: Attachment[]): Promise<void> {
     await this.listenersReady;
+    // Pictures go only to a model that reads them (Harbor with its vision
+    // file); the composer refuses one for any other, so none is dropped here.
+    const pictures = deviceReadsImages(this.modelId) ? devicePictures(attachments) : [];
+    const turn = pictures.length
+      ? { role: 'user' as const, content: text, images: pictures }
+      : { role: 'user' as const, content: text };
     this.turn = 1;
     this.search.begin();
     this.aborted = false;
@@ -299,20 +311,21 @@ export class OnDeviceDriver implements ChatDriver {
     try {
       // The phone has one model slot shared by every device chat (APP-3), so
       // confirm this chat's model is the one loaded before every reply.
-      // Every device model gets the same window: Harbor Lite's system prompt
-      // alone outgrew the 2048 it used to load with.
+      // Every device model but Harbor gets the same window (Harbor Lite's
+      // system prompt alone outgrew the 2048 it used to load with); Harbor
+      // loads wider, with its vision file (deviceLoadFor).
       const ready = await ensureDeviceModel(
         {
           id: this.modelId,
           name: this.modelName,
-          contextSize: DEVICE_CONTEXT_TOKENS,
+          ...deviceLoadFor(this.modelId),
         },
         (message) => this.emit({ type: 'status', message }),
       );
       // Stopped while the model loaded: the turn is already closed. The
       // message stays in history, the way it stays on screen.
       if (this.aborted) {
-        this.history.push({ role: 'user', content: text });
+        this.history.push(turn);
         return;
       }
       if (!ready.ok) {
@@ -320,7 +333,13 @@ export class OnDeviceDriver implements ChatDriver {
         return;
       }
       if (isHarborMini(this.modelId)) await this.prepareGuideTurn(text);
-      this.history.push({ role: 'user', content: text });
+      this.history.push(turn);
+      if (pictures.length) {
+        this.emit({
+          type: 'status',
+          message: `${this.modelName} is reading ${pictures.length === 1 ? 'the picture' : `the ${pictures.length} pictures`}.`,
+        });
+      }
       if (this.aborted) return; // stopped during the guide's web search
       await preparing;
       if (this.aborted) return; // stopped while the pack gathered
@@ -372,10 +391,17 @@ export class OnDeviceDriver implements ChatDriver {
       requestId,
       system,
       // Only the newest turns that fit the window beside the prompt, so a long
-      // chat never overflows it and comes back empty.
-      messages: fitDeviceHistory(system, this.history, maxTokens),
+      // chat never overflows it and comes back empty; the newest pictures
+      // ride their turn and are counted against the window too.
+      messages: deviceMessages(
+        system,
+        this.history,
+        maxTokens,
+        deviceLoadFor(this.modelId).contextSize,
+      ),
       maxTokens,
-      temperature: this.guide ? 0.4 : 0.7,
+      ...deviceSamplingFor(this.modelId, this.guide ? 0.4 : 0.7),
+      thinking: this.cot && !this.guideTurn,
     });
     // A refused start already reported generationDone; only a started reply
     // needs the watchdog.

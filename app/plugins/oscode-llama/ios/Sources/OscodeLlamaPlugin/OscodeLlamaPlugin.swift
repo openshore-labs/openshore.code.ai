@@ -344,6 +344,11 @@ public class OscodeLlamaPlugin: CAPPlugin, CAPBridgedPlugin {
             call.resolve(["ok": false, "detail": "That model is not on this iPhone yet. Download it first."])
             return
         }
+        // A model that reads pictures has a second file, its vision file, kept
+        // under its own id. Missing, the model still answers in words.
+        let visionPath = call.getString("visionId")
+            .flatMap { store.resolvedURL(for: $0)?.path }
+            .flatMap { FileManager.default.fileExists(atPath: $0) ? $0 : nil }
         // Loading multi-GB weights blocks; keep it off the plugin queue. Hold a
         // background assertion so a load in progress is not suspended the moment
         // the app leaves the foreground.
@@ -351,7 +356,8 @@ public class OscodeLlamaPlugin: CAPPlugin, CAPBridgedPlugin {
         activity.begin()
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { activity.end(); return }
-            let result = self.runner.load(id: id, path: path, contextSize: contextSize)
+            let result = self.runner.load(
+                id: id, path: path, visionPath: visionPath, contextSize: contextSize)
             var payload: [String: Any] = ["ok": result.ok]
             if let detail = result.detail { payload["detail"] = detail }
             activity.end()
@@ -380,13 +386,21 @@ public class OscodeLlamaPlugin: CAPPlugin, CAPBridgedPlugin {
         }
         let system = call.getString("system") ?? ""
         let raw = call.getArray("messages") ?? []
-        let messages: [(role: String, content: String)] = raw.compactMap { entry in
+        // A turn's pictures arrive as base64 image files (JPEG or PNG).
+        let turns: [ChatTurn] = raw.compactMap { entry in
             guard let dict = entry as? [String: Any],
                   let role = dict["role"] as? String,
                   let content = dict["content"] as? String
             else { return nil }
-            return (role: role, content: content)
+            let images = (dict["images"] as? [String] ?? []).compactMap { Data(base64Encoded: $0) }
+            return ChatTurn(role: role, content: content, images: images)
         }
+        var sampling = LlamaRunner.Sampling()
+        if let value = call.getDouble("temperature") { sampling.temperature = Float(value) }
+        if let value = call.getInt("topK") { sampling.topK = Int32(value) }
+        if let value = call.getDouble("topP") { sampling.topP = Float(value) }
+        if let value = call.getDouble("minP") { sampling.minP = Float(value) }
+        if let value = call.getDouble("repeatPenalty") { sampling.repeatPenalty = Float(value) }
 
         // Keep a reply that is mid-stream alive through the OS grace period if
         // the user backgrounds the app while it is still writing.
@@ -395,7 +409,10 @@ public class OscodeLlamaPlugin: CAPPlugin, CAPBridgedPlugin {
         let started = runner.generate(
             requestId: requestId,
             system: system,
-            messages: messages,
+            turns: turns,
+            maxTokens: call.getInt("maxTokens") ?? 1024,
+            sampling: sampling,
+            thinking: call.getBool("thinking") ?? false,
             onDelta: { [weak self] delta in
                 self?.notifyListeners("token", data: [
                     "requestId": requestId,

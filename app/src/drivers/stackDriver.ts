@@ -51,11 +51,13 @@ import { SHIPS_CURRENTS } from '../lib/focus.js';
 import { Llama } from '../lib/llamaPlugin.js';
 import {
   ABORT_BEAT_MS,
-  DEVICE_CONTEXT_TOKENS,
   STALL_TIMEOUT_MS,
+  deviceLoadFor,
+  deviceMessages,
+  devicePictures,
+  deviceSamplingFor,
   emptyReplyMessage,
   ensureDeviceModel,
-  fitDeviceHistory,
   forgetDeviceModel,
 } from './deviceModel.js';
 import { secretGet, storeGetJson } from '../lib/platform.js';
@@ -1658,9 +1660,9 @@ export class StackDriver implements ChatDriver {
     placement?: Placement,
     images: Attachment[] = [],
   ): Promise<void> {
-    // Device inference is text-only on this build, so images never reach it
-    // (routeVision excludes a device ref); the argument is dropped there.
-    if (ref.kind === 'device') await this.runDevice(ref, placement);
+    // A device model gets the pictures only when it reads them (Harbor with
+    // its vision file); routeVision picks no other device model for them.
+    if (ref.kind === 'device') await this.runDevice(ref, placement, images);
     else if (ref.kind === 'byom') await this.runByom(ref, placement, images);
     else await this.runCloud(ref, placement, images);
   }
@@ -2582,18 +2584,16 @@ export class StackDriver implements ChatDriver {
   private async runDevice(
     ref: Extract<StackModelRef, { kind: 'device' }>,
     placement?: Placement,
+    images: Attachment[] = [],
   ): Promise<void> {
     await this.listenersReady;
     // The phone's one model slot is shared with every device chat (APP-3):
     // confirm the slot holds this model before every reply, never assume it.
     // A load cannot be cancelled; a Stop during it has already closed the
     // turn, and the check below keeps the reply from starting.
+    const load = deviceLoadFor(ref.modelId);
     const ready = await ensureDeviceModel(
-      {
-        id: ref.modelId,
-        name: ref.modelName,
-        contextSize: DEVICE_CONTEXT_TOKENS,
-      },
+      { id: ref.modelId, name: ref.modelName, ...load },
       (message) => this.emit({ type: 'status', message }),
     );
     // Stopped while the model loaded: the turn is already closed (abort), so
@@ -2632,16 +2632,26 @@ export class StackDriver implements ChatDriver {
     const base = this.systemFor(ref, placement, this.searchPrompt(), this.turnPackFor(ref));
     const system = guide ? base : this.withThinking(base, ref.modelId);
     const maxTokens = guide ? 512 : this.cot ? 2048 : 1024;
+    // This turn's pictures ride the person's last message, when the model
+    // reads them (load.visionId is set only then).
+    const pictures = load.visionId ? devicePictures(images) : [];
+    const lastUser = this.history.map((m) => m.role).lastIndexOf('user');
     const res = await Llama.generate({
       requestId,
       system,
-      messages: fitDeviceHistory(
+      messages: deviceMessages(
         system,
-        this.history.map((m) => ({ role: m.role, content: m.content })),
+        this.history.map((m, i) =>
+          i === lastUser && pictures.length
+            ? { role: m.role, content: m.content, images: pictures }
+            : { role: m.role, content: m.content },
+        ),
         maxTokens,
+        load.contextSize,
       ),
       maxTokens,
-      temperature: 0.6,
+      ...deviceSamplingFor(ref.modelId, 0.6),
+      thinking: this.cot && !guide,
     });
     // A refused start already reported generationDone; only a started reply
     // needs the watchdog.

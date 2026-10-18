@@ -7,10 +7,21 @@
 // context size) reloads, and a match is free.
 import { Llama } from '../lib/llamaPlugin.js';
 import { fitSeed } from 'os-code/protocol';
+import { imageBlockParts, type Attachment } from '../lib/attachments.js';
+import {
+  HARBOR_CONTEXT_TOKENS,
+  HARBOR_IMAGE_TOKENS,
+  HARBOR_MAX_IMAGES,
+  HARBOR_SAMPLING,
+  HARBOR_VISION_MODEL_ID,
+  harborReadsImages,
+  isHarbor,
+} from '../lib/harbor.js';
 
 interface Slot {
   id: string;
   contextSize: number;
+  visionId?: string;
 }
 
 let slot: Slot | undefined;
@@ -34,6 +45,79 @@ export const ABORT_BEAT_MS = 1500;
  *  "Warming up Harbor Lite" with nothing under it. A 135M model's cache at 4096
  *  is under 100 MB, so one size for every device model is cheap and safe. */
 export const DEVICE_CONTEXT_TOKENS = 4096;
+
+/** How a device model loads: its window, and its vision file when it has one
+ *  on this device. Harbor loads wider than the rest (HARBOR_CONTEXT_TOKENS);
+ *  every other device model keeps DEVICE_CONTEXT_TOKENS. */
+export function deviceLoadFor(modelId: string): { contextSize: number; visionId?: string } {
+  if (!isHarbor(modelId)) return { contextSize: DEVICE_CONTEXT_TOKENS };
+  return {
+    contextSize: HARBOR_CONTEXT_TOKENS,
+    visionId: harborReadsImages() ? HARBOR_VISION_MODEL_ID : undefined,
+  };
+}
+
+/** The sampling a device model's reply asks for: Harbor's own numbers
+ *  (HARBOR_SAMPLING), or the caller's temperature with the runner's defaults
+ *  for the rest. */
+export function deviceSamplingFor(
+  modelId: string,
+  temperature: number,
+): { temperature: number; topK?: number; topP?: number; minP?: number; repeatPenalty?: number } {
+  return isHarbor(modelId) ? { ...HARBOR_SAMPLING } : { temperature };
+}
+
+/** Whether this device model reads pictures right now. */
+export function deviceReadsImages(modelId: string): boolean {
+  return isHarbor(modelId) && harborReadsImages();
+}
+
+/** The pictures a device turn carries, as the base64 the runner takes: the
+ *  images among the attachments, at most HARBOR_MAX_IMAGES. A video's frames
+ *  are spread evenly across that many, first and last kept, so the model
+ *  still sees the clip from start to end. */
+export function devicePictures(attachments: Attachment[] | undefined): string[] {
+  const images = (attachments ?? []).filter((a) => a.isImage);
+  const picked =
+    images.length <= HARBOR_MAX_IMAGES
+      ? images
+      : Array.from(
+          { length: HARBOR_MAX_IMAGES },
+          (_, i) => images[Math.round((i * (images.length - 1)) / (HARBOR_MAX_IMAGES - 1))],
+        );
+  return picked.map((a) => imageBlockParts(a)?.base64).filter((b): b is string => Boolean(b));
+}
+
+/** What a turn that carried pictures says in the history once a newer turn
+ *  carries its own: the window holds one turn's pictures at a time. */
+export const EARLIER_PICTURES_NOTE = '(Pictures were shared with this message.)';
+
+/** A device conversation as the runner takes it: the pictures ride only on
+ *  the newest turn that has any (older ones keep a short note instead), and
+ *  their tokens are counted against the window before the history is fitted,
+ *  so the reply still has its room. */
+export function deviceMessages(
+  system: string,
+  history: Array<{ role: 'user' | 'assistant'; content: string; images?: string[] }>,
+  replyTokens: number,
+  contextTokens: number,
+): Array<{ role: 'user' | 'assistant'; content: string; images?: string[] }> {
+  let newest = -1;
+  history.forEach((m, i) => {
+    if (m.images?.length) newest = i;
+  });
+  const shaped = history.map((m, i) => {
+    if (!m.images?.length) return { role: m.role, content: m.content };
+    if (i === newest) return { role: m.role, content: m.content, images: m.images };
+    return {
+      role: m.role,
+      content: m.content ? `${EARLIER_PICTURES_NOTE}\n${m.content}` : EARLIER_PICTURES_NOTE,
+    };
+  });
+  const pictureTokens =
+    newest >= 0 ? (history[newest].images?.length ?? 0) * HARBOR_IMAGE_TOKENS : 0;
+  return fitDeviceHistory(system, shaped, replyTokens + pictureTokens, contextTokens);
+}
 
 /** A conservative characters-per-token figure for sizing a prompt without the
  *  model's tokenizer. English prose runs near four; code and markdown run
@@ -114,11 +198,18 @@ function watchNativeUnload(): void {
  *  already. `onStatus` carries the human "warming up" line so the chat can
  *  show it only when a load actually happens. */
 export async function ensureDeviceModel(
-  model: { id: string; name: string; contextSize: number },
+  model: { id: string; name: string; contextSize: number; visionId?: string },
   onStatus?: (message: string) => void,
 ): Promise<EnsureDeviceModel> {
   watchNativeUnload();
-  if (slot && slot.id === model.id && slot.contextSize === model.contextSize) return { ok: true };
+  if (
+    slot &&
+    slot.id === model.id &&
+    slot.contextSize === model.contextSize &&
+    slot.visionId === model.visionId
+  ) {
+    return { ok: true };
+  }
   // A model kept in iCloud may be evicted (placeholder only). Pull its bytes
   // down first; a device-stored model is a no-op. If it cannot be fetched
   // (offline with an evicted model), fail with a real message rather than a
@@ -134,7 +225,11 @@ export async function ensureDeviceModel(
   // Whatever was in the slot is about to be replaced; forget it before the
   // load so a failure never leaves a stale claim behind.
   slot = undefined;
-  const load = await Llama.load({ id: model.id, contextSize: model.contextSize });
+  const load = await Llama.load({
+    id: model.id,
+    contextSize: model.contextSize,
+    ...(model.visionId ? { visionId: model.visionId } : {}),
+  });
   if (!load.ok) {
     return {
       ok: false,
@@ -142,6 +237,6 @@ export async function ensureDeviceModel(
         load.detail ?? `${model.name} would not load. Download it again from Settings, Harbor.`,
     };
   }
-  slot = { id: model.id, contextSize: model.contextSize };
+  slot = { id: model.id, contextSize: model.contextSize, visionId: model.visionId };
   return { ok: true };
 }

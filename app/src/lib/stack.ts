@@ -8,7 +8,7 @@
 // The Reasoning model plans and routes each task to the specialist whose category
 // fits, and executes the task itself whenever no specialist is placed for it.
 import { HARBOR_MINI_MODEL_ID, HARBOR_MINI_MODEL_NAME } from './harborMini.js';
-import { HARBOR_MODEL_ID, HARBOR_MODEL_NAME } from './harbor.js';
+import { HARBOR_MODEL_ID, HARBOR_MODEL_NAME, harborReadsImages, isHarbor } from './harbor.js';
 import { PROVIDERS, providerModelVision } from './providers.js';
 import { byomReach, type ByomWire } from './byom.js';
 import type { Effort } from './effort.js';
@@ -135,9 +135,9 @@ export function harborFullRef(): StackModelRef {
  *  model reads images (Claude's whole lineup does; another provider's model
  *  when its catalog lists the vision capability). A BYOM endpoint the user
  *  placed for image reading is trusted to (it errors and the turn falls back if
- *  it cannot). An on-device model cannot yet: the local runtime is text-only,
- *  so a device model placed in the vision category falls back to a cloud
- *  provider. Flip the device case when a multimodal on-device runtime lands. */
+ *  it cannot). On this device, Harbor reads them once its vision file is here
+ *  (2026-10-18, the runner's mtmd path); every other device model is text
+ *  only, so one placed in the vision category falls back to a cloud provider. */
 export function visionCapable(ref: StackModelRef): boolean {
   switch (ref.kind) {
     case 'cloud':
@@ -145,7 +145,7 @@ export function visionCapable(ref: StackModelRef): boolean {
     case 'byom':
       return true;
     case 'device':
-      return false;
+      return isHarbor(ref.modelId) && harborReadsImages();
   }
 }
 

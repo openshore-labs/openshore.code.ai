@@ -74,16 +74,30 @@ export interface LlamaPluginContract {
   activeDownloads(): Promise<{ ids: string[] }>;
   cancelDownload(options: { id: string }): Promise<void>;
   deleteModel(options: { id: string }): Promise<void>;
-  /** Load a downloaded model into memory (frees any previous one). */
-  load(options: { id: string; contextSize?: number }): Promise<{ ok: boolean; detail?: string }>;
+  /** Load a downloaded model into memory (frees any previous one). `visionId`
+   *  names the model's vision file (a downloaded model of its own), opened the
+   *  first time a picture arrives; without one the model reads words only. */
+  load(options: {
+    id: string;
+    contextSize?: number;
+    visionId?: string;
+  }): Promise<{ ok: boolean; detail?: string }>;
   unload(): Promise<void>;
-  /** Start a generation; token deltas via 'token', end via 'generationDone'. */
+  /** Start a generation; token deltas via 'token', end via 'generationDone'.
+   *  A message's `images` are base64 image files (JPEG or PNG), read through
+   *  the vision file; the sampling fields fall back to the runner's defaults.
+   *  `thinking` lets a model with a thinking switch think first. */
   generate(options: {
     requestId: string;
     system: string;
-    messages: Array<{ role: 'user' | 'assistant'; content: string }>;
+    messages: Array<{ role: 'user' | 'assistant'; content: string; images?: string[] }>;
     maxTokens?: number;
     temperature?: number;
+    topK?: number;
+    topP?: number;
+    minP?: number;
+    repeatPenalty?: number;
+    thinking?: boolean;
   }): Promise<{ started: boolean }>;
   stop(options: { requestId: string }): Promise<void>;
 
