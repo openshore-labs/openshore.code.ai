@@ -391,7 +391,7 @@ describe('an image when a model set for Image reading cannot read it', () => {
     await settle();
     const detail = asked(events)?.request.detail ?? '';
     expect(detail).toBe(
-      `Harbor Lite is set for Image reading, but a model on ${thisDeviceNoun()} cannot read images yet, so this image would go to Claude Haiku 5.5 on your own API key. Nothing is sent until you approve. Set a model that reads images for Image reading in Stack and images go to it without asking. ${ASK_STOP_LINE}`,
+      `Harbor Lite is set for Image reading, but it cannot read images on ${thisDeviceNoun()}, so this image would go to Claude Haiku 5.5 on your own API key. Nothing is sent until you approve. Set a model that reads images for Image reading in Stack and images go to it without asking. ${ASK_STOP_LINE}`,
     );
     expect(detail).not.toContain('Nothing in Stack is set');
     expect(h.streams).toBe(0);

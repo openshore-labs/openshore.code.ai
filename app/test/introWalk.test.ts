@@ -156,7 +156,7 @@ describe('the copy', () => {
   it('counts the steps it names and keeps web search to when online', () => {
     expect(SETUP_INTRO).toMatch(/There are four short steps/);
     const text = stepIntro('harbor');
-    expect(text).toMatch(/Qwen3 4B Instruct/);
+    expect(text).toMatch(/Qwen3\.5 4B/);
     expect(text).toMatch(/searches the web when you're online/);
   });
 });

@@ -77,7 +77,7 @@ describe('the words', () => {
       'No image model is set in Stack, and no connected cloud model reads images. Add one of these, then send the picture again when you leave Offline.',
     );
     expect(imageOfferLead(offer({ placed: { model: 'Harbor Lite', why: 'device' } }))).toBe(
-      `Harbor Lite is set for Image reading, but a model on ${thisDeviceNoun()} cannot read images yet, and no connected cloud model reads images. Add one of these, then send the picture again.`,
+      `Harbor Lite is set for Image reading, but it cannot read images on ${thisDeviceNoun()}, and no connected cloud model reads images. Add one of these, then send the picture again.`,
     );
     expect(
       imageOfferLead(
@@ -215,7 +215,7 @@ describe('the two guides', () => {
     expect(text).toContain('Make sure llava:7b (or moondream) is ticked, and tap Connect.');
     expect(text).not.toContain('Model name:');
     expect(text).toContain('tap Local under Image reading');
-    expect(text).toContain(`A model on ${thisDeviceNoun()} cannot read images yet`);
+    expect(text).toContain(`On ${thisDeviceNoun()} itself, Harbor reads images.`);
     expect(local.done).toMatch(/without asking, and stays on your own network/);
 
     const cloudText = guideOpening(cloud);

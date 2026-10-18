@@ -22,6 +22,7 @@
     "test": "vitest run",
     "verify:models": "tsx scripts/verify-cloud-models.ts",
     "eval:guide": "tsx scripts/guide-eval.ts",
+    "eval:harbor": "tsx scripts/harbor-eval.ts",
     "postinstall": "node scripts/postinstall.mjs",
     "rebuild:native": "electron-rebuild -f -w node-pty -m ../os-code",
     "desktop": "vite build && tsc -p electron/tsconfig.json && node scripts/desktop-preflight.mjs && electron .",

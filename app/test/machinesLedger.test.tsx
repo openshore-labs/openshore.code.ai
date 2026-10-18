@@ -555,7 +555,7 @@ describe('the Stack names its image reader', () => {
     await dom.render(<StackManager />);
     await tapRow('Local');
     expect(sheetSub()).toBe(
-      `A model on this device or your own server. A model on this device cannot read images yet, so ${reader} reads them until one can.`,
+      `A model on this device or your own server. On this device, only Harbor reads images; until one is set, ${reader} reads them.`,
     );
   });
 
@@ -603,7 +603,7 @@ describe('the Stack names its image reader', () => {
     await dom.render(<StackManager />);
     await tapRow('Local');
     expect(sheetSub()).toBe(
-      'A model on this device or your own server. A model on this device cannot read images yet.',
+      'A model on this device or your own server. On this device, only Harbor reads images.',
     );
   });
 
