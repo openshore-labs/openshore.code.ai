@@ -42,6 +42,7 @@ import {
 import { useApp } from '../state/store.js';
 import type { HubRole } from '../drivers/types.js';
 import { hapticTick } from '../lib/haptics.js';
+import { onPastedImages, setPasteTarget } from '../lib/nativePaste.js';
 import {
   DEFAULT_PERMISSION_MODE,
   nextPermissionMode,
@@ -1062,6 +1063,27 @@ export function Composer({
       }
     }
   };
+
+  // A picture pasted on the iPhone or the iPad arrives from the shell, since
+  // WebKit never offers Paste for an image in a text field (lib/nativePaste.ts).
+  // The shell offers it only while this field is focused, and it lands as the
+  // same chip a picked photo makes.
+  const addFilesRef = useRef(addFiles);
+  addFilesRef.current = addFiles;
+  useEffect(() => {
+    if (terminal) return;
+    setPasteTarget(focused);
+  }, [focused, terminal]);
+  useEffect(() => () => setPasteTarget(false), []);
+  useEffect(
+    () =>
+      onPastedImages((files) => {
+        if (terminal || document.activeElement !== areaRef.current) return;
+        hapticTick();
+        void addFilesRef.current(files);
+      }),
+    [terminal],
+  );
 
   const onFiles = async (files: FileList | null) => {
     if (!files || !files.length) return;

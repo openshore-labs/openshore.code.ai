@@ -41,6 +41,102 @@ class ShellViewController: CAPBridgeViewController {
         webView?.backgroundColor = Self.ground
         webView?.scrollView.backgroundColor = Self.ground
         bridge?.registerPluginInstance(OscodeSnapshotPlugin())
+        bridge?.registerPluginInstance(OscodePastePlugin())
+    }
+
+    override func webView(with frame: CGRect, configuration: WKWebViewConfiguration) -> WKWebView {
+        return ShellWebView(frame: frame, configuration: configuration)
+    }
+}
+
+/// The web view, able to paste a picture into the composer. WebKit offers
+/// Paste in a plain text field only when the clipboard holds text, so a copied
+/// screenshot could never be pasted into the chat: the menu had no Paste and
+/// Command-V did nothing. While the composer is focused (it says so through
+/// OscodePaste.setTarget) and the clipboard holds images and no text, Paste
+/// is offered here, and pasting hands the images to the composer, which shows
+/// each one as a thumbnail chip the way a picked photo shows. Text, and
+/// anything pasted outside the composer, goes through WebKit as before.
+/// Checking for images (`hasImages`) reads nothing; the images are read only
+/// on the person's own Paste.
+class ShellWebView: WKWebView {
+    private var pastesImages: Bool {
+        let board = UIPasteboard.general
+        return OscodePastePlugin.composerFocused && board.hasImages && !board.hasStrings
+    }
+
+    override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+        if action == #selector(UIResponderStandardEditActions.paste(_:)) && pastesImages {
+            return true
+        }
+        return super.canPerformAction(action, withSender: sender)
+    }
+
+    override func paste(_ sender: Any?) {
+        guard pastesImages, let images = UIPasteboard.general.images, !images.isEmpty else {
+            super.paste(sender)
+            return
+        }
+        OscodePastePlugin.deliver(images)
+    }
+}
+
+/// The composer's side of pasting a picture (app/src/lib/nativePaste.ts):
+/// `setTarget` while the composer is focused, and an `images` event carrying
+/// each pasted image as a JPEG no longer than 2048 on its long side (the
+/// composer's own IMAGE_MAX_DIM), so a full-resolution screenshot crosses the
+/// bridge small. Nothing is saved; the images live in the composer until sent
+/// or removed.
+@objc(OscodePastePlugin)
+public class OscodePastePlugin: CAPPlugin, CAPBridgedPlugin {
+    public let identifier = "OscodePastePlugin"
+    public let jsName = "OscodePaste"
+    public let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "setTarget", returnType: CAPPluginReturnPromise),
+    ]
+
+    static var composerFocused = false
+    private static weak var live: OscodePastePlugin?
+    private static let maxSide: CGFloat = 2048
+    private static let maxImages = 10
+
+    override public func load() {
+        Self.live = self
+    }
+
+    @objc func setTarget(_ call: CAPPluginCall) {
+        let on = call.getBool("on") ?? false
+        DispatchQueue.main.async {
+            Self.composerFocused = on
+            call.resolve()
+        }
+    }
+
+    static func deliver(_ images: [UIImage]) {
+        guard let plugin = live else { return }
+        let picked = Array(images.prefix(maxImages))
+        DispatchQueue.global(qos: .userInitiated).async {
+            let urls: [String] = picked.compactMap { image in
+                let size = image.size
+                let scale = min(1, maxSide / max(size.width, size.height, 1))
+                let target = CGSize(width: max(1, (size.width * scale).rounded()),
+                                    height: max(1, (size.height * scale).rounded()))
+                let format = UIGraphicsImageRendererFormat()
+                format.scale = 1
+                format.opaque = true
+                let drawn = UIGraphicsImageRenderer(size: target, format: format).image { ctx in
+                    UIColor.white.setFill()
+                    ctx.fill(CGRect(origin: .zero, size: target))
+                    image.draw(in: CGRect(origin: .zero, size: target))
+                }
+                guard let jpeg = drawn.jpegData(compressionQuality: 0.9) else { return nil }
+                return "data:image/jpeg;base64," + jpeg.base64EncodedString()
+            }
+            guard !urls.isEmpty else { return }
+            DispatchQueue.main.async {
+                plugin.notifyListeners("images", data: ["dataUrls": urls])
+            }
+        }
     }
 }
 
