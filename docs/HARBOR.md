@@ -13,12 +13,14 @@ the most capable, and the one a home-lab hub runs.
   coding, says so plainly and walks the person through getting a bigger model
   set up. It is BUNDLED with the app (see below), so it is present the moment
   the app is installed, with nothing to download, and works offline.
-- **Harbor** (Qwen3-4B-Instruct-2507, Apache-2.0; the research-licensed Qwen
-  2.5 Coder 3B until 2026-09-30). The mobile coder: a coding agent
-  that runs fully on the phone, writing and explaining real code, with real
-  reasoning and web search. It can also answer app questions, but it leads as a
-  coder (Harbor Lite is the guide). A real download (about 2.5 GB, a 6 GB
-  phone) from Hugging Face, installed and uninstalled from Settings.
+- **Harbor** (Qwen3.5 4B, Apache-2.0, with its vision file; the research-licensed
+  Qwen 2.5 Coder 3B until 2026-09-30, then the text-only Qwen3-4B-Instruct-2507
+  until 2026-10-18). The mobile coder: it runs fully on the phone, writing and
+  explaining real code, reading the screenshots, photos and video frames it is
+  sent, with real reasoning and web search. It can also answer app questions,
+  but it leads as a coder (Harbor Lite is the guide). A real download (the
+  weights and the vision file, about 3.5 GB, a 6 GB phone) from Hugging Face,
+  installed and uninstalled from Settings as one unit.
 - **DeepBlue** (sized to the computer: Qwen 2.5 Coder 32B, 14B, or 7B, or
   Qwen3 4B Instruct on a smaller one; all Apache-2.0). The third and most capable: a real coding agent that plans and
   edits repositories on the desktop engine. It is pulled through Ollama on the
@@ -47,8 +49,9 @@ whose label follows the model's state:
   removed, so there is no install/uninstall toggle, just an honest status.
 - **Harbor**: **Install** when absent, its live percent (tap to cancel) while it
   downloads, **Retry** after a failure, **Uninstall** once it is on the device.
-  Uninstall deletes the weights and re-heals any stack whose Reasoning anchor
-  was Harbor to Harbor Lite (which is always present). Re-installable any time.
+  Uninstall deletes the weights and the vision file, and re-heals any stack
+  whose Reasoning anchor was Harbor to Harbor Lite (which is always present).
+  Re-installable any time.
 
 - **DeepBlue** (desktop only): **Install** when absent, its live percent as
   a plain status while it pulls (Ollama owns the pull, so there is no cancel),
@@ -118,16 +121,44 @@ Bundling trades a first-launch download for a larger install:
   build runs tight there is room to drop to Q4_0 (about 92 MB) or an IQ quant.
 - So the App Store download should land around **150 to 165 MB**, under the cap,
   versus a small base app plus a separate ~105 MB download if Mini were not
-  bundled. Harbor (1.1 GB) is never bundled; it stays a download.
+  bundled. Harbor (about 3.5 GB) is never bundled; it stays a download.
 
 This is comfortably under Apple's over-cellular download limit, so users can
 still install over a mobile network.
 
+## Harbor reads pictures (2026-10-18)
+
+Harbor is Qwen3.5 4B, a model that reads pictures as well as words, with its
+vision file (the multimodal projector, `HARBOR_VISION_URL`) downloaded beside
+the weights under its own id, `harbor-vision`. The phone's runner
+(`LlamaRunner.swift`) calls llama.cpp directly, with its media library (mtmd),
+from the xcframework `Package.swift` pins; the vision file opens the first time
+a picture arrives, so a chat in words never pays its memory. Harbor loads at
+`HARBOR_CONTEXT_TOKENS` (8,192), a picture takes at most `HARBOR_IMAGE_TOKENS`
+(512, the runner's cap), a turn carries at most `HARBOR_MAX_IMAGES` (a video's
+frames, from FFmpeg or AVFoundation, are spread across them), and only the
+newest turn's pictures ride along. The vision gates (`sourceSupportsVision`,
+`visionCapable`) pass Harbor only while its vision file is on the device, and
+no other model on the phone. The pictures never leave the phone.
+
+Two checks prove it before a phone build, since no Mac runs in CI:
+
+- `app/plugins/oscode-llama/linux-check/run.sh <weights> <vision file>
+<picture>` compiles the runner's Swift, unchanged, against the same
+  llama.cpp build on Linux and drives it through words, a picture, Stop and an
+  unload.
+- `pnpm --filter oscode-app eval:harbor [model]` is Harbor's eval on the
+  reference box (`app/src/lib/harborEval.ts`): code that is run against tests,
+  pictures, app facts, limits and everyday questions, each with Harbor's
+  harness and without it. Nothing about Harbor is claimed better until it has
+  a number (tenet 2).
+
 ## Before a build: verify the URLs
 
-`HARBOR_MODEL_URL` and `HARBOR_MINI_MODEL_URL` point at GGUFs on Hugging Face.
-Confirm each resolves (`curl -I` returns 200) and that the chat template is
-embedded in the file (the runner reads it from the file). This sandbox cannot
+`HARBOR_MODEL_URL`, `HARBOR_VISION_URL` and `HARBOR_MINI_MODEL_URL` point at
+GGUFs on Hugging Face. Confirm each resolves (`curl -I` returns 200) and that
+the chat template is embedded in the weights (the runner reads it from the
+file). Confirm `HARBOR_APPROX_LABEL` against the two files' real sizes. This sandbox cannot
 reach the network, so that check is a manual pre-build step. If a filename or
 casing has changed upstream, update the constant. The Harbor Lite URL is also
 the source of the bundled weights file.
@@ -139,8 +170,9 @@ two guides are not offered there (their rows stay gated to the phone). The
 desktop's out-of-the-box model is DeepBlue:
 
 - **Sized to the computer.** `resolveHarborMaster(hw)` picks the largest size
-  that is not too big by the engine's own budget (`fitVerdict`): the 3B on the
-  CPU-only reference box (measured 75% on the coding loop, best of 2), the 7B
+  that is not too big by the engine's own budget (`fitVerdict`): Qwen3 4B on
+  the CPU-only reference box (not yet measured; the non-commercial 3B it
+  replaced on 2026-09-30 measured 75% on the coding loop, best of 2), the 7B
   on a 16 GB laptop or an 8 GB GPU, the 14B on a hub with room, and the 32B on
   a big hub (a 48 GB GPU class). Before the machine is read it offers the 7B,
   never the biggest on a guess. The First

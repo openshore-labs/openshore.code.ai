@@ -1,11 +1,11 @@
 // The Harbor eval's code runner (scripts/harbor-eval.ts): a reply's function,
 // run against a case's tests. Each check runs in its own Node process started
-// with --permission, which denies it the file system, child processes, workers
-// and native addons, and inside that a fresh V8 context with its own built-ins
-// plus the few web APIs a reply may fairly use (URL, URLSearchParams, text
-// encoding, timers). It can still reach the network, so run the eval only
-// against a model you trust, as on the reference box. Each step gets two
-// seconds of CPU, and the whole check ten seconds.
+// with --permission and an empty environment, which denies it the file system,
+// child processes, workers, native addons and the maintainer's keys; inside
+// that, a fresh V8 context with its own built-ins and the few web APIs a reply
+// may fairly use (URL, URLSearchParams, text encoding, timers). It can still
+// reach the network, so run the eval only against a model you trust, as on
+// the reference box. Each step gets two seconds of CPU, the check ten in all.
 import { spawn } from 'node:child_process';
 import type { RunCode } from '../src/lib/harborEval.js';
 
@@ -39,8 +39,11 @@ process.stdin.on('end', async () => {
 
 export const runCodeInVm: RunCode = (code, tests, fn) =>
   new Promise((resolve) => {
+    // An empty environment: the maintainer's keys never ride along to code a
+    // model wrote (CLAUDE.md, no secret rides a child process's environment).
     const child = spawn(process.execPath, ['--permission', '-e', CHILD], {
       stdio: ['pipe', 'pipe', 'ignore'],
+      env: {},
     });
     let out = '';
     const timer = setTimeout(() => child.kill('SIGKILL'), 10_000);
