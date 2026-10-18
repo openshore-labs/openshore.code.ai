@@ -1,6 +1,6 @@
 // Where the person was, kept so a cold start the person did not ask for (the
-// system reclaimed the app in the background) puts them back in the same chat
-// and skips the long opening splash. Only the open chat is remembered; a room,
+// system reclaimed the app in the background) puts them back in the same chat.
+// The opening splash is the same every time (founder, 2026-10-18). Only the open chat is remembered; a room,
 // a sheet or a draft is not. localStorage on purpose: main.tsx reads it before
 // the store exists, and a blocked or empty store just means a normal opening.
 //
@@ -24,10 +24,6 @@ export const RESUME_WINDOW_MS: Record<Platform, number> = {
   electron: 12 * 60 * 60 * 1000,
   web: 12 * 60 * 60 * 1000,
 };
-
-/** The unhurried opening, and the quick one for a return. */
-export const SPLASH_HOLD_MS = 2700;
-export const SPLASH_RETURN_MS = 350;
 
 export interface ResumePoint {
   /** The open chat, if one was open. */
@@ -92,9 +88,4 @@ export function readResumePoint(platform: Platform, now = Date.now()): ResumePoi
   if (!p) return undefined;
   if (now - p.at > RESUME_WINDOW_MS[platform] || p.at > now + 60_000) return undefined;
   return p;
-}
-
-/** How long the boot splash holds: short on a return, full on a fresh start. */
-export function splashHoldMs(platform: Platform, now = Date.now()): number {
-  return readResumePoint(platform, now) ? SPLASH_RETURN_MS : SPLASH_HOLD_MS;
 }

@@ -1,6 +1,6 @@
-// A quick return resumes the open chat behind a short splash; a Quit, a long
-// absence or (on the iPhone) more than half an hour away opens fresh
-// (2026-10-12).
+// A quick return resumes the open chat; a Quit, a long absence or (on the
+// iPhone) more than half an hour away opens fresh (2026-10-12). The splash is
+// the same full opening either way (2026-10-18).
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -8,11 +8,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { takeQuitMarker, writeQuitMarker } from '../electron/lifecycle.js';
 import {
   RESUME_WINDOW_MS,
-  SPLASH_HOLD_MS,
-  SPLASH_RETURN_MS,
   readResumePoint,
   saveResumePoint,
-  splashHoldMs,
   stampResumePoint,
 } from '../src/lib/resumePoint.js';
 
@@ -31,14 +28,9 @@ describe('resume point', () => {
   });
   afterEach(() => vi.unstubAllGlobals());
 
-  it('holds the full splash on a fresh start', () => {
-    expect(splashHoldMs('ios')).toBe(SPLASH_HOLD_MS);
-  });
-
-  it('returns to the open chat soon after, with a quick splash', () => {
+  it('returns to the open chat soon after', () => {
     saveResumePoint('c1', 1_000);
     expect(readResumePoint('electron', 2_000)?.activeId).toBe('c1');
-    expect(splashHoldMs('ios', 2_000)).toBe(SPLASH_RETURN_MS);
   });
 
   it('gives the iPhone half an hour and the desktop twelve hours', () => {
@@ -59,7 +51,7 @@ describe('resume point', () => {
   it('opens fresh after a deliberate Quit, and forgets the chat', () => {
     saveResumePoint('c1', 1_000);
     vi.stubGlobal('window', { oscode: { afterQuit: true } });
-    expect(splashHoldMs('electron', 2_000)).toBe(SPLASH_HOLD_MS);
+    expect(readResumePoint('electron', 2_000)).toBeUndefined();
     vi.stubGlobal('window', {});
     expect(readResumePoint('electron', 2_000)).toBeUndefined();
   });
