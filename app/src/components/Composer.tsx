@@ -56,6 +56,16 @@ import {
   isVideoFile,
   type Attachment,
 } from '../lib/attachments.js';
+import {
+  DOCUMENT_MAX_BYTES,
+  KIND_LABEL,
+  countLabel,
+  documentBlock,
+  documentKind,
+  fileNoteBlock,
+  readOfficeText,
+  sizeLabel,
+} from '../lib/documentText.js';
 import { buildVideoAttachment } from '../lib/videoAttach.js';
 import type { ComposerRestore } from '../lib/heldMessage.js';
 import { PHONE_VIDEO_MAX_BYTES, pickVideoBackend } from '../lib/videoBackends.js';
@@ -209,6 +219,15 @@ interface PastedChunk {
   lines: number;
   /** Set when the chunk is a note's excerpt taken from the vault. */
   note?: { title: string; cost: string; localOnly: boolean };
+  /** Set when the chunk is an attached file's text (or, for a file nothing
+   *  here reads, its name, type and size): the chip names the file. */
+  file?: { name: string; detail: string };
+}
+
+/** A pasted snippet's number among the snippets alone, so a file's chip
+ *  never shifts "Pasted text #1" along. */
+function pastedNumber(all: PastedChunk[], chunk: PastedChunk): number {
+  return all.filter((p) => !p.note && !p.file).indexOf(chunk) + 1;
 }
 
 /** The `[[` just typed before the caret, where it starts. */
@@ -890,7 +909,7 @@ export function Composer({
   };
 
   const addTap = () => {
-    // The tray always opens: text files and pasted snippets work on any brain,
+    // The tray always opens: files and pasted snippets work on any brain,
     // and an image is refused later, at drop and at send, never by muting the +.
     if (window.matchMedia('(pointer: coarse)').matches) {
       if (tray) {
@@ -904,7 +923,7 @@ export function Composer({
       return;
     }
     // The desktop + opens one picker for everything the composer takes:
-    // images, videos, and text or code files.
+    // images, videos, documents, text or code, and any other file by name.
     anyFileRef.current?.click();
   };
 
@@ -975,24 +994,69 @@ export function Composer({
       }
     }
     // A text or code file folds in as pasted text, named after the file. A
-    // binary (a PDF, a zip, a document) is named and left out, never pasted
-    // in as garbage.
+    // document (a PDF, Word, Excel, PowerPoint, OpenDocument or RTF) is read
+    // on this device and folds in as its text. Any other file is attached by
+    // name, type and size, never pasted in as garbage and never refused.
     for (const f of others) {
+      const name = f.name || 'file';
+      const addFile = (text: string, detail: string) =>
+        setPasted((prev) => [
+          ...prev,
+          { id: `p${chunkSeq++}`, text, lines: text.split('\n').length, file: { name, detail } },
+        ]);
+      const kind = documentKind(f);
+      if (kind) {
+        if (f.size > DOCUMENT_MAX_BYTES) {
+          showToast(`${name} is over 50 MB. Attach a smaller copy or the pages you need.`);
+          continue;
+        }
+        try {
+          const bytes = new Uint8Array(await f.arrayBuffer());
+          if (kind === 'pdf') {
+            const { readPdf } = await import('../lib/pdfText.js');
+            const { doc, scans } = await readPdf(bytes, name, { drawScans: visionSupported });
+            if (scans.length) {
+              setAttachments((prev) => [...prev, ...scans]);
+              continue;
+            }
+            if (!doc.text) {
+              showToast(
+                `${name} has no text to read. Choose a model that reads images to read it.`,
+              );
+              continue;
+            }
+            addFile(documentBlock(name, kind, doc), countLabel(doc.parts?.count ?? 1, 'page'));
+            continue;
+          }
+          const doc = await readOfficeText(bytes, kind);
+          if (!doc.text) {
+            showToast(`${name} has no text in it.`);
+            continue;
+          }
+          addFile(
+            documentBlock(name, kind, doc),
+            doc.parts ? countLabel(doc.parts.count, doc.parts.noun) : KIND_LABEL[kind],
+          );
+        } catch {
+          showToast(`Could not read ${name}. It may be damaged or password protected.`);
+        }
+        continue;
+      }
       if (!(await isTextFile(f).catch(() => false))) {
-        showToast(`${f.name || 'That file'} is not a text file. Attach images, videos, or text.`);
+        addFile(
+          fileNoteBlock({ name, type: f.type, size: f.size }),
+          `${sizeLabel(f.size)}, name only`,
+        );
+        showToast(`${name} can't be read as text, so the model gets its name, type and size.`);
         continue;
       }
       if (f.size > 512_000) {
-        showToast(`${f.name} is too large to paste. Mention it by path instead.`);
+        showToast(`${name} is too large to paste. Mention it by path instead.`);
         continue;
       }
       try {
         const text = await f.text();
-        const lines = text.split('\n').length;
-        setPasted((prev) => [
-          ...prev,
-          { id: `p${chunkSeq++}`, text: `${f.name}:\n\`\`\`\n${text}\n\`\`\``, lines },
-        ]);
+        addFile(`${name}:\n\`\`\`\n${text}\n\`\`\``, countLabel(text.split('\n').length, 'line'));
       } catch {
         showToast('Could not read that file.');
       }
@@ -1324,17 +1388,27 @@ export function Composer({
             ))}
             {pasted
               .filter((p) => !p.note)
-              .map((p, i) => (
-                <span key={p.id} className={`composer-chip${leaving.has(p.id) ? ' closing' : ''}`}>
+              .map((p) => (
+                <span
+                  key={p.id}
+                  className={`composer-chip${leaving.has(p.id) ? ' closing' : ''}`}
+                  title={p.file ? `${p.file.name} · ${p.file.detail}` : undefined}
+                >
                   <span className="composer-chip-file" aria-hidden="true">
-                    <PasteGlyph />
+                    {p.file ? <FileGlyph /> : <PasteGlyph />}
                   </span>
                   <span className="composer-chip-name">
-                    Pasted text #{i + 1} · {p.lines} lines
+                    {p.file
+                      ? `${p.file.name} · ${p.file.detail}`
+                      : `Pasted text #${pastedNumber(pasted, p)} · ${p.lines} lines`}
                   </span>
                   <button
                     className="composer-chip-x press-fb"
-                    aria-label={`Remove pasted text ${i + 1}`}
+                    aria-label={
+                      p.file
+                        ? `Remove ${p.file.name}`
+                        : `Remove pasted text ${pastedNumber(pasted, p)}`
+                    }
                     onClick={() =>
                       removeChip(p.id, () => setPasted((prev) => prev.filter((x) => x.id !== p.id)))
                     }

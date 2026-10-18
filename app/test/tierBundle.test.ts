@@ -156,7 +156,10 @@ describe('the bundle check CI runs on the Personal build', () => {
   });
 
   it('fails a launch that carries the code highlighter, and passes it as its own chunk', () => {
-    expect(LAZY_LIBRARIES).toEqual([{ name: 'highlight.js', marker: 'highlightAuto' }]);
+    expect(LAZY_LIBRARIES).toEqual([
+      { name: 'highlight.js', marker: 'highlightAuto' },
+      { name: 'pdf.js', marker: 'pdfjsWorker' },
+    ]);
     write(
       'assets/jsx-runtime-b2.js',
       'export const a=(e)=>e;const h={highlightAuto(){}};const c=()=>import("./rehype-highlight-e5.js");',
@@ -180,6 +183,12 @@ describe('the bundle check CI runs on the Personal build', () => {
       );
     }
     expect(read('src', 'lib', 'lazyHighlight.ts')).toMatch(/import\('rehype-highlight'\)/);
+  });
+
+  it('the composer loads pdf.js on the first PDF, never with a static import', () => {
+    const composer = read('src', 'components', 'Composer.tsx');
+    expect(composer).not.toMatch(/^import[^;]*from '(?:pdfjs-dist[^']*|\.\.\/lib\/pdfText\.js)'/m);
+    expect(composer).toMatch(/await import\('\.\.\/lib\/pdfText\.js'\)/);
   });
 
   it('fails a launch that grows past its ceiling', () => {

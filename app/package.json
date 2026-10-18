@@ -55,6 +55,7 @@
     "oscode-passkey": "file:./plugins/oscode-passkey",
     "oscode-speech": "file:./plugins/oscode-speech",
     "oscode-tts": "file:./plugins/oscode-tts",
+    "pdfjs-dist": "6.3.289",
     "qrcode": "1.5.4",
     "react": "18.3.1",
     "react-dom": "18.3.1",

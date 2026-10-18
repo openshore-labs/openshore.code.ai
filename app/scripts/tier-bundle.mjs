@@ -35,7 +35,11 @@ export const LAZY_ROOM_FILES = [
  *  found in a chunk by a word its own code keeps through minification. The
  *  chat's code highlighter came to about 320 KB of every launch before it
  *  loaded on the first fenced block (lib/lazyHighlight.ts). */
-export const LAZY_LIBRARIES = [{ name: 'highlight.js', marker: 'highlightAuto' }];
+export const LAZY_LIBRARIES = [
+  { name: 'highlight.js', marker: 'highlightAuto' },
+  // pdf.js reads an attached PDF (lib/pdfText.ts), loaded on the first one.
+  { name: 'pdf.js', marker: 'pdfjsWorker' },
+];
 
 /** Ceilings, in bytes. Before the split the launch was one 2,560,450-byte
  *  chunk. Crossing one means a room or a heavy library went back into the
