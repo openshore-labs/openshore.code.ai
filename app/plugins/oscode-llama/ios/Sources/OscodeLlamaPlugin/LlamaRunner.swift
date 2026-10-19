@@ -205,6 +205,10 @@ final class LlamaRunner {
         let memory = llama_get_memory(context)
         let tooLong = "This chat is too long for the model on this iPhone. Start a new chat, or send a shorter message."
         var position: llama_pos = 0
+        /// The cells the prompt fills in the window. For words it equals the
+        /// position; a picture under Qwen's M-RoPE takes more cells than
+        /// positions, so the reply's room is counted from this, not `position`.
+        var filled = 0
         let pictures = turns.contains { !$0.images.isEmpty }
 
         if pictures {
@@ -247,7 +251,8 @@ final class LlamaRunner {
                 finish(requestId, "error", "The pictures could not be prepared. Try again.")
                 return
             }
-            guard Int(mtmd_helper_get_n_tokens(chunks)) + 16 < windowSize else {
+            filled = Int(mtmd_helper_get_n_tokens(chunks))
+            guard filled + 16 < windowSize else {
                 finish(requestId, "error", tooLong)
                 return
             }
@@ -299,6 +304,7 @@ final class LlamaRunner {
             }
             cached = tokens
             position = llama_pos(tokens.count)
+            filled = tokens.count
         }
 
         guard let sampler = makeSampler(sampling) else {
@@ -310,7 +316,7 @@ final class LlamaRunner {
         defer { llama_batch_free(single) }
         var pending: [UInt8] = []
         var produced = 0
-        let budget = min(maxTokens, windowSize - Int(position) - 1)
+        let budget = min(maxTokens, windowSize - max(filled, Int(position)) - 1)
         while produced < budget {
             let now = status(requestId)
             guard now.live else { return }
