@@ -114,6 +114,18 @@ describe('the update bar', () => {
     const banner = readFileSync(join(process.cwd(), 'src/components/UpdateBanner.tsx'), 'utf8');
     expect(banner).not.toMatch(/onClose|onDismiss|>\s*(?:Dismiss|Later|Not now)\s*</);
   });
+
+  it('stays on every desktop screen, the setup page included', () => {
+    // Both full-window layouts a desktop shows, the rooms and the setup page
+    // (which returns early), carry the bar above their shell, so it never
+    // goes away while this desktop is behind. App Lock is iPhone and iPad
+    // only, and its screen has no bar.
+    const app = readFileSync(join(process.cwd(), 'src/App.tsx'), 'utf8');
+    const setup = app.slice(app.indexOf("if (view === 'onboarding'"));
+    const framed = /<div className="app-frame">\s*<UpdateBanner \/>\s*<div className="shell">/;
+    expect(setup.slice(0, setup.indexOf('<OnboardingScreen'))).toMatch(framed);
+    expect(app.match(new RegExp(framed.source, 'g'))).toHaveLength(2);
+  });
 });
 
 describe('the release workflow', () => {

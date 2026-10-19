@@ -427,23 +427,28 @@ export function App() {
   const choosingAccount = Boolean(accountChoice) && featureOn('teams');
   if (view === 'onboarding' || choosingAccount) {
     return (
-      <div className="shell">
-        {choosingAccount && AccountSetup ? (
-          <Suspense fallback={null}>
-            <AccountSetup />
-          </Suspense>
-        ) : (
-          <OnboardingScreen />
-        )}
-        {toastPresence.mounted ? (
-          <div
-            className={`toast${toastPresence.closing ? ' closing' : ''}`}
-            role="status"
-            aria-live="polite"
-          >
-            {toast ?? lastToast.current}
-          </div>
-        ) : null}
+      // The update bar stays over the setup page too: it is never hidden
+      // while this desktop is behind.
+      <div className="app-frame">
+        <UpdateBanner />
+        <div className="shell">
+          {choosingAccount && AccountSetup ? (
+            <Suspense fallback={null}>
+              <AccountSetup />
+            </Suspense>
+          ) : (
+            <OnboardingScreen />
+          )}
+          {toastPresence.mounted ? (
+            <div
+              className={`toast${toastPresence.closing ? ' closing' : ''}`}
+              role="status"
+              aria-live="polite"
+            >
+              {toast ?? lastToast.current}
+            </div>
+          ) : null}
+        </div>
       </div>
     );
   }
