@@ -266,7 +266,7 @@ describe('the stack report and a local-only turn (B, J)', () => {
 describe('daemon RBAC (D1)', () => {
   it('a member cannot open a session outside an admin-provisioned workspace', async () => {
     const { token } = mintCredential({ role: 'member', label: 'Phone', userId: 'u_member' });
-    // `home` is a scratch dir, not under ~/OpenShore/Projects: a member must be refused.
+    // `home` is a scratch dir, not under ~/OpenShore/Repositories: a member must be refused.
     const res = await createSessionAs(token, home);
     expect(res.status).toBe(403);
   });
@@ -318,7 +318,7 @@ describe('POST /sessions/:id/trust (project trust)', () => {
 
   it("the owner trusts the session's folder; a member is refused", async () => {
     setHome(home);
-    const provisioned = join(home, 'OpenShore', 'Projects', 'repo');
+    const provisioned = join(home, 'OpenShore', 'Repositories', 'repo');
     mkdirSync(provisioned, { recursive: true });
     writeFileSync(
       join(provisioned, 'os-code.config.json'),
@@ -364,7 +364,7 @@ describe('POST /sessions/:id/more-room (the truncation card)', () => {
 
   it('the owner gives the provider more room in machine config; a member is refused', async () => {
     setHome(home);
-    const provisioned = join(home, 'OpenShore', 'Projects', 'repo');
+    const provisioned = join(home, 'OpenShore', 'Repositories', 'repo');
     mkdirSync(provisioned, { recursive: true });
     const member = mintCredential({ role: 'member', label: 'Phone', userId: 'u_room' });
     const memberRes = await createSessionAs(member.token, provisioned);
@@ -474,8 +474,8 @@ describe('POST /sessions/:id/rewind', () => {
 });
 
 // The workspace predicates resolve BOTH sides through realpath, so a symlink
-// planted inside ~/OpenShore/Projects that points outside it cannot pass as provisioned
-// (the P0-1 escape). HOME is pointed at the scratch dir so ~/OpenShore/Projects is ours.
+// planted inside ~/OpenShore/Repositories that points outside it cannot pass as provisioned
+// (the P0-1 escape). HOME is pointed at the scratch dir so ~/OpenShore/Repositories is ours.
 // Each caller works on its own vault root (Vault M5, tech review J8): the owner on the
 // machine's vault, a member on oscHome()/vaults/members/<hash>, so a member's
 // agent has the vault tools on its own folder and never the owner's.
@@ -497,7 +497,7 @@ describe('a member session works on its own vault root on a shared hub', () => {
 
   it("a member's tools point at their own root, never the owner's", async () => {
     setHome(home);
-    const provisioned = join(home, 'OpenShore', 'Projects', 'repo');
+    const provisioned = join(home, 'OpenShore', 'Repositories', 'repo');
     mkdirSync(provisioned, { recursive: true });
     const ownerRes = await createSessionAs(adminToken, provisioned);
     expect(ownerRes.status).toBe(201);
@@ -530,7 +530,7 @@ describe('a member session works on its own vault root on a shared hub', () => {
 
   it("a rehydrate uses the stored owner's root, not the caller's", async () => {
     setHome(home);
-    const provisioned = join(home, 'OpenShore', 'Projects', 'repo');
+    const provisioned = join(home, 'OpenShore', 'Repositories', 'repo');
     mkdirSync(provisioned, { recursive: true });
     const member = mintCredential({ role: 'member', label: 'Phone', userId: 'u_vault2' });
     const { id: memberId } = (await (await createSessionAs(member.token, provisioned)).json()) as {
@@ -564,12 +564,12 @@ describe('a member session works on its own vault root on a shared hub', () => {
   // readFile and grep, which never ask. So a member cannot open one there.
   it('a member cannot open a session in the vault or in a folder that holds it', async () => {
     setHome(home);
-    const managed = join(home, 'OpenShore', 'Projects');
+    const managed = join(home, 'OpenShore', 'Repositories');
     const vault = join(home, 'OpenShore', 'Vault');
     mkdirSync(join(vault, 'Private'), { recursive: true });
     writeFileSync(join(vault, 'Private', 'Diary.md'), 'owner secret diary');
     mkdirSync(join(managed, 'repo'), { recursive: true });
-    // A link under ~/OpenShore/Projects that points at the vault is the vault.
+    // A link under ~/OpenShore/Repositories that points at the vault is the vault.
     symlinkSync(vault, join(managed, 'notes-link'));
     const member = mintCredential({ role: 'member', label: 'Phone', userId: 'u_vault3' });
     const before = booted.length;
@@ -593,14 +593,14 @@ describe('a member session works on its own vault root on a shared hub', () => {
 
   it('a vault configured inside a provisioned repo keeps members out of that repo', async () => {
     setHome(home);
-    const repo = join(home, 'OpenShore', 'Projects', 'repo');
-    const other = join(home, 'OpenShore', 'Projects', 'other');
+    const repo = join(home, 'OpenShore', 'Repositories', 'repo');
+    const other = join(home, 'OpenShore', 'Repositories', 'other');
     mkdirSync(join(repo, 'notes'), { recursive: true });
     mkdirSync(other, { recursive: true });
     const config = JSON.parse(readFileSync(join(home, 'config.json'), 'utf8')) as object;
     writeFileSync(
       join(home, 'config.json'),
-      JSON.stringify({ ...config, vault: { dir: '~/OpenShore/Projects/repo/notes' } }),
+      JSON.stringify({ ...config, vault: { dir: '~/OpenShore/Repositories/repo/notes' } }),
     );
     const member = mintCredential({ role: 'member', label: 'Phone', userId: 'u_vault4' });
     expect((await createSessionAs(member.token, repo)).status).toBe(403);
@@ -646,7 +646,7 @@ describe('three callers on one hub, each on their own vault root (J8)', () => {
 
   it("each vault route and each session sees only the caller's own root", async () => {
     setHome(home);
-    const provisioned = join(home, 'OpenShore', 'Projects', 'repo');
+    const provisioned = join(home, 'OpenShore', 'Repositories', 'repo');
     mkdirSync(provisioned, { recursive: true });
     const ann = mintCredential({ role: 'member', label: 'Ann', userId: 'u_ann' });
     const ben = mintCredential({ role: 'member', label: 'Ben', userId: 'u_ben' });
@@ -770,7 +770,7 @@ describe('a revived session keeps its project', () => {
 
   it('keeps the project name and instructions across a restart', async () => {
     setHome(home);
-    const cwd = join(home, 'OpenShore', 'Projects', 'my-app');
+    const cwd = join(home, 'OpenShore', 'Repositories', 'my-app');
     mkdirSync(cwd, { recursive: true });
     const created = await fetch(`${base}/sessions`, {
       method: 'POST',
@@ -813,7 +813,7 @@ describe('a revived session keeps its project', () => {
 
   it('keeps instructions the person changed mid-session', async () => {
     setHome(home);
-    const cwd = join(home, 'OpenShore', 'Projects', 'my-app');
+    const cwd = join(home, 'OpenShore', 'Repositories', 'my-app');
     mkdirSync(cwd, { recursive: true });
     const created = await fetch(`${base}/sessions`, {
       method: 'POST',
@@ -906,9 +906,9 @@ describe('workspace predicates follow symlinks (P0-1 prep)', () => {
     restoreHome(realHome);
   });
 
-  it('a symlink under ~/OpenShore/Projects that points outside is neither provisioned nor an outbox target', () => {
+  it('a symlink under ~/OpenShore/Repositories that points outside is neither provisioned nor an outbox target', () => {
     setHome(home);
-    const managed = join(home, 'OpenShore', 'Projects');
+    const managed = join(home, 'OpenShore', 'Repositories');
     const outside = join(home, 'elsewhere');
     mkdirSync(managed, { recursive: true });
     mkdirSync(outside, { recursive: true });
@@ -936,7 +936,7 @@ describe('listings are owner-scoped for members (DAE-1)', () => {
 
   it("a member lists exactly its own sessions and never another user's cwd or title", async () => {
     setHome(home);
-    const provisioned = join(home, 'OpenShore', 'Projects', 'repo');
+    const provisioned = join(home, 'OpenShore', 'Repositories', 'repo');
     mkdirSync(provisioned, { recursive: true });
     const adminCwd = join(home, 'admin-private');
     mkdirSync(adminCwd, { recursive: true });
@@ -1205,7 +1205,7 @@ describe('daemon outbox path allowlist (SEC-2)', () => {
   };
 
   it('rejects an apply to a repo outside the allowed roots, even for an admin', async () => {
-    // `home` exists but is not under ~/OpenShore/Projects and is not a configured root.
+    // `home` exists but is not under ~/OpenShore/Repositories and is not a configured root.
     const res = await fetch(`${base}/outbox/apply`, {
       method: 'POST',
       headers: auth(adminToken),
@@ -1661,7 +1661,7 @@ describe('session lifecycle: eviction and delete (DAE-12)', () => {
     const realHome = saveHome();
     setHome(home);
     try {
-      const provisioned = join(home, 'OpenShore', 'Projects', 'repo');
+      const provisioned = join(home, 'OpenShore', 'Repositories', 'repo');
       mkdirSync(provisioned, { recursive: true });
       const a = mintCredential({ role: 'member', label: 'A', userId: 'u_del_a' });
       const b = mintCredential({ role: 'member', label: 'B', userId: 'u_del_b' });
@@ -1729,13 +1729,13 @@ describe('the phone sees what is on this computer, and clones land once', () => 
   });
 
   function plantClone(name: string, origin: string): string {
-    const dir = join(home, 'OpenShore', 'Projects', name);
+    const dir = join(home, 'OpenShore', 'Repositories', name);
     mkdirSync(join(dir, '.git'), { recursive: true });
     writeFileSync(join(dir, '.git', 'config'), `[remote "origin"]\n\turl = ${origin}\n`);
     return dir;
   }
 
-  it('lists a clone under ~/OpenShore/Projects before its first chat, with its origin and no credentials', async () => {
+  it('lists a clone under ~/OpenShore/Repositories before its first chat, with its origin and no credentials', async () => {
     setHome(home);
     const dir = plantClone(
       'openshore-hq',
@@ -1773,7 +1773,7 @@ describe('the phone sees what is on this computer, and clones land once', () => 
     expect(clash.status).toBe(400);
     const body = (await clash.json()) as { error: string };
     expect(body.error).toMatch(
-      /A different repository already uses the folder OpenShore\/Projects\/site/,
+      /A different repository already uses the folder OpenShore\/Repositories\/site/,
     );
     expect(body.error).not.toContain('ghu_tok');
   });
@@ -1797,7 +1797,7 @@ describe('the user command lane is admin-only (P0-1)', () => {
 
   it('a member gets a distinct 403 restricted on commands, stdin, and kill', async () => {
     setHome(home);
-    const provisioned = join(home, 'OpenShore', 'Projects', 'repo');
+    const provisioned = join(home, 'OpenShore', 'Repositories', 'repo');
     mkdirSync(provisioned, { recursive: true });
     const { token } = mintCredential({ role: 'member', label: 'Phone', userId: 'u_cmd' });
     const created = await createSessionAs(token, provisioned);

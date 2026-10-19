@@ -91,6 +91,17 @@ Standing rules, each pinned by tests:
 - **Google Drive is held out of v1** (D1), and the team vault stays out of
   model context until v1.1 (D15).
 
+**The room opens on How you keep notes, and the folder is named by room
+(founder, 2026-10-19).** A computer offers OpenShore's own folder or an
+Obsidian vault; a phone offers its computer (recommended), the Obsidian vault
+through it, or only that phone (`vaultSync: 'device'`). Obsidian is a folder,
+never an account or a key, and copy says so (`app/src/lib/vaultWays.ts`).
+`~/OpenShore` is Chats, Repositories, Vault (with Projects/<project> and
+Agents), Local Library and Exports (`os-code/src/config/openshoreFolder.ts`,
+`app/src/lib/phoneFolder.ts`); a new part of the app that saves files names
+its folder for its room. The agent's project notes stay in each repository
+and the Vault's Projects card names them. `docs/design/vault-room-clarity-2026-10-19.md`.
+
 Held branches, not on `main`: `vault-m2-team` (the team client; its
 migrations are main's 0024 and 0025), `vault-m2-icloud`, and `vault-m2-native`
 (the iPhone opening an Obsidian vault in place). Founder gates (PROGRESS, What

@@ -1,7 +1,7 @@
 // The daemon's routine routes, driven over HTTP the way the phone drives
 // them: reading is open to a member (scoped to what it owns), every change is
 // admin-only, and a routine can only point at an allowed workspace on this
-// machine. HOME is pointed at the scratch dir so ~/OpenShore/Projects is ours.
+// machine. HOME is pointed at the scratch dir so ~/OpenShore/Repositories is ours.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -65,7 +65,7 @@ beforeEach(async () => {
     join(home, 'config.json'),
     JSON.stringify({ stack: { orchestrator: { provider: 'ollama', model: 'qwen' } } }),
   );
-  mkdirSync(join(home, 'OpenShore', 'Projects', 'repo'), { recursive: true });
+  mkdirSync(join(home, 'OpenShore', 'Repositories', 'repo'), { recursive: true });
   _resetRoutineScheduler();
   daemon = await startOnFreePort();
   base = `http://127.0.0.1:${daemon.port}`;
@@ -90,7 +90,7 @@ function routineBody(overrides: Record<string, unknown> = {}) {
     agentName: 'Reviewer',
     persona: 'A calm reviewer.',
     task: 'Review what changed.',
-    cwd: join(home, 'OpenShore', 'Projects', 'repo'),
+    cwd: join(home, 'OpenShore', 'Repositories', 'repo'),
     schedule: { hour: 6, minute: 0, days: [1, 2, 3, 4, 5] },
     ...overrides,
   };
@@ -281,7 +281,7 @@ describe('daemon routine routes', () => {
     };
     const { token: one } = mintCredential({ role: 'member', label: 'Phone', userId: 'u_one' });
     const { token: two } = mintCredential({ role: 'member', label: 'Phone', userId: 'u_two' });
-    const cwd = join(home, 'OpenShore', 'Projects', 'repo');
+    const cwd = join(home, 'OpenShore', 'Repositories', 'repo');
     const valid = (name: string) => {
       const parsed = validateRoutineInput(routineBody({ name, cwd }));
       if (!parsed.ok) throw new Error(parsed.error);

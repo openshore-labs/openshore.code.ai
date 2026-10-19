@@ -5,8 +5,8 @@ import Foundation
 /// rehosts weights; this store is the phone reaching the source directly.
 ///
 /// A model lands in one of two homes:
-///   - device: the app's OpenShore folder, Documents/Models/<id>/ (folder
-///     and sync plan, M2; Files shows it as On My iPhone > OpenShore > Models),
+///   - device: the app's OpenShore folder, Documents/Local Library/<id>/ (folder
+///     and sync plan, M2; Files shows it as On My iPhone > OpenShore > Local Library),
 ///     so the person sees what is taking space, beside their Vault and Exports. The folder and every
 ///     weights file are excluded from device backup because the weights are
 ///     re-downloadable. Builds before M2 kept them in Application
@@ -158,18 +158,47 @@ public final class ModelStore: NSObject, URLSessionDownloadDelegate {
 
     // ------------------------------------------------------------- inventory
 
-    /// The device home: Documents/Models, one folder per model.
+    /// The device home: Documents/Local Library, one folder per model, named
+    /// for the room the models come from (2026-10-19; the first layout called
+    /// it Models, carried over by `moveEarlierModelsFolder`).
     /// Created lazily and marked do-not-back-up (again on every look, which is
     /// cheap and heals a folder made before the flag): the weights are
     /// re-downloadable, so they never belong in a device or iCloud backup.
     var directory: URL {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let dir = docs.appendingPathComponent("Models", isDirectory: true)
+        let dir = docs.appendingPathComponent("Local Library", isDirectory: true)
+        let earlier = docs.appendingPathComponent("Models", isDirectory: true)
+        moveEarlierModelsFolder(from: earlier, to: dir)
         if !FileManager.default.fileExists(atPath: dir.path) {
             try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         }
         excludeFromBackup(dir)
         return dir
+    }
+
+    /// Carry Documents/Models into Documents/Local Library by rename (one
+    /// volume, so nothing is copied and nothing downloads again): the whole
+    /// folder when the new name is free, else each model folder not already
+    /// there. A model left behind is never written over; the old folder goes
+    /// once it is empty. Safe on every look: with no old folder it does nothing.
+    private func moveEarlierModelsFolder(from old: URL, to dir: URL) {
+        let fm = FileManager.default
+        var isDir: ObjCBool = false
+        guard fm.fileExists(atPath: old.path, isDirectory: &isDir), isDir.boolValue else { return }
+        if !fm.fileExists(atPath: dir.path) {
+            try? fm.moveItem(at: old, to: dir)
+            return
+        }
+        guard let entries = try? fm.contentsOfDirectory(at: old, includingPropertiesForKeys: nil)
+        else { return }
+        for entry in entries {
+            let dest = dir.appendingPathComponent(entry.lastPathComponent, isDirectory: true)
+            if fm.fileExists(atPath: dest.path) { continue }
+            try? fm.moveItem(at: entry, to: dest)
+        }
+        if let left = try? fm.contentsOfDirectory(atPath: old.path), left.isEmpty {
+            try? fm.removeItem(at: old)
+        }
     }
 
     /// Where builds before M2 kept device models. Never created; only read
@@ -209,7 +238,7 @@ public final class ModelStore: NSObject, URLSessionDownloadDelegate {
     }
 
     /// Move every .gguf in Application Support/Models into its folder under
-    /// Documents/Models, once, by rename (the two are on the same
+    /// Documents/Local Library, once, by rename (the two are on the same
     /// volume, so no bytes are copied and nothing downloads again). A model
     /// already in its new home is left where it was, never written over; it
     /// stays findable there (resolvedURL) and Delete removes both. The old
@@ -322,7 +351,7 @@ public final class ModelStore: NSObject, URLSessionDownloadDelegate {
         return models
     }
 
-    /// Device models: each folder under Documents/Models that holds
+    /// Device models: each folder under Documents/Local Library that holds
     /// its own "<folder>.gguf", then any file still in the pre-M2 place that
     /// the move could not take (listed once per id).
     private func deviceModels() -> [LocalModel] {

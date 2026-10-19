@@ -31,6 +31,10 @@ import {
 export const VAULT_STARTER_PATHS = Object.freeze({
   welcome: 'Welcome to your Vault.md',
   inbox: 'Inbox',
+  // A folder for each room that keeps notes here (2026-10-19): a project's
+  // notes go in Projects/<project>, a routine's run notes in Agents/<routine>.
+  projects: 'Projects',
+  agents: 'Agents',
   daily: 'Templates/Daily.md',
   conventions: 'Vault conventions.md',
 } as const);
@@ -86,14 +90,21 @@ const CONFIG_NAMES = [
  *  the starter's own items is there (so it is not empty), else which of the
  *  starter's items a partial run already added. */
 type StarterScan =
-  { foreign: true } | { foreign: false; notes: Set<string>; inbox: boolean; settings: boolean };
+  | { foreign: true }
+  | { foreign: false; notes: Set<string>; folders: Set<string>; settings: boolean };
 
 const STARTER_NOTES: readonly string[] = [
   VAULT_STARTER_PATHS.welcome,
   VAULT_STARTER_PATHS.daily,
   VAULT_STARTER_PATHS.conventions,
 ];
-const STARTER_FOLDERS: readonly string[] = [VAULT_STARTER_PATHS.inbox, 'Templates'];
+/** The folders the starter makes, in order. */
+const STARTER_MADE_FOLDERS: readonly string[] = [
+  VAULT_STARTER_PATHS.inbox,
+  VAULT_STARTER_PATHS.projects,
+  VAULT_STARTER_PATHS.agents,
+];
+const STARTER_FOLDERS: readonly string[] = [...STARTER_MADE_FOLDERS, 'Templates'];
 
 /** Read everything L12 names. Any read that cannot answer counts as foreign,
  *  so an unknown state is never treated as empty. A run that added part of
@@ -122,7 +133,7 @@ async function scanForStarter(s: VaultStarterState): Promise<StarterScan> {
     return {
       foreign: false,
       notes: new Set(notes.map((n) => n.path)),
-      inbox: (folders as string[]).includes(VAULT_STARTER_PATHS.inbox),
+      folders: new Set(folders as string[]),
       settings,
     };
   } catch {
@@ -137,7 +148,10 @@ export async function vaultIsEmptyForStarter(s: VaultStarterState): Promise<bool
 }
 
 function complete(scan: Exclude<StarterScan, { foreign: true }>): boolean {
-  return STARTER_NOTES.every((n) => scan.notes.has(n)) && scan.inbox;
+  return (
+    STARTER_NOTES.every((n) => scan.notes.has(n)) &&
+    STARTER_MADE_FOLDERS.every((f) => scan.folders.has(f))
+  );
 }
 
 /** Whether "Start with a simple layout" is offered (UX review Y13). Otherwise the
@@ -151,7 +165,9 @@ export async function vaultStarterOffered(s: VaultStarterState): Promise<boolean
 
 /** One item the preview lists and the apply adds. */
 export type VaultStarterItem =
-  { kind: 'settings' } | { kind: 'folder'; path: string } | { kind: 'note'; path: string };
+  | { kind: 'settings' }
+  | { kind: 'folder'; path: string }
+  | { kind: 'note'; path: string };
 
 /** What the preview shows (the settings line only when the file will be
  *  written) and what `applyVaultStarter` adds, in order. */
@@ -159,7 +175,7 @@ export function planVaultStarter(caps: Pick<VaultCaps, 'settingsWrite'>): VaultS
   return [
     ...(caps.settingsWrite ? [{ kind: 'settings' } as const] : []),
     { kind: 'note', path: VAULT_STARTER_PATHS.welcome },
-    { kind: 'folder', path: VAULT_STARTER_PATHS.inbox },
+    ...STARTER_MADE_FOLDERS.map((path) => ({ kind: 'folder', path }) as const),
     { kind: 'note', path: VAULT_STARTER_PATHS.daily },
     { kind: 'note', path: VAULT_STARTER_PATHS.conventions },
   ];
@@ -216,7 +232,7 @@ export async function applyVaultStarter(s: VaultStarterState): Promise<VaultStar
         settingsLanded = r.ok;
         if (r.ok) added++;
       } else if (item.kind === 'folder') {
-        if (scan.inbox) {
+        if (scan.folders.has(item.path)) {
           added++;
           continue;
         }

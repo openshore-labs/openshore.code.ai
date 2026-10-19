@@ -48,6 +48,7 @@ const app = vi.hoisted(() => {
     offer: false,
     declined: 0,
     settled: [] as string[],
+    refined: [] as unknown[],
     pairs: {} as Record<
       string,
       {
@@ -129,7 +130,13 @@ const app = vi.hoisted(() => {
     vaultListed: true,
     vaultLoadFolder: async () => app.state.vaultFolder,
     vaultChooseFolder: async () => folderIo.pick,
-    vaultRefineFolder: async () => folderIo.pick,
+    vaultRefineFolder: async (choice: unknown) => {
+      folderIo.refined.push(choice);
+      return folderIo.pick;
+    },
+    vaultOpenAt: undefined as string | undefined,
+    takeVaultOpenAt: () => undefined,
+    setVaultSync: async () => true,
     vaultFolderOfferShown: () => folderIo.offer,
     vaultDeclineFolderMove: async () => {
       folderIo.declined++;
@@ -677,7 +684,7 @@ describe('the desktop move card (1.3)', () => {
     await dom.settle();
     // The toast leaves the forked sentence to the sheet.
     expect(app.toasts).toEqual([
-      'Your vault moved to This folder. Obsidian opens this folder as a vault.',
+      'Your vault moved to This folder. Obsidian can open this same folder as a vault, with nothing to connect.',
     ]);
     const sheet = () => dom.container.querySelector('.vault-resolve');
     expect(sheet()).not.toBeNull();
@@ -750,7 +757,7 @@ describe('a move whose forked pair cannot be shown (review M1-2)', () => {
     await dom.settle();
     expect(dom.container.querySelector('.vault-resolve')).toBeNull();
     expect(app.toasts).toEqual([
-      'Your vault moved to This folder. "a" was already there with different text, so the one you moved is beside it as "a (conflict 2026-09-27 1405)". Obsidian opens this folder as a vault.',
+      'Your vault moved to This folder. "a" was already there with different text, so the one you moved is beside it as "a (conflict 2026-09-27 1405)". Obsidian can open this same folder as a vault, with nothing to connect.',
     ]);
   });
 });
@@ -814,6 +821,37 @@ describe('the desktop folder rows in Where it lives (1.4)', () => {
     expect(dom.buttons()).not.toContain('Open in Obsidian');
     expect(dom.buttons()).toContain('Open folder');
     expect(dom.text()).toContain('To open it in Obsidian, choose Open folder as vault there');
+  });
+
+  it("opens on How you keep notes: OpenShore's own folder or an Obsidian vault, with Here now", async () => {
+    app.state.vaultFiles = [];
+    app.state.vaultFolder = { ...FOLDER, obsidianVault: true, isDefault: false };
+    app.folderIo.refined.length = 0;
+    await dom.render(<VaultRoom />);
+    expect(dom.text()).toContain('How you keep notes');
+    expect(dom.text()).toContain('In your OpenShore folder');
+    expect(dom.text()).toContain('Your Obsidian vault');
+    expect(dom.text()).toContain('the folder is the connection');
+    expect(dom.text()).toContain('Here now');
+    const { act } = await import('react');
+    const row = [...dom.container.querySelectorAll('button')].find((b) =>
+      b.textContent?.startsWith('In your OpenShore folder'),
+    )!;
+    await act(async () => {
+      row.dispatchEvent(new window.Event('click', { bubbles: true }));
+    });
+    await dom.settle();
+    expect(app.folderIo.refined).toEqual([{ to: 'default' }]);
+  });
+
+  it('folds to one line once the vault has notes, and Change opens it', async () => {
+    app.state.vaultFolder = { ...FOLDER, obsidianVault: false, isDefault: true };
+    await dom.render(<VaultRoom />);
+    expect(dom.text()).toContain('Kept in your OpenShore folder.');
+    expect(dom.text()).not.toContain('Your Obsidian vault');
+    await dom.click('Change');
+    await dom.settle();
+    expect(dom.text()).toContain('Your Obsidian vault');
   });
 
   it('a missing folder shows Not found and the warn line, and the room writes nothing', async () => {

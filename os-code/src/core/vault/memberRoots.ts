@@ -5,9 +5,9 @@
 // and never in the owner's.
 //
 // A member's root is oscHome()/vaults/members/<sha256(userId), 16 hex>, mode
-// 0700, made on first use. It sits outside ~/OpenShore/Projects and so outside every
+// 0700, made on first use. It sits outside ~/OpenShore/Repositories and so outside every
 // admin-provisioned workspace (a member may only open a session under
-// ~/OpenShore/Projects), and the daemon also refuses a member workspace that overlaps
+// ~/OpenShore/Repositories), and the daemon also refuses a member workspace that overlaps
 // any root (workspaces.ts overlapsVault).
 //
 // Honesty (plan 0.13): these roots keep the daemon's own routes and a

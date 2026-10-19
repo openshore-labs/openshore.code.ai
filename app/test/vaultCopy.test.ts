@@ -179,7 +179,7 @@ const sentences = (text: string) =>
 
 // Every sentence that may name Obsidian, per storage, exactly.
 const OBSIDIAN_SAID: Record<VaultCopyProvider, string[]> = {
-  files: ['Obsidian opens this folder as a vault.'],
+  files: ['Obsidian can open this same folder as a vault, with nothing to connect.'],
   icloud: [],
   local: [],
   gdrive: [],
@@ -283,7 +283,9 @@ describe('the Vault copy map (0.19)', () => {
       const c = vaultCopy(p.on, p.id, optsOf(p));
       const where = nameOf(p);
       if (p.id === 'files')
-        expect(c.obsidian, where).toBe('Obsidian opens this folder as a vault.');
+        expect(c.obsidian, where).toBe(
+          'Obsidian can open this same folder as a vault, with nothing to connect.',
+        );
       else expect(c.obsidian, where).toBeUndefined();
       for (const text of rendered(p)) {
         for (const s of sentences(text)) {
@@ -500,7 +502,9 @@ describe('the move toast', () => {
 
   it('a clean move never reports a count', () => {
     const line = vaultMoveLine(clean, 'This folder', vaultCopy('electron', 'files').obsidian);
-    expect(line).toBe('Your vault moved to This folder. Obsidian opens this folder as a vault.');
+    expect(line).toBe(
+      'Your vault moved to This folder. Obsidian can open this same folder as a vault, with nothing to connect.',
+    );
     expect(line).not.toMatch(/\d/);
     expect(
       vaultMoveLine(

@@ -275,7 +275,7 @@ describe('the daemon vault routes, on the caller own root', () => {
       join(home, 'config.json'),
       JSON.stringify({ stack: { orchestrator: { provider: 'ollama', model: 'qwen' } } }),
     );
-    mkdirSync(join(home, 'OpenShore', 'Projects', 'repo'), { recursive: true });
+    mkdirSync(join(home, 'OpenShore', 'Repositories', 'repo'), { recursive: true });
     _resetRoutineScheduler();
     daemon = await startOnFreePort();
     base = `http://127.0.0.1:${daemon.port}`;
@@ -304,7 +304,7 @@ describe('the daemon vault routes, on the caller own root', () => {
   const member = (userId: string) =>
     mintCredential({ role: 'member', label: 'Phone', userId }).token;
 
-  it('picks one root per caller: the owner vault, or a member root outside ~/OpenShore/Projects', () => {
+  it('picks one root per caller: the owner vault, or a member root outside ~/OpenShore/Repositories', () => {
     const owner = vaultRootFor({ userId: 'legacy', role: 'admin' });
     expect(owner).toBe(join(home, 'OpenShore', 'Vault'));
     const m1 = vaultRootFor({ userId: 'u_one', role: 'member' });
@@ -312,13 +312,13 @@ describe('the daemon vault routes, on the caller own root', () => {
     expect(m1).toBe(join(home, 'vaults', 'members', basename(m1)));
     expect(basename(m1)).toMatch(/^[0-9a-f]{16}$/);
     expect(m1).not.toBe(m2);
-    expect(m1.startsWith(join(home, 'OpenShore', 'Projects'))).toBe(false);
+    expect(m1.startsWith(join(home, 'OpenShore', 'Repositories'))).toBe(false);
     expect(vaultRootForOwner('u_one', false)).toBe(m1);
     expect(vaultRootForOwner(undefined)).toBe(owner);
     expect(vaultRootForOwner('legacy')).toBe(owner);
     // A member workspace can reach neither the owner's vault nor a member root.
-    expect(overlapsVault(join(home, 'OpenShore', 'Projects', 'repo'))).toBe(false);
-    expect(overlapsVault(join(home, 'OpenShore', 'Projects'))).toBe(false);
+    expect(overlapsVault(join(home, 'OpenShore', 'Repositories', 'repo'))).toBe(false);
+    expect(overlapsVault(join(home, 'OpenShore', 'Repositories'))).toBe(false);
     expect(overlapsVault(join(home, 'OpenShore'))).toBe(true);
     expect(overlapsVault(memberVaultsDir())).toBe(true);
     expect(overlapsVault(m1)).toBe(true);
@@ -557,7 +557,7 @@ describe('the daemon vault routes, on the caller own root', () => {
     const res = await fetch(`${base}/sessions`, {
       method: 'POST',
       headers: hdr(one),
-      body: JSON.stringify({ cwd: join(home, 'OpenShore', 'Projects', 'repo') }),
+      body: JSON.stringify({ cwd: join(home, 'OpenShore', 'Repositories', 'repo') }),
     });
     expect(res.status).toBe(201);
     const root = vaultRootFor({ userId: 'u_one', role: 'member' });
@@ -574,7 +574,7 @@ describe('the daemon vault routes, on the caller own root', () => {
       method: 'POST',
       headers: hdr(admin),
       body: JSON.stringify({
-        cwd: join(home, 'OpenShore', 'Projects', 'repo'),
+        cwd: join(home, 'OpenShore', 'Repositories', 'repo'),
         handoff: 'x'.repeat(HANDOFF_MAX_BYTES + 1),
       }),
     });
@@ -913,7 +913,7 @@ describe('the daemon vault routes, on the caller own root', () => {
         method: 'POST',
         headers: hdr(admin),
         body: JSON.stringify({
-          cwd: join(home, 'OpenShore', 'Projects', 'repo'),
+          cwd: join(home, 'OpenShore', 'Repositories', 'repo'),
           vaultOverrides: { context: 'off', handoff: 'on', packSize: 'giant' },
         }),
       });

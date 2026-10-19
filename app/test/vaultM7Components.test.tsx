@@ -947,6 +947,8 @@ describe('the starter layout sheet (UX review Y13)', () => {
     expect($$('.vault-starter-name').map((n) => n.textContent)).toEqual([
       'Welcome to your Vault',
       'Inbox',
+      'Projects',
+      'Agents',
       'Templates/Daily',
       'Vault conventions',
     ]);

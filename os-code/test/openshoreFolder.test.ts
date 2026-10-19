@@ -16,8 +16,10 @@ import { join } from 'node:path';
 import {
   OPENSHORE_README,
   SECTIONS,
+  EARLIER_READMES,
   ensureOpenshoreFolder,
   moveLegacyFolder,
+  moveRenamedSections,
   openshoreRoot,
   scratchDir,
   sectionDir,
@@ -38,6 +40,31 @@ describe('the OpenShore folder', () => {
     expect(OPENSHORE_README).toContain('never here');
   });
 
+  it('names each folder for the room that shows it', () => {
+    expect(Object.values(SECTIONS)).toEqual([
+      'Chats',
+      'Repositories',
+      'Vault',
+      'Local Library',
+      'Exports',
+    ]);
+  });
+
+  it('replaces a README an earlier build wrote, word for word, and only that', () => {
+    for (const earlier of EARLIER_READMES) {
+      const home = freshHome();
+      mkdirSync(openshoreRoot(home), { recursive: true });
+      writeFileSync(join(openshoreRoot(home), 'README.md'), earlier);
+      ensureOpenshoreFolder(home);
+      expect(readFileSync(join(openshoreRoot(home), 'README.md'), 'utf8')).toBe(OPENSHORE_README);
+    }
+    const home = freshHome();
+    mkdirSync(openshoreRoot(home), { recursive: true });
+    writeFileSync(join(openshoreRoot(home), 'README.md'), `${EARLIER_READMES[1]}\nMy line.\n`);
+    ensureOpenshoreFolder(home);
+    expect(readFileSync(join(openshoreRoot(home), 'README.md'), 'utf8')).toContain('My line.');
+  });
+
   it('keeps a README the person edited', () => {
     const home = freshHome();
     mkdirSync(openshoreRoot(home), { recursive: true });
@@ -46,9 +73,9 @@ describe('the OpenShore folder', () => {
     expect(readFileSync(join(openshoreRoot(home), 'README.md'), 'utf8')).toBe('mine');
   });
 
-  it('puts scratch work under Projects, where the person can find it', () => {
+  it('puts scratch work under Repositories, where the person can find it', () => {
     const home = freshHome();
-    expect(scratchDir(home)).toBe(join(sectionDir('projects', home), 'Scratch'));
+    expect(scratchDir(home)).toBe(join(sectionDir('repositories', home), 'Scratch'));
   });
 });
 
@@ -73,25 +100,25 @@ describe('the move from ~/OSCode', () => {
     expect(readFileSync(join(sectionDir('vault', home), 'Journal', 'today.md'), 'utf8')).toBe(
       'a note',
     );
-    expect(existsSync(join(sectionDir('projects', home), 'site', '.git'))).toBe(true);
-    expect(existsSync(join(sectionDir('projects', home), 'Try OpenShore'))).toBe(true);
+    expect(existsSync(join(sectionDir('repositories', home), 'site', '.git'))).toBe(true);
+    expect(existsSync(join(sectionDir('repositories', home), 'Try OpenShore'))).toBe(true);
     expect(readFileSync(join(scratchDir(home), 'draft.txt'), 'utf8')).toBe('draft');
-    // A path a session recorded under ~/OSCode still resolves, to Projects.
+    // A path a session recorded under ~/OSCode still resolves, to Repositories.
     expect(lstatSync(join(home, 'OSCode')).isSymbolicLink()).toBe(true);
     expect(realpathSync(join(home, 'OSCode', 'site'))).toBe(
-      join(sectionDir('projects', home), 'site'),
+      join(sectionDir('repositories', home), 'site'),
     );
   });
 
   it('never overwrites a name already taken, and leaves that folder where it was', () => {
     const home = legacyHome();
-    mkdirSync(join(sectionDir('projects', home), 'site'), { recursive: true });
-    writeFileSync(join(sectionDir('projects', home), 'site', 'keep.txt'), 'new place');
+    mkdirSync(join(sectionDir('repositories', home), 'site'), { recursive: true });
+    writeFileSync(join(sectionDir('repositories', home), 'site', 'keep.txt'), 'new place');
     const move = moveLegacyFolder(home);
     expect(move.kept).toEqual([join(home, 'OSCode', 'site')]);
     expect(move.linked).toBe(false);
     expect(existsSync(join(home, 'OSCode', 'site', '.git'))).toBe(true);
-    expect(readFileSync(join(sectionDir('projects', home), 'site', 'keep.txt'), 'utf8')).toBe(
+    expect(readFileSync(join(sectionDir('repositories', home), 'site', 'keep.txt'), 'utf8')).toBe(
       'new place',
     );
   });
@@ -101,5 +128,54 @@ describe('the move from ~/OSCode', () => {
     ensureOpenshoreFolder(home);
     expect(moveLegacyFolder(home)).toEqual({ moved: [], kept: [], linked: false });
     expect(moveLegacyFolder(freshHome())).toEqual({ moved: [], kept: [], linked: false });
+  });
+});
+
+describe('the move from the first layout (Projects and Models)', () => {
+  const firstLayoutHome = () => {
+    const home = freshHome();
+    const root = openshoreRoot(home);
+    mkdirSync(join(root, 'Projects', 'site', '.git'), { recursive: true });
+    mkdirSync(join(root, 'Projects', 'Scratch'), { recursive: true });
+    mkdirSync(join(root, 'Models', 'comfy'), { recursive: true });
+    writeFileSync(join(root, 'Models', 'comfy', 'w.bin'), 'weights');
+    return home;
+  };
+
+  it('renames Projects to Repositories, leaving a link, and Models to Local Library', () => {
+    const home = firstLayoutHome();
+    const move = ensureOpenshoreFolder(home);
+    expect(move.kept).toEqual([]);
+    const root = openshoreRoot(home);
+    expect(existsSync(join(sectionDir('repositories', home), 'site', '.git'))).toBe(true);
+    // A repository path a project or a routine recorded still resolves.
+    expect(lstatSync(join(root, 'Projects')).isSymbolicLink()).toBe(true);
+    expect(realpathSync(join(root, 'Projects', 'site'))).toBe(
+      join(sectionDir('repositories', home), 'site'),
+    );
+    expect(readFileSync(join(sectionDir('library', home), 'comfy', 'w.bin'), 'utf8')).toBe(
+      'weights',
+    );
+    expect(existsSync(join(root, 'Models'))).toBe(false);
+  });
+
+  it('moves entry by entry into a folder already there, and keeps a taken name', () => {
+    const home = firstLayoutHome();
+    mkdirSync(join(sectionDir('repositories', home), 'site'), { recursive: true });
+    mkdirSync(join(sectionDir('repositories', home), 'other'), { recursive: true });
+    const move = moveRenamedSections(home);
+    const root = openshoreRoot(home);
+    expect(move.kept).toEqual([join(root, 'Projects', 'site')]);
+    expect(existsSync(join(root, 'Projects', 'site', '.git'))).toBe(true);
+    expect(existsSync(join(sectionDir('repositories', home), 'Scratch'))).toBe(true);
+    expect(lstatSync(join(root, 'Projects')).isSymbolicLink()).toBe(false);
+  });
+
+  it('carries an old ~/OSCode into the new names, and is a no-op the second time', () => {
+    const home = firstLayoutHome();
+    mkdirSync(join(home, 'OSCode', 'app', '.git'), { recursive: true });
+    ensureOpenshoreFolder(home);
+    expect(existsSync(join(sectionDir('repositories', home), 'app', '.git'))).toBe(true);
+    expect(moveRenamedSections(home)).toEqual({ moved: [], kept: [], linked: false });
   });
 });

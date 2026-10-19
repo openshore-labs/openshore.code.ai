@@ -1312,7 +1312,13 @@ export function SettingsScreen() {
                   {!isDesktop() ? (
                     <SettingsRow
                       label={VAULT_SYNC_COPY.all}
-                      sub={vaultSyncOn ? VAULT_SYNC_COPY.allSub : VAULT_SYNC_COPY.oneSub}
+                      sub={
+                        vaultSyncOn
+                          ? VAULT_SYNC_COPY.allSub
+                          : settings.vaultSync === 'device'
+                            ? VAULT_SYNC_COPY.deviceSub
+                            : VAULT_SYNC_COPY.oneSub
+                      }
                       trailing={
                         <Switch
                           checked={vaultSyncOn}

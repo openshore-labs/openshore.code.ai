@@ -509,7 +509,7 @@ export class EngineHost {
     return giveMoreRoomHere(provider);
   }
 
-  /** The sample page for a first try, written to ~/OpenShore/Projects/Try OpenShore
+  /** The sample page for a first try, written to ~/OpenShore/Repositories/Try OpenShore
    *  (kept as it is when it already exists). */
   createSample(): { path: string; created: boolean } | { error: string } {
     try {

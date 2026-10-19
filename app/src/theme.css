@@ -2025,6 +2025,41 @@ textarea {
   gap: 4px;
 }
 
+/* How you keep notes (2026-10-19): the Vault's first card. Its rows are the
+   storage sheet's rows; the mark sits beside the title in words. */
+.vault-ways .vault-ways-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.vault-way-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.vault-ways-summary {
+  margin: 0;
+}
+
+/* A Projects row names the notes it holds under the project's name. */
+.vault-project-row .grow {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.vault-project-notes {
+  display: block;
+  font-size: var(--text-2);
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .vault-provider-disconnect {
   align-self: flex-end;
   padding: 4px 10px;

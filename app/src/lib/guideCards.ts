@@ -639,7 +639,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
   {
     id: 'project-notes',
     title: 'What it has learned',
-    where: 'A project room, or Vault, Coding projects',
+    where: 'A project room, or Vault, Projects',
     text: 'Read-only notes the agent keeps in the project: Current State, Progress, Decisions, Action Items, and Skills, so the next session picks up where the last one left off.',
     keywords: [
       'learned',

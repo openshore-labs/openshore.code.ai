@@ -39,8 +39,10 @@ const { localProvider } = await import('../src/lib/gitos/local.js');
 const {
   ensurePhoneFolder,
   moveEarlierExportAside,
+  moveModelsFolder,
   OLD_EXPORT_MARKER_KEY,
   PHONE_README,
+  PHONE_README_EARLIER,
   PHONE_SECTIONS,
 } = await import('../src/lib/phoneFolder.js');
 const { createFakePhoneFs } = await import('./support/fakePhoneFs.js');
@@ -146,7 +148,7 @@ describe('what lists', () => {
 });
 
 describe('the layout', () => {
-  it('makes Vault, Chats, Models and Exports at the Documents root, with no Projects, and the README once', async () => {
+  it('makes Chats, Vault, Local Library and Exports at the Documents root, with no Projects, and the README once', async () => {
     expect(await ensurePhoneFolder(fs)).toBe(true);
     for (const name of Object.values(PHONE_SECTIONS)) {
       expect((await fs.stat(name))?.type).toBe('directory');
@@ -155,12 +157,25 @@ describe('the layout', () => {
     expect(await fs.stat('Projects')).toBeNull();
     // Nothing nests under a second OpenShore folder.
     expect(await fs.stat('OpenShore')).toBeNull();
-    expect(Object.values(PHONE_SECTIONS)).toEqual(['Vault', 'Chats', 'Models', 'Exports']);
+    expect(Object.values(PHONE_SECTIONS)).toEqual(['Chats', 'Vault', 'Local Library', 'Exports']);
     expect(fs.text('README.md')).toBe(PHONE_README);
     // The person's own edit stays.
     fs.put('README.md', 'my notes about this folder');
     await ensurePhoneFolder(fs);
     expect(fs.text('README.md')).toBe('my notes about this folder');
+  });
+
+  it("renames the first layout's Models to Local Library, once, and refreshes its README", async () => {
+    fs.put('Models/qwen/qwen.gguf', 'weights');
+    fs.put('README.md', PHONE_README_EARLIER[0]!);
+    expect(await ensurePhoneFolder(fs)).toBe(true);
+    expect(fs.text('Local Library/qwen/qwen.gguf')).toBe('weights');
+    expect(await fs.stat('Models')).toBeNull();
+    expect(fs.text('README.md')).toBe(PHONE_README);
+    // With both there, nothing is written over: the plugin moves the rest.
+    fs.put('Models/other/other.gguf', 'more');
+    await moveModelsFolder(fs);
+    expect(fs.text('Models/other/other.gguf')).toBe('more');
   });
 
   it('moves the old export out of Documents/Vault before the live vault is made, once', async () => {

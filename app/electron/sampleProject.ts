@@ -1,7 +1,7 @@
 // The sample page for a first try (v1 Phase 1, desktop first run). A tiny
 // page for a bakery's news list whose Join button does nothing, because its
 // script looks for an id the page does not have: the most common way a
-// beginner's page silently breaks. One tap writes it to ~/OpenShore/Projects/Try
+// beginner's page silently breaks. One tap writes it to ~/OpenShore/Repositories/Try
 // OpenShore and opens a chat there that asks for the fix, so a first-time
 // person sees the whole loop (the edit, the check, the changed files, Undo)
 // on something that cannot hurt their own work. Nothing here touches Electron.
@@ -60,7 +60,7 @@ export const SAMPLE_FILES: Record<string, string> = {
 
 /** Write the sample to `root`/Try OpenShore, keeping any file already there
  *  (a second tap reopens the same folder, never overwrites what changed). */
-export function createSampleProject(root = sectionDir('projects')): {
+export function createSampleProject(root = sectionDir('repositories')): {
   path: string;
   created: boolean;
 } {

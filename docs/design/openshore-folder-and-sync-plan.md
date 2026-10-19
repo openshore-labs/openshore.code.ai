@@ -32,6 +32,11 @@ computer instead.
   Chats as files is a setting, Settings, Chats, "Save chats as files", on by
   default (founder, 2026-10-16); off, chats stay in the sealed store only.
 
+Renamed 2026-10-19 (founder, one folder per room): `Projects/` is now
+`Repositories/` and `Models/` is `Local Library/`, each named for the room that
+shows it; see `docs/design/vault-room-clarity-2026-10-19.md`. The layout below
+is the plan as it was ruled on 2026-10-16.
+
 ```
 OpenShore/
   Vault/            your notes (Obsidian-ready)

@@ -390,6 +390,7 @@ import {
   type RepoReader,
 } from '../lib/projectMemoryRead.js';
 import { CURRENT_STATE_FILE, memoryFilePath, sanitizeFolderSegment } from '../lib/projectMemory.js';
+import { projectVaultFolder } from '../lib/vaultWays.js';
 import {
   appVaultPrivacy,
   hubMachinePackSize,
@@ -1592,6 +1593,9 @@ interface AppState {
   /** Which project the `project` detail room is showing. Set by openProject;
    *  read by the detail screen and by a chat opened from it (its way back). */
   viewProjectId?: string;
+  /** A vault folder the Vault room opens at next, taken once by the room
+   *  (a project's own folder, Projects/<project>, made if it is not there). */
+  vaultOpenAt?: string;
   drawerOpen: boolean;
   /** Text the next chat's composer opens with (state/appActionOps.ts), taken
    *  once by the chat screen. Not persisted. */
@@ -1956,6 +1960,10 @@ interface AppState {
   openRoutineRun(run: RoutineRun): Promise<void>;
   /** Open a project's read-only memory notes (from the Vault section). */
   openProjectMemory(id: string): void;
+  /** Open the personal vault at a project's own folder, Projects/<project>. */
+  openProjectVaultFolder(id: string): void;
+  /** The Vault room takes the folder it was asked to open, once. */
+  takeVaultOpenAt(): string | undefined;
   /** Start a fresh chat that belongs to a project, opened with a way back to
    *  the project's detail room. */
   startProjectChat(projectId: string): void;
@@ -6724,7 +6732,9 @@ export const useApp = create<AppState>((set, get, api) => {
   const docSyncs = createDocSyncs({
     transport: () => {
       const s = get().settings;
-      if (vaultSyncMode(s.vaultSync) !== 'all') return undefined;
+      // Keep on one computer keeps chats and projects where they were made;
+      // Only on this device holds back the notes alone.
+      if (vaultSyncMode(s.vaultSync) === 'one') return undefined;
       const b = isDesktop() ? bridge() : undefined;
       if (b?.syncList && b.syncGet && b.syncPut && b.syncRemove) {
         return {
@@ -6827,6 +6837,8 @@ export const useApp = create<AppState>((set, get, api) => {
     const s = get();
     const hub = s.settings.daemon?.baseUrl;
     if (!hub || isDesktop()) return 'stay';
+    // Only on this device: docking never moves or repoints the notes.
+    if (vaultSyncMode(s.settings.vaultSync) === 'device') return 'stay';
     const resource = s.settings.gitosResources?.find((r) => r.id === VAULT_RESOURCE_ID);
     const hubReady = Boolean(providerFor('hub')) && (await probeReady('hub').catch(() => false));
     // Not ready yet (the link lands a beat after the pairing): nothing moves
@@ -10371,6 +10383,21 @@ export const useApp = create<AppState>((set, get, api) => {
       set({ viewProjectId: id });
       get().setView('projectmemory');
       logEvent('project_memory_open');
+    },
+
+    openProjectVaultFolder(id) {
+      const project = get().settings.projects?.find((p) => p.id === id);
+      if (!project) return;
+      set({ vaultOpenAt: projectVaultFolder(project.name) });
+      if (get().vaultScope !== 'personal') void get().setVaultScope('personal');
+      get().setView('vault');
+      logEvent('project_vault_folder_open');
+    },
+
+    takeVaultOpenAt() {
+      const at = get().vaultOpenAt;
+      if (at !== undefined) set({ vaultOpenAt: undefined });
+      return at;
     },
 
     startProjectChat(projectId) {
@@ -13982,8 +14009,37 @@ export const useApp = create<AppState>((set, get, api) => {
     async setVaultSync(mode) {
       const s = get().settings;
       if (vaultSyncMode(s.vaultSync) === mode) return true;
+      // From Only on this device, Keep on one computer goes through Sync on
+      // all devices, so the computer holds what was typed here first.
+      if (mode === 'one' && vaultSyncMode(s.vaultSync) === 'device') {
+        if (!(await get().setVaultSync('all'))) return false;
+        return get().setVaultSync('one');
+      }
       const hub = s.daemon?.baseUrl;
-      if (mode === 'one' && hub && syncsVault()) {
+      if (mode === 'device') {
+        // Level first while it still syncs, so this device holds what the
+        // computer had; a pass that cannot run leaves the copy here as it is.
+        if (syncsVault()) await vaultSync.run().catch(() => undefined);
+        // A vault kept on the computer comes back to this device. The
+        // computer's notes stay there; nothing is removed anywhere.
+        const back =
+          vaultProviderId(s) === 'hub'
+            ? s.vaultBeforeHub?.providerId && s.vaultBeforeHub.providerId !== 'hub'
+              ? s.vaultBeforeHub.providerId
+              : 'local'
+            : undefined;
+        await get().saveSettings({
+          vaultSync: mode,
+          vaultHubOffer: undefined,
+          ...(back
+            ? {
+                gitosResources: withVaultProvider(back, s.vaultBeforeHub?.chosenAt),
+                vaultBeforeHub: undefined,
+              }
+            : {}),
+        });
+        if (back) await afterVaultRepoint();
+      } else if (mode === 'one' && hub && syncsVault()) {
         // Level first, so the computer holds everything typed here.
         const result = await vaultSync.run();
         if (!result || result.skipped.length) {

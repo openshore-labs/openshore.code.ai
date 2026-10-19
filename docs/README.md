@@ -46,7 +46,7 @@ behind a choice; the code is the source of truth for what ships.
 | [`design/vault-v1-test-map.md`](design/vault-v1-test-map.md) | Vault v1: each must-fix finding mapped to its test. |
 | [`design/vault-iphone-folder-design.md`](design/vault-iphone-folder-design.md) | Opening an Obsidian vault in place on iPhone. |
 | [`design/build-2026-09-29/`](design/build-2026-09-29/) | The September build: notes per work package. |
-| [`design/stack-page-redesign.md`](design/stack-page-redesign.md), [`design/crew-page-redesign.md`](design/crew-page-redesign.md), [`design/project-room-redesign.md`](design/project-room-redesign.md), [`design/vault-page-redesign.md`](design/vault-page-redesign.md), [`design/jump-to-latest-redesign.md`](design/jump-to-latest-redesign.md), [`design/slack-water.md`](design/slack-water.md) | Room-by-room UX reviews. |
+| [`design/stack-page-redesign.md`](design/stack-page-redesign.md), [`design/crew-page-redesign.md`](design/crew-page-redesign.md), [`design/project-room-redesign.md`](design/project-room-redesign.md), [`design/vault-page-redesign.md`](design/vault-page-redesign.md), [`design/vault-room-clarity-2026-10-19.md`](design/vault-room-clarity-2026-10-19.md), [`design/jump-to-latest-redesign.md`](design/jump-to-latest-redesign.md), [`design/slack-water.md`](design/slack-water.md) | Room-by-room UX reviews. |
 
 ## Logs
 

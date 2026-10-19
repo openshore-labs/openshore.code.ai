@@ -96,8 +96,8 @@ beforeEach(async () => {
       stack: { orchestrator: { provider: 'ollama', model: 'qwen2.5:7b' } },
     }),
   );
-  // A project under ~/OpenShore/Projects with its Current State in the repo.
-  const repo = join(home, 'OpenShore', 'Projects', 'repo');
+  // A project under ~/OpenShore/Repositories with its Current State in the repo.
+  const repo = join(home, 'OpenShore', 'Repositories', 'repo');
   mkdirSync(join(repo, 'OpenShore Project Login MDs'), { recursive: true });
   writeFileSync(join(repo, 'OpenShore Project Login MDs', 'Current State.md'), CURRENT_STATE);
   // And one outside it, which a member may not name.
@@ -146,7 +146,7 @@ async function chat(
 describe('/chat builds its pack on the daemon', () => {
   it('carries Current State last in the system line and streams the card before the text', async () => {
     const { lines, system } = await chat(admin, {
-      vaultPack: { cwd: join(home, 'OpenShore', 'Projects', 'repo'), projectName: 'Login' },
+      vaultPack: { cwd: join(home, 'OpenShore', 'Repositories', 'repo'), projectName: 'Login' },
     });
     expect(lines[0]!.type).toBe('context-pack');
     expect(lines[0]).toMatchObject({ seat: 'local', mode: 'current-state', withheld: 0 });
@@ -163,7 +163,7 @@ describe('/chat builds its pack on the daemon', () => {
 
   it('builds no pack when Memory is off or the app did not ask', async () => {
     const off = await chat(admin, {
-      vaultPack: { cwd: join(home, 'OpenShore', 'Projects', 'repo'), projectName: 'Login' },
+      vaultPack: { cwd: join(home, 'OpenShore', 'Repositories', 'repo'), projectName: 'Login' },
       memory: false,
     });
     expect(off.lines.some((l) => l.type === 'context-pack')).toBe(false);
@@ -181,7 +181,7 @@ describe('/chat builds its pack on the daemon', () => {
     expect(loose.system).not.toContain(CURRENT_STATE);
     expect(loose.lines.some((l) => l.type === 'context-pack')).toBe(false);
     const repo = await chat(token, {
-      vaultPack: { cwd: join(home, 'OpenShore', 'Projects', 'repo'), projectName: 'Login' },
+      vaultPack: { cwd: join(home, 'OpenShore', 'Repositories', 'repo'), projectName: 'Login' },
     });
     expect(repo.system).toContain(CURRENT_STATE);
     // The admin may name any folder on the computer, as with a session.

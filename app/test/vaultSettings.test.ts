@@ -1131,7 +1131,7 @@ describe('the starter layout (L12, UX review Y13)', () => {
   it('is refused on a note, a folder, Trash, an attachment, .obsidian, a config that cannot answer, or the team vault', async () => {
     const cases: Array<Parameters<typeof starterVault>[0]> = [
       { notes: ['Idea.md'] },
-      { folders: ['Projects'] },
+      { folders: ['Clients'] },
       { trash: 1 },
       { attachments: 1 },
       { config: { 'obsidian/app': ok({}) } },
@@ -1158,8 +1158,8 @@ describe('the starter layout (L12, UX review Y13)', () => {
     const r = await applyVaultStarter(v.state);
     expect(r).toMatchObject({
       ok: true,
-      added: 5,
-      total: 5,
+      added: 7,
+      total: 7,
       settingsLanded: true,
       line: VAULT_STARTER_ADDED,
     });
@@ -1179,6 +1179,9 @@ describe('the starter layout (L12, UX review Y13)', () => {
     );
     expect(v.notes.get(VAULT_STARTER_PATHS.daily)).toBe('## Plan\n\n- [ ] \n\n## Notes\n');
     expect(v.folders.has('Inbox')).toBe(true);
+    // A folder for each room that keeps notes here.
+    expect(v.folders.has('Projects')).toBe(true);
+    expect(v.folders.has('Agents')).toBe(true);
     // Done: it is not offered again.
     expect(await vaultStarterOffered(v.state)).toBe(false);
   });
@@ -1187,7 +1190,7 @@ describe('the starter layout (L12, UX review Y13)', () => {
     const v = starterVault({ noWriteConfig: true });
     expect(planVaultStarter(v.state.caps).some((i) => i.kind === 'settings')).toBe(false);
     const r = await applyVaultStarter(v.state);
-    expect(r).toMatchObject({ ok: true, added: 4, total: 4, settingsLanded: false });
+    expect(r).toMatchObject({ ok: true, added: 6, total: 6, settingsLanded: false });
     expect(v.notes.get(VAULT_STARTER_PATHS.conventions)).not.toMatch(/Private|Journal/);
   });
 
@@ -1196,9 +1199,9 @@ describe('the starter layout (L12, UX review Y13)', () => {
     const r = await applyVaultStarter(v.state);
     expect(r).toMatchObject({
       ok: true,
-      added: 4,
-      total: 5,
-      line: 'Added 4 of 5. Try again to add the rest.',
+      added: 6,
+      total: 7,
+      line: 'Added 6 of 7. Try again to add the rest.',
     });
     const again = starterVault({
       notes: [...v.notes.keys()],
@@ -1207,7 +1210,7 @@ describe('the starter layout (L12, UX review Y13)', () => {
     });
     expect(await vaultStarterOffered(again.state)).toBe(true);
     const r2 = await applyVaultStarter(again.state);
-    expect(r2).toMatchObject({ ok: true, added: 5, total: 5, line: VAULT_STARTER_ADDED });
+    expect(r2).toMatchObject({ ok: true, added: 7, total: 7, line: VAULT_STARTER_ADDED });
     expect(again.writes.map((w) => w.path)).toEqual([VAULT_STARTER_PATHS.daily]);
   });
 });
