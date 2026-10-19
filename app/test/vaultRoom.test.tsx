@@ -129,7 +129,10 @@ const app = vi.hoisted(() => {
     vaultMoving: false,
     vaultListed: true,
     vaultLoadFolder: async () => app.state.vaultFolder,
-    vaultChooseFolder: async () => folderIo.pick,
+    vaultChooseFolder: async () => {
+      folderIo.refined.push('pick');
+      return folderIo.pick;
+    },
     vaultRefineFolder: async (choice: unknown) => {
       folderIo.refined.push(choice);
       return folderIo.pick;
@@ -842,6 +845,23 @@ describe('the desktop folder rows in Where it lives (1.4)', () => {
     });
     await dom.settle();
     expect(app.folderIo.refined).toEqual([{ to: 'default' }]);
+  });
+
+  it("Settings' Vault folder asks the room to choose another folder, or go back to its own", async () => {
+    app.state.vaultFolder = { ...FOLDER, obsidianVault: true, isDefault: false };
+    app.folderIo.refined.length = 0;
+    app.state.vaultSheetRequest = 'pick-folder';
+    await dom.render(<VaultRoom />);
+    await dom.settle();
+    expect(app.folderIo.refined).toEqual(['pick']);
+    await dom.unmount();
+    dom = await mountDom();
+    app.folderIo.refined.length = 0;
+    app.state.vaultSheetRequest = 'default-folder';
+    await dom.render(<VaultRoom />);
+    await dom.settle();
+    expect(app.folderIo.refined).toEqual([{ to: 'default' }]);
+    app.state.vaultSheetRequest = undefined;
   });
 
   it('folds to one line once the vault has notes, and Change opens it', async () => {

@@ -115,6 +115,19 @@ where it was. The phone renames `Models` to `Local Library` the same way
 (`ModelStore.swift`), by rename, so no model downloads again. The starter
 layout adds the Vault's Projects and Agents folders.
 
+### 4. The vault folder in Settings (founder, the same day)
+
+"In settings there should be an ability to change the default folder location
+so you can place inside Obsidian's reach (or other organizers). But default is
+the organized folder in the OpenShore app folder." Settings, Wayfinding, under
+the vault rows, gains **Vault folder** on a computer: the path, what it is
+(Default, Obsidian vault, or Your folder), and a tap to choose another. While
+another is in use, **Use OpenShore's folder** brings it back to
+`OpenShore/Vault`. Both hand off to the Vault room, which runs the picker (or
+the switch back) and shows the result in its storage sheet, with Bring when the
+folder before held notes. A phone's row says the folder is chosen on the
+computer and where the phone's copy sits in Files.
+
 ## CTO: safe to ship
 
 - The engine's workspace boundary (members' sessions, routines) moves to

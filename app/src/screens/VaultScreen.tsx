@@ -1138,14 +1138,21 @@ export function VaultScreen() {
   const flushSave = autosave.flush;
   // Another room asked for the storage sheet (Settings' "Where it lives"):
   // it lives in the tree, so an open note is saved and closed first.
+  // Settings' Vault folder asks for a folder change the same way: the
+  // system picker, or back to OpenShore's own folder, each ending in the
+  // storage sheet with what it found (and Bring, when the folder before held
+  // notes).
   useEffect(() => {
-    if (vaultSheetRequest !== 'storage') return;
+    if (!vaultSheetRequest) return;
+    const request = vaultSheetRequest;
     vaultRequestSheet(undefined);
     if (vaultNote) {
       flushSave();
       vaultCloseNote();
     }
-    setStorageOpen(true);
+    if (request === 'pick-folder') void runPick('card');
+    else if (request === 'default-folder') void actOnWay('use-openshore-folder');
+    else setStorageOpen(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vaultSheetRequest]);
   // Vault settings (Vault M7, UX review Y4): one host for Options and the storage

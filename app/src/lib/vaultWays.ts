@@ -205,3 +205,49 @@ export const VAULT_PROJECT_YOUR_NOTES = 'Your notes for this project';
 export function vaultProjectYourNotesSub(projectName: string): string {
   return `A folder in your vault, ${projectVaultFolder(projectName)}, for anything you keep on it.`;
 }
+
+// ---- Settings, Vault folder (founder, 2026-10-19) ---------------------------
+// The default is the organized folder, OpenShore/Vault. A computer can point
+// the vault at another folder, inside Obsidian's reach or another notes app's,
+// and come back; the choice is made and reviewed in the Vault room's sheet,
+// so Settings only says where it is and opens that.
+
+/** What the computer's vault folder is, from main's folder facts. */
+export interface VaultFolderFacts {
+  display: string;
+  isDefault?: boolean;
+  obsidianVault?: boolean;
+}
+
+export const VAULT_FOLDER_ROW = 'Vault folder';
+/** The row's short value. */
+export function vaultFolderValue(f: VaultFolderFacts): string {
+  return f.isDefault ? 'Default' : f.obsidianVault ? 'Obsidian vault' : 'Your folder';
+}
+/** The row's line: where it is, what it is, and what Change does. */
+export function vaultFolderRowSub(f: VaultFolderFacts): string {
+  const what = f.isDefault
+    ? "OpenShore's own organized folder, the default."
+    : f.obsidianVault
+      ? 'An Obsidian vault: OpenShore and Obsidian work on the same files.'
+      : 'A folder you chose. Any app that reads plain .md files can open it.';
+  return `${f.display}. ${what} Tap to choose another, such as your Obsidian vault or another notes app's folder.`;
+}
+/** Back to the default, shown only while another folder is in use. */
+export const VAULT_FOLDER_DEFAULT_ROW = "Use OpenShore's folder";
+export function vaultFolderDefaultSub(f: VaultFolderFacts): string {
+  return `Back to OpenShore/Vault, the organized default. The notes in ${f.display} stay there, and the Vault offers to bring them along.`;
+}
+/** On a phone or an iPad: the folder is the computer's choice. */
+export function vaultFolderDeviceSub(
+  s: Pick<VaultWaysState, 'docked' | 'sync' | 'deviceNoun'>,
+  filesPath: string,
+): string {
+  const sync = s.sync ?? 'all';
+  if (!s.docked || sync === 'device') {
+    return `Your notes are files on ${s.deviceNoun}, in the Files app under ${filesPath}. Dock to your computer to choose a folder there, such as your Obsidian vault.`;
+  }
+  return sync === 'all'
+    ? `Chosen on your computer, in its Settings, Vault folder. ${capital(s.deviceNoun)} keeps a copy in the Files app under ${filesPath}.`
+    : 'Chosen on your computer, in its Settings, Vault folder. Your notes stay in that folder.';
+}

@@ -4,6 +4,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   VAULT_WAY_CONNECT,
+  vaultFolderDefaultSub,
+  vaultFolderDeviceSub,
+  vaultFolderRowSub,
+  vaultFolderValue,
   projectVaultFolder,
   vaultProjectRowSub,
   vaultWaySummary,
@@ -122,5 +126,35 @@ describe('projects in the vault', () => {
       'Current State · Progress · Decisions · Action Items · Skills',
     );
     expect(vaultProjectRowSub(titles, false)).toMatch(/once it has a repository/);
+  });
+});
+
+describe('Settings, Vault folder', () => {
+  it('says the organized folder is the default, and offers another such as an Obsidian vault', () => {
+    const own = { display: '~/OpenShore/Vault', isDefault: true };
+    expect(vaultFolderValue(own)).toBe('Default');
+    expect(vaultFolderRowSub(own)).toMatch(
+      /^~\/OpenShore\/Vault\. OpenShore's own organized folder/,
+    );
+    expect(vaultFolderRowSub(own)).toMatch(/your Obsidian vault/);
+    const brain = { display: '~/Brain', isDefault: false, obsidianVault: true };
+    expect(vaultFolderValue(brain)).toBe('Obsidian vault');
+    expect(vaultFolderRowSub(brain)).toMatch(/same files/);
+    expect(vaultFolderValue({ display: '~/Notes', isDefault: false })).toBe('Your folder');
+    // Going back never claims the notes move by themselves.
+    expect(vaultFolderDefaultSub(brain)).toMatch(/stay there/);
+  });
+
+  it('on a phone, names the computer as where the folder is chosen', () => {
+    const files = 'On My iPhone > OpenShore > Vault';
+    expect(vaultFolderDeviceSub({ docked: true, deviceNoun: 'this phone' }, files)).toMatch(
+      /^Chosen on your computer.*This phone keeps a copy/,
+    );
+    expect(vaultFolderDeviceSub({ docked: false, deviceNoun: 'this phone' }, files)).toMatch(
+      /Dock to your computer to choose a folder there/,
+    );
+    expect(
+      vaultFolderDeviceSub({ docked: true, sync: 'device', deviceNoun: 'this iPad' }, files),
+    ).toMatch(/files on this iPad/);
   });
 });

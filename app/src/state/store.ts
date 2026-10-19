@@ -1077,6 +1077,9 @@ export interface AppSettings {
   vaultRecent?: Record<string, VaultRecentEntry[]>;
 }
 
+/** What another room may ask the Vault room to do when it shows. */
+export type VaultSheetRequest = 'storage' | 'pick-folder' | 'default-folder';
+
 /** What a hub says this device's pairing credential may do. */
 export type HubRole = 'admin' | 'member';
 
@@ -1788,8 +1791,10 @@ interface AppState {
    *  Undefined before the first read after a repoint. */
   vaultSettings?: ResolvedVaultSettings;
   /** A sheet another room asked the Vault room to open when it shows
-   *  (Settings' "Where it lives"). The room takes it once and clears it. */
-  vaultSheetRequest?: 'storage';
+   *  (Settings' "Where it lives"), or a folder change Settings' Vault folder
+   *  asked for: choose another folder, or back to OpenShore's own. The room
+   *  takes it once and clears it, and shows the result in its storage sheet. */
+  vaultSheetRequest?: VaultSheetRequest;
   /** When true, the Local Library intro walkthrough is showing over the library. */
   libraryIntro?: boolean;
   /** When true, a brand-new account was just created on a device that never
@@ -2544,7 +2549,7 @@ interface AppState {
    *  every write `ifAbsent`. The whole layout toasts here. */
   vaultApplyStarter(): Promise<{ added: number; total: number }>;
   /** Ask the Vault room to open a sheet when it next shows, or clear it. */
-  vaultRequestSheet(sheet: 'storage' | undefined): void;
+  vaultRequestSheet(sheet: VaultSheetRequest | undefined): void;
   /** The switch note's "Save to Vault" (J12, D3): the person's own one-tap
    *  write to `Handoffs/<date> <project>.md`, `ifAbsent`, " 2" on a clash. */
   saveHandoffToVault(conversationId: string, itemId: string): Promise<string | undefined>;
