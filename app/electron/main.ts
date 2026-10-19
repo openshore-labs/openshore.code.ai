@@ -1023,16 +1023,61 @@ function createWindow(): void {
   void win.loadFile(join(here, '..', 'dist', 'index.html'));
 }
 
+/** The packaged smoke's Harbor Lite step: load the bundled weights, ask one
+ *  short question, and log the answer's length, or why there was none. */
+async function smokeHarborLite(): Promise<void> {
+  let text = '';
+  let finish!: (end: { stopReason: string; detail?: string }) => void;
+  const ended = new Promise<{ stopReason: string; detail?: string }>((r) => (finish = r));
+  const guide = new HarborLiteHost(
+    harborLitePath({
+      packaged: app.isPackaged,
+      resourcesPath: process.resourcesPath,
+      appPath: app.getAppPath(),
+    }),
+    (event) => {
+      if (event.kind === 'token') text += event.delta;
+      else finish(event);
+    },
+  );
+  try {
+    const loaded = await guide.load('harbor-mini', 2048);
+    if (!loaded.ok) throw new Error(loaded.detail ?? 'did not load');
+    guide.generate({
+      requestId: 'smoke',
+      system: 'You are a helpful guide. Answer in one short sentence.',
+      messages: [{ role: 'user', content: 'Say hello.' }],
+      maxTokens: 24,
+      temperature: 0.4,
+    });
+    const end = await Promise.race([
+      ended,
+      new Promise<{ stopReason: string; detail?: string }>((r) =>
+        setTimeout(() => r({ stopReason: 'error', detail: 'no answer within 60s' }), 60_000),
+      ),
+    ]);
+    if (end.stopReason !== 'end' || !text.trim()) {
+      throw new Error(end.detail ?? `ended ${end.stopReason} with no words`);
+    }
+    console.log(`[smoke] harbor lite answered (${text.trim().length} characters)`);
+  } catch (err) {
+    console.error(`[smoke] harbor lite failed: ${(err as Error).message}`);
+  } finally {
+    await guide.unload();
+  }
+}
+
 /** Whether the run before this one ended in Quit (lifecycle.ts), handed to
  *  the page as an argument the preload reads. */
 let launchAfterQuit = false;
 const AFTER_QUIT_ARG = '--oscode-after-quit';
 
-// The smoke run ends itself once the page and the engine both reported in.
+// The smoke run ends itself once the page, the engine and Harbor Lite all
+// reported in.
 let smokeSteps = 0;
 function smokeStep(): void {
   smokeSteps++;
-  if (smokeSteps < 2) return;
+  if (smokeSteps < 3) return;
   console.log('[smoke] done');
   setTimeout(() => {
     quitting = true;
@@ -2152,6 +2197,9 @@ if (!app.requestSingleInstanceLock()) {
         console.error(`[smoke] engine failed: ${(err as Error).message}`);
       }
       smokeStep();
+      // Harbor Lite, the bundled guide: the real weights in this package load
+      // and answer, on its own runner so nothing reaches the page.
+      void smokeHarborLite().then(smokeStep);
     }
   });
 }

@@ -6,8 +6,10 @@
 // catches it before a release ships a shell with no engine.
 //
 // The app's main process (electron/main.ts) has the other half: OSC_SMOKE=1
-// makes it load the page, probe window.oscode, boot the engine, log a line per
-// step, print "[smoke] done", and quit itself. This script launches the binary
+// makes it load the page, probe window.oscode, boot the engine, ask the bundled
+// Harbor Lite one question (so the weights and llama.cpp are proven inside the
+// package on each platform), log a line per step, print "[smoke] done", and
+// quit itself. This script launches the binary
 // with that flag, reads the log, and judges it.
 //
 // Usage: node scripts/package-smoke.mjs [path-to-binary]
@@ -87,11 +89,15 @@ child.on('exit', (code, signal) => {
   const engineUp = /\[smoke\] engine booted;/.test(out);
   const engineFailed = /\[smoke\] engine failed:/.test(out);
   const done = /\[smoke\] done/.test(out);
+  const guideUp = /\[smoke\] harbor lite answered/.test(out);
+  const guideFailed = out.match(/\[smoke\] harbor lite failed: (.*)/)?.[1];
 
   const problems = [];
   if (!bridgeUp) problems.push('the preload bridge (window.oscode) was not an object');
   if (engineFailed) problems.push('the engine failed to boot inside the package');
   if (!engineUp) problems.push('the engine never reported booting');
+  if (guideFailed) problems.push(`Harbor Lite did not answer: ${guideFailed}`);
+  else if (!guideUp) problems.push('Harbor Lite never reported answering');
   if (!done) problems.push('the app did not reach "[smoke] done"');
   if (signal === 'SIGKILL') problems.push('the app had to be killed on timeout');
 
@@ -105,7 +111,7 @@ child.on('exit', (code, signal) => {
     console.error(`\npackage-smoke: app exited ${code} after a clean run; treating as a failure.`);
     process.exit(1);
   }
-  console.log('\npackage-smoke: OK. The packaged app booted its engine.');
+  console.log('\npackage-smoke: OK. The packaged app booted its engine, and Harbor Lite answered.');
   process.exit(0);
 });
 
