@@ -80,6 +80,38 @@ async function seesPictures(): Promise<boolean> {
   return info.capabilities?.includes('vision') ?? false;
 }
 
+interface ChatDone {
+  content: string;
+  prompt_eval_count?: number;
+  prompt_eval_duration?: number;
+  eval_count?: number;
+  eval_duration?: number;
+}
+
+/** One streamed /api/chat answer, read to its end: the words, and the last
+ *  line's counts. An error line mid-stream (a runner that died) is a failure
+ *  like an error status. */
+async function chat(
+  body: unknown,
+): Promise<{ ok: true; data: ChatDone } | { ok: false; status: number; text: string }> {
+  const res = await post('/api/chat', body);
+  if (!res.ok) return { ok: false, status: res.status, text: await res.text() };
+  let content = '';
+  let done: Omit<ChatDone, 'content'> = {};
+  for (const line of (await res.text()).split('\n')) {
+    if (!line.trim()) continue;
+    const chunk = JSON.parse(line) as Omit<ChatDone, 'content'> & {
+      error?: string;
+      done?: boolean;
+      message?: { content?: string };
+    };
+    if (chunk.error) return { ok: false, status: 500, text: chunk.error };
+    content += chunk.message?.content ?? '';
+    if (chunk.done) done = chunk;
+  }
+  return { ok: true, data: { ...done, content } };
+}
+
 // Thinking stays off, as Harbor runs with Chain of Thought off. A model with no
 // thinking switch may refuse the field, so it is sent once and then dropped.
 let thinkField = true;
@@ -98,38 +130,30 @@ const complete: HarborComplete = async ({ system, messages, harness }) => {
         repeat_penalty: HARBOR_SAMPLING.repeatPenalty,
       }
     : { num_ctx: HARBOR_CONTEXT_TOKENS, num_predict: HARBOR_EVAL_REPLY_TOKENS };
+  // Streamed, so the answer's headers arrive with its first word: fetch gives
+  // up on headers after 300 s, and a slow box writing a long reply in one
+  // piece takes longer. The last line carries the same counts and timings.
   const body = () => ({
     model,
-    stream: false,
+    stream: true,
     ...(thinkField ? { think: false } : {}),
     options,
     messages: [{ role: 'system', content: system }, ...messages],
   });
-  let res = await post('/api/chat', body());
-  if (res.status === 500) {
-    const text = await res.text();
-    if (!/runner has unexpectedly stopped/i.test(text))
-      throw new Error(`Ollama answered 500: ${text}`);
+  let res = await chat(body());
+  if (!res.ok && /runner has unexpectedly stopped/i.test(res.text)) {
     console.log('  (the model runner stopped; asking once more)');
     await new Promise((r) => setTimeout(r, 10_000));
-    res = await post('/api/chat', body());
+    res = await chat(body());
   }
-  if (!res.ok && thinkField) {
-    const text = await res.text();
-    if (!/think/i.test(text)) throw new Error(`Ollama answered ${res.status}: ${text}`);
+  if (!res.ok && thinkField && /think/i.test(res.text)) {
     thinkField = false;
-    res = await post('/api/chat', body());
+    res = await chat(body());
   }
-  if (!res.ok) throw new Error(`Ollama answered ${res.status}: ${await res.text()}`);
-  const data = (await res.json()) as {
-    message?: { content?: string };
-    prompt_eval_count?: number;
-    prompt_eval_duration?: number;
-    eval_count?: number;
-    eval_duration?: number;
-  };
+  if (!res.ok) throw new Error(`Ollama answered ${res.status}: ${res.text}`);
+  const data = res.data;
   return {
-    text: data.message?.content ?? '',
+    text: data.content,
     promptTokens: data.prompt_eval_count,
     promptMs: data.prompt_eval_duration ? data.prompt_eval_duration / 1e6 : undefined,
     outputTokens: data.eval_count,
