@@ -104,6 +104,10 @@ export interface VaultDirInfo {
   exists: boolean;
   os: string;
   obsidian: 'vault' | 'installed' | 'none';
+  /** The folder is an Obsidian vault (it holds Obsidian's settings folder). */
+  obsidianVault?: boolean;
+  /** It is OpenShore's own folder, ~/OpenShore/Vault. */
+  isDefault?: boolean;
   count?: number;
   capped?: boolean;
 }
@@ -151,7 +155,7 @@ export interface VaultBringResult {
 
 /** A refinement main offered in the result block; never a path. */
 export type VaultRefineChoice =
-  { to: 'enclosing' } | { to: 'child'; name: string } | { to: 'previous' };
+  { to: 'enclosing' } | { to: 'child'; name: string } | { to: 'previous' } | { to: 'default' };
 
 /** The machine in numbers, from the engine's own resource budget (the same
  *  one osc init and doctor use), so a fit verdict never parses prose. `gpu` is
@@ -503,13 +507,13 @@ export interface OscodeBridge {
 
   // Repos.
   pickFolder(): Promise<string | null>;
-  /** Clone into ~/OpenShore/Projects. `token` is the connected platform's token for a
+  /** Clone into ~/OpenShore/Repositories. `token` is the connected platform's token for a
    *  private repository, used for this one clone and never stored. */
   cloneRepo(
     url: string,
     token?: string,
   ): Promise<{ cwd: string; name: string } | { error: string }>;
-  /** Recent session folders, then every clone under ~/OpenShore/Projects, each with its
+  /** Recent session folders, then every clone under ~/OpenShore/Repositories, each with its
    *  origin address when it has one. */
   recentWorkspaces(): Promise<
     Array<{ cwd: string; name: string; lastUsed?: string; remote?: string }>

@@ -622,6 +622,21 @@ describe('picking the vault folder (Vault M1 1.4)', () => {
     expect(await listVaultFolder(notes)).toEqual([]);
   });
 
+  it("says whether the folder is an Obsidian vault and whether it is OpenShore's own, and goes back to its own", () => {
+    expect(chooser.info()).toMatchObject({ isDefault: true, obsidianVault: false });
+    const obsidian = join(home, 'Brain');
+    mkdirSync(join(obsidian, '.obsidian'), { recursive: true });
+    const picked = chooser.pick(obsidian);
+    expect(picked.ok && picked.info).toMatchObject({ isDefault: false, obsidianVault: true });
+    // OpenShore's own folder, named by main, made again if it went missing.
+    rmSync(env.defaultVaultDir, { recursive: true });
+    const own = chooser.refine({ to: 'default' });
+    expect(own.ok && own.info).toMatchObject({ dir: env.defaultVaultDir, isDefault: true });
+    expect(existsSync(env.defaultVaultDir)).toBe(true);
+    // The Obsidian vault is left as it was.
+    expect(existsSync(join(obsidian, '.obsidian'))).toBe(true);
+  });
+
   // ---- Bring N notes from the previous folder (tech review ruling on Bring) -------
   // One argument-free call that copies the folder the vault used before the
   // last pick into the one it uses now, with ifAbsent only: never a

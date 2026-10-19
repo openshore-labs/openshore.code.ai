@@ -9,13 +9,18 @@
 // (settings, keys, tokens, the vault index) stays in the app's own hidden
 // data, never here.
 //
-//   Documents/    (Files: On My iPhone > OpenShore)
-//     Vault/      your notes (This device's vault, lib/gitos/phoneVault.ts)
-//     Chats/      chats as markdown files (Save chats as files)
-//     Models/     downloaded model files (the oscode-llama plugin), left out
-//                 of backups
-//     Exports/    what you export (lib/vaultExport.ts)
-//     README.md   what each folder is
+//   Documents/        (Files: On My iPhone > OpenShore)
+//     Chats/          chats as markdown files (Save chats as files)
+//     Vault/          your notes (This device's vault, lib/gitos/phoneVault.ts)
+//     Local Library/  model files from the Local Library (the oscode-llama
+//                     plugin), left out of backups
+//     Exports/        what you export (lib/vaultExport.ts)
+//     README.md       what each folder is
+//
+// Each folder is named for the room that shows it, as on the computer
+// (founder, 2026-10-19). The first layout called Local Library "Models";
+// launch renames it once (`moveModelsFolder`), and the plugin does the same
+// on its own first look, so no model downloads again.
 //
 // Before M2 the export wrote its copy to Documents/Vault, the name the live
 // vault now takes. So launch first moves that old export aside, once, to
@@ -34,9 +39,9 @@ import { platform, storeGetJson, storeSetJson } from './platform.js';
 /** Each part of the app's folder on the phone, in the order the README lists
  *  them. Each is a folder at the Documents root. */
 export const PHONE_SECTIONS = {
-  vault: 'Vault',
   chats: 'Chats',
-  models: 'Models',
+  vault: 'Vault',
+  library: 'Local Library',
   exports: 'Exports',
 } as const;
 export type PhoneSection = keyof typeof PHONE_SECTIONS;
@@ -49,6 +54,9 @@ export function phoneSectionDir(section: PhoneSection): string {
 /** The README, at the Documents root. */
 export const PHONE_README_PATH = 'README.md';
 
+/** The name the first layout gave Local Library. */
+export const EARLIER_MODELS_DIR = 'Models';
+
 /** Where the pre-M2 export goes, inside Exports. */
 export const EARLIER_EXPORT_NAME = 'Vault (earlier export)';
 
@@ -58,10 +66,11 @@ export const OLD_EXPORT_MARKER_KEY = 'oscode.phoneFolder.oldExportMoved';
 
 // Each line says only what is true in this build.
 const README_LINES: Record<PhoneSection, string> = {
-  vault: 'Your notes, plain markdown, one file each. Other apps can open them from here.',
   chats: 'Your chats, one markdown file each, filed by month. Turn this off in Settings, Chats.',
-  models:
-    'Model files OpenShore downloaded to this device. They are left out of backups, since they can be downloaded again.',
+  vault:
+    'Your notes, plain markdown, one file each. Notes for a project go in Vault/Projects/<project>. Other apps can open them from here.',
+  library:
+    'Model files OpenShore got from the Local Library for this device. They are left out of backups, since they can be downloaded again.',
   exports: 'Anything you export or save out of OpenShore.',
 };
 
@@ -81,7 +90,10 @@ export const PHONE_README = [
 /** Earlier README texts this app wrote, which a newer one may replace. A
  *  README that is none of them is the person's own edit and is left as it
  *  is. */
-export const PHONE_README_EARLIER: readonly string[] = [];
+export const PHONE_README_EARLIER: readonly string[] = [
+  // The first layout (2026-10-16), with Models.
+  '# OpenShore\n\nEverything you save through OpenShore on this device, one folder for each part of the app.\n\n- **Vault**: Your notes, plain markdown, one file each. Other apps can open them from here.\n- **Chats**: Your chats, one markdown file each, filed by month. Turn this off in Settings, Chats.\n- **Models**: Model files OpenShore downloaded to this device. They are left out of backups, since they can be downloaded again.\n- **Exports**: Anything you export or save out of OpenShore.\n\nProjects run on your computer, so they have no folder here. Settings, keys and other app state are kept apart from your files, inside the app, and never here.\n',
+];
 
 /** "Vault (earlier export)", then " 2" to " 99" beside a taken name. */
 function earlierExportName(n: number): string {
@@ -135,6 +147,7 @@ export async function moveEarlierExportAside(fs: PhoneFs): Promise<boolean> {
  */
 export async function ensurePhoneFolder(fs: PhoneFs = capacitorPhoneFs()): Promise<boolean> {
   if (!(await moveEarlierExportAside(fs))) return false;
+  await moveModelsFolder(fs);
   try {
     for (const s of Object.keys(PHONE_SECTIONS) as PhoneSection[]) {
       await fs.mkdir(phoneSectionDir(s));
@@ -149,6 +162,23 @@ export async function ensurePhoneFolder(fs: PhoneFs = capacitorPhoneFs()): Promi
     // out of the way, so the vault folder is still the live vault's.
   }
   return true;
+}
+
+/**
+ * Rename the first layout's Models folder to Local Library, once, when the
+ * new name is free. One rename on one volume, so no model file is copied or
+ * downloaded again. With both there (a rename that failed before), the
+ * plugin moves what is left on its own first look. Never throws.
+ */
+export async function moveModelsFolder(fs: PhoneFs): Promise<void> {
+  try {
+    const old = await fs.stat(EARLIER_MODELS_DIR);
+    if (old?.type !== 'directory') return;
+    if (await fs.stat(PHONE_SECTIONS.library)) return;
+    await fs.rename(EARLIER_MODELS_DIR, PHONE_SECTIONS.library);
+  } catch {
+    // Left where it was; the plugin still finds the files there.
+  }
 }
 
 let prepared: Promise<void> | undefined;

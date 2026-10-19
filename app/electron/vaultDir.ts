@@ -10,7 +10,15 @@
 //
 // Plain Node with the dialog and the config writer injected, so
 // test/deviceFolder.test.ts drives it exactly as main does.
-import { accessSync, constants, existsSync, readdirSync, realpathSync, statSync } from 'node:fs';
+import {
+  accessSync,
+  constants,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  realpathSync,
+  statSync,
+} from 'node:fs';
 import { dirname, join, posix, resolve, sep, win32 } from 'node:path';
 import { readNote, writeNote } from 'os-code/dist/src/core/vault/noteFile.js';
 import { vaultConflictCopyPath } from 'os-code/dist/src/core/vault/conflictName.js';
@@ -82,6 +90,11 @@ export interface VaultDirInfo {
   /** Obsidian opens it ('vault'), is installed but has not opened it
    *  ('installed'), or is not installed ('none'). */
   obsidian: 'vault' | 'installed' | 'none';
+  /** The folder holds Obsidian's settings folder, so it is an Obsidian vault,
+   *  whether or not Obsidian is installed on this computer. */
+  obsidianVault: boolean;
+  /** It is OpenShore's own folder, ~/OpenShore/Vault. */
+  isDefault: boolean;
   /** Notes in the folder, best effort; absent when the walk failed. */
   count?: number;
   /** The count stopped at the walk's limit. */
@@ -130,7 +143,12 @@ const BRING_FORK_TRIES = 20;
 
 /** A refinement the result block offers, and nothing else. */
 export type VaultRefineChoice =
-  { to: 'enclosing' } | { to: 'child'; name: string } | { to: 'previous' };
+  | { to: 'enclosing' }
+  | { to: 'child'; name: string }
+  | { to: 'previous' }
+  // OpenShore's own folder, ~/OpenShore/Vault (2026-10-19, the room's "In your
+  // OpenShore folder"); main names it, never the renderer.
+  | { to: 'default' };
 
 export const VAULT_SURVEY_LIMITS = { notes: 10_000, entries: 50_000, ms: 3_000 };
 /** How many vaults inside a folder are named before "N more". */
@@ -363,16 +381,15 @@ export function vaultDirInfo(
 ): VaultDirInfo {
   const dir = current.dir;
   const exists = isDir(dir);
+  const obsidianVault = exists && isDir(join(dir, '.obsidian'));
   const info: VaultDirInfo = {
     dir,
     display: vaultDisplay(dir, env.home, env.platform),
     exists,
     os: env.platform,
-    obsidian: !obsidianApp
-      ? 'none'
-      : exists && isDir(join(dir, '.obsidian'))
-        ? 'vault'
-        : 'installed',
+    obsidian: !obsidianApp ? 'none' : obsidianVault ? 'vault' : 'installed',
+    obsidianVault,
+    isDefault: !current.warning && samePath(realOr(dir), env.defaultVaultDir, env.platform),
   };
   if (current.warning) info.warning = current.warning;
   if (exists) {
@@ -428,6 +445,11 @@ export class VaultDirChooser {
     if (c.to === 'previous') {
       if (!this.previous) throw new Error('blocked: there is no earlier folder');
       return this.repoint(this.previous);
+    }
+    if (c.to === 'default') {
+      // Made if it is not there yet (a fresh home, or one the person removed).
+      mkdirSync(env.defaultVaultDir, { recursive: true });
+      return this.repoint(realOr(env.defaultVaultDir));
     }
     if (c.to === 'enclosing') {
       const up = enclosingVault(cur, env);
@@ -572,7 +594,7 @@ export function parseRefineChoice(v: unknown): VaultRefineChoice {
     throw new Error('blocked: choice must be an object');
   }
   const c = v as Record<string, unknown>;
-  if (c.to === 'enclosing' || c.to === 'previous') return { to: c.to };
+  if (c.to === 'enclosing' || c.to === 'previous' || c.to === 'default') return { to: c.to };
   if (c.to === 'child') {
     const name = c.name;
     if (

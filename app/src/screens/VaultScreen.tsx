@@ -226,6 +226,21 @@ import { VaultUndoToast, type VaultUndoToastItem } from '../components/vault/Vau
 import { hubReach, subscribeHubReach } from '../lib/gitos/hub.js';
 import { PROJECT_VAULT_PINS_MAX } from '../state/types.js';
 import { dockedNoun } from '../lib/docking.js';
+import { thisDeviceNoun } from '../lib/deviceNoun.js';
+import { MEMORY_FILES } from '../lib/projectMemory.js';
+import { VaultWaysCard } from '../components/vault/VaultWaysCard.js';
+import {
+  VAULT_PROJECT_FOLDER_OPEN,
+  VAULT_PROJECTS_SUB,
+  VAULT_PROJECTS_TITLE,
+  projectVaultFolder,
+  vaultProjectFolderLine,
+  vaultProjectRowSub,
+  vaultWaySummary,
+  vaultWayToast,
+  vaultWays,
+  type VaultWayAction,
+} from '../lib/vaultWays.js';
 
 const VAULT_RESOURCE_ID = 'vault.personal';
 
@@ -300,6 +315,9 @@ export function VaultScreen() {
     hubRole,
     showToast,
     openProjectMemory,
+    vaultOpenAt,
+    takeVaultOpenAt,
+    setVaultSync,
     repoSyncConflicts,
     vaultConflict,
     vaultRecheck,
@@ -686,6 +704,45 @@ export function VaultScreen() {
   const personalKey = copyProviderOf(currentProviderId) ?? 'local';
   const personalCopy = vaultCopy(on, personalKey, copyOpts);
   const labelOf = (id: StorageProviderId) => PROVIDER_ROSTER.find((r) => r.id === id)?.label ?? id;
+
+  // How you keep notes (2026-10-19): the ways this device offers and where the
+  // notes are now. Open on an empty vault; one line with Change once it has
+  // notes, until the person opens it.
+  const [waysOpen, setWaysOpen] = useState(false);
+  const waysState = {
+    platform: on,
+    provider: currentProviderId,
+    obsidianVault: Boolean(vaultFolder?.obsidianVault),
+    defaultFolder: Boolean(vaultFolder?.isDefault),
+    docked: Boolean(settings.daemon),
+    dockedServer: settings.daemon?.kind === 'server',
+    sync: settings.vaultSync,
+    deviceNoun: on === 'web' ? 'this browser' : thisDeviceNoun(),
+  };
+  const ways = vaultWays(waysState);
+  const waysSummary = vaultWaySummary(waysState, labelOf(currentProviderId));
+
+  // A folder the store asked the room to open (a project's own folder, from
+  // its notes view): made once the vault has listed, if it is not there and
+  // this storage makes folders, then shown.
+  useEffect(() => {
+    if (!vaultOpenAt || team || !vaultListed) return;
+    const at = takeVaultOpenAt();
+    if (!at) return;
+    const known = (vaultFolders ?? []).some((f) => f.toLowerCase() === at.toLowerCase());
+    void (async () => {
+      if (!known && caps.folders) await vaultCreateFolder(at).catch(() => undefined);
+      setFolder(at);
+    })();
+  }, [
+    vaultOpenAt,
+    team,
+    vaultListed,
+    vaultFolders,
+    caps.folders,
+    takeVaultOpenAt,
+    vaultCreateFolder,
+  ]);
 
   // The vault's settings (Vault M7, tech review L3 to L6): read fresh when the room
   // shows and when the vault on screen changes. A team vault on main reads
@@ -1081,14 +1138,21 @@ export function VaultScreen() {
   const flushSave = autosave.flush;
   // Another room asked for the storage sheet (Settings' "Where it lives"):
   // it lives in the tree, so an open note is saved and closed first.
+  // Settings' Vault folder asks for a folder change the same way: the
+  // system picker, or back to OpenShore's own folder, each ending in the
+  // storage sheet with what it found (and Bring, when the folder before held
+  // notes).
   useEffect(() => {
-    if (vaultSheetRequest !== 'storage') return;
+    if (!vaultSheetRequest) return;
+    const request = vaultSheetRequest;
     vaultRequestSheet(undefined);
     if (vaultNote) {
       flushSave();
       vaultCloseNote();
     }
-    setStorageOpen(true);
+    if (request === 'pick-folder') void runPick('card');
+    else if (request === 'default-folder') void actOnWay('use-openshore-folder');
+    else setStorageOpen(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vaultSheetRequest]);
   // Vault settings (Vault M7, UX review Y4): one host for Options and the storage
@@ -1945,6 +2009,46 @@ export function VaultScreen() {
     }
     showPick(result, 'sheet');
   };
+  // One row of How you keep notes, acted on.
+  const actOnWay = async (action: VaultWayAction) => {
+    hapticCommit();
+    switch (action) {
+      case 'use-openshore-folder': {
+        if (currentProviderId !== 'files') {
+          await moveVault('files');
+          return;
+        }
+        // Back to OpenShore's own folder from a picked one: the sheet then
+        // shows what it found and offers to bring the notes along.
+        const result = await vaultRefineFolder({ to: 'default' }).catch(() => undefined);
+        if (result?.ok) {
+          setPick(result);
+          setPickAnswered(true);
+          setPickLine(undefined);
+          setStorageOpen(true);
+          return;
+        }
+        showPick(result, 'card');
+        return;
+      }
+      case 'choose-folder':
+        await runPick('card');
+        return;
+      case 'connect-computer':
+        setView('pair');
+        return;
+      case 'keep-with-computer':
+        if (currentProviderId !== 'local' && currentProviderId !== 'hub') await moveVault('local');
+        if (await setVaultSync('all')) showToast(vaultWayToast('computer', waysState));
+        return;
+      case 'keep-on-device':
+        if (currentProviderId !== 'local' && currentProviderId !== 'hub') await moveVault('local');
+        if (await setVaultSync('device')) showToast(vaultWayToast('device', waysState));
+        return;
+      case 'none':
+        return;
+    }
+  };
   const pickCopy = pick
     ? vaultPickResultCopy({
         display: pick.info.display,
@@ -2581,7 +2685,7 @@ export function VaultScreen() {
 
   // ---- tree view ----------------------------------------------------------
   // The one-time desktop move card (1.3): at the root only, after Not saved
-  // and before Coding projects. While it shows, the lead leaves out its own
+  // and before Projects. While it shows, the lead leaves out its own
   // pointer to This folder, since the card says it better.
   const offerShown = !team && vaultFolderOfferShown();
   const offer = vaultFolderOffer(vaultFiles.length, vaultFolder?.count, {
@@ -2594,6 +2698,12 @@ export function VaultScreen() {
     setStorageOpen(false);
     closePick();
   };
+  // The project whose own vault folder is on screen (Projects/<project>).
+  const folderProject = folder
+    ? settings.projects?.find(
+        (p) => projectVaultFolder(p.name).toLowerCase() === folder.toLowerCase(),
+      )
+    : undefined;
   // The terms the list below walks before it shows the empty ramp, so the
   // lead knows when the ramp is saying it.
   const rampShown =
@@ -2776,6 +2886,33 @@ export function VaultScreen() {
           onChoose={() => void runPick('card')}
         />
 
+        {!team && !folder && !hubMember ? (
+          <VaultWaysCard
+            ways={ways}
+            summary={waysSummary}
+            folded={vaultFiles.length > 0 && !waysOpen}
+            busy={moving || picking || Boolean(vaultMoving)}
+            onUnfold={() => setWaysOpen(true)}
+            onAct={(action) => void actOnWay(action)}
+          />
+        ) : null}
+
+        {/* In a project's own folder, the way to the agent's notes for it. */}
+        {!team && folderProject ? (
+          <div className="card" style={{ marginBottom: 14 }}>
+            <p className="hint" style={{ marginTop: 0 }}>
+              {vaultProjectFolderLine(folderProject.name)}
+            </p>
+            <button
+              type="button"
+              className="btn ghost sm press-fb"
+              onClick={() => openProjectMemory(folderProject.id)}
+            >
+              {VAULT_PROJECT_FOLDER_OPEN}
+            </button>
+          </div>
+        ) : null}
+
         {!team && !folder ? (
           <VaultAgentRecent
             load={vaultAgentRecent}
@@ -2787,11 +2924,10 @@ export function VaultScreen() {
         {!team && !folder && (settings.projects?.length ?? 0) > 0 ? (
           <div className="card" style={{ marginBottom: 14 }}>
             <div className="card-row">
-              <h3 style={{ marginBottom: 0 }}>Coding projects</h3>
+              <h3 style={{ marginBottom: 0 }}>{VAULT_PROJECTS_TITLE}</h3>
             </div>
             <p className="hint" style={{ marginTop: 0 }}>
-              What it has learned: the notes the agent keeps in each project's repository. Read-only
-              here.
+              {VAULT_PROJECTS_SUB}
             </p>
             {repoSyncConflicts && repoSyncConflicts.length > 0 ? (
               <p className="hint" style={{ marginTop: 0, color: 'var(--warn)' }}>
@@ -2804,11 +2940,19 @@ export function VaultScreen() {
               {settings.projects!.map((p) => (
                 <button
                   key={p.id}
-                  className="conv-item vault-row press-fb press-fb--row"
+                  className="conv-item vault-row vault-project-row press-fb press-fb--row"
                   onClick={() => openProjectMemory(p.id)}
                 >
                   <span className="vault-row-chevron" aria-hidden="true" />
-                  {p.name}
+                  <span className="grow">
+                    {p.name}
+                    <span className="sub vault-project-notes">
+                      {vaultProjectRowSub(
+                        MEMORY_FILES.map((f) => f.title),
+                        p.repoIds.length > 0,
+                      )}
+                    </span>
+                  </span>
                 </button>
               ))}
             </div>

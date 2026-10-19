@@ -753,7 +753,7 @@ describe('routine scheduler', () => {
     }
   });
 
-  it('"Allow this folder" remembers a folder outside ~/OpenShore/Projects and then accepts it', () => {
+  it('"Allow this folder" remembers a folder outside ~/OpenShore/Repositories and then accepts it', () => {
     const clock = { now: at(0, 12, 0) };
     const { scheduler } = makeScheduler(clock);
     const outside = mkdtempSync(join(tmpdir(), 'osc-outside2-'));

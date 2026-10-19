@@ -12,6 +12,11 @@ import { isDesktop } from '../lib/platform.js';
 import { bridge } from '../lib/electronBridge.js';
 import { repoToken } from '../lib/gitos/repoOAuth.js';
 import { noteTitle } from '../lib/vault.js';
+import {
+  VAULT_PROJECT_YOUR_NOTES,
+  projectVaultFolder,
+  vaultProjectYourNotesSub,
+} from '../lib/vaultWays.js';
 import { FOLLOWS_GROUP_ID, useSettingsJump } from '../lib/profile.js';
 import {
   readProjectSecrets,
@@ -50,7 +55,7 @@ async function readerFor(source: RepoSource): Promise<RepoReader | undefined> {
 }
 
 export function ProjectMemoryScreen() {
-  const { viewProjectId, settings, setView } = useApp();
+  const { viewProjectId, settings, setView, openProjectVaultFolder } = useApp();
   const project = settings.projects?.find((p) => p.id === viewProjectId);
   const secretsOn = Boolean(settings.storeSecrets);
 
@@ -264,6 +269,28 @@ export function ProjectMemoryScreen() {
             )}
           </div>
         )}
+
+        {/* The project's own folder in the vault (2026-10-19): the person's notes
+            on it, beside the agent's. Made on first open. */}
+        {project ? (
+          <div className="card" style={{ marginTop: 18 }}>
+            <div className="card-row">
+              <h3 style={{ marginBottom: 0 }}>{VAULT_PROJECT_YOUR_NOTES}</h3>
+            </div>
+            <p className="hint" style={{ marginTop: 0 }}>
+              {vaultProjectYourNotesSub(project.name)}
+            </p>
+            <div className="vault-tree">
+              <button
+                className="conv-item vault-row press-fb press-fb--row"
+                onClick={() => openProjectVaultFolder(project.id)}
+              >
+                <span className="vault-row-chevron" aria-hidden="true" />
+                {projectVaultFolder(project.name)}
+              </button>
+            </div>
+          </div>
+        ) : null}
 
         {/* Tokens and Secrets: device-local and private, separate from the repo
             notes. Grayed out until the person turns it on in Settings. */}

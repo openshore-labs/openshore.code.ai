@@ -3288,6 +3288,46 @@ describe('sync on all devices', () => {
     await vi.waitFor(() => expect(files.get('Later.md')).toBe('written on the computer'));
   });
 
+  it('Only on this device levels once, then stops syncing notes, and docking moves nothing', async () => {
+    useApp.setState({
+      settings: { ...useApp.getState().settings, gitosResources: personalOn('local') },
+    });
+    await useApp.getState().saveHub(box, { role: 'admin' });
+    hub.files.set('From there.md', 'on the computer');
+    expect(await useApp.getState().setVaultSync('device')).toBe(true);
+    // The last pass brought this device level before it stopped.
+    expect(files.get('From there.md')).toBe('on the computer');
+    expect(useApp.getState().settings.vaultSync).toBe('device');
+    files.set('Mine only.md', 'stays here');
+    hub.files.set('Later.md', 'written on the computer');
+    await useApp.getState().vaultSyncNow();
+    expect(hub.files.has('Mine only.md')).toBe(false);
+    expect(files.has('Later.md')).toBe(false);
+    expect(providerNow()?.providerId).toBe('local');
+    // Docking again leaves the notes where they are.
+    expect(await useApp.getState().vaultAfterPairing()).toBe('stay');
+    expect(providerNow()?.providerId).toBe('local');
+    // From here, Keep on one computer syncs first, so the computer has it all.
+    expect(await useApp.getState().setVaultSync('one')).toBe(true);
+    expect(hub.files.get('Mine only.md')).toBe('stays here');
+    expect(providerNow()?.providerId).toBe('hub');
+  });
+
+  it('Only on this device brings a vault kept on the computer back here', async () => {
+    useApp.setState({
+      settings: {
+        ...useApp.getState().settings,
+        vaultSync: 'one',
+        gitosResources: personalOn('hub'),
+        vaultBeforeHub: { providerId: 'local', hub: box.baseUrl },
+      },
+    });
+    await useApp.getState().saveHub(box, { role: 'admin' });
+    expect(await useApp.getState().setVaultSync('device')).toBe(true);
+    expect(providerNow()?.providerId).toBe('local');
+    expect(useApp.getState().settings.vaultBeforeHub).toBeUndefined();
+  });
+
   it('does not sync on a desktop, or with no computer docked', async () => {
     files.set('Alone.md', 'x');
     await useApp.getState().vaultSyncNow();

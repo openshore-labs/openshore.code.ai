@@ -202,7 +202,7 @@ export const PHONE_FOLDER_WAITS_LINE =
   'Folders can be made here once OpenShore has set up its folder in Files. Open OpenShore again to try.';
 
 const OBSIDIAN: Partial<Record<VaultCopyProvider, string>> = {
-  files: 'Obsidian opens this folder as a vault.',
+  files: 'Obsidian can open this same folder as a vault, with nothing to connect.',
 };
 
 /** The lines for one platform and one storage, on this device. */
@@ -325,6 +325,9 @@ export const VAULT_SYNC_COPY = {
   one: 'Keep on one computer',
   oneSub:
     'Your notes stay on your computer, and a docked device reads and writes them there while your computer is on. Chats and projects stay on the device they were made on.',
+  // Only on this device (2026-10-19), chosen in the Vault's How you keep notes.
+  deviceSub:
+    'Your notes stay on this device only, as chosen in How you keep notes. Chats and projects still catch up through your computer. Turn this on to sync your notes again.',
 } as const;
 /** Keep on one computer, asked while the computer does not answer. */
 export const VAULT_SYNC_SWITCH_AWAY =
@@ -506,7 +509,9 @@ export function vaultGuideText(): string {
   const desk = vaultCopy('electron', 'files');
   const icloud = vaultCopy('ios', 'icloud');
   return [
-    'Plain markdown notes with [[wikilinks]] and linked mentions. Where it lives picks the storage for your own vault.',
+    'Plain markdown notes with [[wikilinks]] and linked mentions. How you keep notes, the first card in the Vault, picks where your own vault lives: on a computer, in your OpenShore folder (OpenShore/Vault) or your Obsidian vault; on a phone or iPad, with your computer (recommended), your Obsidian vault through your computer, or only on that device (not recommended). Where it lives shows every storage.',
+    'Obsidian is not a connected account: an Obsidian vault is a folder of plain .md files, so choosing that folder on your computer lets OpenShore and Obsidian work on the same files. There is no Obsidian key to enter, and every docked device uses the folder chosen on the computer.',
+    'Projects in the Vault lists each project with the notes the agent keeps in its repository (Current State, Progress, Decisions, Action Items, Skills), and each project has its own folder of your notes, Projects/<project>, in the vault. Routines leave their run notes in Agents.',
     `This device, on the iPhone and the iPad: ${vaultCopy('ios', 'local').storage} On a computer or in a browser: ${vaultCopy('web', 'local').storage}`,
     `This folder, in OpenShore on your computer: ${desk.storage} ${desk.obsidian} ${desk.agent} ${desk.routines}`,
     `iCloud Drive, on the iPhone: ${icloud.storage}`,
@@ -2640,6 +2645,8 @@ export function vaultStarterConventions(settingsLanded: boolean): string {
     '',
     'New notes start in Inbox. Move them into a folder when they find a home.',
     '',
+    'Each project has a folder in Projects. Routines leave their run notes in Agents.',
+    '',
     "Today's note uses Templates/Daily. Edit that note to change what every new day starts with.",
     '',
     'Link notes with [[two square brackets]].',
@@ -2745,6 +2752,12 @@ export const VAULT_STARTER_ROWS: ReadonlyArray<{
 }> = [
   { glyph: 'note', name: 'Welcome to your Vault', line: 'A note on how links and folders work.' },
   { glyph: 'folder', name: 'Inbox', line: 'A folder where new notes go.' },
+  {
+    glyph: 'folder',
+    name: 'Projects',
+    line: 'A folder for each project, for the notes you keep on it.',
+  },
+  { glyph: 'folder', name: 'Agents', line: 'Where your routines leave a note after each run.' },
   { glyph: 'template', name: 'Templates/Daily', line: "A template for today's note." },
   {
     glyph: 'note',

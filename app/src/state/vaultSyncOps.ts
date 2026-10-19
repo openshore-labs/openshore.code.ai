@@ -13,8 +13,11 @@ import {
   type SyncSide,
 } from '../lib/gitos/sync.js';
 
-/** Where the vault's files live, the Settings choice. Undefined is 'all'. */
-export type VaultSyncMode = 'all' | 'one';
+/** Where the vault's files live, the Settings choice. Undefined is 'all'.
+ *  'device' (2026-10-19, the Vault's "Only on this phone") keeps a phone's
+ *  notes on that phone alone, docked or not; its chats and projects still
+ *  sync, as under 'all'. */
+export type VaultSyncMode = 'all' | 'one' | 'device';
 
 export function vaultSyncMode(setting: VaultSyncMode | undefined): VaultSyncMode {
   return setting ?? 'all';

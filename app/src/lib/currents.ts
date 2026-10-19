@@ -405,7 +405,7 @@ export function contributionFor(
           line: 'On your paired computer. A coding chat can hand it a task you approve.',
         },
         vault: {
-          none: 'A CLI keeps its memory in the repository, which the Vault already shows under Coding projects.',
+          none: 'A CLI keeps its memory in the repository, which the Vault already shows under Projects.',
         },
         tools: { names: ['cliAgent'] },
       };

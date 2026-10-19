@@ -91,7 +91,15 @@ import { GREETING_STYLES, greetingStyleOf } from '../lib/greetingDecks.js';
 import { chatFilesOn, chatFilesPrivacyLine, chatFilesWhere } from '../lib/chatFiles.js';
 import { ChatFilesRow } from '../components/ChatFilesRow.js';
 import { PhoneBackupRow } from '../components/PhoneBackupRow.js';
-import { thisDeviceNoun } from '../lib/deviceNoun.js';
+import { filesAppPath, thisDeviceNoun } from '../lib/deviceNoun.js';
+import {
+  VAULT_FOLDER_DEFAULT_ROW,
+  VAULT_FOLDER_ROW,
+  vaultFolderDefaultSub,
+  vaultFolderDeviceSub,
+  vaultFolderRowSub,
+  vaultFolderValue,
+} from '../lib/vaultWays.js';
 
 const SEARCH_BACKEND_LABEL: Record<SearchBackend, string> = {
   duckduckgo: 'DuckDuckGo',
@@ -326,6 +334,18 @@ export function SettingsScreen() {
   const exportPersonalVault = useApp((s) => s.exportPersonalVault);
   const setVaultSync = useApp((s) => s.setVaultSync);
   const vaultSyncOn = (settings.vaultSync ?? 'all') === 'all';
+  // Vault folder (founder, 2026-10-19): where the computer's vault lives, the
+  // organized OpenShore/Vault by default. Read when Settings opens; a change
+  // runs in the Vault room, which shows what the new folder holds.
+  const vaultFolder = useApp((s) => s.vaultFolder);
+  const vaultLoadFolder = useApp((s) => s.vaultLoadFolder);
+  useEffect(() => {
+    if (isDesktop()) void vaultLoadFolder().catch(() => undefined);
+  }, [vaultLoadFolder]);
+  const changeVaultFolder = (request: 'pick-folder' | 'default-folder') => {
+    vaultRequestSheet(request);
+    setView('vault');
+  };
   const vaultRoomShut = useApp((s) => s.needsAccountNow());
   const reposRoomShut = vaultRoomShut;
   const connectedRepoPlatforms = useApp((s) => s.connectedRepoPlatforms);
@@ -1322,7 +1342,13 @@ export function SettingsScreen() {
                   {!isDesktop() ? (
                     <SettingsRow
                       label={VAULT_SYNC_COPY.all}
-                      sub={vaultSyncOn ? VAULT_SYNC_COPY.allSub : VAULT_SYNC_COPY.oneSub}
+                      sub={
+                        vaultSyncOn
+                          ? VAULT_SYNC_COPY.allSub
+                          : settings.vaultSync === 'device'
+                            ? VAULT_SYNC_COPY.deviceSub
+                            : VAULT_SYNC_COPY.oneSub
+                      }
                       trailing={
                         <Switch
                           checked={vaultSyncOn}
@@ -1330,6 +1356,38 @@ export function SettingsScreen() {
                           onChange={(next) => void setVaultSync(next ? 'all' : 'one')}
                         />
                       }
+                    />
+                  ) : null}
+                  {/* Vault folder (founder, 2026-10-19): the organized folder by
+                      default; another, such as an Obsidian vault, on a tap.
+                      A phone says the computer chooses it. */}
+                  {isDesktop() && vaultProviderId === 'files' && vaultFolder ? (
+                    <>
+                      <SettingsRow
+                        label={VAULT_FOLDER_ROW}
+                        sub={vaultFolderRowSub(vaultFolder)}
+                        value={vaultFolderValue(vaultFolder)}
+                        onClick={() => changeVaultFolder('pick-folder')}
+                      />
+                      {vaultFolder.isDefault === false ? (
+                        <SettingsRow
+                          label={VAULT_FOLDER_DEFAULT_ROW}
+                          sub={vaultFolderDefaultSub(vaultFolder)}
+                          onClick={() => changeVaultFolder('default-folder')}
+                        />
+                      ) : null}
+                    </>
+                  ) : !isDesktop() && platform() === 'ios' ? (
+                    <SettingsRow
+                      label={VAULT_FOLDER_ROW}
+                      sub={vaultFolderDeviceSub(
+                        {
+                          docked: Boolean(settings.daemon),
+                          sync: settings.vaultSync,
+                          deviceNoun: thisDeviceNoun(),
+                        },
+                        filesAppPath('Vault'),
+                      )}
                     />
                   ) : null}
                   <SettingsRow

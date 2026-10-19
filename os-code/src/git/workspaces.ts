@@ -7,7 +7,7 @@
 // alone), and nothing said which repository a folder holds, so the app could
 // not tell that a GitHub repository was already on this computer. Each row now
 // carries its origin address (credentials stripped), and every clone under
-// ~/OpenShore/Projects is listed after the recent ones.
+// ~/OpenShore/Repositories is listed after the recent ones.
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { isAdminProvisionedWorkspace } from '../core/security/workspaces.js';
@@ -24,7 +24,7 @@ export interface WorkspaceRow {
 
 /** The folder the app clones into. */
 export function managedParent(): string {
-  return sectionDir('projects');
+  return sectionDir('repositories');
 }
 
 /** An address with any user:password@ removed, so a token someone embedded in
@@ -94,7 +94,7 @@ function isDirectory(p: string): boolean {
 
 /**
  * The workspaces to list: the folders recent sessions ran in (newest first, up
- * to 12, only ones still on disk), then every git clone under ~/OpenShore/Projects that is
+ * to 12, only ones still on disk), then every git clone under ~/OpenShore/Repositories that is
  * really inside it (a symlink pointing out does not count). Only clones: the
  * Vault and the desktop's scratch folder live there too and are not
  * repositories. Each row carries its origin address when it has one.
@@ -147,7 +147,7 @@ export function cloneFolderName(url: string): string | undefined {
 const inFlight = new Map<string, Promise<void>>();
 
 /**
- * Clone `url` into ~/OpenShore/Projects/<name> and return the folder, or return the folder
+ * Clone `url` into ~/OpenShore/Repositories/<name> and return the folder, or return the folder
  * already there when it holds the same repository. A folder of that name that
  * holds a DIFFERENT repository is refused rather than silently reused.
  */
@@ -168,7 +168,7 @@ export async function cloneIntoManaged(
     const origin = originUrl(target);
     if (origin && normalizeRemote(origin) !== normalizeRemote(url)) {
       throw new Error(
-        `A different repository already uses the folder OpenShore/Projects/${name} on this computer. Rename or move that folder, then try again.`,
+        `A different repository already uses the folder OpenShore/Repositories/${name} on this computer. Rename or move that folder, then try again.`,
       );
     }
     return target;

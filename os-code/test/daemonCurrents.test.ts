@@ -65,7 +65,7 @@ beforeEach(async () => {
     join(home, 'config.json'),
     JSON.stringify({ stack: { orchestrator: { provider: 'ollama', model: 'qwen' } } }),
   );
-  mkdirSync(join(home, 'OpenShore', 'Projects', 'repo'), { recursive: true });
+  mkdirSync(join(home, 'OpenShore', 'Repositories', 'repo'), { recursive: true });
   _resetRoutineScheduler();
   daemon = await startOnFreePort();
   base = `http://127.0.0.1:${daemon.port}`;
@@ -133,7 +133,7 @@ describe('daemon currents routes', () => {
       method: 'POST',
       headers: auth(adminToken),
       body: JSON.stringify({
-        cwd: join(home, 'OpenShore', 'Projects', 'repo'),
+        cwd: join(home, 'OpenShore', 'Repositories', 'repo'),
         currents: { hermes: { baseUrl: 'http://box:8642/v1/' } },
       }),
     });
@@ -143,7 +143,7 @@ describe('daemon currents routes', () => {
       method: 'POST',
       headers: auth(adminToken),
       body: JSON.stringify({
-        cwd: join(home, 'OpenShore', 'Projects', 'repo'),
+        cwd: join(home, 'OpenShore', 'Repositories', 'repo'),
         currents: { hermes: { baseUrl: 'file:///etc' }, cli: { command: 'rm' } },
       }),
     });

@@ -1,5 +1,5 @@
 // Which folders on this machine an unattended or remote actor may work in.
-// Admin-provisioned workspaces are the repos cloned under ~/OpenShore/Projects (by the
+// Admin-provisioned workspaces are the repos cloned under ~/OpenShore/Repositories (by the
 // daemon's clone route or the desktop app); the outbox roots are the explicit
 // extra repos an admin listed in daemon config. Both predicates resolve real
 // paths on both sides, so a symlink planted inside a managed root that points
@@ -30,12 +30,12 @@ export function within(target: string, root: string): boolean {
 }
 
 export function managedRoot(): string {
-  return realOrResolve(sectionDir('projects'));
+  return realOrResolve(sectionDir('repositories'));
 }
 
 /**
  * Admin-provisioned workspaces are the repos an admin cloned onto the home
- * machine (under ~/OpenShore/Projects). A member may only open sessions inside one of
+ * machine (under ~/OpenShore/Repositories). A member may only open sessions inside one of
  * these: without this a member token could point a session at any path on
  * disk as its jail root and drive it (D1). Admins (and the legacy shared
  * token, which resolves as admin) are unrestricted for attended sessions.
@@ -70,7 +70,7 @@ export function overlapsVault(cwd: string, vaultDir?: string): boolean {
 /**
  * The outbox apply/verify endpoints, and every unattended routine, take a repo
  * path. Both are restricted to the admin-provisioned workspaces plus any
- * explicit daemon.outboxAllowedRoots (a home repo outside ~/OpenShore/Projects). Enforced
+ * explicit daemon.outboxAllowedRoots (a home repo outside ~/OpenShore/Repositories). Enforced
  * for every caller, admins included: a bot that runs while the person sleeps
  * must never be pointed at an arbitrary folder.
  */
