@@ -444,14 +444,17 @@ export function harborEvalSystem(harness: boolean, sees: boolean): string {
 }
 
 /** A case's request, with or without the harness. With it, the pictures ride
- *  the turn the way the phone sends them (deviceMessages). */
+ *  the turn the way the phone sends them (deviceMessages), and the prompt
+ *  carries the picture line whenever the model reads pictures, on a turn in
+ *  words too, the way the phone's does while the vision file is on it. */
 export function harborEvalRequest(
   c: HarborEvalCase,
   harness: boolean,
   picture: (name: string) => string,
+  sees: boolean,
 ): HarborRequest {
   const images = (c.pictures ?? []).map(picture);
-  const system = harborEvalSystem(harness, images.length > 0);
+  const system = harborEvalSystem(harness, sees);
   const turn = images.length
     ? { role: 'user' as const, content: c.message, images }
     : { role: 'user' as const, content: c.message };
@@ -463,6 +466,9 @@ export function harborEvalRequest(
     harness,
   };
 }
+
+/** The miss a bare half carries when only the harness half ran. */
+export const NOT_RUN = 'not run';
 
 export interface HarborRun {
   id: string;
@@ -481,13 +487,19 @@ export interface HarborEvalResult {
 
 /** Answer every case twice, with the harness and without, and score both.
  *  `seesPictures` false skips the picture cases (a text-only model), so a
- *  text-only baseline is compared on what it can do. */
+ *  text-only baseline is compared on what it can do. `prior` holds runs an
+ *  earlier, interrupted pass already scored: those cases are kept, not asked
+ *  again. */
 export async function runHarborEval(opts: {
   complete: HarborComplete;
   picture: (name: string) => string;
   runCode: RunCode;
   seesPictures: boolean;
   cases?: readonly HarborEvalCase[];
+  prior?: readonly HarborRun[];
+  /** false: only the harness half runs (a quicker pass while a lever is
+   *  tried); the bare half reads as not run. */
+  without?: boolean;
   onRun?: (run: HarborRun) => void;
 }): Promise<HarborEvalResult> {
   const cases = (opts.cases ?? HARBOR_EVAL_CASES).filter(
@@ -495,8 +507,18 @@ export async function runHarborEval(opts: {
   );
   const runs: HarborRun[] = [];
   for (const c of cases) {
-    const withReply = await opts.complete(harborEvalRequest(c, true, opts.picture));
-    const withoutReply = await opts.complete(harborEvalRequest(c, false, opts.picture));
+    const kept = opts.prior?.find((r) => r.id === c.id);
+    if (kept) {
+      runs.push(kept);
+      continue;
+    }
+    const withReply = await opts.complete(
+      harborEvalRequest(c, true, opts.picture, opts.seesPictures),
+    );
+    const bare = opts.without ?? true;
+    const withoutReply = bare
+      ? await opts.complete(harborEvalRequest(c, false, opts.picture, opts.seesPictures))
+      : { text: '' };
     const run: HarborRun = {
       id: c.id,
       section: c.section,
@@ -504,10 +526,12 @@ export async function runHarborEval(opts: {
         ...(await scoreHarborAnswer(c, withReply.text, opts.runCode)),
         reply: withReply,
       },
-      without: {
-        ...(await scoreHarborAnswer(c, withoutReply.text, opts.runCode)),
-        reply: withoutReply,
-      },
+      without: bare
+        ? {
+            ...(await scoreHarborAnswer(c, withoutReply.text, opts.runCode)),
+            reply: withoutReply,
+          }
+        : { score: 0, misses: [NOT_RUN], reply: withoutReply },
     };
     runs.push(run);
     opts.onRun?.(run);
@@ -538,9 +562,14 @@ export async function runHarborEval(opts: {
 /** The result as one markdown table, ready for DECISIONS and PROGRESS. */
 export function harborEvalTable(model: string, result: HarborEvalResult, seconds: number): string {
   const pct = (n: number) => `${Math.round(n * 100)}%`;
+  // A section whose bare half did not run says so, never a made-up 0%.
+  const bare = (s?: HarborSection) =>
+    result.runs.some((r) => (!s || r.section === s) && r.without.misses[0] === NOT_RUN)
+      ? NOT_RUN
+      : pct(s ? result.sections[s].without : result.without);
   const rows = HARBOR_SECTIONS.filter((s) => result.sections[s].cases > 0).map(
     (s) =>
-      `| ${s} | ${result.sections[s].cases} | ${pct(result.sections[s].withHarness)} | ${pct(result.sections[s].without)} |`,
+      `| ${s} | ${result.sections[s].cases} | ${pct(result.sections[s].withHarness)} | ${bare(s)} |`,
   );
   const replies = result.runs.map((r) => r.withHarness.reply);
   const speed = replies.filter((r) => r.outputTokens && r.outputMs);
@@ -557,7 +586,7 @@ export function harborEvalTable(model: string, result: HarborEvalResult, seconds
     '| Section | Cases | With the harness | Without |',
     '| --- | --- | --- | --- |',
     ...rows,
-    `| all | ${result.runs.length} | ${pct(result.withHarness)} | ${pct(result.without)} |`,
+    `| all | ${result.runs.length} | ${pct(result.withHarness)} | ${bare()} |`,
     '',
     tokensPerSecond ? `Reply speed with the harness: ${tokensPerSecond.toFixed(1)} tokens/s.` : '',
     pictureRead.length

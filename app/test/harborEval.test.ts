@@ -19,10 +19,12 @@ import {
   shownText,
   type HarborEvalCase,
 } from '../src/lib/harborEval.js';
+import { NO_SEARCH_NOTE } from 'os-code/protocol';
 import {
   HARBOR_CONTEXT_TOKENS,
   HARBOR_IMAGE_TOKENS,
   HARBOR_PICTURE_NOTE,
+  buildHarborSystemPrompt,
 } from '../src/lib/harbor.js';
 import { estimateTokens } from '../src/drivers/deviceModel.js';
 import { runCodeInVm } from '../scripts/harborEvalCode.js';
@@ -66,7 +68,7 @@ describe('the cases', () => {
 
   it("fit Harbor's window with the pictures, and tell Harbor how to read them", () => {
     for (const c of HARBOR_EVAL_CASES.filter((x) => x.pictures?.length)) {
-      const request = harborEvalRequest(c, true, () => 'AAAA');
+      const request = harborEvalRequest(c, true, () => 'AAAA', true);
       expect(request.messages.at(-1)!.images, c.id).toHaveLength(c.pictures!.length);
       expect(request.system).toContain(HARBOR_PICTURE_NOTE);
       const used =
@@ -76,9 +78,14 @@ describe('the cases', () => {
         HARBOR_EVAL_REPLY_TOKENS;
       expect(used, c.id).toBeLessThanOrEqual(HARBOR_CONTEXT_TOKENS);
     }
-    const words = harborEvalRequest(byId('capital'), true, () => 'AAAA');
-    expect(words.system).not.toContain(HARBOR_PICTURE_NOTE);
-    const bare = harborEvalRequest(byId('bar-chart'), false, () => 'AAAA');
+    // A turn in words carries the picture line while the model reads pictures,
+    // as the phone's prompt does with the vision file on it, and not otherwise.
+    const words = harborEvalRequest(byId('capital'), true, () => 'AAAA', true);
+    expect(words.system).toBe(buildHarborSystemPrompt(false, NO_SEARCH_NOTE, true));
+    expect(words.system).toContain(HARBOR_PICTURE_NOTE);
+    const blind = harborEvalRequest(byId('capital'), true, () => 'AAAA', false);
+    expect(blind.system).not.toContain(HARBOR_PICTURE_NOTE);
+    const bare = harborEvalRequest(byId('bar-chart'), false, () => 'AAAA', true);
     expect(bare.system).toBe('You are a helpful assistant.');
     expect(bare.messages).toEqual([
       { role: 'user', content: byId('bar-chart').message, images: ['AAAA'] },
@@ -159,5 +166,52 @@ describe('a run', () => {
     const table = harborEvalTable('qwen3.5:4b', blind, 12);
     expect(table).toContain('| everyday | 1 |');
     expect(table).not.toContain('| pictures |');
+  });
+
+  it('runs only the harness half when asked, and the table says the rest did not run', async () => {
+    const asked: boolean[] = [];
+    const quick = await runHarborEval({
+      complete: async (request) => {
+        asked.push(request.harness);
+        return { text: 'Canberra.' };
+      },
+      picture: () => 'AAAA',
+      runCode: runCodeInVm,
+      seesPictures: true,
+      cases: [byId('capital')],
+      without: false,
+    });
+    expect(asked).toEqual([true]);
+    expect(quick.withHarness).toBe(1);
+    const table = harborEvalTable('qwen3.5:4b', quick, 3);
+    expect(table).toContain('| everyday | 1 | 100% | not run |');
+    expect(table).toContain('| all | 1 | 100% | not run |');
+  });
+
+  it('keeps the runs an interrupted pass scored and asks only the rest', async () => {
+    const cases: HarborEvalCase[] = [byId('capital'), byId('fahrenheit')];
+    const asked: string[] = [];
+    const first = await runHarborEval({
+      complete: answerAll,
+      picture: () => 'AAAA',
+      runCode: runCodeInVm,
+      seesPictures: true,
+      cases: [byId('capital')],
+    });
+    const resumed = await runHarborEval({
+      complete: async (request) => {
+        asked.push(request.messages.at(-1)!.content);
+        return { text: '72 F is 22 C.' };
+      },
+      picture: () => 'AAAA',
+      runCode: runCodeInVm,
+      seesPictures: true,
+      cases,
+      prior: first.runs,
+    });
+    expect(asked).toEqual([byId('fahrenheit').message, byId('fahrenheit').message]);
+    expect(resumed.runs.map((r) => r.id)).toEqual(['capital', 'fahrenheit']);
+    expect(resumed.runs[0]).toBe(first.runs[0]);
+    expect(resumed.withHarness).toBe(1);
   });
 });
