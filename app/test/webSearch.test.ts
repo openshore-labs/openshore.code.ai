@@ -45,6 +45,21 @@ describe('formatSearchResults', () => {
   });
 });
 
+describe('DuckDuckGo', () => {
+  it('says a challenge page is a failed search, never an empty web', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        status: 202,
+        text: async () => '<form id="challenge-form"><div class="anomaly-modal__mask"></div></form>',
+      })),
+    );
+    await expect(webSearch('python release', undefined)).rejects.toThrow(/DuckDuckGo asked to confirm/);
+    vi.unstubAllGlobals();
+  });
+});
+
 describe('webSearch backend selection', () => {
   it('calls the Brave endpoint with the subscription header when a Brave key is set', async () => {
     const fetchMock = vi.fn(async () => ({

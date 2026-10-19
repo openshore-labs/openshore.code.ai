@@ -85,6 +85,15 @@ async function duckduckgoSearch(query: string, count: number): Promise<WebSearch
     throw new Error(`DuckDuckGo answered ${res.status}. It may be rate limiting, try again.`);
   }
   const html = await res.text();
+  // A search DuckDuckGo takes for a bot gets its challenge page (status 202,
+  // no results). Said as a failed search, so the model says it could not
+  // search instead of reading an empty web (box, 2026-10-19: a few searches
+  // in a row drew it).
+  if (res.status === 202 || /anomaly-modal|challenge-form/.test(html)) {
+    throw new Error(
+      'DuckDuckGo asked to confirm a person was searching, as it does after many searches in a row, so it returned no results',
+    );
+  }
   const doc = new DOMParser().parseFromString(html, 'text/html');
   const results: WebSearchResult[] = [];
   for (const node of doc.querySelectorAll('.result')) {
