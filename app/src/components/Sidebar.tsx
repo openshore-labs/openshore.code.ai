@@ -20,7 +20,6 @@ import { ACCOUNT_SIGN_IN_SUB } from '../lib/accountGate.js';
 import { accountInitial, useProfileSheet } from '../lib/profile.js';
 import { isOrgAdmin, useApp, type ViewName } from '../state/store.js';
 import { useAuth } from '../hooks/useAuth.js';
-import type { GestureProps } from '../hooks/useDrawerGesture.js';
 import { BrandMark } from './BrandMark.js';
 import { ROOM_LABELS, navRooms, type NavRoom } from '../lib/navRooms.js';
 import { Icon } from './Icon.js';
@@ -222,11 +221,9 @@ export function Sidebar({
   closing,
   dragX = null,
   settleMs = null,
-  exitMs = null,
   dragging = false,
   viaGesture = false,
   progress = null,
-  dragProps,
 }: {
   drawer?: boolean;
   closing?: boolean;
@@ -234,14 +231,11 @@ export function Sidebar({
   dragX?: number | null;
   /** Spring duration for a settle in flight (feeds --drawer-settle). */
   settleMs?: number | null;
-  /** Exit duration after a drag-to-close (feeds --drawer-exit on panel and scrim). */
-  exitMs?: number | null;
   dragging?: boolean;
   /** Opened by the edge swipe: skip the CSS entrance (the finger already did it). */
   viaGesture?: boolean;
   /** 0..1 for the scrim while dragging; null lets CSS own it. */
   progress?: number | null;
-  dragProps?: GestureProps;
 }) {
   const { view, viewTrail, setView, setDrawer, settings, saveSettings, startNewChat } = useApp();
   const { configured: authConfigured, signedIn, email } = useAuth();
@@ -320,24 +314,17 @@ export function Sidebar({
     <aside
       className={`sidebar${drawer ? ' drawer' : ''}${drawer && entered ? ' entered' : ''}${closing ? ' closing' : ''}${dragging ? ' dragging' : ''}${viaGesture ? ' via-gesture' : ''}`}
       // --drawer-x lets the exit keyframe (theme.css drawer-out) start from
-      // the finger's position after a drag-to-close, so the door keeps sliding
-      // rather than jumping back to open first.
+      // wherever the panel stands, so a tap during a settle slides on from
+      // there rather than jumping back to open first.
       style={
         dragX !== null
           ? ({
               transform: `translateX(${dragX}px)`,
               '--drawer-x': `${dragX}px`,
               ...(settleMs !== null ? { '--drawer-settle': `${settleMs}ms` } : {}),
-              // A drag-to-close leaves on the standard curve: its front-loaded
-              // velocity carries the finger's momentum, where the glide's soft
-              // start would read as a hitch.
-              ...(exitMs !== null
-                ? { '--drawer-exit': `${exitMs}ms`, '--drawer-exit-ease': 'var(--ease-standard)' }
-                : {}),
             } as CSSProperties)
           : undefined
       }
-      {...(drawer ? dragProps : {})}
     >
       <div className="sidebar-head" style={stagger(0)}>
         <span className="brand-lockup">
@@ -453,9 +440,6 @@ export function Sidebar({
             ? ({
                 opacity: progress,
                 '--drawer-scrim': progress,
-                ...(exitMs !== null
-                  ? { '--drawer-exit': `${exitMs}ms`, '--drawer-exit-ease': 'var(--ease-standard)' }
-                  : {}),
               } as CSSProperties)
             : undefined
         }

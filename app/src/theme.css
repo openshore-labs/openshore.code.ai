@@ -1152,14 +1152,11 @@ textarea {
    it glides off the left edge on the standard curve while only the scrim
    fades. Never a transparent object (2026-09-03: "not as a
    transparent object, just like a sliding door being moved out of the way").
-   After a drag-to-close the door keeps going from where the finger left it:
-   Sidebar sets --drawer-x and --drawer-scrim from the gesture, and the
-   keyframes start there (0 and 1 when the close came from a tap). The
-   gesture also sets --drawer-exit from the release velocity (a flick
-   finishes in --dur-3, a slow release in --dur-5) and --drawer-exit-ease to
-   the standard curve, whose front-loaded velocity carries a moving finger's
-   momentum; a tap-close takes the defaults, the glide over --dur-7, the same
-   motion as the entrance run backwards. The shadow fades on the same clock. */
+   The open drawer never drags shut (founder, 2026-10-19): it closes on a
+   tap, so the exit is the entrance run backwards, the glide over --dur-7.
+   A tap during the edge swipe's settle starts from where the panel stands:
+   Sidebar sets --drawer-x and --drawer-scrim, and the keyframes start there
+   (0 and 1 otherwise). The shadow fades on the same clock. */
 .drawer-scrim.closing {
   animation: drawer-scrim-out var(--drawer-exit, var(--dur-7))
     var(--drawer-exit-ease, var(--ease-glide)) forwards;

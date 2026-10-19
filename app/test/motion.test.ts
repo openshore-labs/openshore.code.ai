@@ -39,13 +39,21 @@ describe('motion readers', () => {
     );
   });
 
-  it('holds the drawer mounted for the door clock, and the gesture holds its position as long', () => {
+  it('holds the drawer mounted for the door clock', () => {
     // An unmount on the generic EXIT_MS (340ms) would cut a 520ms glide short,
-    // exactly the clipped tail that reads as cheap. Both holds read the same
-    // number from lib/motion.ts.
+    // exactly the clipped tail that reads as cheap.
     expect(APP).toMatch(/useExitPresence\(compact && drawerOpen, drawerExitMs\(\)\)/);
-    expect(GESTURE).toMatch(/settle\(x, \(\) => setExitMs\(null\), drawerExitMs\(\)\)/);
     expect(GESTURE).not.toMatch(/EXIT_MS/);
+  });
+
+  it('never drags the open drawer shut: it closes on a tap (founder, 2026-10-19)', () => {
+    // A swipe on the open panel closed it too easily. Only the edge swipe
+    // (from closed) is a gesture; the panel binds no pointer handlers, and
+    // the scrim beside it closes on a click.
+    expect(GESTURE).not.toMatch(/drawerProps|mode\.current = 'close'/);
+    expect(APP).not.toMatch(/dragProps=/);
+    expect(SIDEBAR).not.toMatch(/dragProps|exitMs/);
+    expect(SIDEBAR).toMatch(/className=\{`drawer-scrim[\s\S]*?onClick=\{\(\) => setDrawer\(false\)\}/);
   });
 
   it('have a registered --drawer-width to read, and the drawer uses it', () => {
@@ -63,11 +71,10 @@ describe('motion readers', () => {
     );
   });
 
-  it('lets the exit take its duration from the release velocity, shadow included', () => {
+  it('plays the exit on the door clock, shadow included', () => {
     // Panel, scrim, and the shadow pseudo-element all leave on --drawer-exit
     // (default: the door clock) and --drawer-exit-ease (default: the glide),
-    // so a flick and a slow release stay one motion, and a tap-close is the
-    // entrance run backwards.
+    // so a tap-close is the entrance run backwards.
     for (const selector of [
       '.sidebar.drawer.closing',
       '.drawer-scrim.closing',
@@ -79,13 +86,6 @@ describe('motion readers', () => {
         /animation:\s*[\w-]+ var\(--drawer-exit, var\(--dur-7\)\) var\(--drawer-exit-ease, var\(--ease-glide\)\) forwards/,
       );
     }
-    // A drag-to-close hands the standard curve along with its velocity clock:
-    // its front-loaded velocity carries the finger's momentum, where the
-    // glide's soft start would read as a hitch. Panel and scrim alike.
-    const handoffs = SIDEBAR.match(
-      /'--drawer-exit': `\$\{exitMs\}ms`, '--drawer-exit-ease': 'var\(--ease-standard\)'/g,
-    );
-    expect(handoffs?.length).toBe(2);
     // The shadow is the pseudo-element's, never the panel's own, so it can
     // fade on opacity while the panel stays solid.
     expect(THEME).toMatch(/\.sidebar\.drawer::after \{[^}]*box-shadow:/);

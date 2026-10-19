@@ -207,7 +207,6 @@ describe('polish standards', () => {
     expect(condition).not.toMatch(/!\s*gesture\.peek/);
     const hook = readFileSync(join(SRC, 'hooks', 'useDrawerGesture.ts'), 'utf8');
     expect(hook).toMatch(/onLostPointerCapture:\s*edgeUp/);
-    expect(hook).toMatch(/onLostPointerCapture:\s*drawerUp/);
   });
 
   // UI-8: inline motion in TSX (`style={{ transition: ... }}`, `animation:`)

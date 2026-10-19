@@ -1,21 +1,20 @@
 // The drawer as a physical object (motion standard, rule 7): an edge swipe
-// from the left pulls it in 1:1 with the finger, a leftward drag on the open
-// panel pushes it back, and release decides on VELOCITY as well as distance,
-// so a quick flick under the distance threshold still commits. Past the rest
+// from the left pulls it in 1:1 with the finger, and release decides on
+// VELOCITY as well as distance, so a quick flick under the distance threshold
+// still commits. The open drawer does not drag shut: a swipe on it closed it
+// too easily (founder, 2026-10-19), so it closes only on a tap, a row or the
+// scrim beside it. Past the rest
 // position the panel rubber-bands with asymptotic damping rather than
 // hard-clamping. Two haptic marks: the arm (crossing the commit threshold)
 // and the drop (the commit itself).
 import { useCallback, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { hapticTick } from '../lib/haptics.js';
-import { drawerExitMs, durationMs } from '../lib/motion.js';
+import { durationMs } from '../lib/motion.js';
 
 /** A flick faster than this (px per ms) commits regardless of distance. */
 const COMMIT_VELOCITY = 0.35;
 /** Fraction of the drawer width a slow drag must cover to commit. */
 const COMMIT_FRACTION = 0.4;
-/** Movement before a touch on the open drawer counts as a drag (so taps and
- *  vertical scrolls inside the panel are untouched). */
-const DRAG_SLOP = 8;
 /** How far the panel may rubber-band past its rest position. */
 const OVERSHOOT_MAX = 14;
 /** Settle time after release, read from the stylesheet's tokens: a return
@@ -34,9 +33,6 @@ export interface DrawerGesture {
   /** The spring's duration for the settle in flight (--drawer-settle); null
    *  while the finger holds the panel or at rest. */
   settleMs: number | null;
-  /** The exit animation's duration after a drag-to-close (--drawer-exit),
-   *  from the release velocity; null otherwise (the CSS default applies). */
-  exitMs: number | null;
   /** True while the finger is down and moving the panel. */
   dragging: boolean;
   /** The panel is mounted only because a from-closed drag is in progress. */
@@ -47,7 +43,6 @@ export interface DrawerGesture {
   /** 0 (closed) to 1 (open), for the scrim. Null when not dragging. */
   progress: number | null;
   edgeProps: GestureProps;
-  drawerProps: GestureProps;
 }
 
 /** The handlers a gesture surface binds. Lost capture is a release too: the
@@ -74,18 +69,16 @@ export function useDrawerGesture({
 }): DrawerGesture {
   const [dragX, setDragX] = useState<number | null>(null);
   const [settleMs, setSettleMs] = useState<number | null>(null);
-  const [exitMs, setExitMs] = useState<number | null>(null);
   const [dragging, setDragging] = useState(false);
   const [peek, setPeek] = useState(false);
   const [viaGesture, setViaGesture] = useState(false);
 
   const startX = useRef(0);
   const pointerId = useRef<number | null>(null);
-  const captured = useRef(false);
   const armed = useRef(false);
   const samples = useRef<Sample[]>([]);
   const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const mode = useRef<'open' | 'close' | null>(null);
+  const mode = useRef<'open' | null>(null);
   /** The panel's current x, readable inside stable callbacks. */
   const xRef = useRef<number | null>(null);
   const place = (x: number | null) => {
@@ -120,14 +113,13 @@ export function useDrawerGesture({
   };
 
   // Springs the panel to `to` and clears the inline position once it has
-  // landed. `holdMs` pins the hold instead (a commit-close keeps the finger's
-  // position through the exit animation, which owns the motion).
+  // landed.
   const settle = useCallback(
-    (to: number, then?: () => void, holdMs?: number) => {
+    (to: number, then?: () => void) => {
       const from = xRef.current ?? to;
       const fraction = Math.min(1, Math.abs(to - from) / Math.max(1, width));
       const [short, long] = settleRange();
-      const ms = holdMs ?? Math.round(short + (long - short) * fraction);
+      const ms = Math.round(short + (long - short) * fraction);
       setDragging(false);
       setSettleMs(ms);
       place(to);
@@ -200,91 +192,13 @@ export function useDrawerGesture({
     [setOpen, width, settle],
   );
 
-  // ---- from open: a leftward drag on the panel itself
-  const drawerDown = useCallback(
-    (e: ReactPointerEvent) => {
-      if (!enabled || !open || mode.current) return;
-      pointerId.current = e.pointerId;
-      startX.current = e.clientX;
-      samples.current = [];
-      captured.current = false;
-      armed.current = false;
-      mode.current = 'close';
-      sample(e.clientX);
-    },
-    [enabled, open],
-  );
-
-  const drawerMove = useCallback(
-    (e: ReactPointerEvent) => {
-      if (pointerId.current !== e.pointerId || mode.current !== 'close') return;
-      const dx = e.clientX - startX.current;
-      sample(e.clientX);
-      if (!captured.current) {
-        // Only a clearly horizontal, leftward move becomes a drag.
-        if (dx > -DRAG_SLOP) return;
-        captured.current = true;
-        clearSettle();
-        e.currentTarget.setPointerCapture(e.pointerId);
-        setDragging(true);
-      }
-      place(rubber(Math.max(-width, dx)));
-      const nowArmed = -dx > width * COMMIT_FRACTION;
-      if (nowArmed !== armed.current) {
-        armed.current = nowArmed;
-        hapticTick();
-      }
-    },
-    [width],
-  );
-
-  const drawerUp = useCallback(
-    (e: ReactPointerEvent) => {
-      if (pointerId.current !== e.pointerId || mode.current !== 'close') return;
-      pointerId.current = null;
-      mode.current = null;
-      if (!captured.current) return; // a tap or a scroll, not a drag
-      const dx = e.clientX - startX.current;
-      const v = velocity();
-      const commit = v < -COMMIT_VELOCITY || (-dx > width * COMMIT_FRACTION && v < COMMIT_VELOCITY);
-      if (commit) {
-        hapticTick();
-        setOpen(false);
-        // The door leaves at the speed the hand gave it: the time to cover
-        // what is still on screen at the release velocity, clamped to the
-        // token range (a flick finishes in --dur-3, a slow release glides
-        // over --dur-5). Sidebar hands it to the keyframes as --drawer-exit.
-        const x = rubber(Math.max(-width, dx));
-        const remaining = Math.max(0, width + x);
-        const [short, long] = settleRange();
-        const speed = Math.abs(v);
-        setExitMs(
-          speed > 0 ? Math.round(Math.min(long, Math.max(short, remaining / speed))) : long,
-        );
-        // Hold the finger's position through the exit: the panel's closing
-        // keyframe starts from it (--drawer-x, see Sidebar), so the door keeps
-        // sliding out from where the hand left it rather than jumping back to
-        // open first. Held for the drawer's full unmount hold (App keeps the
-        // panel that long): clearing it sooner would drop --drawer-x and
-        // --drawer-exit from a still-mounted panel and re-resolve its exit.
-        settle(x, () => setExitMs(null), drawerExitMs());
-      } else {
-        settle(0);
-      }
-    },
-    [setOpen, width, settle],
-  );
-
   const progress = dragX === null ? null : Math.max(0, Math.min(1, 1 + dragX / width));
 
   return {
     dragX,
     settleMs,
-    exitMs,
     dragging,
     peek,
-    // Stays on through a drag-to-close (dragX is held for the exit), so the
-    // CSS entrance cannot replay in the render before the closing class lands.
     viaGesture: viaGesture && (open || peek || dragX !== null),
     progress,
     // A release handler is idempotent (pointerId clears on the first call), so
@@ -295,13 +209,6 @@ export function useDrawerGesture({
       onPointerUp: edgeUp,
       onPointerCancel: edgeUp,
       onLostPointerCapture: edgeUp,
-    },
-    drawerProps: {
-      onPointerDown: drawerDown,
-      onPointerMove: drawerMove,
-      onPointerUp: drawerUp,
-      onPointerCancel: drawerUp,
-      onLostPointerCapture: drawerUp,
     },
   };
 }
