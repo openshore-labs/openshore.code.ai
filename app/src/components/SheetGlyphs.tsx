@@ -1,7 +1,8 @@
 import { Icon } from './Icon.js';
 // The small stroked glyphs sheets, rows and the chat share: close, back,
 // chevron, check, plus, send, stop, terminal, file, paste, note, lock, more,
-// compose, info and the way out to a page outside the app.
+// compose, info, a computer, a server and the way out to a page outside the
+// app.
 // Typed characters never stand in for them. A text "×" or "‹" carries the
 // font's side bearings and baseline with it, so it lands low and to the left
 // of the circle it sits in (screenshot, 2026-09-03). A path in a
@@ -172,6 +173,27 @@ export function InfoGlyph({ size = 20 }: { size?: number }) {
     <Icon size={size} className="sheet-glyph">
       <circle cx="12" cy="12" r="9" />
       <path d="M12 11v5M12 8h.01" />
+    </Icon>
+  );
+}
+
+/** A computer: a screen on a stand, for the docked computer's card. */
+export function ComputerGlyph({ size = 24 }: { size?: number }) {
+  return (
+    <Icon size={size} className="sheet-glyph">
+      <rect x="3" y="4" width="18" height="12" rx="2" />
+      <path d="M9 20h6M12 16v4" />
+    </Icon>
+  );
+}
+
+/** A server: two stacked units with their lights, for a docked server. */
+export function ServerGlyph({ size = 24 }: { size?: number }) {
+  return (
+    <Icon size={size} className="sheet-glyph">
+      <rect x="3" y="4" width="18" height="7" rx="2" />
+      <rect x="3" y="13" width="18" height="7" rx="2" />
+      <path d="M7 7.5h.01M7 16.5h.01" />
     </Icon>
   );
 }

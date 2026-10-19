@@ -20,7 +20,8 @@ import { hapticApproval } from '../lib/haptics.js';
 import { Icon } from '../components/Icon.js';
 import { Sheet } from '../components/Sheet.js';
 import { SheetHead } from '../components/SheetHead.js';
-import { InfoGlyph } from '../components/SheetGlyphs.js';
+import { ComputerGlyph, InfoGlyph, PlusGlyph, ServerGlyph } from '../components/SheetGlyphs.js';
+import { SettingsGroup, SettingsRow } from '../components/SettingsRow.js';
 import { ReplaceSharedKey } from '../components/ReplaceSharedKey.js';
 import { hubStatusLine, onLinux } from '../lib/hubStatus.js';
 import { DockForm, hostOf } from '../components/DockForm.js';
@@ -46,6 +47,7 @@ import { thisDeviceNoun } from '../lib/deviceNoun.js';
 // room's name, Computer.
 const DESKTOP_TITLE = 'Dock your phone';
 const PHONE_TITLE = 'Dock to a computer';
+const DOCKED_TITLE = 'Computer';
 
 // Clean glyphs for the Tailscale download rows, drawn in the tile's ink on a
 // solid accent tile (iOS-app-icon feel). One per platform.
@@ -571,13 +573,16 @@ function PhonePair() {
   // docking stays on screen through its first check.
   const [adding, setAdding] = useState(!paired);
   const showWaysIn = !paired || adding || Boolean(pairOffer);
+  // Docked, the room is the machine, not a task (Creative Studio,
+  // 2026-10-19): it takes the room's own name.
+  const title = paired ? DOCKED_TITLE : PHONE_TITLE;
 
   return (
     <div className="screen">
-      <BackBar title={PHONE_TITLE} titleHiddenUntil={titleRef} />
+      <BackBar title={title} titleHiddenUntil={titleRef} />
       <div className="screen-inner">
         <h1 ref={titleRef}>
-          {PHONE_TITLE}
+          {title}
           <button
             type="button"
             className="icon-btn title-info press-fb"
@@ -592,6 +597,7 @@ function PhonePair() {
           <ConnectedCard
             onTerminal={() => setView('terminalroom')}
             onForget={() => setForgetting(true)}
+            onAnother={adding || pairOffer ? undefined : () => setAdding(true)}
           />
         ) : null}
 
@@ -652,15 +658,7 @@ function PhonePair() {
               </>
             )}
           </>
-        ) : (
-          <button
-            type="button"
-            className="btn block press-fb dock-another"
-            onClick={() => setAdding(true)}
-          >
-            Dock another machine
-          </button>
-        )}
+        ) : null}
 
         <HubList />
 
@@ -819,8 +817,21 @@ function ForgetComputerConfirm({
 
 /** The paired computer, live (UX review 2026-10-01): who it is and whether it
  *  answers right now, so the screen after pairing never looks like the
- *  screen before it. */
-function ConnectedCard({ onTerminal, onForget }: { onTerminal: () => void; onForget: () => void }) {
+ *  screen before it. Creative Studio, 2026-10-19: a human name leads (the
+ *  address is a quiet line under it), one status line with a calm dot
+ *  replaces the pill and the explainer, and what you can do is one grouped
+ *  list in the Settings rows, forgetting last and in red, still beside
+ *  naming it (founder, 2026-10-15). */
+function ConnectedCard({
+  onTerminal,
+  onForget,
+  onAnother,
+}: {
+  onTerminal: () => void;
+  onForget: () => void;
+  /** Unfolds the ways in; absent while they are already open. */
+  onAnother?: () => void;
+}) {
   const daemon = useApp((s) => s.settings.daemon);
   const noteMachineFacts = useApp((s) => s.noteMachineFacts);
   const [reach, setReach] = useState<'checking' | 'yes' | 'no' | 'refused'>('checking');
@@ -843,48 +854,74 @@ function ConnectedCard({ onTerminal, onForget }: { onTerminal: () => void; onFor
     };
   }, [daemon, noteMachineFacts]);
   if (!daemon) return null;
-  const name = computerLabel(daemon);
+  const server = daemon.kind === 'server';
+  const named = daemon.name?.trim();
+  const status =
+    reach === 'yes'
+      ? 'Connected'
+      : reach === 'checking'
+        ? 'Checking'
+        : reach === 'refused'
+          ? 'Not accepted'
+          : 'Not reachable';
+  // A name the person gave stands alone, so its kind joins the size line;
+  // "Your computer" already says it.
+  const facts = [
+    named ? machineKindLabel(machineKindOf(daemon)) : undefined,
+    machineFactsLine(daemon.machine),
+  ].filter(Boolean);
+  const dot = reach === 'yes' ? 'ok' : reach === 'checking' ? 'checking' : 'off';
   return (
-    <div className="card">
-      <div className="card-row" style={{ alignItems: 'center' }}>
-        <div className="grow">
-          <h3 style={{ margin: 0 }}>Docked to {name}</h3>
-          <div className="sub">{machineLine(daemon)}</div>
-          <div className="sub">
-            {reach === 'refused'
-              ? PAIRING_REJECTED
-              : reach === 'no'
-                ? unreachableLine(daemon)
-                : `${dockedNoun(daemon)} runs the work; this device reaches it.`}
-          </div>
-        </div>
-        <span className={`pill ${reach === 'yes' ? 'ok' : 'muted'}`}>
-          {reach === 'yes'
-            ? 'Reachable'
-            : reach === 'checking'
-              ? 'Checking'
-              : reach === 'refused'
-                ? 'Not accepted'
-                : 'Not reachable'}
+    <>
+      <div className="dock-hero stagger-in" style={{ '--i': 0 } as CSSProperties}>
+        <span className="dock-hero-glyph" aria-hidden="true">
+          {server ? <ServerGlyph size={24} /> : <ComputerGlyph size={24} />}
         </span>
+        <div className="dock-hero-text">
+          <h2 className="dock-hero-name">{named || dockedNoun(daemon)}</h2>
+          <p className="dock-hero-status">
+            <span className={`dock-dot ${dot}`} aria-hidden="true" />
+            {status}
+          </p>
+          {facts.length ? <p className="dock-hero-facts">{facts.join(', ')}</p> : null}
+          <p className="dock-hero-address">{hostOf(daemon.baseUrl)}</p>
+          {reach === 'no' || reach === 'refused' ? (
+            <p className="dock-hero-hint">
+              {reach === 'refused' ? PAIRING_REJECTED : unreachableLine(daemon)}
+            </p>
+          ) : null}
+        </div>
       </div>
-      {reach === 'yes' ? (
-        <button className="btn block press-fb" style={{ marginTop: 12 }} onClick={onTerminal}>
-          {daemon.kind === 'server'
-            ? 'Open a terminal on your server'
-            : 'Open a terminal on your computer'}
-        </button>
+
+      <SettingsGroup index={1}>
+        {reach === 'yes' ? <SettingsRow label="Open terminal" onClick={onTerminal} /> : null}
+        <SettingsRow
+          label={server ? 'Name and place' : 'Name'}
+          value={named || 'Add a name'}
+          onClick={() => setEditing(true)}
+        />
+        <SettingsRow
+          label={server ? 'Forget this server' : 'Forget this computer'}
+          danger
+          asks
+          onClick={onForget}
+        />
+      </SettingsGroup>
+
+      {onAnother ? (
+        <SettingsGroup index={2}>
+          <SettingsRow
+            label="Dock another machine"
+            trailing={
+              <span className="dock-another-plus" aria-hidden="true">
+                <PlusGlyph size={20} />
+              </span>
+            }
+            onClick={onAnother}
+          />
+        </SettingsGroup>
       ) : null}
-      {/* Its own row holds forgetting it (founder, 2026-10-15), beside
-          naming it, the way each row in Your machines does. */}
-      <div className="machine-row-actions connected-actions">
-        <button type="button" className="linklike press-fb" onClick={() => setEditing(true)}>
-          {daemon.kind === 'server' ? 'Name it, or say where it is' : 'Name it'}
-        </button>
-        <button type="button" className="linklike press-fb" onClick={onForget}>
-          {daemon.kind === 'server' ? 'Forget this server' : 'Forget this computer'}
-        </button>
-      </div>
+
       <Sheet open={editing} onClose={() => setEditing(false)}>
         {editing ? (
           <HubNameForm
@@ -894,7 +931,7 @@ function ConnectedCard({ onTerminal, onForget }: { onTerminal: () => void; onFor
           />
         ) : null}
       </Sheet>
-    </div>
+    </>
   );
 }
 

@@ -6,6 +6,7 @@
 // size can do, held to the same fit rule the First Seat uses, and how to set
 // up several at once; a server at home is never told about renting. Mounted
 // in a real DOM (test/support/dom.ts) so the taps are the ones a person makes.
+import { hostOf } from '../src/components/DockForm.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mountDom, type TestDom } from './support/dom.js';
 
@@ -268,6 +269,31 @@ describe('the CX pass', () => {
     expect(dom.buttons()).toContain('Dock another machine');
     await dom.click('Dock another machine');
     expect(dom.container.querySelector('.dock-choice')).not.toBeNull();
+  });
+
+  // Creative Studio, 2026-10-19: docked, the room is the machine. Its name
+  // leads with its address under it, and what you can do is one list of
+  // rows, forgetting last and in red, beside naming it.
+  it('shows the docked machine by name, with its actions as rows', async () => {
+    useApp.setState((s) => ({ settings: { ...s.settings, daemon: HOME, daemons: [HOME] } }));
+    const { PairScreen } = await import('../src/screens/PairScreen.js');
+    await dom.render(<PairScreen />);
+    expect(dom.container.querySelector('h1')?.textContent).toContain('Computer');
+    expect(dom.text()).not.toContain('Dock to a computer');
+    const hero = dom.container.querySelector('.dock-hero')!;
+    expect(hero.querySelector('.dock-hero-name')?.textContent).toBe(
+      HOME.name?.trim() || 'Your computer',
+    );
+    expect(hero.querySelector('.dock-hero-address')?.textContent).toBe(hostOf(HOME.baseUrl));
+    expect(hero.querySelector('.dock-dot')).not.toBeNull();
+    const rows = [...dom.container.querySelectorAll('.settings-row-label')].map(
+      (r) => r.textContent,
+    );
+    expect(rows.indexOf('Forget this computer')).toBe(rows.indexOf('Name') + 1);
+    expect(dom.container.querySelector('.settings-row.danger')?.textContent).toBe(
+      'Forget this computer',
+    );
+    expect(dom.container.querySelector('.pill')?.textContent ?? '').not.toMatch(/Reachable/);
   });
 
   it('names one default, and a tap makes another machine the default', async () => {

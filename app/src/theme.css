@@ -15921,11 +15921,118 @@ button.settings-row:active {
   flex: none;
 }
 
-/* The docked machine's card: naming it and forgetting it, side by side. */
-.connected-actions {
-  flex-wrap: wrap;
-  gap: 16px;
-  margin-top: 10px;
+/* The docked machine (Creative Studio, 2026-10-19): a drawn machine in a
+   soft tile, its name, one status line with a calm dot, and its address as
+   a quiet line under it. What you can do with it sits below in the
+   Settings rows. */
+.dock-hero {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: var(--card-pad);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--elev-1);
+  margin-bottom: var(--section-gap);
+}
+
+.dock-hero-glyph {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 52px;
+  height: 52px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink-soft);
+}
+
+.dock-hero-text {
+  min-width: 0;
+}
+
+.dock-hero-name {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--text-7);
+  font-weight: var(--weight-semibold);
+  overflow-wrap: anywhere;
+}
+
+.dock-hero-status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 4px 0 0;
+  font-size: var(--text-4);
+  color: var(--ink-soft);
+}
+
+.dock-hero-facts {
+  margin: 2px 0 0;
+  font-size: var(--text-3);
+  color: var(--muted);
+}
+
+.dock-hero-address {
+  margin: 2px 0 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-2);
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.dock-hero-hint {
+  margin: 8px 0 0;
+  font-size: var(--text-3);
+  color: var(--muted);
+}
+
+/* The reach, by class: connected is the ok green, a check in flight
+   breathes, and out of reach is a hollow ring (the profile dot's states). */
+.dock-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.dock-dot.ok {
+  background: var(--ok);
+  box-shadow: 0 0 0 3px var(--ok-soft);
+}
+
+.dock-dot.checking {
+  background: var(--muted);
+  animation: dock-breathe var(--loop-3) var(--ease-loop) infinite;
+}
+
+.dock-dot.off {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--muted);
+}
+
+@keyframes dock-breathe {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dock-dot.checking {
+    animation: none;
+  }
+}
+
+.dock-another-plus {
+  display: grid;
+  place-items: center;
+  color: var(--muted);
 }
 
 /* The info glyph that ends the Computer room's title (founder, 2026-10-15). */
