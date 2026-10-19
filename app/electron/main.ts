@@ -682,8 +682,10 @@ function setHubPaused(paused: boolean): void {
   writeHubPaused(app.getPath('userData'), paused);
 }
 
+/** The tray's icon. build/ is not packaged, so the packaged app reads the
+ *  default icon bundled into dist (Linux icon, 2026-10-19). */
 function trayIconPath(): string {
-  return join(here, '..', 'build', 'icon.png');
+  return bundledIconPath('default') ?? join(here, '..', 'build', 'icon.png');
 }
 
 function showWindow(): void {
@@ -798,13 +800,18 @@ function launchExecutable(): string | undefined {
 
 const APP_ICON_IDS = new Set(['default', 'turquoise', 'white']);
 
-function setAppIcon(id: string): { ok: boolean } {
-  if (!APP_ICON_IDS.has(id)) return { ok: false };
-  // Bundled into dist by Vite from public/app-icons; a source run reads public.
-  const file = [
+/** An app icon's file: bundled into dist by Vite from public/app-icons, so it
+ *  is inside the package; a source run reads public. */
+function bundledIconPath(id: string): string | undefined {
+  return [
     join(here, '..', 'dist', 'app-icons', `${id}.png`),
     join(here, '..', 'public', 'app-icons', `${id}.png`),
   ].find((p) => existsSync(p));
+}
+
+function setAppIcon(id: string): { ok: boolean } {
+  if (!APP_ICON_IDS.has(id)) return { ok: false };
+  const file = bundledIconPath(id);
   if (!file) return { ok: false };
   const image = nativeImage.createFromPath(file);
   if (image.isEmpty()) return { ok: false };
@@ -899,6 +906,10 @@ function createWindow(): void {
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#0b1417' : '#f6f4ef',
     autoHideMenuBar: true,
     title: 'OpenShore',
+    // Linux takes a window's icon from the window itself (an AppImage has no
+    // installed icon to fall back on), so it carries the default from the
+    // start; macOS and Windows take theirs from the bundle (2026-10-19).
+    ...(process.platform === 'linux' ? { icon: bundledIconPath('default') } : {}),
     webPreferences: {
       preload: join(here, '..', 'electron', 'preload.cjs'),
       contextIsolation: true,

@@ -1,5 +1,6 @@
 {
   "name": "oscode-app",
+  "desktopName": "oscode-app.desktop",
   "private": true,
   "license": "Apache-2.0",
   "version": "0.1.0",
@@ -124,7 +125,9 @@
         "deb"
       ],
       "category": "Development",
-      "maintainer": "OpenShore Labs"
+      "maintainer": "OpenShore Labs",
+      "icon": "build/icons",
+      "syncDesktopName": true
     },
     "mac": {
       "target": [
