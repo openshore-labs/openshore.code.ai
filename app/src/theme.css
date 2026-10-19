@@ -15984,3 +15984,10 @@ button.settings-row:active {
   font-size: var(--text-7);
   margin: 0;
 }
+
+/* A segmented choice that lives on a computer out of reach (Opening web
+   pages, 2026-10-19): the choice in force stays legible, the others step back,
+   and a tap still answers with why. */
+.segmented[aria-disabled='true'] .seg:not(.active) {
+  color: var(--muted);
+}

@@ -10,7 +10,13 @@ import { isOrgAdmin, useApp, type HarborDownload } from '../state/store.js';
 import { useAuth } from '../hooks/useAuth.js';
 import { platform, isDesktop, isPhone, openExternal } from '../lib/platform.js';
 import { PRIVACY_URL, TERMS_URL } from '../lib/legalLinks.js';
-import { WEB_FETCH_LABEL, WEB_FETCH_MODES, webFetchLine } from '../lib/webFetchMode.js';
+import {
+  WEB_FETCH_AWAY,
+  WEB_FETCH_LABEL,
+  WEB_FETCH_MODES,
+  webFetchInReach,
+  webFetchLine,
+} from '../lib/webFetchMode.js';
 import { noticeEnabled, noticePermission } from '../lib/notices.js';
 import type { NoticePermission } from '../lib/llamaPlugin.js';
 import { bridge } from '../lib/electronBridge.js';
@@ -296,6 +302,7 @@ export function SettingsScreen() {
     vaultScope,
     setVaultScope,
     vaultRequestSheet,
+    connectivity,
   } = useApp();
   // Opened from the profile's "Preferences that follow you": land on the
   // group they start in, once the room has painted.
@@ -308,6 +315,10 @@ export function SettingsScreen() {
   }, []);
   const setWebSearchAllowed = useApp((s) => s.setWebSearchAllowed);
   const setWebFetchMode = useApp((s) => s.setWebFetchMode);
+  // Opening web pages lives on the computer, so the row knows up front
+  // whether a tap can reach it, and ignores a second tap while one is on its way.
+  const webFetchReach = webFetchInReach(settings, connectivity.homeReachable);
+  const [webFetchPending, setWebFetchPending] = useState(false);
   const deleteAccount = useApp((s) => s.deleteAccount);
   // The ways out while their rooms are shut (signed out, tech review 2026-09-30):
   // exporting the iPhone's sealed vault and removing a git host's sign-in.
@@ -786,9 +797,19 @@ export function SettingsScreen() {
           {isDesktop() || settings.daemon ? (
             <SettingsRow
               label="Opening web pages"
-              sub={webFetchLine(settings.webFetchMode ?? 'ask')}
+              sub={
+                webFetchReach
+                  ? webFetchLine(settings.webFetchMode ?? 'ask')
+                  : `${webFetchLine(settings.webFetchMode ?? 'ask')} ${WEB_FETCH_AWAY}`
+              }
               trailing={
-                <div className="segmented" role="radiogroup" aria-label="Opening web pages">
+                <div
+                  className="segmented"
+                  role="radiogroup"
+                  aria-label="Opening web pages"
+                  aria-disabled={!webFetchReach || undefined}
+                  aria-busy={webFetchPending || undefined}
+                >
                   {WEB_FETCH_MODES.map((m) => {
                     const active = (settings.webFetchMode ?? 'ask') === m;
                     return (
@@ -798,15 +819,24 @@ export function SettingsScreen() {
                         aria-checked={active}
                         className={`seg press-fb${active ? ' active' : ''}`}
                         onClick={() => {
-                          if (active) return;
+                          if (active || webFetchPending) return;
+                          // Out of reach: say so now, not after the network
+                          // gives up, so the tap never seems ignored.
+                          if (!webFetchReach) {
+                            showToast(WEB_FETCH_AWAY);
+                            return;
+                          }
                           if (m === 'allow') hapticCommit();
-                          void setWebFetchMode(m).then((reached) =>
-                            showToast(
-                              reached
-                                ? webFetchLine(m)
-                                : 'Your computer is not in reach, so nothing changed. Try again when it is.',
-                            ),
-                          );
+                          setWebFetchPending(true);
+                          void setWebFetchMode(m)
+                            .then((reached) =>
+                              showToast(
+                                reached
+                                  ? webFetchLine(m)
+                                  : 'Your computer is not in reach, so nothing changed. Try again when it is.',
+                              ),
+                            )
+                            .finally(() => setWebFetchPending(false));
                         }}
                       >
                         {WEB_FETCH_LABEL[m]}

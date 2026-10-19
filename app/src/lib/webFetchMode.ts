@@ -27,6 +27,21 @@ export function webFetchLine(mode: WebFetchMode): string {
   return 'The coding agent asks before it opens a web page. You can allow it for the rest of a chat.';
 }
 
+/** Whether a change can reach the computer that holds the choice now: this
+ *  desktop's own engine, else the docked computer while it is in reach. The
+ *  row says so at once when it cannot, rather than a tap that waits out the
+ *  network and seems to do nothing (founder, 2026-10-19, Offshore). */
+export function webFetchInReach(
+  settings: { daemon?: DaemonTarget; preferRemoteHub?: boolean },
+  homeReachable: boolean,
+): boolean {
+  if (isDesktop() && bridge()?.webFetchMode && !settings.preferRemoteHub) return true;
+  return Boolean(settings.daemon) && homeReachable;
+}
+
+/** What the row and its tap say while the computer is out of reach. */
+export const WEB_FETCH_AWAY = 'Your computer is out of reach. Reconnect to change this.';
+
 /** Carry the choice to the computer that runs the coding agent: this
  *  desktop's own engine, else the paired computer. False when neither is
  *  in reach (the app's copy still holds, and is sent next time). */

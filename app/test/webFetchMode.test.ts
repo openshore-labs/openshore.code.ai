@@ -4,7 +4,13 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { pushWebFetchMode, webFetchLine, WEB_FETCH_MODES } from '../src/lib/webFetchMode.js';
+import {
+  pushWebFetchMode,
+  webFetchInReach,
+  webFetchLine,
+  WEB_FETCH_AWAY,
+  WEB_FETCH_MODES,
+} from '../src/lib/webFetchMode.js';
 import { EGRESS } from '../src/lib/egressManifest.js';
 import { SETTINGS_REACH } from '../src/lib/settingsReach.js';
 
@@ -33,6 +39,27 @@ describe('opening web pages, the setting', () => {
 
   it('says false when no computer is in reach', async () => {
     expect(await pushWebFetchMode('off', {})).toBe(false);
+  });
+
+  // Founder, 2026-10-19: Always seemed not to toggle while Offshore, because
+  // the tap waited out the network before it said anything. The row knows
+  // reach up front and answers at once.
+  it('knows up front whether the docked computer is in reach', () => {
+    const docked = { daemon: { baseUrl: 'http://100.64.0.1:4816', token: 'osc_t' } };
+    expect(webFetchInReach(docked, true)).toBe(true);
+    expect(webFetchInReach(docked, false)).toBe(false);
+    expect(webFetchInReach({}, true)).toBe(false);
+    expect(WEB_FETCH_AWAY).toMatch(/out of reach/);
+  });
+
+  it('answers a tap at once while out of reach, and takes one tap at a time', () => {
+    const settings = readFileSync(
+      join(process.cwd(), 'src', 'screens', 'SettingsScreen.tsx'),
+      'utf8',
+    );
+    expect(settings).toContain('webFetchInReach(settings, connectivity.homeReachable)');
+    expect(settings).toMatch(/if \(!webFetchReach\) \{\s*showToast\(WEB_FETCH_AWAY\);\s*return;/);
+    expect(settings).toContain('if (active || webFetchPending) return;');
   });
 
   it('is a device setting, on What leaves this device, and in Settings, Approvals', () => {
