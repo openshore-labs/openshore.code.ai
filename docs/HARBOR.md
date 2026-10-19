@@ -158,10 +158,14 @@ Two checks prove it before a phone build, since no Mac runs in CI:
 `HARBOR_MODEL_URL`, `HARBOR_VISION_URL` and `HARBOR_MINI_MODEL_URL` point at
 GGUFs on Hugging Face. Confirm each resolves (`curl -I` returns 200) and that
 the chat template is embedded in the weights (the runner reads it from the
-file). Confirm `HARBOR_APPROX_LABEL` against the two files' real sizes. This sandbox cannot
-reach the network, so that check is a manual pre-build step. If a filename or
-casing has changed upstream, update the constant. The Harbor Lite URL is also
-the source of the bundled weights file.
+file). Confirm `HARBOR_APPROX_LABEL` against the two files' real sizes. On
+2026-10-18 the reference box checked all three: each resolves (302, then 200);
+Harbor's weights are 2,740,937,888 bytes and its vision file 672,423,616
+(3.41 GB together, so "about 3.5 GB" holds), and both match the repository's
+own sha256; Harbor Lite's file is 105,454,144 bytes. The repository offers no
+Q8_0 vision file, so F16 is the smallest. If a filename or casing has changed
+upstream, update the constant. The Harbor Lite URL is also the source of the
+bundled weights file.
 
 ## Desktop: DeepBlue
 

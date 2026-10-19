@@ -36,10 +36,9 @@ export const HARBOR_MODEL_NAME = 'Harbor';
 // Qwen3.5 4B, Q4_K_M (Apache License 2.0, free for commercial use), from
 // unsloth's GGUF repo (the standard source for this quant level, the same we
 // use for Harbor Lite). The same file as the catalog's qwen3.5-4b onDevice
-// entry. About 2.7 GB, and it needs a 6 GB phone (the catalog's minRamGB).
-// Not yet measured against the Qwen3 4B it replaces (tenet 2: a maintainer
-// runs the Harbor eval on the box). VERIFY the exact filename/casing resolves
-// (200) before a build; this sandbox cannot reach huggingface.co to check it.
+// entry. 2,740,937,888 bytes, and it needs a 6 GB phone (the catalog's
+// minRamGB). Checked on the box 2026-10-18: the URL resolves (302, then 200)
+// and the file's sha256 is 00fe7986...11a4, the repo's own LFS hash.
 export const HARBOR_MODEL_URL =
   'https://huggingface.co/unsloth/Qwen3.5-4B-GGUF/resolve/main/Qwen3.5-4B-Q4_K_M.gguf';
 
@@ -47,8 +46,10 @@ export const HARBOR_MODEL_URL =
  *  device under its own id beside the weights. The runner opens it the first
  *  time a picture arrives, so a chat in words never pays its memory. */
 export const HARBOR_VISION_MODEL_ID = 'harbor-vision';
-// The F16 projector from the same repo, the file llama.cpp's mtmd reads. VERIFY
-// it resolves (200) before a build, as above.
+// The F16 projector from the same repo, the file llama.cpp's mtmd reads. The
+// repo offers no Q8_0 projector (F16, BF16 and F32 only), and BF16 is no
+// smaller, so F16 is the smallest. 672,423,616 bytes; checked as above, sha256
+// cd88edcf...f864. With the weights, 3.41 GB, said as about 3.5 GB.
 export const HARBOR_VISION_URL =
   'https://huggingface.co/unsloth/Qwen3.5-4B-GGUF/resolve/main/mmproj-F16.gguf';
 
