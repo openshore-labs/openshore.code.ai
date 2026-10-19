@@ -15988,3 +15988,51 @@ button.settings-row:active {
 .segmented[aria-disabled='true'] .seg:not(.active) {
   color: var(--muted);
 }
+
+/* A chat's right-click menu (components/ChatMenu.tsx): the composer menu's
+   arrival and exit, placed at the pointer. The scrim is clear; it only takes
+   the click away. */
+.chat-menu-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+}
+.chat-menu-scrim.closing {
+  pointer-events: none;
+}
+.chat-menu {
+  position: fixed;
+  z-index: 61;
+  min-width: 168px;
+  padding: 4px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--elev-2);
+  animation: menu-in var(--dur-2) var(--ease-arrive) backwards;
+}
+.chat-menu.closing {
+  animation: menu-out var(--dur-3) var(--ease-accel) forwards;
+  pointer-events: none;
+}
+.chat-menu-row {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  text-align: left;
+  font-size: var(--text-4);
+  color: var(--ink);
+}
+.chat-menu-row.danger {
+  color: var(--danger);
+}
+.chat-menu-row:focus-visible {
+  background: var(--surface-hover);
+  outline: none;
+}
+@media (hover: hover) {
+  .chat-menu-row:hover {
+    background: var(--surface-hover);
+  }
+}

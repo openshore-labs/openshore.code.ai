@@ -6,7 +6,7 @@
 // (.stagger-in with an index), capped at eight steps.
 import { useEffect, useState, type CSSProperties } from 'react';
 import type { VaultPickerNote } from '../lib/vaultExcerpt.js';
-import { relativeTime } from '../screens/ChatsScreen.js';
+import { relativeTime } from '../lib/relativeTime.js';
 
 export const AGENT_RECENT_TITLE = 'Recently from your agent';
 

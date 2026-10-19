@@ -34,6 +34,7 @@ import { useNavReorder } from '../hooks/useNavReorder.js';
 import { durationMs } from '../lib/motion.js';
 import type { Conversation } from '../state/types.js';
 import { inChatScope } from '../lib/chatScope.js';
+import { useChatActions } from './ChatMenu.js';
 
 // Every view that has a nav glyph: all ViewNames except the ones that never
 // appear as a nav item (chat is home; onboarding and terminal are full-screen
@@ -492,6 +493,8 @@ function RecentChats({
   const projects = settings.projects ?? [];
   const project = projects.find((p) => p.id === settings.activeProjectId) ?? projects[0];
   const chats = recentChats(order, conversations, project?.id);
+  // Right-click a recent chat: Open, Rename, Delete (components/ChatMenu.tsx).
+  const actions = useChatActions();
   const box = useRef<HTMLElement | null>(null);
   const [height, setHeight] = useState<number | null>(null);
 
@@ -536,6 +539,7 @@ function RecentChats({
               type="button"
               className={`sidebar-recent press-fb press-fb--row${view === 'chat' && activeId === c.id ? ' active' : ''}`}
               onClick={() => openConversation(c.id)}
+              onContextMenu={(e) => actions.openMenu(e, c.id)}
             >
               {c.title || 'New chat'}
             </button>
@@ -552,6 +556,7 @@ function RecentChats({
           </button>
         </>
       ) : null}
+      {actions.node}
     </section>
   );
 }

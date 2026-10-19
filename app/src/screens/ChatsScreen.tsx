@@ -17,41 +17,18 @@ import { useApp } from '../state/store.js';
 import { computerName, sourceLabel, type Conversation } from '../state/types.js';
 import { BackBar } from '../components/BackBar.js';
 import { SwipeRow } from '../components/SwipeRow.js';
-import { Sheet } from '../components/Sheet.js';
+import { useChatActions } from '../components/ChatMenu.js';
 import { daemonListSessions } from '../drivers/remoteDriver.js';
-import { hapticTick } from '../lib/haptics.js';
 import { plainError } from '../lib/plainError.js';
 import { Icon } from '../components/Icon.js';
 import { ComposeGlyph, PlusGlyph } from '../components/SheetGlyphs.js';
 import { useCompact } from '../hooks/useCompact.js';
 import { inChatScope } from '../lib/chatScope.js';
+import { relativeTime } from '../lib/relativeTime.js';
 
-/** "Just now", "12m ago", "2h ago", "Yesterday", "Mon", "Sep 1". Every
- *  caller sets it at the head of a line or a " · " part, so a word starts
- *  with a capital, the way "Yesterday" does beside it: a locale's lowercase
- *  weekday or month ("lun.", "sept.") too. A number leads as it is. */
-export function relativeTime(iso: string, now = Date.now()): string {
-  const t = new Date(iso).getTime();
-  if (Number.isNaN(t)) return '';
-  const s = Math.max(0, Math.round((now - t) / 1000));
-  if (s < 60) return 'Just now';
-  const m = Math.round(s / 60);
-  if (m < 60) return `${m}m ago`;
-  const h = Math.round(m / 60);
-  if (h < 24) return `${h}h ago`;
-  const d = new Date(t);
-  const today = new Date(now);
-  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
-  if (t >= startOfToday - 86_400_000) return 'Yesterday';
-  if (t >= startOfToday - 6 * 86_400_000)
-    return lineStart(d.toLocaleDateString(undefined, { weekday: 'short' }));
-  return lineStart(d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }));
-}
-
-/** A value at the head of a line, its first letter a capital. */
-export function lineStart(text: string): string {
-  return text.charAt(0).toLocaleUpperCase() + text.slice(1);
-}
+// The time and line-start helpers live in lib/relativeTime.ts, so a room
+// that only shows a time never loads this screen; re-exported for its callers.
+export { lineStart, relativeTime } from '../lib/relativeTime.js';
 
 /** The quiet source half of the secondary line. */
 export function sourceShort(conv: Conversation): string {
@@ -265,14 +242,10 @@ export function ChatsScreen() {
     openConversation,
     startNewChat,
     deleteConversation,
-    renameConversation,
     openDesktopSession,
     showToast,
     settings,
   } = useApp();
-  const [confirmId, setConfirmId] = useState<string | undefined>();
-  const [renameId, setRenameId] = useState<string | undefined>();
-  const [renameDraft, setRenameDraft] = useState('');
   const [query, setQuery] = useState('');
   const [leavingId, setLeavingId] = useState<string | undefined>();
   const [desktopSessions, setDesktopSessions] = useState<DaemonSessionInfo[]>([]);
@@ -355,20 +328,8 @@ export function ChatsScreen() {
     );
   };
 
-  const confirmConv = confirmId ? conversations[confirmId] : undefined;
-  const renameConv = renameId ? conversations[renameId] : undefined;
-
-  const beginRename = (id: string) => {
-    const conv = conversations[id];
-    if (!conv) return;
-    hapticTick();
-    setRenameDraft(conv.title === 'New chat' ? '' : conv.title);
-    setRenameId(id);
-  };
-
   // The row leaves before it unmounts, then the chat is gone.
   const removeChat = (id: string) => {
-    setConfirmId(undefined);
     setLeavingId(id);
     leaveTimer.current = window.setTimeout(() => {
       leaveTimer.current = null;
@@ -377,6 +338,9 @@ export function ChatsScreen() {
       showToast('Chat deleted.');
     }, ROW_OUT_MS);
   };
+  // Right-click: Open, Rename, Delete (components/ChatMenu.tsx); a hold
+  // renames and a swipe deletes, both through the same sheets.
+  const actions = useChatActions({ onDelete: removeChat });
 
   // The phone's bar carries the compose mark, and the list leads with a New
   // chat row. At 900px and wider the bar holds the labelled New chat, the
@@ -472,8 +436,8 @@ export function ChatsScreen() {
                 label="Delete"
                 style={style}
                 onTap={() => openConversation(row.id)}
-                onToggle={() => setConfirmId(row.id)}
-                onLongPress={() => beginRename(row.id)}
+                onToggle={() => actions.confirmDelete(row.id)}
+                onLongPress={() => actions.rename(row.id)}
               >
                 <div
                   className={`chat-row${row.id === activeId && view === 'chat' ? ' active' : ''}${row.id === leavingId ? ' leaving' : ''}`}
@@ -485,13 +449,10 @@ export function ChatsScreen() {
                       openConversation(row.id);
                     } else if (e.key === 'Delete' || e.key === 'Backspace') {
                       e.preventDefault();
-                      setConfirmId(row.id);
+                      actions.confirmDelete(row.id);
                     }
                   }}
-                  onContextMenu={(e) => {
-                    e.preventDefault();
-                    beginRename(row.id);
-                  }}
+                  onContextMenu={(e) => actions.openMenu(e, row.id)}
                 >
                   <span className="chat-row-title">
                     {conv.thread.busy ? (
@@ -523,7 +484,7 @@ export function ChatsScreen() {
               Swipe a chat left to delete it. Hold it to rename.
             </span>
             <span className="chat-hint-pointer">
-              Drag a chat left to delete it. Right-click to rename it.
+              Drag a chat left to delete it. Right-click for more.
             </span>
           </p>
         ) : null}
@@ -548,54 +509,7 @@ export function ChatsScreen() {
         ) : null}
       </div>
 
-      <Sheet open={Boolean(confirmConv)} onClose={() => setConfirmId(undefined)} variant="confirm">
-        {confirmConv ? (
-          <>
-            <h3>Delete this chat?</h3>
-            <p>{confirmConv.title}. This cannot be undone.</p>
-            <div className="confirm-row">
-              <button className="btn ghost" onClick={() => setConfirmId(undefined)}>
-                Keep it
-              </button>
-              <button className="btn danger" onClick={() => removeChat(confirmId!)}>
-                Delete
-              </button>
-            </div>
-          </>
-        ) : null}
-      </Sheet>
-
-      <Sheet open={Boolean(renameConv)} onClose={() => setRenameId(undefined)} variant="confirm">
-        {renameConv ? (
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (renameDraft.trim()) void renameConversation(renameConv.id, renameDraft);
-              setRenameId(undefined);
-            }}
-          >
-            <h3>Name this chat</h3>
-            <div className="field">
-              <input
-                autoFocus
-                aria-label="Chat name"
-                value={renameDraft}
-                maxLength={80}
-                placeholder="A short name"
-                onChange={(e) => setRenameDraft(e.target.value)}
-              />
-            </div>
-            <div className="confirm-row">
-              <button type="button" className="btn ghost" onClick={() => setRenameId(undefined)}>
-                Cancel
-              </button>
-              <button type="submit" className="btn primary" disabled={!renameDraft.trim()}>
-                Save
-              </button>
-            </div>
-          </form>
-        ) : null}
-      </Sheet>
+      {actions.node}
     </div>
   );
 }
