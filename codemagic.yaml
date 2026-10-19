@@ -379,6 +379,20 @@ workflows:
             env -u CSC_LINK -u CSC_KEY_PASSWORD CSC_IDENTITY_AUTO_DISCOVERY=false \
               pnpm exec electron-builder --mac --publish never
           fi
+      - name: Smoke test the packaged Mac app
+        script: |
+          set -euo pipefail
+          cd app
+          # The same proof release.yml runs for Linux and Windows: the packaged
+          # app boots its engine and the bundled Harbor Lite answers one
+          # question (scripts/package-smoke.mjs). This runner is Apple Silicon,
+          # so the arm64 app is launched; the Intel app is checked for its own
+          # llama.cpp binary and the weights, since it cannot run here.
+          node scripts/package-smoke.mjs release/mac-arm64/OpenShore.app/Contents/MacOS/OpenShore
+          INTEL=release/mac/OpenShore.app/Contents/Resources
+          test -s "$INTEL/models/harbor-mini.gguf"
+          test -d "$INTEL/app.asar.unpacked/node_modules/@node-llama-cpp/mac-x64"
+          echo "The Intel app carries Harbor Lite's weights and its x64 runtime."
       - name: Sign the macOS files
         script: |
           set -euo pipefail
