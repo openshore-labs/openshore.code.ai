@@ -97,7 +97,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
         'Computer on the phone',
         'Repositories before you connect',
         'Terminal',
-        'Crew command',
+        'Routines',
         ...(launchOn ? ['Launch with Codemagic'] : []),
         ...(currentsOn ? ["each current's connect sheet"] : []),
       ],
@@ -123,7 +123,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
       'Repositories',
       'Stack',
       'Vault',
-      'Crew',
+      'Agents',
       'Cloud Connections',
       'Computer',
       'Local Library',
@@ -676,9 +676,9 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
   },
   {
     id: 'my-crew',
-    title: 'Crew',
-    where: 'Menu, Crew',
-    text: "Your own roster of agents, each with a name, a persona, a rule for when it is called, and an activity level (Reviews the work, Joins on its own, or When you ask). Tap New crew member to add one. Tap a member's card to edit it; Delete is at the foot of its editor, or swipe the card left.",
+    title: 'Agents',
+    where: 'Menu, Agents',
+    text: "Your own roster of agents, each with a name, a persona, a rule for when it is called, and an activity level (Reviews the work, Joins on its own, or When you ask). Tap New agent to add one. Tap an agent's card to edit it; Delete is at the foot of its editor, or swipe the card left.",
     keywords: [
       'crew',
       'my crew',
@@ -693,7 +693,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
   {
     id: 'advisors',
     title: 'The advisor team',
-    where: 'Menu, Crew, Add the advisor team',
+    where: 'Menu, Agents, Add the advisor team',
     text: 'One tap adds eight advisors: Technical Advisor (reviews the work), Marketing, Finance, and Creative Studio (join when a decision needs them), and Research, Coordinator, Sounding Board, and Strategy (answer when asked). They advise; you decide.',
     keywords: [
       'advisor',
@@ -709,8 +709,8 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
   {
     id: 'routines',
     title: 'Routines',
-    where: 'Menu, Crew, Crew command',
-    text: `A routine gives a crew member a task, a workspace, days, and a time. It runs on your own computer while your computer is on, and leaves a dated note in ${ROUTINE_NOTES_PLACE}. Access is Read-only or May edit files, and commands still wait for your approval. There is a Morning review preset and Run now.`,
+    where: 'Menu, Agents, Routines',
+    text: `A routine gives an agent a task, a workspace, days, and a time. It runs on your own computer while your computer is on, and leaves a dated note in ${ROUTINE_NOTES_PLACE}. Access is Read-only or May edit files, and commands still wait for your approval. There is a Morning review preset and Run now.`,
     keywords: [
       'routine',
       'routines',
@@ -909,7 +909,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     title: 'Account',
     where: 'Menu, Settings, Account, or the Sign in row',
     // There is nothing to buy: OpenShore is free and open source.
-    text: `Chatting needs no account. Signing in is free and opens building, Projects, Vault, Crew, and docking, and takes your theme and a few preferences to your other devices. Your account never carries chats. With Sync on all devices on (the default), your chats, notes and projects sync between your own devices through your computer whenever they are docked; coding chats stay with the machine they run on.${teamsOn ? ' After creating one you choose personal or business; a business adds a company, admins, and a shared stack managed from Admin.' : ''}`,
+    text: `Chatting needs no account. Signing in is free and opens building, Projects, Vault, Agents, and docking, and takes your theme and a few preferences to your other devices. Your account never carries chats. With Sync on all devices on (the default), your chats, notes and projects sync between your own devices through your computer whenever they are docked; coding chats stay with the machine they run on.${teamsOn ? ' After creating one you choose personal or business; a business adds a company, admins, and a shared stack managed from Admin.' : ''}`,
     keywords: [
       'account',
       'sign in',

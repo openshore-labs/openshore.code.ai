@@ -233,7 +233,7 @@ export function AdminScreen() {
               <h3>Preview the member view</h3>
               <div className="sub">
                 See the app as a member does: the stack read-only, no bench, no controls. Their
-                chats, projects, and crew stay their own.
+                chats, projects, and agents stay their own.
               </div>
             </div>
             <button

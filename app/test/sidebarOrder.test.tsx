@@ -185,7 +185,7 @@ describe('the sidebar', () => {
     // Rooms the saved order never named find their default neighbours: on
     // this phone with no computer, Terminal's is the Vault (D10).
     expect(t.slice(0, 3)).toEqual(['Vault', 'Terminal', 'Chats']);
-    expect(t.indexOf('Crew')).toBeLessThan(t.indexOf('Projects'));
+    expect(t.indexOf('Agents')).toBeLessThan(t.indexOf('Projects'));
     expect(t.indexOf('Settings')).toBe(t.length - 2);
   });
 
@@ -249,7 +249,7 @@ describe('the sidebar', () => {
     const vault = t.indexOf('Vault');
     expect(t.slice(vault + 1, vault + 5)).toEqual([
       'Terminal',
-      'Crew',
+      'Agents',
       'Cloud Connections',
       ROOM_LABELS.pair,
     ]);

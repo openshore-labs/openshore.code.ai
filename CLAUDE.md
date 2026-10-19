@@ -54,7 +54,7 @@ reference only.
 The plan is `docs/design/vault-v1-plan.md` (D1 to D15 ruled by the founder); the
 review behind it is `docs/design/vault-v1-review-findings.md`; each milestone's calls
 are in `os-code/DECISIONS.md`. Vault is one local-first plain-markdown vault on
-the gitOS seam that the person, every model seat, Crew routines, and Obsidian
+the gitOS seam that the person, every model seat, routines in Agents, and Obsidian
 share: on the desktop the folder (`~/OpenShore/Vault` or one the person picks,
 an Obsidian vault included), on a paired phone "Your computer" while it is on.
 Before each turn the harness gives the seat a small cited pack sized to its
@@ -100,14 +100,22 @@ default flips; an `xcodebuild test` run; and the device checklist in
 `docs/vault-v1-device-checklist.md`. Every must-fix finding maps to a test in
 `docs/design/vault-v1-test-map.md`.
 
-## Crew routines (the botOS brief) are BUILT (2026-09-05)
+## Routines in Agents (the botOS brief) are BUILT (2026-09-05)
 
 The founder's "clone grokbot, call it botOS, local-first" shipped as
-**routines inside My Crew** (botOS is the codename only, like gitOS): a crew
-member, a task, a workspace, and a clock; the scheduler opens a headless
+**routines inside My Crew** (botOS is the codename only, like gitOS): an
+agent, a task, a workspace, and a clock; the scheduler opens a headless
 journaled session on the person's own computer and leaves a dated note in the
 vault. Engine in `os-code/src/routines/`, daemon routes in `serve.ts`, the app
-in `app/src/lib/routines.ts` and `app/src/screens/CrewCommandScreen.tsx`. Do
+in `app/src/lib/routines.ts` and `app/src/screens/CrewCommandScreen.tsx`.
+**The room is Agents (founder, 2026-10-19)**, once Crew: copy says Agents,
+"an agent", "your agents", and its schedule screen is **Routines** (once Crew
+command); `Crew` and "crew member" are retired words in copy
+(`app/test/support/uiGuards.ts`). Ids stay (`crew`, `crewcommand`,
+`settings.crew`, `CrewAgent`, the run note's `crew` tags and source), so saved
+settings and sidebar orders need no migration. New run notes land in
+`Vault/Agents/<routine>/`; notes written before stay in `Vault/Crew/`, the
+previous-run link names their full path, and the run prompt names both. Do
 NOT re-scope it as a chatbot: the reference is Grok Bot (always-on agents with
 their own computer), and an earlier persona-chatbot stab was dropped on
 purpose (see `os-code/DECISIONS.md`). Copy stays honest: "while your computer
@@ -176,7 +184,7 @@ chat's session, free chat, approvals, push, model menu, plan steps and
 repositories follow its machine; the device's default machine (Default in
 Your machines; on a desktop This computer or a docked one, `setDefaultMachine`,
 which retired the "Run on another computer" switch, 2026-10-13) keeps the
-Stack, the Vault on it and Crew, so choosing a project's machine never moves
+Stack, the Vault on it and Agents, so choosing a project's machine never moves
 the Vault. One pure rule, `app/src/lib/runsOn.ts`, read through the store's
 `conversationWhere` and `newChatWhere`; never read `settings.daemon` for a
 chat's own work. Copy says Runs on and machine, never "hub"; a server's place
@@ -342,7 +350,7 @@ though its server is localhost (privacy review, 2026-10-08).
 ## This build is Personal: release tiers (standing rule, founder 2026-09-27)
 
 v1 is **Personal**: one person, their desktop and their own phone. Chats,
-Projects, Terminal, Repositories, Stack, Vault, Crew (routines), Cloud
+Projects, Terminal, Repositories, Stack, Vault, Agents (routines), Cloud
 Connections, Computer (docking; once Pairing), the Local Library (v1 since
 2026-10-11, founder, so the community can help build it; community reviews
 stay off, `REVIEWS_OPEN` in `lib/reviews.ts`, until a migration grants review
@@ -374,7 +382,7 @@ list shows.
 
 No account for chatting (Harbor Lite and Harbor, the Stack, a model you
 connect); everything else (the coding agent, Projects, Terminal, Repositories,
-Vault, Crew, Cloud Connections, pairing) opens a sign-in sheet instead, and
+Vault, Agents, Cloud Connections, pairing) opens a sign-in sheet instead, and
 signing in carries on. A build with no account backend stays open. Nothing
 resets for a signed-out person (CX advised against the founder's reset; the
 founder deferred to CX): the benefit of signing in is additive, eight plain
@@ -518,7 +526,7 @@ endpoint + key) stays device-local and connect-once (`settings.currentConnection
 `settings.harnessCurrentConnections`, the same secret keys), reached from the
 project row's connect sheet. The UI is `app/src/components/ProjectCurrents.tsx`,
 rendered in `ProjectDetailScreen` (editors only), and is GONE from
-`SettingsScreen`. Every global room (the pill, water-line, Bench, Crew, Vault)
+`SettingsScreen`. Every global room (the pill, water-line, Bench, Agents, Vault)
 and each session's handle read the ACTIVE project's selection via
 `agenticView(settings)` / `harnessView(settings)` (both derive from
 `activeProjectOf(settings)`, since `projects` and `activeProjectId` live in

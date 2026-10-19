@@ -65,7 +65,7 @@ export interface RunNoteFields {
   session: string;
   started: string;
   state: string;
-  /** The routine's folder under Crew/, for its tag. */
+  /** The routine's folder under Agents/, for its tag. */
   folder: string;
   /** The previous run note's vault path, when there is one. */
   previousPath?: string;

@@ -171,7 +171,7 @@ describe('Settings, Writing', () => {
     const sub = dom.container.querySelector('.writing-voice .settings-row-sub')?.textContent;
     expect(sub).toBe(WRITING_VOICE_SUB);
     expect(sub).toBe(
-      "Your own words for how models write for you. Works alone or with Humanize Writing. Kept only on this device and never synced. It goes with each message to the model that writes for you, except your computer's coding agent, its free chat, and Crew routines.",
+      "Your own words for how models write for you. Works alone or with Humanize Writing. Kept only on this device and never synced. It goes with each message to the model that writes for you, except your computer's coding agent, its free chat, and routines.",
     );
     expect(sub).not.toMatch(/stays on this device/);
   });

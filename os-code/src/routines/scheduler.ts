@@ -225,14 +225,23 @@ export function routineInstructions(routine: Routine): string {
     routine.access === 'read-only'
       ? 'This routine is read-only: you can read files, search, and inspect the repository, but you cannot change anything. Do not try.'
       : 'This routine may edit files inside this workspace. Any shell command will ask for approval; if nobody answers within a few minutes the step is declined and you should carry on without it, or stop and say what is blocked.',
-    `Your earlier runs of this routine are notes in the vault under ${routineFolder(routine)}/ (newest last by name, each linking the one before it as "previous"); read the latest with vaultList and vaultRead when it helps you build on what was found before.`,
+    `Your earlier runs of this routine are notes in the vault under ${routineFolder(routine)}/ (newest last by name, each linking the one before it as "previous"; older runs may be under ${legacyRoutineFolder(routine)}/); read the latest with vaultList and vaultRead when it helps you build on what was found before.`,
     `You have about ${routine.maxMinutes} minutes. Work efficiently. When you finish, end with a short plain-language report the person will read first thing: what you found or did, anything risky, and a checklist of what needs them. Lead with the one thing that matters most. The report is saved to their vault as this run's note on its own, so do not try to write a note yourself. Never use em dashes.`,
   ].join('\n');
 }
 
 /** The routine's notes folder, vault-relative: the vault's one new-name rule
- *  (Vault M3, H4) applied to the routine's name. */
+ *  (Vault M3, H4) applied to the routine's name. Agents/ since the room was
+ *  renamed (founder, 2026-10-19); notes written before stay in Crew/, and the
+ *  previous-run link names their full path, so the chain still walks back. */
+const ROUTINE_NOTES_ROOT = 'Agents';
+
 function routineFolder(routine: Pick<Routine, 'name'>): string {
+  return `${ROUTINE_NOTES_ROOT}/${safeNoteName(routine.name, 'Routine')}`;
+}
+
+/** Where a routine's notes went before the rename, for the run prompt. */
+function legacyRoutineFolder(routine: Pick<Routine, 'name'>): string {
   return `Crew/${safeNoteName(routine.name, 'Routine')}`;
 }
 
@@ -972,7 +981,7 @@ export class RoutineScheduler {
         session: active.driver.id,
         started: active.run.startedAt,
         state,
-        folder: folder.slice('Crew/'.length),
+        folder: folder.slice(`${ROUTINE_NOTES_ROOT}/`.length),
         previousPath,
         ...(active.dayPath ? { dayPath: active.dayPath } : {}),
         provenance: this.provenanceFor(active),
@@ -981,7 +990,7 @@ export class RoutineScheduler {
       }),
       `# ${active.routine.name}: ${date} at ${hh}:${mm}`,
       '',
-      `Crew: ${active.routine.agentName} · Workspace: ${basename(active.routine.cwd)} · ${stateWord(state)} · ${minutes} min · session ${active.driver.id}`,
+      `Agent: ${active.routine.agentName} · Workspace: ${basename(active.routine.cwd)} · ${stateWord(state)} · ${minutes} min · session ${active.driver.id}`,
       '',
       // Headless means offline (tech review 3): every note says so, and what that
       // left out.

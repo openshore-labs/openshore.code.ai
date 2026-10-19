@@ -33,7 +33,7 @@ const LEVELS: Array<{ id: CrewActivityLevel; label: string; hint: string }> = [
   {
     id: 'auto',
     label: 'Joins on its own',
-    hint: 'The Reasoning model can bring this member in on its own when a decision needs its view. More hands-off.',
+    hint: 'The Reasoning model can bring this agent in on its own when a decision needs its view. More hands-off.',
   },
   {
     id: 'request',
@@ -107,7 +107,7 @@ export function CrewScreen() {
     const name = draft.name.trim();
     const persona = draft.persona.trim();
     if (!name || !persona) {
-      showToast('A crew member needs a name and a persona.');
+      showToast('An agent needs a name and a persona.');
       return;
     }
     const payload = {
@@ -123,7 +123,7 @@ export function CrewScreen() {
       : Boolean(await createCrewAgent(payload));
     if (!saved) return;
     setDraft(undefined);
-    showToast(draft.id ? 'Crew member updated.' : `${name} joined your crew.`);
+    showToast(draft.id ? 'Agent updated.' : `${name} joined your agents.`);
   };
 
   // A maintainer's advisory org, as a crew: eight named perspectives the
@@ -146,16 +146,16 @@ export function CrewScreen() {
       missingAdvisors.length === 0
         ? 'Your advisor team is already here.'
         : missingAdvisors.length === 1
-          ? `${missingAdvisors[0]!.name} joined your crew.`
-          : `${missingAdvisors.length} advisors joined your crew.`,
+          ? `${missingAdvisors[0]!.name} joined your agents.`
+          : `${missingAdvisors.length} advisors joined your agents.`,
     );
   };
 
   return (
     <div className="screen">
-      <BackBar title="Crew" titleHiddenUntil={titleRef} />
+      <BackBar title="Agents" titleHiddenUntil={titleRef} />
       <div className="screen-inner">
-        <h1 ref={titleRef}>Crew</h1>
+        <h1 ref={titleRef}>Agents</h1>
         <p className="lead">
           Build your own agents. Each has a name, a persona, and a rule for how and when it is
           called. Point them at specific projects, or let them work across all of them.
@@ -173,7 +173,7 @@ export function CrewScreen() {
             onClick={openCrewCommand}
           >
             <span className="crew-command-row-body">
-              <span className="card-title">Crew command</span>
+              <span className="card-title">Routines</span>
               <span className="sub">{ROUTINES_RUN_LINE}</span>
             </span>
             <span className="disclosure-chevron" aria-hidden="true" />
@@ -186,11 +186,11 @@ export function CrewScreen() {
           >
             <span className="crew-command-door-body">
               <span className="crew-command-door-kicker">
-                Crew command
+                Routines
                 {control.where === 'away' ? ' · View only' : control.can ? ' · In control' : ''}
               </span>
               <span className="crew-command-door-title">
-                {routines.length ? 'Your crew at work' : 'Put your crew to work'}
+                {routines.length ? 'Your agents at work' : 'Put your agents to work'}
               </span>
               <span className="crew-command-door-sub">
                 {control.where === 'unpaired'
@@ -208,7 +208,7 @@ export function CrewScreen() {
           className={`btn ${firstCrew ? 'ghost' : 'primary'} block press-fb crew-new`}
           onClick={() => setDraft(emptyDraft())}
         >
-          New crew member
+          New agent
         </button>
 
         {missingAdvisors.length ? (
@@ -234,7 +234,7 @@ export function CrewScreen() {
 
         {crew.length ? (
           <span className="eyebrow" style={{ marginTop: 18 }}>
-            Your crew
+            Your agents
           </span>
         ) : null}
 
@@ -294,7 +294,7 @@ export function CrewScreen() {
         {draft ? (
           <>
             <SheetHead
-              title={draft.id ? 'Edit crew member' : 'New crew member'}
+              title={draft.id ? 'Edit agent' : 'New agent'}
               onClose={() => setDraft(undefined)}
             />
 
@@ -404,7 +404,7 @@ export function CrewScreen() {
       >
         {confirmDelete ? (
           <>
-            <h3>Delete {deleting?.name ?? 'this crew member'}?</h3>
+            <h3>Delete {deleting?.name ?? 'this agent'}?</h3>
             <p>Routines that use it keep their schedule. This cannot be undone.</p>
             <div className="confirm-row">
               <button className="btn ghost" onClick={() => setConfirmDelete(undefined)}>
@@ -416,7 +416,7 @@ export function CrewScreen() {
                   const id = confirmDelete;
                   setConfirmDelete(undefined);
                   await deleteCrewAgent(id);
-                  showToast('Crew member deleted.');
+                  showToast('Agent deleted.');
                 }}
               >
                 Delete

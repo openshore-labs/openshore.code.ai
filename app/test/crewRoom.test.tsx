@@ -1,4 +1,5 @@
-// Crew, as a maintainer ruled it on 2026-10-07. D17: before a computer is
+// Agents (once Crew, renamed 2026-10-19; Crew command is now Routines), as a
+// maintainer ruled it on 2026-10-07. D17: before a computer is
 // paired, with no routine, the door to Crew command is a plain card row and
 // the dark hero waits for work to show; Crew command keeps the crew to one
 // line with Manage. D18: the whole crew card is the Edit tap, a swipe left
@@ -100,7 +101,7 @@ describe('D17: the door to Crew command', () => {
     expect(door, 'the quiet row').not.toBeNull();
     expect(door!.className).toMatch(/\bcard\b/);
     expect(door!.querySelector('.disclosure-chevron')).not.toBeNull();
-    expect(door!.textContent).toBe('Crew commandRoutines run on your computer while it is on.');
+    expect(door!.textContent).toBe('RoutinesRoutines run on your computer while it is on.');
     expect(d.container.querySelector('.crew-command-door')).toBeNull();
   });
 
@@ -143,7 +144,7 @@ describe('D17: the door to Crew command', () => {
     dom ??= await mountDom();
     await dom.render(<CrewCommandScreen />);
     expect(dom.container.querySelector('.cc-crew-count')?.textContent).toBe(
-      '2 members, 1 with a routine.',
+      '2 agents, 1 with a routine.',
     );
     expect(dom.container.querySelector('.cc-member')).toBeNull();
     await dom.click('Manage');
@@ -160,7 +161,7 @@ describe('D17: the door to Crew command', () => {
     dom ??= await mountDom();
     await dom.render(<CrewCommandScreen />);
     expect(dom.container.querySelector('.cc-crew-count')?.textContent).toBe(
-      'No crew members. The routines below keep their schedule.',
+      'No agents. The routines below keep their schedule.',
     );
     expect(dom.text()).not.toContain('The first routine adds a Reviewer');
     expect(dom.text()).toContain('Morning review');
@@ -187,7 +188,7 @@ describe('D18: a crew card is the Edit tap, and a swipe deletes it', () => {
     expect(d.buttons()).not.toContain('Edit');
     expect(d.buttons()).not.toContain('Delete');
     await act(() => card!.dispatchEvent(new window.Event('click', { bubbles: true })));
-    expect(d.text()).toContain('Edit crew member');
+    expect(d.text()).toContain('Edit agent');
   });
 
   it("puts the same delete at the editor's foot, named for the member as saved", async () => {
@@ -205,7 +206,7 @@ describe('D18: a crew card is the Edit tap, and a swipe deletes it', () => {
 
   it("offers no delete in a new member's editor", async () => {
     const d = await renderCrew();
-    await d.click('New crew member');
+    await d.click('New agent');
     expect(d.buttons().some((b) => b.startsWith('Delete'))).toBe(false);
   });
 });

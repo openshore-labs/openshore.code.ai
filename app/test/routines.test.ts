@@ -91,7 +91,7 @@ describe('presence copy', () => {
   it('writes the headline from what matters most: needs you, then working, then results', () => {
     expect(crewHeadline([], [])).toContain('ready to work');
     // Routines run while the computer is on, never "while you are away".
-    expect(crewHeadline([], [])).toBe('Your crew is ready to work while your computer is on.');
+    expect(crewHeadline([], [])).toBe('Your agents are ready to work while your computer is on.');
     expect(
       crewHeadline([view({ presence: 'waiting' }), view({ id: 'r2', presence: 'working' })], []),
     ).toBe('1 routine needs you.');

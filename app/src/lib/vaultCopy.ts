@@ -2712,7 +2712,7 @@ export const VAULT_ABOUT_HOWS: Readonly<
 > = {
   agent: 'In a chat, with your approval',
   'agent-edit': 'In a chat, with your approval',
-  crew: 'By a Crew routine',
+  crew: 'By a routine',
   handoff: 'A handoff you saved',
 };
 export const VAULT_ABOUT_CREATED = 'Created';

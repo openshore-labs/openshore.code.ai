@@ -87,7 +87,7 @@ person using the app:
   what is waiting on whom, and no suggestion silently evaporates. Tenet 8.
 - **Advisory, and a maintainer decides; disagree and commit**: every advisor
   presses its case with evidence, then gets behind the call. This is why the
-  advisor team ships as a Crew preset (`app/src/lib/crewPresets.ts`): named,
+  advisor team ships as an Agents preset (`app/src/lib/crewPresets.ts`): named,
   project-agnostic perspectives the Reasoning model brings in, in their voice, and
   the person decides. The Technical Advisor reviews the work; the Marketing,
   Finance, and design review advisors step in on their own when a decision

@@ -122,15 +122,15 @@ export function controlBlurb(where: ControlWhere, machine: string): string {
     case 'away':
       return `You are away from ${machine}. Routines run there while it is on. Reconnect over Tailscale to take control.`;
     case 'unpaired':
-      return 'Routines run on your own computer, while it is on. Connect this device to it, then set your crew to work.';
+      return 'Routines run on your own computer, while it is on. Connect this device to it, then put your agents to work.';
     default:
-      return `Connected to ${machine}. Set up, run, and stop your crew from here.`;
+      return `Connected to ${machine}. Set up, run, and stop your agents from here.`;
   }
 }
 
 /** The reason a control action is refused when a device is not docked. */
 export const CONTROL_REQUIRES_DOCK =
-  'Reconnect to your computer over Tailscale to control your crew.';
+  'Reconnect to your computer over Tailscale to control your agents.';
 
 export interface RoutinesClient {
   /** Where the scheduler lives, for the copy ("this computer" or the hub). */
@@ -351,7 +351,7 @@ export function crewHeadline(
   runs: RoutineRun[],
   now = Date.now(),
 ): string {
-  if (!routines.length) return 'Your crew is ready to work while your computer is on.';
+  if (!routines.length) return 'Your agents are ready to work while your computer is on.';
   const working = routines.filter((r) => r.presence === 'working').length;
   const waiting = routines.filter((r) => r.presence === 'waiting').length;
   if (waiting) return `${waiting} ${waiting === 1 ? 'routine needs' : 'routines need'} you.`;

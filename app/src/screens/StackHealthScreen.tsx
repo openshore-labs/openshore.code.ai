@@ -453,7 +453,7 @@ export function StackHealthScreen() {
             <h3>No runs yet in this window</h3>
             <p className="sub" style={{ marginTop: 6 }}>
               Once you build with your stack, this fills in: how much stayed local, what you saved,
-              and how your crew is doing. Come back after a session or two.
+              and how each seat is doing. Come back after a session or two.
             </p>
           </div>
         ) : null}
@@ -630,7 +630,7 @@ export function StackHealthScreen() {
             {/* The Crew: today the configured stack, per role. */}
             {crew.length ? (
               <section className="card sh-card">
-                <p className="sh-eyebrow">Your crew</p>
+                <p className="sh-eyebrow">Your seats</p>
                 <div className="sh-crew">
                   {crew.map((m, i) => (
                     <div

@@ -81,13 +81,11 @@ interface Draft {
  *  member deleted, the routines below still run, as the delete promised. */
 function crewCountLine(crew: readonly CrewAgent[], routines: RoutineView[]): string {
   const n = crew.length;
-  if (n === 0) return 'No crew members. The routines below keep their schedule.';
+  if (n === 0) return 'No agents. The routines below keep their schedule.';
   const busy = crew.filter((a) => routinesForAgent(routines, a).length > 0).length;
-  if (n === 1) return busy ? '1 member, and it has a routine.' : '1 member, with no routine yet.';
-  if (busy === 0) return `${n} members, none with a routine yet.`;
-  return busy === n
-    ? `${n} members, each with a routine.`
-    : `${n} members, ${busy} with a routine.`;
+  if (n === 1) return busy ? '1 agent, and it has a routine.' : '1 agent, with no routine yet.';
+  if (busy === 0) return `${n} agents, none with a routine yet.`;
+  return busy === n ? `${n} agents, each with a routine.` : `${n} agents, ${busy} with a routine.`;
 }
 
 function PresenceDot({ tone }: { tone: PresenceTone }) {
@@ -310,7 +308,7 @@ export function CrewCommandScreen() {
       if (draft.agentKey.startsWith('id:')) {
         const member = crew.find((a) => a.id === draft.agentKey.slice(3));
         if (!member) {
-          showToast('That crew member is gone. Pick another.');
+          showToast('That agent is gone. Pick another.');
           return;
         }
         agent = { id: member.id, name: member.name, persona: member.persona };
@@ -374,9 +372,9 @@ export function CrewCommandScreen() {
 
   return (
     <div className="screen crew-command">
-      <BackBar title="Crew command" />
+      <BackBar title="Routines" />
       <div className="screen-inner">
-        <section className={`cc-hero ${where}`} aria-label="Crew status">
+        <section className={`cc-hero ${where}`} aria-label="Routines status">
           <div className="cc-hero-top">
             <div className="cc-kicker">{machine}</div>
             <span className={`cc-control-badge ${where}`}>
@@ -384,7 +382,7 @@ export function CrewCommandScreen() {
               {controlLabel(where)}
             </span>
           </div>
-          <h1 className="cc-headline">{unpaired ? 'Put your crew to work.' : headline}</h1>
+          <h1 className="cc-headline">{unpaired ? 'Put your agents to work.' : headline}</h1>
           {!unpaired ? (
             <div className="cc-stats" role="list">
               <div className={`cc-stat${working.length ? ' live' : ''}`} role="listitem">
@@ -457,8 +455,8 @@ export function CrewCommandScreen() {
         </section>
 
         {unpaired ? (
-          <section className="cc-section" aria-label="What your crew can do">
-            <h2>What your crew can do</h2>
+          <section className="cc-section" aria-label="What your agents can do">
+            <h2>What your agents can do</h2>
             <p className="lead" style={{ marginBottom: 14 }}>
               Set routines up while you are connected to your computer. Away from it, you see the
               last picture here. Back in reach, you take control again.
@@ -469,7 +467,7 @@ export function CrewCommandScreen() {
                 <div>
                   <div className="cc-dormant-title">Scheduled routines</div>
                   <div className="cc-dormant-sub">
-                    A crew member works a task on a clock, like a review every weekday morning.
+                    An agent works a task on a clock, like a review every weekday morning.
                   </div>
                 </div>
               </div>
@@ -530,9 +528,9 @@ export function CrewCommandScreen() {
         ) : null}
 
         {!unpaired ? (
-          <section className="cc-section" aria-label="Crew">
+          <section className="cc-section" aria-label="Agents">
             <div className="cc-section-head">
-              <h2>Crew</h2>
+              <h2>Agents</h2>
               <button className="cc-link press-fb" onClick={() => setView('crew')}>
                 Manage
               </button>
@@ -542,7 +540,7 @@ export function CrewCommandScreen() {
                 names its member and its presence. */}
             {crew.length === 0 && routines.length === 0 ? (
               <p className="hint">
-                No crew yet. The first routine adds a Reviewer to your crew for you.
+                No agents yet. The first routine adds a Reviewer to your agents for you.
               </p>
             ) : (
               <p className="cc-crew-count">{crewCountLine(crew, routines)}</p>
@@ -813,7 +811,7 @@ export function CrewCommandScreen() {
             </div>
 
             <div className="field">
-              <label htmlFor="routine-member">Crew member</label>
+              <label htmlFor="routine-member">Agent</label>
               <select
                 id="routine-member"
                 className="select"
@@ -827,7 +825,7 @@ export function CrewCommandScreen() {
                 ))}
                 {!crew.some((a) => a.name === PRESET.agentName) ? (
                   <option value={`new:${PRESET.agentName}`}>
-                    {PRESET.agentName} (joins your crew)
+                    {PRESET.agentName} (joins your agents)
                   </option>
                 ) : null}
                 {draft.agentKey.startsWith('new:') &&

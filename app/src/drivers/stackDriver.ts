@@ -1368,10 +1368,10 @@ export class StackDriver implements ChatDriver {
     };
     const auto = crew.filter((a) => a.activityLevel === 'auto');
     const request = crew.filter((a) => a.activityLevel === 'request');
-    const lines: string[] = ['Your crew (user-authored perspectives you can bring in):'];
+    const lines: string[] = ["The person's agents (user-authored perspectives you can bring in):"];
     if (auto.length) {
       lines.push(
-        'You may consult these on your own when they would help. Speak in their voice when you do, and say which crew member you are channeling:',
+        'You may consult these on your own when they would help. Speak in their voice when you do, and say which agent you are channeling:',
       );
       lines.push(...auto.map(describe));
     }

@@ -453,6 +453,6 @@ describe('a key on the server serves coding sessions only', () => {
 
   it('the CLI help says so, and names the server account', () => {
     expect(KEY_HELP).toContain(`${SERVER_ACCOUNT_PREFIX} osc key add groq`);
-    expect(KEY_HELP).toMatch(/Crew routines and the free chat run only on a local model/);
+    expect(KEY_HELP).toMatch(/Routines and the free chat run only on a local model/);
   });
 });

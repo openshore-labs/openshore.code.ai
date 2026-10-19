@@ -94,7 +94,7 @@ export const ACCOUNT_GATE_TITLE: Record<AccountFeature, string> = {
   terminal: 'Terminal needs an account',
   repos: 'Repositories need an account',
   vault: 'Vault needs an account',
-  crew: 'Crew needs an account',
+  crew: 'Agents need an account',
   connections: 'Cloud Connections need an account',
   pairing: 'Docking to a computer needs an account',
   // Folded at build time like navRooms' label, so a Personal bundle carries
@@ -106,7 +106,7 @@ export const ACCOUNT_GATE_TITLE: Record<AccountFeature, string> = {
 };
 
 export const ACCOUNT_GATE_BODY =
-  'Signing in is free. It opens building, Projects, Vault, Crew, and pairing, and takes your theme and a few preferences to every device you sign in on. Your chats stay on your devices, and chatting needs no account.';
+  'Signing in is free. It opens building, Projects, Vault, Agents, and pairing, and takes your theme and a few preferences to every device you sign in on. Your chats stay on your devices, and chatting needs no account.';
 
 /** The sidebar's Sign in subline: one line that fits the sidebar whole, so
  *  it names what signing in opens and leaves the preferences to the pitch
@@ -129,4 +129,4 @@ export const SIGNED_IN_PERKS = `These follow you to every device you sign in on:
 
 /** Said once to someone who used OpenShore before the gate, signed out. */
 export const ACCOUNT_NOTICE =
-  'Projects, Vault, Crew, and pairing now need an account. Everything you made is still here and comes back when you sign in.';
+  'Projects, Vault, Agents, and pairing now need an account. Everything you made is still here and comes back when you sign in.';

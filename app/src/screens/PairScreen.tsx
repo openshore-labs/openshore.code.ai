@@ -952,7 +952,7 @@ function HubList({ min = 2 }: { min?: number }) {
           <p className="hint" style={{ marginTop: 0, marginBottom: 10 }}>
             {desktop
               ? 'New projects run on the default unless one chooses its own under Runs on. Tap a machine to make it the default.'
-              : 'The default runs the Stack, the Vault on it, Crew, and every project that does not choose its own under Runs on. Tap another to make it the default.'}
+              : 'The default runs the Stack, the Vault on it, Agents, and every project that does not choose its own under Runs on. Tap another to make it the default.'}
           </p>
           {desktop ? (
             <div className="card-row machine-row stagger-in" style={{ '--i': 0 } as CSSProperties}>

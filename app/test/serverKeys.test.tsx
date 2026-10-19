@@ -407,7 +407,7 @@ describe('the choices and the words', () => {
     // words say they stop, never that they stay on a local one.
     expect(words).not.toMatch(/routine|free chat/i);
     expect(lib.SERVER_MODEL_LOCAL_ONLY).toBe(
-      "Crew routines and Chat with your server run only on a local model, so they do not run while a cloud model is the server's model.",
+      "Routines and Chat with your server run only on a local model, so they do not run while a cloud model is the server's model.",
     );
     expect(lib.SERVER_KEYS_LEAD).toContain('while this device sleeps');
     // Each way out is tried once, and the line says what happens otherwise.

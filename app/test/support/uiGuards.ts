@@ -233,6 +233,14 @@ export const RETIRED_2026_10_07: Array<{ pattern: RegExp; use: string }> = [
   // never a market. Lowercase 'marketplace' stays as a match keyword, since a
   // person may still ask that way.
   { pattern: /\bMarketplace\b/, use: "'Local Library' (founder, 2026-10-13)" },
+  // The room is Agents (founder, 2026-10-19): clearer and simpler than Crew,
+  // and its schedule screen is Routines. Lowercase 'crew' stays as a match
+  // keyword and in ids, since a person may still ask that way.
+  { pattern: /\bCrew\b/, use: "'Agents', or 'Routines' for Crew command (founder, 2026-10-19)" },
+  {
+    pattern: /\b(?:[Yy]our|[Tt]he|and|a) crew\b|\bcrew members?\b/,
+    use: "'your agents' or 'an agent' (founder, 2026-10-19)",
+  },
   {
     pattern: /\bAbout \$?\{HARBOR_APPROX_LABEL\}/,
     use: "HARBOR_APPROX_LABEL alone: it already starts with 'about'",

@@ -42,7 +42,7 @@ export interface EgressEntry {
  *  2026-10-01, replacing tech review 3's "never"): the one sentence the search entry
  *  and the Settings row both carry. Nothing else a routine does reaches the web. */
 export const ROUTINES_SEARCH_LINE =
-  'Crew routines follow this switch while your computer is on, and only search; they never open pages.';
+  'Routines follow this switch while your computer is on, and only search; they never open pages.';
 
 /** Once a chat on a seat that stays holds a private note's text (a read, a
  *  marked turn, or a private pin), every search a model writes shows its
@@ -72,7 +72,7 @@ export const EGRESS: EgressEntry[] = [
     id: 'account',
     recipient: 'OpenShore (us)',
     what: 'Your email address to send you a sign-in code and link, then the code or link itself, or, if you add a passkey, a signature from it (the passkey itself stays on your device and in your keychain or password manager). Then what your account needs to work: its sign-in renewed, and, for a team account, its plan.',
-    when: 'Only once you sign in, and then each time the app opens while you are signed in. Chatting needs no account; building, Projects, Vault, Crew, Terminal, and pairing do.',
+    when: 'Only once you sign in, and then each time the app opens while you are signed in. Chatting needs no account; building, Projects, Vault, Agents, Terminal, and pairing do.',
     start: 'off',
     hosts: ['env:VITE_SUPABASE_URL'],
   },
@@ -163,7 +163,7 @@ export const EGRESS: EgressEntry[] = [
     id: 'web-pages',
     recipient: 'Web search',
     what: 'A request for a web page the coding agent opens on your computer, to that site, with the network address any web request carries.',
-    when: `When the coding agent opens a page: it asks first unless you set Opening web pages to Always in Settings, Approvals, and never opens one if you set it to Never. A page on your own network always asks. ${PRIVATE_PAGE_LINE} Crew routines never open pages.`,
+    when: `When the coding agent opens a page: it asks first unless you set Opening web pages to Always in Settings, Approvals, and never opens one if you set it to Never. A page on your own network always asks. ${PRIVATE_PAGE_LINE} Routines never open pages.`,
     start: 'tap',
     hosts: [],
     platforms: ['electron'],

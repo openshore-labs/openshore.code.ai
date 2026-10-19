@@ -51,7 +51,7 @@ export const ROOM_LABELS: Record<NavRoom, string> = {
   repos: 'Repositories',
   stack: 'Stack',
   vault: 'Vault',
-  crew: 'Crew',
+  crew: 'Agents',
   library: 'Local Library',
   stackhealth: SHIPS_STACKHEALTH ? 'Stack Health' : '',
   launch: SHIPS_LAUNCH ? 'Launch with Codemagic' : '',

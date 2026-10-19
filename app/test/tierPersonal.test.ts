@@ -66,7 +66,7 @@ describe('a Personal build, loaded as one', () => {
     expect(APP_KNOWLEDGE).not.toMatch(/Launch with Codemagic|Currents on the project/);
     expect(APP_KNOWLEDGE).toMatch(/The Local Library \(in the Menu\)/);
     expect(APP_KNOWLEDGE).not.toMatch(/Coming soon/i);
-    expect(APP_KNOWLEDGE).toMatch(/Crew command/);
+    expect(APP_KNOWLEDGE).toMatch(/Terminal, Routines/);
   });
 
   it('carries no current, no later guide, and no later room name', async () => {

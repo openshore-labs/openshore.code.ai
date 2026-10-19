@@ -40,7 +40,7 @@ export type Section = keyof typeof SECTIONS;
 
 const README_LINES: Record<Section, string> = {
   vault:
-    'Your notes, plain markdown. Obsidian can open this folder as a vault. Crew routines leave their run notes in Vault/Crew.',
+    'Your notes, plain markdown. Obsidian can open this folder as a vault. Routines leave their run notes in Vault/Agents.',
   chats: 'Your chats, one markdown file each, filed by month. Turn this off in Settings, Chats.',
   projects:
     'Repositories you cloned and project work, one folder each. Scratch holds what a chat with no project made.',

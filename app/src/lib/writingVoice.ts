@@ -22,7 +22,7 @@ export const WRITING_VOICE_MAX = 1500;
  *  (appActionCard.test.tsx holds the two together), the same on the desktop,
  *  where the computer is this one, and on a phone or iPad. */
 export const WRITING_VOICE_SUB =
-  "Your own words for how models write for you. Works alone or with Humanize Writing. Kept only on this device and never synced. It goes with each message to the model that writes for you, except your computer's coding agent, its free chat, and Crew routines.";
+  "Your own words for how models write for you. Works alone or with Humanize Writing. Kept only on this device and never synced. It goes with each message to the model that writes for you, except your computer's coding agent, its free chat, and routines.";
 
 /** The opening of the shaping chat, left open for the person to finish. */
 export const WRITING_VOICE_CHAT_PROMPT =

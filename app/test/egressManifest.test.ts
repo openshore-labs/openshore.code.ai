@@ -132,7 +132,7 @@ describe('what leaves this device', () => {
   // Maintainer, 2026-10-01: a routine follows the one web search switch and only
   // searches, so the search entry and the Settings row say so in one sentence,
   // and claim no per-routine switch that is not built.
-  it('says Crew routines follow the search switch, in the list and under the Settings row', () => {
+  it('says routines follow the search switch, in the list and under the Settings row', () => {
     const search = EGRESS.find((e) => e.id === 'search')!;
     expect(ROUTINES_SEARCH_LINE).toMatch(/follow this switch.*only search.*never open pages/);
     expect(search.when).toContain(ROUTINES_SEARCH_LINE);
@@ -238,7 +238,7 @@ describe('what leaves this device', () => {
       `the coding agent searches only once you allow it. ${PRIVATE_SEARCH_LINE} ${ROUTINES_SEARCH_LINE}`,
     );
     expect(by('web-pages').when).toContain(
-      `A page on your own network always asks. ${PRIVATE_PAGE_LINE} Crew routines never open pages.`,
+      `A page on your own network always asks. ${PRIVATE_PAGE_LINE} Routines never open pages.`,
     );
   });
 

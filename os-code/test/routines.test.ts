@@ -347,13 +347,13 @@ describe('routine scheduler', () => {
     expect(view.lastRun?.steps).toBe(1);
     expect(view.lastRun?.sessionId).toBe(opened[0]!.id);
     const notePath = view.lastRun!.notePath!;
-    expect(notePath.startsWith('Crew/Morning review/')).toBe(true);
+    expect(notePath.startsWith('Agents/Morning review/')).toBe(true);
     const note = readFileSync(join(vault, notePath), 'utf8');
     expect(note).toContain('Two commits landed.');
     expect(note).toContain(`session ${opened[0]!.id}`);
     expect(note).toContain('- gitLog (ok)');
     expect(scheduler.readNote(view.lastRun!.id)?.markdown).toBe(note);
-    expect(readdirSync(join(vault, 'Crew', 'Morning review'))).toHaveLength(1);
+    expect(readdirSync(join(vault, 'Agents', 'Morning review'))).toHaveLength(1);
   });
 
   it('heads the note with the date and time, and gives a second run in the same minute its own file', () => {
@@ -375,9 +375,9 @@ describe('routine scheduler', () => {
     opened[1]!.emit({ type: 'task-done', reason: 'complete' });
     const second = scheduler.get(routine.id)!.lastRun!.notePath!;
 
-    expect(first).toBe(`Crew/Morning review/${date} 06-00.md`);
-    expect(second).toBe(`Crew/Morning review/${date} 06-00 (2).md`);
-    expect(readdirSync(join(vault, 'Crew', 'Morning review')).sort()).toEqual([
+    expect(first).toBe(`Agents/Morning review/${date} 06-00.md`);
+    expect(second).toBe(`Agents/Morning review/${date} 06-00 (2).md`);
+    expect(readdirSync(join(vault, 'Agents', 'Morning review')).sort()).toEqual([
       `${date} 06-00 (2).md`,
       `${date} 06-00.md`,
     ]);
@@ -408,7 +408,7 @@ describe('routine scheduler', () => {
       clock.now = at(0, 6, 1, 5);
       opened[0]!.emit({ type: 'task-done', reason: 'complete' });
       const notePath = scheduler.get(routine.id)!.lastRun!.notePath!;
-      expect(notePath.split('/').slice(0, 2)).toEqual(['Crew', folder]);
+      expect(notePath.split('/').slice(0, 2)).toEqual(['Agents', folder]);
       expect(readFileSync(join(vault, notePath), 'utf8')).toContain('Done.');
       scheduler.stop();
     }
@@ -626,7 +626,9 @@ describe('routine scheduler', () => {
       const routine = store.createRoutine(input({ name: 'Q3: #auth [review]?' }));
       const text = routineInstructions(routine);
       expect(text).toContain('Your earlier runs of this routine are notes in the vault under');
-      expect(text).toContain('Crew/Q3 auth review/');
+      expect(text).toContain('Agents/Q3 auth review/');
+      // Runs from before the rename stay where they were written.
+      expect(text).toContain('older runs may be under Crew/Q3 auth review/');
     });
   });
 
@@ -1045,18 +1047,18 @@ describe('routine scheduler', () => {
     const d = clock.now;
     const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     // The person already has a note at that name (Obsidian, a sync client).
-    mkdirSync(join(vault, 'Crew', 'Morning review'), { recursive: true });
-    writeFileSync(join(vault, 'Crew', 'Morning review', `${date} 06-00.md`), 'mine');
+    mkdirSync(join(vault, 'Agents', 'Morning review'), { recursive: true });
+    writeFileSync(join(vault, 'Agents', 'Morning review', `${date} 06-00.md`), 'mine');
     scheduler.runNow(routine.id);
     opened[0]!.emit({ type: 'text-final', text: 'Run result.' });
     opened[0]!.emit({ type: 'task-done', reason: 'complete' });
     const notePath = scheduler.get(routine.id)!.lastRun!.notePath!;
-    expect(notePath).toBe(`Crew/Morning review/${date} 06-00 (2).md`);
-    expect(readFileSync(join(vault, 'Crew', 'Morning review', `${date} 06-00.md`), 'utf8')).toBe(
+    expect(notePath).toBe(`Agents/Morning review/${date} 06-00 (2).md`);
+    expect(readFileSync(join(vault, 'Agents', 'Morning review', `${date} 06-00.md`), 'utf8')).toBe(
       'mine',
     );
     expect(readFileSync(join(vault, notePath), 'utf8')).toContain('Run result.');
-    expect(readdirSync(join(vault, 'Crew', 'Morning review')).sort()).toEqual([
+    expect(readdirSync(join(vault, 'Agents', 'Morning review')).sort()).toEqual([
       `${date} 06-00 (2).md`,
       `${date} 06-00.md`,
     ]);
@@ -1094,7 +1096,7 @@ describe('routine scheduler', () => {
     // the folder the vault uses now (after Bring copied it there).
     store.updateRun(run.id, { noteAbsPath: undefined });
     expect(scheduler.readNote(run.id)).toBeUndefined();
-    mkdirSync(join(root, 'Crew', 'Morning review'), { recursive: true });
+    mkdirSync(join(root, 'Agents', 'Morning review'), { recursive: true });
     writeFileSync(join(root, run.notePath!), 'brought along');
     expect(scheduler.readNote(run.id)?.markdown).toBe('brought along');
     // A record whose own file went away falls back the same way.

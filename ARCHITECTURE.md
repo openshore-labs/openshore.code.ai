@@ -40,7 +40,7 @@ private network. One React codebase (`app/`) is both app shells.
 
 | Path | What it does |
 | --- | --- |
-| `src/screens/` | One file per room: Chats, Projects, Stack, Vault, Crew, Local Library, Settings and the rest. |
+| `src/screens/` | One file per room: Chats, Projects, Stack, Vault, Agents (`CrewScreen`), Local Library, Settings and the rest. |
 | `src/drivers/` | How a chat reaches a model: `electronDriver.ts` (the in-process engine), `remoteDriver.ts` (a docked computer), `onDeviceDriver.ts` (llama.cpp on the phone), `providerClient.ts` (cloud providers, streamed, with abort). |
 | `src/state/store.ts` | The app store. New logic goes in a sibling module (`*Ops.ts`) and `store.ts` only wires it in. |
 | `src/lib/` | Pure helpers. Three are rules, not utilities: `focus.ts` (release tiers: which rooms ship), `egressManifest.ts` (everything that leaves a device), `accountGate.ts` (what needs a sign-in). |

@@ -199,4 +199,4 @@ export const SERVER_KEYS_HOLD =
  *  chat (daemon/freeChat.ts) refuse a model that leaves, so they stop while
  *  one is placed, and never use it (tech review 3). */
 export const SERVER_MODEL_LOCAL_ONLY =
-  "Crew routines and Chat with your server run only on a local model, so they do not run while a cloud model is the server's model.";
+  "Routines and Chat with your server run only on a local model, so they do not run while a cloud model is the server's model.";

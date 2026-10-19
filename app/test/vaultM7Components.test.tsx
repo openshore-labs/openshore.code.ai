@@ -848,7 +848,7 @@ describe('About this note (UX review Y12)', () => {
       'Written byClaude Sonnet',
       'RanOn a cloud model, Anthropic',
       'Model sizeLarge',
-      'HowBy a Crew routine',
+      'HowBy a routine',
       'Created2026-09-20',
       'ReviewedNot yet',
     ])

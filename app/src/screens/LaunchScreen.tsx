@@ -334,7 +334,7 @@ export function LaunchScreen() {
             disabled={busy}
             onClick={() => void reviewBuild()}
           >
-            Review with your crew first
+            Review with your agents first
           </button>
         ) : null}
         <button

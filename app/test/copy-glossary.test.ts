@@ -50,7 +50,7 @@ function stripComments(src: string): string {
 const RETIRED: Array<{ pattern: RegExp; use: string }> = [
   { pattern: /\bYour [Ss]tack\b/, use: 'Stack (the room); "your stack" only mid-sentence' },
   { pattern: /\bMy Stack\b/, use: 'Stack' },
-  { pattern: /\bMy Crew\b/, use: 'Crew' },
+  { pattern: /\bMy Crew\b/, use: 'Agents' },
   { pattern: /\bDesktop and phone\b/, use: 'Computer' },
   { pattern: /\bDesktop connection\b/, use: 'Computer' },
   // Renamed by UX review, 2026-10-01 (one plain word, and "hub" stays out of copy),
@@ -179,16 +179,10 @@ describe('room names come from one list', () => {
   });
 
   it("every screen's top bar names its room from the list", () => {
-    // Titles outside the nav list: Crew command (reached from Crew), Admin
+    // Titles outside the nav list: Routines (reached from Agents), Admin
     // (company admins), and pages inside a room. A name the person chose (a
     // project, a note) is an expression, not a literal, so it never shows here.
-    const NOT_ROOMS = new Set([
-      'Crew command',
-      'Admin',
-      'Project',
-      'Codemagic',
-      'What it has learned',
-    ]);
+    const NOT_ROOMS = new Set(['Routines', 'Admin', 'Project', 'Codemagic', 'What it has learned']);
     const rooms = new Set(Object.values(ROOM_LABELS));
     for (const file of FILES) {
       const src = readFileSync(file, 'utf8');

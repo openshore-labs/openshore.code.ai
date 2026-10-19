@@ -19,7 +19,7 @@ export const ROOM_NAMES: Record<ViewName, string> = {
   chat: 'Chat',
   project: 'Project',
   projectmemory: 'What it has learned',
-  crewcommand: 'Crew command',
+  crewcommand: 'Routines',
   admin: 'Admin',
   terminal: ROOM_LABELS.terminalroom,
   onboarding: 'Set up OpenShore',
