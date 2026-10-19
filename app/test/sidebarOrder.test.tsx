@@ -178,13 +178,13 @@ describe('the sidebar', () => {
     useApp.setState((s) => ({
       settings: {
         ...s.settings,
-        navOrder: { top: ['vault', 'chats', 'crew'], bottom: ['projects'], v: 2 },
+        navOrder: { top: ['vault', 'chats', 'crew'], bottom: ['projects'], v: 3 },
       } as never,
     }));
     const t = await texts();
-    // Rooms the saved order never named find their default neighbours: on
-    // this phone with no computer, Terminal's is the Vault (D10).
-    expect(t.slice(0, 3)).toEqual(['Vault', 'Terminal', 'Chats']);
+    // Rooms the saved order never named find their default neighbours: the
+    // Stack's is Chats, since Projects went below.
+    expect(t.slice(0, 3)).toEqual(['Vault', 'Chats', 'Stack']);
     expect(t.indexOf('Agents')).toBeLessThan(t.indexOf('Projects'));
     expect(t.indexOf('Settings')).toBe(t.length - 2);
   });
@@ -200,7 +200,9 @@ describe('the sidebar', () => {
     });
     const t = await texts();
     const newest = t.indexOf('Newest fix');
-    expect(newest).toBeGreaterThan(t.indexOf('Vault'));
+    // Between the two groups (founder, 2026-10-19).
+    expect(newest).toBeGreaterThan(t.indexOf('Cloud Connections'));
+    expect(newest).toBeLessThan(t.indexOf('Terminal'));
     expect(t[newest + 1]).toBe('Older plan');
     expect(t[newest + 2]).toBe('View all');
     expect(t).not.toContain('New chat');
@@ -228,71 +230,66 @@ describe('the sidebar', () => {
       vault.dispatchEvent(ev);
     });
     const saved = useApp.getState().settings.navOrder;
-    // One step down, past Terminal, the room that sits under the Vault on a
-    // phone with no computer (D10).
-    expect(saved?.top.indexOf('vault')).toBe(saved!.top.indexOf('terminalroom') + 1);
-    expect(saved?.v).toBe(2);
+    // One step down, past Computer, the room under the Vault.
+    expect(saved?.bottom.indexOf('vault')).toBe(saved!.bottom.indexOf('pair') + 1);
+    expect(saved?.v).toBe(3);
   });
 
-  // Maintainer, 2026-10-01: no separate section. Crew, Cloud Connections and the
-  // pairing room sit straight under the Vault (after Terminal, on a phone
-  // with no computer), and an order saved under the old two-group default is
-  // set aside once so they come up there.
-  it('puts every room in one group under the Vault, setting an old order aside once', async () => {
+  // The founder's two groups (2026-10-19): an order saved under an older
+  // default is set aside once, so every room comes up in its group.
+  it("puts the founder's rooms on top and the machine rooms below, setting an old order aside once", async () => {
     useApp.setState((s) => ({
       settings: {
         ...s.settings,
-        navOrder: { top: ['chats', 'vault'], bottom: ['crew', 'connections', 'pair'] },
+        navOrder: { top: ['vault', 'chats'], bottom: ['crew', 'connections', 'pair'], v: 2 },
       } as never,
     }));
     const t = await texts();
-    const vault = t.indexOf('Vault');
-    expect(t.slice(vault + 1, vault + 5)).toEqual([
-      'Terminal',
+    expect(t.slice(0, 6)).toEqual([
+      'Chats',
+      'Projects',
+      'Stack',
       'Agents',
+      'Local Library',
       'Cloud Connections',
+    ]);
+    const settings = t.indexOf('Settings');
+    expect(t.slice(settings - 4, settings)).toEqual([
+      'Terminal',
+      'Repositories',
+      'Vault',
       ROOM_LABELS.pair,
     ]);
-    expect(t.indexOf(ROOM_LABELS.pair)).toBeLessThan(t.indexOf('Settings'));
   });
 });
 
-// D10 (2026-10-07): the default order comes from navRooms for this
-// device. On a phone with no computer, Terminal is only a setup page, so it
-// waits after the Vault; it moves up to third the day the phone pairs, for
-// anyone who never moved a row, and a saved order still wins.
-describe('the default order per device', () => {
-  const PAIRED = { baseUrl: 'http://100.64.0.2:7337', token: 't', name: 'Desk' };
-
-  it('puts Terminal third on a desktop or a paired phone, after the Vault on a bare phone', () => {
-    const third = (device: { desktop: boolean; hubPaired: boolean }) =>
-      defaultNavOrder(device).top.indexOf('terminalroom');
-    expect(third({ desktop: true, hubPaired: false })).toBe(2);
-    expect(third({ desktop: false, hubPaired: true })).toBe(2);
-    const bare = defaultNavOrder({ desktop: false, hubPaired: false }).top;
-    expect(bare.indexOf('terminalroom')).toBe(bare.indexOf('vault') + 1);
-    expect(bare).not.toContain('settings');
-    expect(defaultNavOrder({ desktop: false, hubPaired: false }).bottom).toEqual([]);
+// The default order is the same on every device since 2026-10-19 (it
+// replaced D10's Terminal placed by device), so pairing moves nothing.
+describe('the default order', () => {
+  it('splits the rooms into the two groups, Settings in neither', () => {
+    expect(defaultNavOrder().bottom).toEqual(['terminalroom', 'repos', 'vault', 'pair']);
+    expect(defaultNavOrder().top.slice(0, 6)).toEqual([
+      'chats',
+      'projects',
+      'stack',
+      'crew',
+      'library',
+      'connections',
+    ]);
+    expect(defaultNavOrder().top).not.toContain('settings');
   });
 
-  it('moves Terminal up when the phone pairs, for someone who never moved a row', async () => {
+  it('keeps Terminal in its place when the phone pairs', async () => {
     let t = await texts();
-    expect(t.indexOf('Terminal')).toBe(t.indexOf('Vault') + 1);
-    useApp.setState((s) => ({ settings: { ...s.settings, daemon: PAIRED } as never }));
-    t = await texts();
-    expect(t.slice(0, 3)).toEqual(['Chats', 'Projects', 'Terminal']);
-  });
-
-  it('keeps a saved order once the phone pairs', async () => {
+    const before = t.indexOf('Terminal') - t.indexOf('Settings');
     useApp.setState((s) => ({
       settings: {
         ...s.settings,
-        daemon: PAIRED,
-        navOrder: { ...defaultNavOrder({ desktop: false, hubPaired: false }), v: 2 },
+        daemon: { baseUrl: 'http://100.64.0.2:7337', token: 't', name: 'Desk' },
       } as never,
     }));
-    const t = await texts();
-    expect(t.indexOf('Terminal')).toBe(t.indexOf('Vault') + 1);
+    t = await texts();
+    expect(t.indexOf('Terminal') - t.indexOf('Settings')).toBe(before);
   });
 });
 

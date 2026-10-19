@@ -61,21 +61,21 @@ describe('which tier a build carries', () => {
 });
 
 describe('a Personal build', () => {
-  it('shows the v1 rooms, Crew, Terminal and the Local Library included, and nothing later', () => {
-    const desk = navRooms({ desktop: true, hubPaired: false }, 1);
-    expect(desk.primary.map((r) => r.view)).toEqual([
+  it('shows the v1 rooms, Agents, Terminal and the Local Library included, and nothing later', () => {
+    const rooms = navRooms(1);
+    expect(rooms.primary.map((r) => r.view)).toEqual([
       'chats',
       'projects',
+      'stack',
+      'crew',
+      'library',
+      'connections',
+    ]);
+    expect(rooms.explore.map((r) => r.view)).toEqual([
       'terminalroom',
       'repos',
-      'stack',
       'vault',
-    ]);
-    expect(desk.explore.map((r) => r.view)).toEqual([
-      'crew',
-      'connections',
       'pair',
-      'library',
       'settings',
     ]);
     for (const view of ['stackhealth', 'launch', 'admin']) {
@@ -114,7 +114,7 @@ describe('a Personal build', () => {
   it('gates every door through the one module', () => {
     // The Sidebar's rooms come from navRooms (D10), which gates them.
     const sidebar = read('src', 'components', 'Sidebar.tsx');
-    expect(sidebar).toContain('navRooms(device)');
+    expect(sidebar).toContain('navRooms()');
     expect(read('src', 'lib', 'navRooms.ts')).toContain('visibleRooms(');
     expect(sidebar).toContain("roomOpen('admin')");
     const store = read('src', 'state', 'store.ts');

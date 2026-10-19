@@ -17,8 +17,10 @@ export interface NavOrder {
   v?: number;
 }
 
-/** 2: every room in one group under the Vault (2026-10-01). */
-export const NAV_ORDER_VERSION = 2;
+/** 2: every room in one group under the Vault (2026-10-01). 3: the
+ *  founder's two groups, the machine and storage rooms below the recent
+ *  chats (2026-10-19). */
+export const NAV_ORDER_VERSION = 3;
 
 /** Rooms renamed since an order may have been saved, so a dragged room
  *  keeps its place: the Marketplace became the Local Library (2026-10-13). */

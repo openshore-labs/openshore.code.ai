@@ -116,22 +116,18 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     id: 'menu',
     title: 'The Menu',
     where: 'Phone: the Menu button at top left, or swipe from the edge. Computer: the sidebar',
-    text: `Every room sits in one list: ${[
+    text: `At the top: ${[
       'Chats',
       'Projects',
-      'Terminal',
-      'Repositories',
       'Stack',
-      'Vault',
       'Agents',
-      'Cloud Connections',
-      'Computer',
       'Local Library',
+      'Cloud Connections',
       ...(stackHealthOn ? ['Stack Health'] : []),
       ...(launchOn ? ['Launch with Codemagic'] : []),
     ].join(
       ', ',
-    )}. On a phone not yet connected to a computer, Terminal sits after Vault until it is. Your recent chats sit under them, with View all. Settings stays at the bottom.${adminOn ? ' Company admins also see Admin.' : ''} A Sign in row shows when you are signed out.`,
+    )}. Your recent chats sit under them, with View all. Under the recent chats: Terminal, Repositories, Vault, and Computer, then Settings at the bottom. Hold a row and drag it to put it where you like.${adminOn ? ' Company admins also see Admin.' : ''} A Sign in row shows when you are signed out.`,
     keywords: ['menu', 'sidebar', 'navigation', 'drawer', 'where is', 'find', 'rooms', 'hamburger'],
   },
 

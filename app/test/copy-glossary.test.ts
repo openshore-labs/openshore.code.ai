@@ -157,13 +157,8 @@ describe('room names come from one list', () => {
   });
 
   it('the nav groups read their labels from the list', () => {
-    for (const input of [
-      { desktop: true, hubPaired: false },
-      { desktop: false, hubPaired: false },
-    ]) {
-      const { primary, explore } = navRooms(input);
-      for (const r of [...primary, ...explore]) expect(r.label).toBe(ROOM_LABELS[r.view]);
-    }
+    const { primary, explore } = navRooms();
+    for (const r of [...primary, ...explore]) expect(r.label).toBe(ROOM_LABELS[r.view]);
   });
 
   it('the Sidebar and the BackBar spell no room name of their own', () => {

@@ -1,8 +1,7 @@
-// The sidebar is the app's main navigation (2026-09-02): every room
-// in one group at the top (2026-10-01), the day-one rooms first and
-// Crew, Cloud Connections and Pairing under them, in navRooms' order for this
-// device (D10, 2026-10-07), so a phone with no computer keeps Terminal
-// after the Vault. The project switcher lives in the Projects room. New chat
+// The sidebar is the app's main navigation (2026-09-02), in two groups
+// (founder, 2026-10-19): Chats, Projects, Stack, Agents, the Local Library
+// and Cloud Connections at the top, and Terminal, Repositories, the Vault and
+// Computer under the recent chats, above Settings, in navRooms' order. The project switcher lives in the Projects room. New chat
 // is an action, not a room (design review, 2026-10-12): the phone's drawer
 // carries it as a floating button over its bottom right, the desktop's
 // sidebar as a compose icon in its head, never as a nav row. Persistent on desktop, a slide-over drawer on the phone.
@@ -14,7 +13,7 @@
 // are pinned to the bottom and never move.
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { roomOpen } from '../lib/focus.js';
-import { isDesktop, platform } from '../lib/platform.js';
+import { platform } from '../lib/platform.js';
 import { isMacLike, newChatShortcutLabel } from '../lib/newChat.js';
 import { ComposeGlyph } from './SheetGlyphs.js';
 import { ACCOUNT_SIGN_IN_SUB } from '../lib/accountGate.js';
@@ -67,23 +66,17 @@ type NavEntry = { view: NavIconName; label: string };
 // card, in both layouts (2026-10-01).
 const SETTINGS: NavEntry = nav('settings');
 
-/** The order before the person has moved anything: every room in one group
- *  above the recent chats (2026-10-01, "no need for a separate
- *  section"), in navRooms' order for this device (D10, 2026-10-07):
- *  the day-one rooms first, then Crew, Cloud Connections and Pairing. On a
- *  phone with no computer, Terminal is only a setup page, so it waits after
- *  the Vault, and it moves up to third the day the phone pairs. The release
- *  tier takes a later tier's rooms out inside navRooms, at the one door (a
- *  Personal build shows the v1 rooms only; see lib/focus.ts). The group below
- *  the recent chats stays, empty, for a room the person drags there. */
-export function defaultNavOrder(device: { desktop: boolean; hubPaired: boolean }): NavOrder {
-  const { primary, explore } = navRooms(device);
-  return {
-    top: [...primary, ...explore]
-      .map((e) => e.view)
-      .filter((v): v is MovableRoom => v !== 'settings'),
-    bottom: [],
-  };
+/** The order before the person has moved anything (founder, 2026-10-19):
+ *  navRooms' upper group above the recent chats and its lower group under
+ *  them, above Settings. It replaced one group above the recent chats
+ *  (2026-10-01). The release tier takes a later tier's rooms out inside
+ *  navRooms, at the one door (a Personal build shows the v1 rooms only; see
+ *  lib/focus.ts). */
+export function defaultNavOrder(): NavOrder {
+  const { primary, explore } = navRooms();
+  const movable = (list: { view: NavRoom }[]) =>
+    list.map((e) => e.view).filter((v): v is MovableRoom => v !== 'settings');
+  return { top: movable(primary), bottom: movable(explore) };
 }
 
 const entryOf = (view: MovableRoom): NavEntry => nav(view);
@@ -253,15 +246,11 @@ export function Sidebar({
   const { view, viewTrail, setView, setDrawer, settings, saveSettings, startNewChat } = useApp();
   const { configured: authConfigured, signedIn, email } = useAuth();
   const showProfile = useProfileSheet((st) => st.show);
-  // An order saved under the old two-group default is set aside once, so
-  // every room comes up under the Vault; the person's moves from here on keep.
-  // A saved order wins over the device's default: only someone who never
-  // moved a row sees Terminal move up when the phone pairs.
+  // An order saved under an older default is set aside once, so every room
+  // comes up in the founder's two groups (2026-10-19); the person's moves
+  // from here on keep.
   const savedOrder = settings.navOrder?.v === NAV_ORDER_VERSION ? settings.navOrder : undefined;
-  const saved = resolveNavOrder(
-    savedOrder,
-    defaultNavOrder({ desktop: isDesktop(), hubPaired: Boolean(settings.daemon) }),
-  );
+  const saved = resolveNavOrder(savedOrder, defaultNavOrder());
   const reorder = useNavReorder(
     saved,
     (next) => void saveSettings({ navOrder: { ...next, v: NAV_ORDER_VERSION } }),
