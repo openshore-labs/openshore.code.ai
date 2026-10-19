@@ -2,27 +2,13 @@
 // working chat. Ollama is started when it is installed but stopped, fetched
 // and opened when it is not (the official installer, falling back to the
 // download page), and the First Seat carries on by itself once Ollama
-// answers. The sample page gives a first-time person something safe to try.
+// answers.
 import { describe, expect, it } from 'vitest';
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  readFileSync,
-  statSync,
-  writeFileSync,
-} from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { bringUpOllama, type HarborDownload, type OllamaBridge } from '../src/state/store.js';
 import { DITTO, XATTR, downloadOllamaInstaller, ollamaInstallers } from '../electron/ollama.js';
-import {
-  createSampleProject,
-  SAMPLE_FILES,
-  SAMPLE_FOLDER_NAME,
-} from '../electron/sampleProject.js';
-import { SAMPLE_PROMPT } from '../src/lib/sampleProject.js';
 
 function fakeBridge(
   statuses: Array<{ installed: boolean; running: boolean }>,
@@ -220,35 +206,5 @@ describe("fetching Ollama's own installer", () => {
     );
     expect(block).toContain('shell.openPath(plan.installerPath)');
     expect(block).toMatch(/if \(!opened && plan\.downloadUrl\) void shell\.openExternal/);
-  });
-});
-
-describe('the sample page', () => {
-  it('writes a small page whose button does nothing, and never overwrites a second time', () => {
-    const root = mkdtempSync(join(tmpdir(), 'osc-sample-'));
-    const first = createSampleProject(root);
-    expect(first).toEqual({ path: join(root, SAMPLE_FOLDER_NAME), created: true });
-    for (const rel of Object.keys(SAMPLE_FILES))
-      expect(existsSync(join(first.path, rel))).toBe(true);
-    // The bug a beginner meets: the script looks for an id the page lacks.
-    expect(SAMPLE_FILES['script.js']).toContain("'join-button'");
-    expect(SAMPLE_FILES['index.html']).toContain('id="join"');
-    writeFileSync(join(first.path, 'script.js'), 'fixed by the agent\n');
-    const again = createSampleProject(root);
-    expect(again.created).toBe(false);
-    expect(readFileSync(join(first.path, 'script.js'), 'utf8')).toBe('fixed by the agent\n');
-  });
-
-  it('opens a chat that asks for the fix, from a row that presses like every tappable', () => {
-    expect(SAMPLE_PROMPT).toMatch(/Join the list button/);
-    const chat = readFileSync(join(process.cwd(), 'src', 'screens', 'ChatScreen.tsx'), 'utf8');
-    const row = chat.slice(
-      chat.indexOf('The first try (v1 Phase 1)'),
-      chat.indexOf('SAMPLE_ROW_LABEL}') + 20,
-    );
-    expect(row).toContain('press-fb');
-    expect(row).toContain('trySampleProject');
-    const preload = readFileSync(join(process.cwd(), 'electron', 'preload.cjs'), 'utf8');
-    expect(preload).toContain("createSample: invoke('osc:createSample')");
   });
 });

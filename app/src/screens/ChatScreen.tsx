@@ -61,7 +61,6 @@ import {
   revealHoldMs,
   type SplashCard,
 } from '../lib/greetingDecks.js';
-import { SAMPLE_ROW_LABEL, SAMPLE_ROW_SUB } from '../lib/sampleProject.js';
 import { hapticTick } from '../lib/haptics.js';
 import { pointsAtWorkspace } from '../lib/chatRescue.js';
 import { isDesktop, isPhone } from '../lib/platform.js';
@@ -279,7 +278,6 @@ export function ChatScreen({ compact }: { compact: boolean }) {
     giveMoreRoom,
     restoreChangedFiles,
     rewindTo,
-    trySampleProject,
     revisePlan,
     startNewChat,
     compactActive,
@@ -1194,26 +1192,6 @@ export function ChatScreen({ compact }: { compact: boolean }) {
         thread.items.length === 1 &&
         thread.items[0].kind === 'assistant' ? (
           <MiniFirstMoves onPick={(text) => send(text)} />
-        ) : null}
-
-        {/* The first try (v1 Phase 1): on a fresh desktop chat with a model
-            ready and no folder picked, one row opens the sample page and asks
-            for its fix, so a first-time person sees the whole loop. */}
-        {isDesktop() &&
-        isEmpty &&
-        !resuming &&
-        sourceReady({ kind: 'desktop' }) &&
-        !(conv?.source.kind === 'desktop' && conv.source.cwd) ? (
-          <div className="first-moves" role="group" aria-label="Try OpenShore">
-            <button
-              type="button"
-              className="first-move press-fb"
-              title={SAMPLE_ROW_SUB}
-              onClick={() => void trySampleProject()}
-            >
-              {SAMPLE_ROW_LABEL}
-            </button>
-          </div>
         ) : null}
 
         {thread && thread.todos.length > 0 && thread.items.length > 0 ? (

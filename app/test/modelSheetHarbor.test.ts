@@ -12,7 +12,7 @@ const sheet = readFileSync(join(process.cwd(), 'src', 'components/ModelSheet.tsx
 
 describe('Harbor in the model sheet', () => {
   it('puts the phone model row first, above Connect your computer', () => {
-    const phoneRow = sheet.indexOf('isPhone() && (settings.harborReady');
+    const phoneRow = sheet.indexOf('{harborLiteHere() &&');
     const connect = sheet.indexOf('main="Connect your computer"');
     expect(phoneRow).toBeGreaterThan(-1);
     expect(phoneRow).toBeLessThan(connect);

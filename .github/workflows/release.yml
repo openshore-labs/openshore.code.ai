@@ -224,6 +224,13 @@ jobs:
       - name: Rebuild native modules for Electron
         run: pnpm --filter oscode-app rebuild:native
 
+      # Harbor Lite ships inside the desktop app too (founder, 2026-10-19), so
+      # its pinned weights (HARBOR_MINI_MODEL_URL) land in build/models for
+      # electron-builder's extraResources. A failed fetch fails the build: a
+      # desktop without the guide's weights opens on a guide that cannot answer.
+      - name: Fetch Harbor Lite's weights
+        run: pnpm --filter oscode-app fetch:harbor-lite
+
       # electron-builder itself, without the leading vite/tsc that package:linux
       # runs (already done above). --publish never keeps it from touching GitHub;
       # the publish here is a separate, explicit job below, shared with Windows.
@@ -372,6 +379,13 @@ jobs:
       # points at that toolchain, not at the source.
       - name: Rebuild native modules for Electron
         run: pnpm --filter oscode-app rebuild:native
+
+      # Harbor Lite ships inside the desktop app too (founder, 2026-10-19), so
+      # its pinned weights (HARBOR_MINI_MODEL_URL) land in build/models for
+      # electron-builder's extraResources. A failed fetch fails the build: a
+      # desktop without the guide's weights opens on a guide that cannot answer.
+      - name: Fetch Harbor Lite's weights
+        run: pnpm --filter oscode-app fetch:harbor-lite
 
       # No certificate by default (see the file header): electron-builder
       # produces a working NSIS installer without an Authenticode signature,

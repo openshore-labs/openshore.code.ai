@@ -77,7 +77,6 @@ import {
   type OllamaInstallPlan,
   type OllamaStatus,
 } from './ollama.js';
-import { createSampleProject } from './sampleProject.js';
 import { getRoutineScheduler, type RoutineScheduler } from 'os-code/dist/src/routines/scheduler.js';
 import { validateRoutineInput } from 'os-code/dist/src/routines/model.js';
 import {
@@ -507,16 +506,6 @@ export class EngineHost {
    *  engine module with its sessions, so the switch reaches them at once. */
   giveMoreRoom(provider: string): { ok: true; provider: string } | { error: string } {
     return giveMoreRoomHere(provider);
-  }
-
-  /** The sample page for a first try, written to ~/OpenShore/Projects/Try OpenShore
-   *  (kept as it is when it already exists). */
-  createSample(): { path: string; created: boolean } | { error: string } {
-    try {
-      return createSampleProject();
-    } catch (err) {
-      return { error: `Could not make the sample: ${(err as Error).message}` };
-    }
   }
 
   /** Undo or redo a task's changes (every file, or one): the tap on the

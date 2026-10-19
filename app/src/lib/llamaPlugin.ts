@@ -3,6 +3,7 @@
 // app/plugins/oscode-llama). This file is the JS contract plus a web mock so
 // the app runs and demos everywhere the native side is absent.
 import { registerPlugin, type PluginListenerHandle } from '@capacitor/core';
+import { bridge, type OscodeBridge } from './electronBridge.js';
 
 export interface DeviceModelInfo {
   id: string;
@@ -177,7 +178,7 @@ class LlamaWeb {
   private models: DeviceModelInfo[] = [];
   private listeners = new Map<string, Set<(data: any) => void>>();
 
-  private fire(event: string, data: unknown): void {
+  protected fire(event: string, data: unknown): void {
     for (const cb of this.listeners.get(event) ?? []) cb(data);
   }
 
@@ -227,7 +228,7 @@ class LlamaWeb {
     this.models = this.models.filter((m) => m.id !== id);
   }
 
-  async load() {
+  async load(): Promise<{ ok: boolean; detail?: string }> {
     // Never claim a load succeeded here. The drivers read load.ok/detail and
     // turn this into a real "run your model another way" message instead of a
     // fake answer.
@@ -289,6 +290,114 @@ class LlamaWeb {
   }
 }
 
+// ---------------------------------------------------------------------------
+// The desktop: Harbor Lite ships inside the desktop app too (founder,
+// 2026-10-19), run in the main process on llama.cpp (electron/harborLite.ts).
+// This keeps the stub's honesty for every other device model and sends
+// Harbor Lite, and only Harbor Lite, to main, so the phone's guide driver runs
+// unchanged on a computer.
+// ---------------------------------------------------------------------------
+
+const HARBOR_LITE = 'harbor-mini';
+
+export class LlamaDesktop extends LlamaWeb {
+  private present: Promise<boolean> | undefined;
+  private loadedId: string | undefined;
+  private wired = false;
+
+  constructor(private readonly shell: OscodeBridge) {
+    super();
+  }
+
+  /** The bundled weights are in this build. */
+  harborLitePresent(): Promise<boolean> {
+    this.present ??= (this.shell.harborLitePresent?.() ?? Promise.resolve(false)).catch(
+      () => false,
+    );
+    return this.present;
+  }
+
+  override async listModels() {
+    const others = (await super.listModels()).models.filter((m) => m.id !== HARBOR_LITE);
+    if (!(await this.harborLitePresent())) return { models: others };
+    return {
+      models: [
+        {
+          id: HARBOR_LITE,
+          fileName: 'harbor-mini.gguf',
+          sizeBytes: 0,
+          location: 'device' as const,
+        },
+        ...others,
+      ],
+    };
+  }
+
+  override async downloadModel(options: { id: string; url: string; target?: StorageTarget }) {
+    if (options.id !== HARBOR_LITE) return super.downloadModel(options);
+    // Built in: nothing to fetch. A build without the weights says so.
+    if (!(await this.harborLitePresent())) {
+      throw new Error('Harbor Lite is not in this build. Reinstall OpenShore from openshore.ai.');
+    }
+    this.fire('downloadProgress', { id: HARBOR_LITE, completed: 1, total: 1 });
+    return { path: 'bundled://harbor-mini.gguf', location: 'device' as StorageTarget };
+  }
+
+  override async deleteModel({ id }: { id: string }) {
+    // Built in, so it cannot be removed (the same as the phone's bundle).
+    if (id !== HARBOR_LITE) await super.deleteModel({ id });
+  }
+
+  override async load(options?: { id: string; contextSize?: number }) {
+    if (options?.id !== HARBOR_LITE || !this.shell.harborLiteLoad) return super.load();
+    this.wire();
+    this.loadedId = undefined;
+    const res = await this.shell.harborLiteLoad(HARBOR_LITE, options.contextSize);
+    if (res.ok) this.loadedId = HARBOR_LITE;
+    return res;
+  }
+
+  override async unload() {
+    this.loadedId = undefined;
+    await this.shell.harborLiteUnload?.();
+  }
+
+  override async generate(options?: Parameters<LlamaPluginContract['generate']>[0]) {
+    if (this.loadedId !== HARBOR_LITE || !options || !this.shell.harborLiteGenerate) {
+      return super.generate();
+    }
+    this.wire();
+    return this.shell.harborLiteGenerate(options);
+  }
+
+  override async stop(options?: { requestId: string }) {
+    if (options) await this.shell.harborLiteStop?.(options.requestId);
+  }
+
+  /** Main's events become the plugin's, once. */
+  private wire(): void {
+    if (this.wired || !this.shell.onHarborLite) return;
+    this.wired = true;
+    this.shell.onHarborLite((event) => {
+      if (event.kind === 'token') {
+        this.fire('token', { requestId: event.requestId, delta: event.delta });
+      } else {
+        this.fire('generationDone', {
+          requestId: event.requestId,
+          stopReason: event.stopReason,
+          ...(event.detail ? { detail: event.detail } : {}),
+        });
+      }
+    });
+  }
+}
+
+/** The desktop shell's Harbor Lite runner, when this is the desktop app. */
+export function desktopLlama(): LlamaDesktop | undefined {
+  const shell = typeof window === 'undefined' ? undefined : bridge();
+  return shell?.harborLiteGenerate ? new LlamaDesktop(shell) : undefined;
+}
+
 export const Llama = registerPlugin<LlamaPluginContract>('OscodeLlama', {
-  web: () => new LlamaWeb() as unknown as LlamaPluginContract,
+  web: () => (desktopLlama() ?? new LlamaWeb()) as unknown as LlamaPluginContract,
 });

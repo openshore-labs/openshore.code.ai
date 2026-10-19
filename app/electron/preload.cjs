@@ -32,13 +32,19 @@ contextBridge.exposeInMainWorld('oscode', {
   giveMoreRoom: invoke('osc:giveMoreRoom'),
   restoreCheckpoint: invoke('osc:restoreCheckpoint'),
   rewind: invoke('osc:rewind'),
-  createSample: invoke('osc:createSample'),
   answerApproval: invoke('osc:answerApproval'),
   onEvent: listen('osc:event'),
 
   freeChat: invoke('osc:freeChat'),
   freeChatAbort: invoke('osc:freeChatAbort'),
   onFreeChat: listen('osc:free-chat'),
+
+  harborLitePresent: invoke('osc:harborLitePresent'),
+  harborLiteLoad: invoke('osc:harborLiteLoad'),
+  harborLiteUnload: invoke('osc:harborLiteUnload'),
+  harborLiteGenerate: invoke('osc:harborLiteGenerate'),
+  harborLiteStop: invoke('osc:harborLiteStop'),
+  onHarborLite: listen('osc:harbor-lite'),
 
   runCommand: invoke('osc:runCommand'),
   sendCommandStdin: invoke('osc:sendCommandStdin'),

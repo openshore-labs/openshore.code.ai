@@ -72,9 +72,15 @@ describe('the setup list', () => {
     expect(menuSteps({ skipped: ['key'] }, NONE)).toEqual(['harbor', 'computer']);
   });
 
-  it('offers only the repository and the API key on the desktop', () => {
-    expect(setupSteps({ desktop: true })).toEqual(['repo', 'key']);
-    expect(menuSteps({ skipped: [] }, { ...NONE, desktop: true })).toEqual(['repo', 'key']);
+  it('offers the same four steps on the desktop (founder, 2026-10-19)', () => {
+    expect(setupSteps({ desktop: true })).toEqual(['harbor', 'computer', 'repo', 'key']);
+    // The repository never waits on a computer there: the desktop is one.
+    expect(menuSteps({ skipped: [] }, { ...NONE, desktop: true })).toEqual([
+      'harbor',
+      'computer',
+      'repo',
+      'key',
+    ]);
   });
 
   it('says what is set up, then what is left, and why a repository waits', () => {

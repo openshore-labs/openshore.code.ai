@@ -9,6 +9,7 @@ import { Fragment, useEffect, useRef, useState } from 'react';
 import { isOrgAdmin, useApp, type HarborDownload } from '../state/store.js';
 import { useAuth } from '../hooks/useAuth.js';
 import { platform, isDesktop, isPhone, openExternal } from '../lib/platform.js';
+import { harborLiteHere } from '../lib/harborLiteHost.js';
 import { PRIVACY_URL, TERMS_URL } from '../lib/legalLinks.js';
 import {
   WEB_FETCH_AWAY,
@@ -1010,6 +1011,15 @@ export function SettingsScreen() {
                 }
               />
             </>
+          ) : null}
+          {/* Harbor Lite is built into the desktop too (2026-10-19). An older
+              shell without its runner does not show it. */}
+          {isDesktop() && harborLiteHere() ? (
+            <SettingsRow
+              label="Harbor Lite"
+              sub={HARBOR_MINI_ROW_SUB}
+              trailing={<HarborInstallButton bundled={HARBOR_MINI_BUNDLED} />}
+            />
           ) : null}
           {isDesktop() ? (
             <SettingsRow

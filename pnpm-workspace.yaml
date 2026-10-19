@@ -1,3 +1,13 @@
 packages:
   - os-code
   - app
+
+# Install both CPU builds of packages with native binaries, so the Mac build,
+# which makes the Apple Silicon and the Intel app on one machine, carries
+# Harbor Lite's runtime for each (app/package.json trims the rest per platform).
+supportedArchitectures:
+  os:
+    - current
+  cpu:
+    - x64
+    - arm64

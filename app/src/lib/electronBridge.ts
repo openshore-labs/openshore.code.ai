@@ -376,9 +376,6 @@ export interface OscodeBridge {
    *  larger window from the next message, in every chat. Absent on an older
    *  shell. */
   giveMoreRoom?(provider: string): Promise<{ ok: true; provider: string } | { error: string }>;
-  /** The sample page for a first try (v1 Phase 1): written to ~/OpenShore/Projects/Try
-   *  OpenShore, kept as it is when already there. Absent on an older shell. */
-  createSample?(): Promise<{ path: string; created: boolean } | { error: string }>;
   /** Undo or redo a task's changes, every file or one (the changed-files
    *  card's tap). */
   restoreCheckpoint(
@@ -417,6 +414,21 @@ export interface OscodeBridge {
   freeChat?(requestId: string, body: Record<string, unknown>): Promise<void>;
   freeChatAbort?(requestId: string): Promise<void>;
   onFreeChat?(cb: (payload: { requestId: string; event: FreeChatFrame }) => void): () => void;
+  // Harbor Lite, bundled with the desktop and run in main (electron/harborLite.ts):
+  // the phone plugin's load, generate and stop, its events on onHarborLite.
+  // Absent on an older shell.
+  harborLitePresent?(): Promise<boolean>;
+  harborLiteLoad?(id: string, contextSize?: number): Promise<{ ok: boolean; detail?: string }>;
+  harborLiteUnload?(): Promise<void>;
+  harborLiteGenerate?(body: {
+    requestId: string;
+    system: string;
+    messages: Array<{ role: 'user' | 'assistant'; content: string }>;
+    maxTokens?: number;
+    temperature?: number;
+  }): Promise<{ started: boolean }>;
+  harborLiteStop?(requestId: string): Promise<void>;
+  onHarborLite?(cb: (event: HarborLiteEvent) => void): () => void;
 
   // Chat-to-terminal lane. runCommand runs a command on this machine and
   // returns its runId (undefined if the session is gone); output streams back as
@@ -820,6 +832,17 @@ export interface EmbeddedState {
   loading: boolean;
   canGoBack: boolean;
 }
+
+/** Harbor Lite's events from main, shaped as the phone plugin's 'token' and
+ *  'generationDone' (electron/harborLite.ts holds the same union). */
+export type HarborLiteEvent =
+  | { kind: 'token'; requestId: string; delta: string }
+  | {
+      kind: 'generationDone';
+      requestId: string;
+      stopReason: 'end' | 'stopped' | 'error';
+      detail?: string;
+    };
 
 export function bridge(): OscodeBridge | undefined {
   return (window as any).oscode as OscodeBridge | undefined;

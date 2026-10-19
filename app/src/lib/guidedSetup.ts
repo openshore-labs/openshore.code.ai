@@ -8,12 +8,18 @@
 // invites questions about the app, which is what Harbor Lite is good for, and
 // if Harbor came down it says how to switch to it.
 //
+// The desktop walks the same four steps (founder, 2026-10-19: the desktop's
+// first open is the phone's), each in its desktop form: DeepBlue for Harbor,
+// Connect your phone for Connect your computer, then the repository and the
+// API key. The step ids stay, so the walk's rules and memory are one.
+//
 // This file is the pure core: the steps, the order, the words, and the rules
 // for what is current. The store owns the effects (appending messages, opening
 // pages, coming back), and ChatScreen renders the buttons.
 
 import type { PermissionMode } from './permissionMode.js';
 import { thisDeviceNoun } from './deviceNoun.js';
+import { onDesktopShell } from './shellKind.js';
 
 export type SetupStepId = 'harbor' | 'computer' | 'repo' | 'key';
 
@@ -29,8 +35,8 @@ export interface SetupFacts {
   computer: boolean;
   repo: boolean;
   key: boolean;
-  /** This is the desktop app: Harbor and pairing a computer are the phone's
-   *  steps, so the desktop offers only the repository and the API key. */
+  /** This is the desktop app. Its first step is DeepBlue and its second
+   *  docks a phone; `harborReady` and `computer` read those there. */
   desktop?: boolean;
 }
 
@@ -70,6 +76,9 @@ export interface GuidedSetupProgress {
   menu?: 'asking' | 'step';
   /** The list message whose buttons are live. */
   menuItemId?: string;
+  /** The desktop's DeepBlue step: the last waiting or failure line said in
+   *  the walk's chat, so each is said once. */
+  deepBlueSaid?: string;
 }
 
 /** The two ways on from the fork after Harbor. */
@@ -92,13 +101,24 @@ export interface SetupStepCopy {
   done: string;
 }
 
-export const HARBOR_SWITCH_HINT =
-  'To use Harbor, tap the model name in the chat box below (next to the +) and pick Harbor. Or open the menu, go to Stack, and place Harbor there so every chat starts with it.';
+/** The desktop app, read once as the copy builds. */
+const DESKTOP = onDesktopShell();
 
-/** Said once, whenever Harbor finishes downloading during or after the walk. */
-export const HARBOR_READY_MESSAGE = `Harbor is ready on ${thisDeviceNoun()}. ${HARBOR_SWITCH_HINT}`;
+/** The model the first step brings in: Harbor on the phone, DeepBlue on the
+ *  desktop (lib/harborMaster.ts). */
+export const FIRST_MODEL = DESKTOP ? 'DeepBlue' : 'Harbor';
 
-export const STEP_COPY: Record<SetupStepId, SetupStepCopy> = {
+export const HARBOR_SWITCH_HINT = DESKTOP
+  ? 'New chats on this computer use DeepBlue. Start one with the pen at the top of the sidebar.'
+  : 'To use Harbor, tap the model name in the chat box below (next to the +) and pick Harbor. Or open the menu, go to Stack, and place Harbor there so every chat starts with it.';
+
+/** Said once, whenever Harbor (DeepBlue on the desktop) is ready during or
+ *  after the walk. */
+export const HARBOR_READY_MESSAGE = DESKTOP
+  ? `DeepBlue is ready on this computer. ${HARBOR_SWITCH_HINT}`
+  : `Harbor is ready on ${thisDeviceNoun()}. ${HARBOR_SWITCH_HINT}`;
+
+export const PHONE_STEP_COPY: Record<SetupStepId, SetupStepCopy> = {
   harbor: {
     title: 'Get Harbor',
     what: `Harbor is a coding model, Qwen3 4B Instruct, that runs on ${thisDeviceNoun()}.`,
@@ -136,6 +156,40 @@ export const STEP_COPY: Record<SetupStepId, SetupStepCopy> = {
     done: 'Your API key is connected.',
   },
 };
+
+/** The same four steps on the desktop: this computer is the computer, so the
+ *  model is DeepBlue, sized to it, and the device to connect is the phone. */
+export const DESKTOP_STEP_COPY: Record<SetupStepId, SetupStepCopy> = {
+  harbor: {
+    title: 'Get DeepBlue',
+    what: 'DeepBlue is a coding model that runs on this computer, in the size that fits it.',
+    why: "I'm a guide. DeepBlue does the real work: it reads your code, edits it, and runs its tests right here, even offline.",
+    how: "Tap Get DeepBlue. OpenShore picks the size that fits this computer and downloads it from its source, a few gigabytes. DeepBlue runs in Ollama, a free app; if it isn't on this computer yet, I'll tell you how to get it first. The download keeps going in the background while we set up the rest, and I'll tell you when it's ready.",
+    action: 'Get DeepBlue',
+    ask: 'Tell me more about DeepBlue before I download it.',
+    done: 'DeepBlue is downloading in the background. I will tell you when it is ready.',
+  },
+  computer: {
+    title: 'Connect your phone',
+    what: 'Dock OpenShore on your phone to this computer, over your private Tailscale network.',
+    why: "Your phone can then use this computer's models and work on your code here from anywhere, and a long task keeps going while the phone is locked.",
+    how: 'Install Tailscale on this computer and your phone, and sign in to the same account (free for personal use). Tap Connect your phone to show the QR code here, then in OpenShore on your phone open Computer and scan it. I will bring you back here once your phone is connected.',
+    action: 'Connect your phone',
+    ask: 'Tell me more about connecting my phone.',
+    done: 'Your phone is connected.',
+  },
+  repo: PHONE_STEP_COPY.repo,
+  key: {
+    ...PHONE_STEP_COPY.key,
+    why: "For the hardest work, a frontier model on your own account goes further than a model on this computer, at your provider's price. Chat stays free either way.",
+    how: "Create an API key on your provider's site, then tap Add an API key, paste it, and save. OpenShore checks it with the provider before it says connected, and the API key is stored only on this computer and sent only to that provider, unless you turn it on for a server you dock, which then keeps it too. I will bring you back here once it is saved.",
+  },
+};
+
+/** This device's steps, in its own words. */
+export const STEP_COPY: Record<SetupStepId, SetupStepCopy> = DESKTOP
+  ? DESKTOP_STEP_COPY
+  : PHONE_STEP_COPY;
 
 /** The choice the repository step ends on (UX review ruling, 2026-09-24). Zed asks
  *  up front whether to trust every project; OpenShore asks one narrower
@@ -231,7 +285,7 @@ export function harborForkMessage(
 ): string {
   const lead =
     how === 'skipped'
-      ? 'No problem, we can come back to Harbor.'
+      ? `No problem, we can come back to ${FIRST_MODEL}.`
       : facts.harborReady
         ? HARBOR_READY_MESSAGE
         : STEP_COPY.harbor.done;
@@ -295,11 +349,10 @@ export function stepAvailable(id: SetupStepId, facts: SetupFacts): boolean {
   return id === 'repo' ? facts.computer || Boolean(facts.desktop) : true;
 }
 
-/** The steps this device offers: all four on the phone, the repository and
- *  the API key on the desktop (it is the computer, and Harbor is the phone's
- *  model). */
-export function setupSteps(facts: Pick<SetupFacts, 'desktop'>): SetupStepId[] {
-  return facts.desktop ? SETUP_ORDER.filter((id) => id === 'repo' || id === 'key') : SETUP_ORDER;
+/** The steps this device offers: all four, on the phone and the desktop
+ *  alike (founder, 2026-10-19). */
+export function setupSteps(_facts: Pick<SetupFacts, 'desktop'>): SetupStepId[] {
+  return SETUP_ORDER;
 }
 
 /** The next step to bring up, or undefined when the walk is over. */
@@ -377,11 +430,11 @@ export function finishMessage(facts: SetupFacts): string {
     "That's every step. Anything you skipped waits on the Set up OpenShore page, from the button under my first message.",
     'Now ask me anything about OpenShore, how it works, or the best setup for your equipment. I can look simple questions up on the web too.',
   ];
-  if (facts.harborReady) parts.push(`Harbor is ready. ${HARBOR_SWITCH_HINT}`);
+  if (facts.harborReady) parts.push(`${FIRST_MODEL} is ready. ${HARBOR_SWITCH_HINT}`);
   else if (facts.harborDownloading) {
-    parts.push('Harbor is still downloading. I will tell you when it is ready.');
+    parts.push(`${FIRST_MODEL} is still downloading. I will tell you when it is ready.`);
   }
-  if (!facts.computer) {
+  if (!facts.computer && !facts.desktop) {
     parts.push('Repositories come in once your computer is connected.');
   }
   return parts.join('\n\n');
@@ -452,8 +505,8 @@ export function setupHelpIntent(text: string): boolean {
 
 /** How a step reads in the list's "already done" sentence. */
 const DONE_NAME: Record<SetupStepId, string> = {
-  harbor: 'Harbor',
-  computer: 'your computer',
+  harbor: FIRST_MODEL,
+  computer: DESKTOP ? 'your phone' : 'your computer',
   repo: 'a repository',
   key: 'your API key',
 };
@@ -496,7 +549,7 @@ export function setupMenuMessage(
   const ahead = menuSteps(progress, facts);
   const doneNames = joinNames(
     done.map((id) =>
-      id === 'harbor' && !facts.harborReady ? 'Harbor (still downloading)' : DONE_NAME[id],
+      id === 'harbor' && !facts.harborReady ? `${FIRST_MODEL} (still downloading)` : DONE_NAME[id],
     ),
   );
   const lead = back
@@ -575,7 +628,7 @@ export function guideContextLine(
   if (audience === 'other') {
     if (progress.paused || !walkActive(progress)) return undefined;
     if (progress.nextChoice === 'asking') {
-      return `SETUP: this chat is walking the person through setting up OpenShore. Harbor is taken care of, and they are choosing what to do next. Two buttons sit under the latest setup message: "Start chatting" (setup waits) and "Keep setting up" (${stepList(stepsAhead(progress, facts))}). Never choose for them. Answer anything they ask fully and well.`;
+      return `SETUP: this chat is walking the person through setting up OpenShore. ${FIRST_MODEL} is taken care of, and they are choosing what to do next. Two buttons sit under the latest setup message: "Start chatting" (setup waits) and "Keep setting up" (${stepList(stepsAhead(progress, facts))}). Never choose for them. Answer anything they ask fully and well.`;
     }
     if (progress.editChoice === 'asking') {
       return 'SETUP: this chat is walking the person through setting up OpenShore. The repository is connected, and they are choosing how edits are handled. Two buttons sit under the latest setup message: "Ask me first" (check before each edit) and "Let edits flow" (edits go through, each diff shows in the chat). Commands ask either way. Explain the difference if asked; never choose for them.';
@@ -585,10 +638,10 @@ export function guideContextLine(
     return `SETUP: this chat is walking the person through setting up OpenShore, now on step ${n} of ${of}, "${step.title}". What it is: ${step.what} How it works: ${step.how} Its buttons ("${step.action}", "Ask about this", and "Skip for now") sit under the latest setup message. If they ask what is next, this step is. Answer anything else fully and well. Never invent other steps.`;
   }
   const harbor = facts.harborReady
-    ? ` Harbor is downloaded; if asked how to use it: ${HARBOR_SWITCH_HINT}`
+    ? ` ${FIRST_MODEL} is ready; if asked how to use it: ${HARBOR_SWITCH_HINT}`
     : '';
   if (progress.nextChoice === 'asking' && !progress.paused) {
-    return `${FIRST_CHAT_GOAL} SETUP: Harbor is taken care of, and the person is choosing what to do next. Two buttons sit under your latest message: "Start chatting" (setup waits until they want it) and "Keep setting up" (${stepList(stepsAhead(progress, facts))}). Never choose for them. If they ask something, answer it fully and well.${harbor}`;
+    return `${FIRST_CHAT_GOAL} SETUP: ${FIRST_MODEL} is taken care of, and the person is choosing what to do next. Two buttons sit under your latest message: "Start chatting" (setup waits until they want it) and "Keep setting up" (${stepList(stepsAhead(progress, facts))}). Never choose for them. If they ask something, answer it fully and well.${harbor}`;
   }
   if (progress.editChoice === 'asking' && !progress.paused) {
     return `${FIRST_CHAT_GOAL} SETUP: the repository is connected, and the person is choosing how edits are handled. Two buttons sit under your latest message: "Ask me first" (check before each edit) and "Let edits flow" (edits go through, each diff shows in the chat). Commands ask either way. Explain the difference if asked; never choose for them.${harbor}`;

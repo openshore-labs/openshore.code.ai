@@ -12,7 +12,17 @@ the most capable, and the one a home-lab hub runs.
   It knows its own limits and, when a question needs real reasoning or real
   coding, says so plainly and walks the person through getting a bigger model
   set up. It is BUNDLED with the app (see below), so it is present the moment
-  the app is installed, with nothing to download, and works offline.
+  the app is installed, with nothing to download, and works offline. Since
+  2026-10-19 the desktop app carries it too (founder: the desktop's first open
+  is the phone's): the same weights ride the desktop installers' resources and
+  run in the main process on llama.cpp through node-llama-cpp
+  (`app/electron/harborLite.ts`), reached through the phone plugin's own
+  contract (`LlamaDesktop` in `app/src/lib/llamaPlugin.ts`), so the guide, its
+  harness and the setup walk are one code path. On the desktop the walk's four
+  steps read Get DeepBlue, Connect your phone, Set up a repository, and Add an
+  API key. `scripts/fetch-harbor-lite.mjs` drops the weights into
+  `app/build/models` for electron-builder, and a desktop build without them
+  fails.
 - **Harbor** (Qwen3-4B-Instruct-2507, Apache-2.0; the research-licensed Qwen
   2.5 Coder 3B until 2026-09-30). The mobile coder: a coding agent
   that runs fully on the phone, writing and explaining real code, with real

@@ -620,7 +620,6 @@ import { vaultTeamRefusal, type VaultTeamWrite } from './vaultTeamGate.js';
 import { ownerBoundProvider } from './teamOwner.js';
 import { dropTeamIndexes, noteTeamIndex } from './teamIndexes.js';
 import { projectWorkspaces, reconcileToast, summarizeReconcile } from '../lib/repoReconcile.js';
-import { SAMPLE_PROMPT, SAMPLE_REPO_NAME } from '../lib/sampleProject.js';
 import { setSearchConsent, type SearchAllowed } from '../lib/localSearch.js';
 import {
   WebSearchSheets,
@@ -741,6 +740,7 @@ import {
   storeGetJson,
   storeSetJson,
 } from '../lib/platform.js';
+import { harborLiteHere } from '../lib/harborLiteHost.js';
 import { preparePhoneFolder } from '../lib/phoneFolder.js';
 
 export type ViewName =
@@ -1663,6 +1663,9 @@ interface AppState {
    *  never opened against an engine that cannot start. Refreshed on init and
    *  after the Stack changes. */
   desktopStatus?: DesktopStatus;
+  /** Phones docked to this desktop (its hub's device credentials), read while
+   *  the walk's Connect your phone step can use it. */
+  dockedPhones?: number;
   /** The org's billing entitlement (Stripe webhook is the writer), when known. */
   entitlement?: Entitlement;
   /** Live progress while Harbor Lite downloads for the first time. */
@@ -2612,10 +2615,6 @@ interface AppState {
    *  to the computer and then saved here (lib/webFetchMode). False, and
    *  nothing changed, when the computer could not be reached. */
   setWebFetchMode(mode: 'ask' | 'allow' | 'off'): Promise<boolean>;
-  /** The first try (v1 Phase 1): write the sample page on this computer,
-   *  open a chat in it, and ask for the fix, so the whole loop shows on
-   *  something that cannot hurt the person's own work. */
-  trySampleProject(): Promise<void>;
   /** The changed-files card's undo: put back every file the task changed,
    *  or one (`path`), or redo them. Runs on the computer the session runs on;
    *  the engine echoes it, so every device folds the card. */
@@ -3570,15 +3569,39 @@ export const useApp = create<AppState>((set, get, api) => {
   // What the walk can see right now.
   function setupFacts(): SetupFacts {
     const s = get();
+    // The desktop's first step is DeepBlue on this computer's engine, and its
+    // second docks a phone (lib/guidedSetup.ts).
+    const desktop = isDesktop();
     return {
-      harborReady: Boolean(s.settings.harborReady),
-      harborDownloading: Boolean(s.harborDownload && !s.harborDownload.failed),
-      computer: Boolean(s.settings.daemon),
+      harborReady: desktop
+        ? Boolean(s.desktopStatus?.stack.configured)
+        : Boolean(s.settings.harborReady),
+      harborDownloading: desktop
+        ? Boolean(s.harborMasterDownload && !s.harborMasterDownload.failed)
+        : Boolean(s.harborDownload && !s.harborDownload.failed),
+      computer: desktop ? (s.dockedPhones ?? 0) > 0 : Boolean(s.settings.daemon),
       repo:
         Object.values(s.connectedRepoPlatforms).some(Boolean) || Boolean(s.settings.repo?.homeRepo),
       key: s.cloudKeyPresent || Object.values(s.connectedProviders).some(Boolean),
-      desktop: isDesktop(),
+      desktop,
     };
+  }
+
+  // What the DeepBlue step has to tell the person while it waits (Ollama to
+  // install, or why it stopped), said once each in the walk's chat, since the
+  // card that shows it elsewhere is not on screen there.
+  function sayDeepBlueProgress(): void {
+    const s = get();
+    const p = s.settings.guidedSetup;
+    const d = s.harborMasterDownload;
+    if (!p || !isDesktop() || !d) return;
+    const line = d.failed ? d.label : d.note;
+    if (!line || line === p.deepBlueSaid) return;
+    const text = d.failed
+      ? `DeepBlue stopped: ${line} You can try again from the Stack.`
+      : `Before DeepBlue can download, Ollama, the free app that runs it, needs to be on this computer. ${line}`;
+    if (!appendGuideMessage(p.conversationId, text)) return;
+    void get().saveSettings({ guidedSetup: { ...p, deepBlueSaid: line } });
   }
 
   let guideSeq = 0;
@@ -4055,12 +4078,16 @@ export const useApp = create<AppState>((set, get, api) => {
       st.settings.harborReady !== prev.settings.harborReady ||
       st.settings.repo?.homeRepo !== prev.settings.repo?.homeRepo ||
       st.harborDownload !== prev.harborDownload ||
+      st.harborMasterDownload !== prev.harborMasterDownload ||
+      st.desktopStatus?.stack.configured !== prev.desktopStatus?.stack.configured ||
+      st.dockedPhones !== prev.dockedPhones ||
       st.connectedRepoPlatforms !== prev.connectedRepoPlatforms ||
       st.cloudKeyPresent !== prev.cloudKeyPresent ||
       st.connectedProviders !== prev.connectedProviders
     ) {
       advanceGuidedSetup();
     }
+    if (st.harborMasterDownload !== prev.harborMasterDownload) sayDeepBlueProgress();
   });
 
   // A desktop session on a daemon this phone registered with pushes its own
@@ -9014,6 +9041,16 @@ export const useApp = create<AppState>((set, get, api) => {
         } catch {
           // Native side unreachable: keep the labels as they are.
         }
+      } else if (harborLiteHere()) {
+        // The desktop carries Harbor Lite in its own resources: ready when the
+        // bundled weights are there, the same truth the phone reads from disk.
+        const here = await (bridge()?.harborLitePresent?.() ?? Promise.resolve(false)).catch(
+          () => false,
+        );
+        if (Boolean(settings.harborMiniReady) !== here) {
+          settings.harborMiniReady = here;
+          await persistSettings(settings);
+        }
       }
       let settingsDirty = false;
 
@@ -9212,13 +9249,14 @@ export const useApp = create<AppState>((set, get, api) => {
         get().showToast(ACCOUNT_NOTICE);
       }
       // First open: no Personal-or-Business question (no account means
-      // personal) and no setup wall. On the phone, open the built-in guide's
-      // chat with its seeded hello; the desktop's empty chat is the First Seat.
+      // personal) and no setup wall. Open the built-in guide's chat with its
+      // seeded hello, on the phone and the desktop alike (founder,
+      // 2026-10-19).
       // A locked device is not a new one, and its writes could not land anyway.
       if (!settings.onboarded && !stored && !locked) {
         void get().saveSettings({ onboarded: true });
         logEvent('onboarding_done', { next: 'chat' });
-        if (isPhone()) void get().beginGuidedSetup();
+        if (harborLiteHere()) void get().beginGuidedSetup();
       }
       // The live half of the currents gate: probe what the paired computer can
       // host and whether each saved connection answers. Best effort, off the
@@ -9351,6 +9389,24 @@ export const useApp = create<AppState>((set, get, api) => {
       if (isPhone()) {
         void syncNoticePrefs(get().settings);
         void Llama.addListener('noticeTap', (data) => openNoticeTap(data)).catch(() => {});
+      }
+
+      // The desktop walk's Connect your phone step moves on when a phone
+      // docks here: read the hub's device list while that step is live.
+      if (isDesktop()) {
+        const readDocked = () => {
+          const p = get().settings.guidedSetup;
+          if (!p || p.finished || (p.current !== 'computer' && p.awaiting !== 'computer')) return;
+          void bridge()
+            ?.daemonInfo()
+            .then((d) => {
+              const n = d.devices?.length ?? 0;
+              if (n !== get().dockedPhones) set({ dockedPhones: n });
+            })
+            .catch(() => {});
+        };
+        readDocked();
+        setInterval(readDocked, 4000);
       }
 
       // While the phone is foreground on a desktop chat, beat the daemon so it
@@ -9543,14 +9599,17 @@ export const useApp = create<AppState>((set, get, api) => {
       const s = get();
       const st = s.settings;
       const signals: ReadinessSignals = {
-        onDeviceHost: platform() === 'ios',
+        // The desktop hosts one device model, Harbor Lite, bundled with it.
+        onDeviceHost: harborLiteHere(),
         deviceModelReady: (id) =>
-          Boolean(st.deviceModels[id]) ||
-          // A model kept in iCloud counts as ready: the load path pulls its
-          // bytes down first (ensureLocal) when you are online.
-          Boolean(st.cloudModels?.[id]) ||
-          (id === HARBOR_MINI_MODEL_ID && Boolean(st.harborMiniReady)) ||
-          (id === HARBOR_MODEL_ID && Boolean(st.harborReady)),
+          platform() !== 'ios'
+            ? id === HARBOR_MINI_MODEL_ID && Boolean(st.harborMiniReady)
+            : Boolean(st.deviceModels[id]) ||
+              // A model kept in iCloud counts as ready: the load path pulls its
+              // bytes down first (ensureLocal) when you are online.
+              Boolean(st.cloudModels?.[id]) ||
+              (id === HARBOR_MINI_MODEL_ID && Boolean(st.harborMiniReady)) ||
+              (id === HARBOR_MODEL_ID && Boolean(st.harborReady)),
         cloudReady: (provider) =>
           provider === 'anthropic' ? s.cloudKeyPresent : Boolean(s.connectedProviders[provider]),
       };
@@ -9935,7 +9994,7 @@ export const useApp = create<AppState>((set, get, api) => {
       const conv = get().conversations[conversationId];
       if (!conv) return undefined;
       return rescueSource(conv.source, {
-        harborLiteHost: platform() === 'ios',
+        harborLiteHost: harborLiteHere(),
         harborLite: { modelId: HARBOR_MINI_MODEL_ID, modelName: HARBOR_MINI_MODEL_NAME },
         stackReady: get().sourceReady({ kind: 'stack' }),
       });
@@ -11758,7 +11817,7 @@ export const useApp = create<AppState>((set, get, api) => {
       if (isDesktop() && s.sourceReady({ kind: 'desktop' })) source = { kind: 'desktop' };
       else if (s.cloudKeyPresent && !s.cloudKeyNeedsFix)
         source = { kind: 'cloud', provider: 'anthropic', model: DEFAULT_CLAUDE_MODEL };
-      else if (platform() === 'ios') {
+      else if (harborLiteHere()) {
         const ok = s.settings.harborMiniReady || (await get().ensureHarborMini());
         if (ok)
           source = {
@@ -11825,7 +11884,7 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     async beginGuidedSetup() {
-      if (!isPhone()) return;
+      if (!harborLiteHere()) return;
       // Open the walk's chat NOW, without waiting on the model: its hello and
       // its steps are scripted, so nothing on screen needs Harbor Lite loaded.
       // The model gets ready in the background, and a message typed before it
@@ -11868,8 +11927,8 @@ export const useApp = create<AppState>((set, get, api) => {
       logEvent('guided_setup_open', { step: p.current });
       if (p.current === 'harbor') {
         // Stays in the chat: the download runs in the background and the walk
-        // moves on the moment it starts.
-        void get().ensureHarbor();
+        // moves on the moment it starts. DeepBlue on the desktop.
+        void (isDesktop() ? get().ensureHarborMaster() : get().ensureHarbor());
         return;
       }
       const view: ViewName =
@@ -14606,39 +14665,6 @@ export const useApp = create<AppState>((set, get, api) => {
       await get().saveSettings({ webSearchConsent: allowed ? 'allowed' : 'declined' });
       // Routines on this computer follow the switch (2026-10-01).
       void get().refreshRoutines();
-    },
-
-    async trySampleProject() {
-      const b = isDesktop() ? bridge() : undefined;
-      if (!b?.createSample) {
-        get().showToast('The sample needs the desktop app.');
-        return;
-      }
-      // The sample is a coding chat: signed out, the sign-in sheet opens
-      // before anything is copied to disk.
-      if (get().needsAccountNow()) {
-        get().openAccountGate('coding');
-        return;
-      }
-      // The sample is made on this computer and runs on its own engine,
-      // whatever the project or the "run on another computer" switch says.
-      if (!get().desktopStatus?.stack.configured) {
-        get().showToast('Pick a model for this computer first, then try the sample.');
-        get().setView('stack');
-        return;
-      }
-      const made = await b.createSample();
-      if ('error' in made) {
-        get().showToast(made.error);
-        return;
-      }
-      // The prompt rides in on the sample's own chat, parked until its driver
-      // attaches, so it can never land in whatever chat was open before when
-      // no chat opens.
-      await get().newConversation(
-        { kind: 'desktop', cwd: made.path, repoName: SAMPLE_REPO_NAME, hub: THIS_COMPUTER },
-        { firstMessage: { text: SAMPLE_PROMPT } },
-      );
     },
 
     async restoreChangedFiles(itemId, direction, path) {

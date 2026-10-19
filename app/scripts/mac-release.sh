@@ -54,6 +54,7 @@ rm -f release/*.dmg release/*.zip release/*.sig release/*.blockmap release/lates
 pnpm --filter os-code build
 pnpm --filter oscode-app build
 pnpm --filter oscode-app rebuild:native
+pnpm --filter oscode-app fetch:harbor-lite
 pnpm exec electron-builder --mac --publish never
 
 shopt -s nullglob

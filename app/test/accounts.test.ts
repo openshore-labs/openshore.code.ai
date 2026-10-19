@@ -13,7 +13,6 @@ const mem = new Map<string, string>();
 // The desktop shell, for the sample project: off unless a test turns it on.
 const shell = vi.hoisted(() => ({
   desktop: false,
-  createSample: undefined as undefined | (() => Promise<{ path: string } | { error: string }>),
 }));
 
 vi.mock('../src/lib/platform.js', () => ({
@@ -43,7 +42,7 @@ vi.mock('../src/lib/platform.js', () => ({
 
 vi.mock('../src/lib/electronBridge.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../src/lib/electronBridge.js')>()),
-  bridge: () => (shell.desktop ? { createSample: shell.createSample } : undefined),
+  bridge: () => (shell.desktop ? {} : undefined),
 }));
 
 // A coding session on a paired computer, as far as the door is concerned:
@@ -154,7 +153,6 @@ const {
 const { SIGNED_OUT_HERE, ownerPatch } = await import('../src/state/signinOps.js');
 const { useApp } = await import('../src/state/store.js');
 const { emptyThread } = await import('../src/state/types.js');
-const { SAMPLE_PROMPT } = await import('../src/lib/sampleProject.js');
 type Session = import('../src/lib/supabase.js').Session;
 type AppSettings = import('../src/state/store.js').AppSettings;
 type Conversation = import('../src/state/types.js').Conversation;
@@ -536,7 +534,6 @@ describe('the store', () => {
     sb.userId = 'u1';
     notices.synced.length = 0;
     shell.desktop = false;
-    shell.createSample = undefined;
     engine.built.length = 0;
     useApp.setState({
       authSession: undefined,
@@ -792,7 +789,6 @@ describe('one door to the coding agent', () => {
     sb.failRead = false;
     sb.deadRefresh = false;
     shell.desktop = false;
-    shell.createSample = undefined;
     engine.built.length = 0;
     useApp.setState({
       authSession: undefined,
@@ -861,24 +857,6 @@ describe('one door to the coding agent', () => {
     expect(engine.built[0]!.sent).toEqual([]);
     expect(useApp.getState().accountGate).toBe('coding');
     expect(useApp.getState().conversations.code2!.pendingFirstMessage).toBe('one more thing');
-  });
-
-  it('a sample tap signed out copies nothing and sends nothing anywhere', async () => {
-    shell.desktop = true;
-    const createSample = vi.fn(async () => ({ path: '/tmp/sample' }));
-    shell.createSample = createSample;
-    // A free chat is open: where the old code sent the sample prompt.
-    const free: Conversation = { ...codingChat('free1'), source: { kind: 'stack' } };
-    useApp.setState({ conversations: { free1: free }, order: ['free1'], activeId: 'free1' });
-    await useApp.getState().trySampleProject();
-    await tick();
-    expect(createSample).not.toHaveBeenCalled();
-    expect(useApp.getState().accountGate).toBe('coding');
-    expect(useApp.getState().order).toEqual(['free1']);
-    const after = useApp.getState().conversations.free1!;
-    expect(after.pendingFirstMessage).toBeUndefined();
-    expect(JSON.stringify(after.thread)).not.toContain(SAMPLE_PROMPT);
-    expect(engine.built).toHaveLength(0);
   });
 
   it('the back arrow after a sign-out opens the sheet, never the Vault', async () => {

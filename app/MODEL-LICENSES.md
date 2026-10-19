@@ -3,7 +3,8 @@
 With one exception, OpenShore does not ship model weights inside the app: every
 model is downloaded by the user straight from its own public source, and
 OpenShore never rehosts weights. The exception is Harbor Mini, the small guide,
-whose weights are bundled with the app so it is present on first launch. Its
+whose weights are bundled with the app (the iPhone and iPad app, and since
+2026-10-19 the desktop installers) so it is present on first launch. Its
 license (Apache-2.0) permits that redistribution, and the license and
 attribution ship in the app.
 
@@ -15,7 +16,9 @@ attribution ship in the app.
 - **Source:** Hugging Face (`HuggingFaceTB/SmolLM2-135M-Instruct`), via the
   unsloth GGUF repo. The weights are placed into the app bundle at build time
   from `HARBOR_MINI_MODEL_URL` in `app/src/lib/harborMini.ts` (see
-  `docs/HARBOR.md`).
+  `docs/HARBOR.md`); the desktop build fetches the same file with
+  `app/scripts/fetch-harbor-lite.mjs`. On the desktop it runs on llama.cpp
+  through node-llama-cpp (MIT).
 - **License:** Apache License 2.0. Redistributed inside the app under its terms,
   with the license and attribution retained.
 

@@ -20,7 +20,8 @@ import { dockedNoun, dockedNounLower } from '../lib/docking.js';
 import type { Where } from '../lib/runsOn.js';
 import { dockedModelLine, dockedNoModelLine } from '../lib/serverKeys.js';
 import { useSheetExit } from '../hooks/useSheetExit.js';
-import { isDesktop, isPhone } from '../lib/platform.js';
+import { isDesktop } from '../lib/platform.js';
+import { harborLiteHere } from '../lib/harborLiteHost.js';
 import { HARBOR_BYLINE, HARBOR_MODEL_ID, HARBOR_MODEL_NAME } from '../lib/harbor.js';
 import {
   HARBOR_MINI_BYLINE,
@@ -454,7 +455,10 @@ export function ModelSheet({
                 )}
               </div>
             ) : null}
-            {isPhone() && (settings.harborReady || settings.harborMiniReady || harborComing) ? (
+            {/* The built-in guides: Harbor and Harbor Lite on the phone, Harbor
+                Lite on the desktop, where it is built in too (2026-10-19). */}
+            {harborLiteHere() &&
+            (settings.harborReady || settings.harborMiniReady || harborComing) ? (
               <div className="ms-group">
                 {settings.harborReady ? (
                   <Row

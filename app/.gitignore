@@ -14,3 +14,6 @@ ios/DerivedData/
 .env
 .env.local
 .env.*.local
+
+# Harbor Lite weights for the desktop build (scripts/fetch-harbor-lite.mjs)
+build/models/

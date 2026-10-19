@@ -341,6 +341,13 @@ workflows:
           # runs Electron's ABI, so it must be rebuilt or the terminal cannot
           # open. The headers download from electronjs.org, reachable here.
           pnpm --filter oscode-app rebuild:native
+      - name: Fetch Harbor Lite's weights
+        script: |
+          set -euo pipefail
+          # Harbor Lite ships inside the desktop app too (founder, 2026-10-19);
+          # electron-builder copies build/models into the app's resources. A
+          # failed fetch fails the build.
+          pnpm --filter oscode-app fetch:harbor-lite
       - name: Package the macOS app
         script: |
           set -euo pipefail

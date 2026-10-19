@@ -26,12 +26,13 @@
     "postinstall": "node scripts/postinstall.mjs",
     "rebuild:native": "electron-rebuild -f -w node-pty -m ../os-code",
     "desktop": "vite build && tsc -p electron/tsconfig.json && node scripts/desktop-preflight.mjs && electron .",
-    "package:linux": "vite build && tsc -p electron/tsconfig.json && pnpm rebuild:native && electron-builder --linux",
-    "package:mac": "vite build && tsc -p electron/tsconfig.json && pnpm rebuild:native && electron-builder --mac",
-    "package:win": "vite build && tsc -p electron/tsconfig.json && pnpm rebuild:native && electron-builder --win",
+    "package:linux": "vite build && tsc -p electron/tsconfig.json && pnpm rebuild:native && pnpm fetch:harbor-lite && electron-builder --linux",
+    "package:mac": "vite build && tsc -p electron/tsconfig.json && pnpm rebuild:native && pnpm fetch:harbor-lite && electron-builder --mac",
+    "package:win": "vite build && tsc -p electron/tsconfig.json && pnpm rebuild:native && pnpm fetch:harbor-lite && electron-builder --win",
     "ios:sync": "vite build && cap sync ios",
     "release:mac": "bash scripts/mac-release.sh",
-    "release:keygen": "node scripts/release-keygen.mjs"
+    "release:keygen": "node scripts/release-keygen.mjs",
+    "fetch:harbor-lite": "node scripts/fetch-harbor-lite.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.117.1",
@@ -47,6 +48,7 @@
     "electron-updater": "6.8.9",
     "highlight.js": "11.12.0",
     "jsqr": "1.4.0",
+    "node-llama-cpp": "3.22.1",
     "os-code": "workspace:*",
     "oscode-applock": "file:./plugins/oscode-applock",
     "oscode-authsession": "file:./plugins/oscode-authsession",
@@ -100,12 +102,25 @@
     "files": [
       "dist/**",
       "dist-electron/**",
-      "electron/preload.cjs"
+      "electron/preload.cjs",
+      "!**/node_modules/@node-llama-cpp/*-cuda/**",
+      "!**/node_modules/@node-llama-cpp/*-cuda-ext/**",
+      "!**/node_modules/@node-llama-cpp/*-vulkan/**",
+      "!**/node_modules/@node-llama-cpp/linux-armv7l/**",
+      "!**/node_modules/@node-llama-cpp/linux-riscv64/**"
     ],
     "asar": true,
     "asarUnpack": [
       "**/node_modules/node-pty/**",
-      "**/node_modules/os-code/**"
+      "**/node_modules/os-code/**",
+      "**/node_modules/node-llama-cpp/**",
+      "**/node_modules/@node-llama-cpp/**"
+    ],
+    "extraResources": [
+      {
+        "from": "build/models/harbor-mini.gguf",
+        "to": "models/harbor-mini.gguf"
+      }
     ],
     "npmRebuild": false,
     "directories": {
@@ -127,7 +142,10 @@
       "category": "Development",
       "maintainer": "OpenShore Labs",
       "icon": "build/icons",
-      "syncDesktopName": true
+      "syncDesktopName": true,
+      "files": [
+        "!**/node_modules/@node-llama-cpp/linux-arm64/**"
+      ]
     },
     "mac": {
       "target": [
@@ -151,6 +169,9 @@
     "win": {
       "target": [
         "nsis"
+      ],
+      "files": [
+        "!**/node_modules/@node-llama-cpp/win-arm64/**"
       ]
     },
     "nsis": {

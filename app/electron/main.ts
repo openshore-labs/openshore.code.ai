@@ -142,6 +142,7 @@ import {
   type UpdaterState,
 } from './updateState.js';
 import { ChatStreams } from './chatStream.js';
+import { HarborLiteHost, harborLitePath } from './harborLite.js';
 import { NetworkWatch } from './networkWatch.js';
 import { bundleOf, newestMacUpdate, type ReleaseAsset, type ReleaseInfo } from './updateVersion.js';
 import { rolledBackVersion, updateMacInPlace, writeLaunchMarker } from './macUpdate.js';
@@ -1149,7 +1150,6 @@ guarded('osc:trustFolder', async (sessionId: unknown) => {
   if (!ok) return { error: 'Not trusted. Nothing changed.' };
   return host.trustFolder(id);
 });
-guarded('osc:createSample', () => host.createSample());
 // The truncation card's action (C1, tech review 5): serve this provider's models the
 // larger window from the next message, in every chat. Machine config, so only
 // a provider id crosses; main writes it through the engine's one writer.
@@ -1200,6 +1200,43 @@ guarded('osc:freeChat', (requestId: unknown, body: unknown) => {
 guarded('osc:freeChatAbort', (requestId: unknown) =>
   host.freeChatAbort(str(requestId, 'requestId')),
 );
+
+// Harbor Lite, the bundled guide (electron/harborLite.ts): the phone plugin's
+// load, generate and stop, with its token and generationDone events on
+// osc:harbor-lite. Only Harbor Lite runs here.
+const harborLite = new HarborLiteHost(
+  harborLitePath({
+    packaged: app.isPackaged,
+    resourcesPath: process.resourcesPath,
+    appPath: app.getAppPath(),
+  }),
+  (event) => win?.webContents.send('osc:harbor-lite', event),
+);
+guarded('osc:harborLitePresent', () => harborLite.present());
+guarded('osc:harborLiteLoad', (id: unknown, contextSize: unknown) =>
+  harborLite.load(
+    str(id, 'id'),
+    contextSize === undefined ? undefined : num(contextSize, 'contextSize'),
+  ),
+);
+guarded('osc:harborLiteUnload', () => harborLite.unload());
+guarded('osc:harborLiteGenerate', (body: unknown) => {
+  const b = obj(body, 'body');
+  if (!Array.isArray(b.messages)) throw new Error('blocked: messages must be a list');
+  return harborLite.generate({
+    requestId: str(b.requestId, 'requestId'),
+    system: str(b.system, 'system'),
+    messages: b.messages.map((m, i) => {
+      const o = obj(m, `messages[${i}]`);
+      const role = str(o.role, `messages[${i}].role`);
+      if (role !== 'user' && role !== 'assistant') throw new Error('blocked: bad role');
+      return { role, content: str(o.content, `messages[${i}].content`) };
+    }),
+    ...(b.maxTokens === undefined ? {} : { maxTokens: num(b.maxTokens, 'maxTokens') }),
+    ...(b.temperature === undefined ? {} : { temperature: num(b.temperature, 'temperature') }),
+  });
+});
+guarded('osc:harborLiteStop', (requestId: unknown) => harborLite.stop(str(requestId, 'requestId')));
 
 // Chat-to-terminal lane. runCommand returns the runId the renderer drives with
 // stdin/kill; command output arrives as command-* events on osc:event.
