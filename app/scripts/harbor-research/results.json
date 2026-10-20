@@ -1,0 +1,900 @@
+{
+ "node-lts": {
+  "query": "latest Node.js LTS version",
+  "captured": "2026-10-19",
+  "source": "web search and page reads, 2026-10-19",
+  "results": [
+   {
+    "title": "Node.js - Download Node.js®",
+    "url": "https://nodejs.org/en/download",
+    "snippet": "Get Node.js® v24.22.0LTS",
+    "excerpt": "Download Node.js® Get Node.js® v24.22.0LTS for Unknown using with npm InfoWant new features sooner? Get the latest Node.js version instead and try the latest improvements! BashCopy to clipboard and their installation scripts are not maintained by the Node.js project. If you encounter any issues please visit 's website Or get a prebuilt Node.js® for Unknown running a Unknown architecture. N/A Installer (.gz)Standalone Binary (.gz) Read the changelog or blog post for this version. Learn more about Node.js releases, including the release schedule and LTS status. Learn how to verify signed SHASUMS. Looking for Node.js source? Download a signed Node.js source tarball. Check out our nightly binaries or all previous releases or the unofficial binaries for other platforms. Proudly supported by the partners below: We are able to serve Node.js's downloads and maintain our infrastructure proudly due to the support of these partners, and more. v24.22.0Latest LTSv26.12."
+   },
+   {
+    "title": "Node.js - Node.js 24.22.0 (LTS)",
+    "url": "https://nodejs.org/en/blog/release/v24.22.0",
+    "snippet": "2026-10-14, Version 24.22.0 'Krypton' (LTS), @richardlau prepared by @aduh95",
+    "excerpt": "Node.js 24.22.0 (LTS) 2026-10-14, Version 24.22.0 'Krypton' (LTS), @richardlau prepared by @aduh95 Notable Changes [ddbf974b47] - (SEMVER-MINOR) crypto: add crypto.parsePKCS12() (Brian Muenzenmeyer) #65627 [c162c68ff0] - (SEMVER-MINOR) crypto: add a generic MAC API (Filip Skokan) #65553 [a4ab3d84d7] - (SEMVER-MINOR) crypto: discover ciphers from OpenSSL providers (Filip Skokan) #65484 [c2f1e829ea] - (SEMVER-MINOR) crypto: discover hashes from OpenSSL providers (Filip Skokan) #65484 [51aad5a80d] - (SEMVER-MINOR) crypto: enable SIV and GCM-SIV modes in Cipher/Decipher APIs (Filip Skokan) #63411 [d11c65d2f2] - doc: add araujogui to collaborators (Guilherme Araújo) #66090 [acc1578179] - doc: deprecate Server.prototype._listen2 in node:net (Antoine du Hamel) #65593 [a7f8de6362] - (SEMVER-MINOR) net: support sending net."
+   },
+   {
+    "title": "Releases · nodejs/node · GitHub",
+    "url": "https://github.com/nodejs/node/releases",
+    "snippet": "2026-10-14, Version 26.12.0 (Current), @richardlau 2026-10-14, Version 24.22.0 'Krypton' (LTS), @richardlau prepared by @aduh95",
+    "excerpt": "Release list 2026-10-14, Version 26.12.0 (Current), @richardlau 2026-10-14, Version 24.22.0 'Krypton' (LTS), @richardlau prepared by @aduh95 2026-10-07, Version 26.11.1 (Current), @aduh95 2026-10-07, Version 26.11.0 (Current), @aduh95 2026-09-23, Version 22.23.3 'Jod' (LTS), @aduh95 prepared by @juanarbol 2026-09-22, Version 26.10.0 (Current), @aduh95 2026-09-16, Version 26.9.0 (Current), @aduh95 2026-09-09, Version 26.8.2 (Current), @aduh95 2026-09-08, Version 24.21.0 'Krypton' (LTS), @aduh95 2026-08-26, Version 26.8.1 (Current), @aduh95 Previous Next Jump to release 2026-10-14, Version 26.12.0 (Current), @richardlau 2026-10-14, Version 24.22.0 'Krypton' (LTS), @richardlau prepared by @aduh95 2026-10-07, Version 26.11.1 (Current), @aduh95 2026-10-07, Version 26.11.0 (Current), @aduh95 2026-09-23, Version 22.23.3 'Jod' (LTS), @aduh95 prepared by @juanarbol 2026-09-22, Version 26.10.0 (Current), @aduh95 2026-09-16, Version 26.9.0 (Current), @aduh95 2026-09-09, Version 26.8."
+   },
+   {
+    "title": "Node.js 24 Becomes LTS: What You Need to Know",
+    "url": "https://nodesource.com/blog/nodejs-24-becomes-lts",
+    "snippet": "With the release of Node.js 24.11.0 “Krypton”, the Node.js 24 line has officially entered Long-Term Support (LTS) and will continue receiving maintenance and security updates through April 2028.",
+    "excerpt": "With the release of Node.js 24.11.0 “Krypton”, the Node.js 24 line has officially entered Long-Term Support (LTS) and will continue receiving maintenance and security updates through April 2028. This marks the beginning of a new stable era for production workloads, bringing developers enhanced security, stricter runtime behavior, and improved Web API support. At NodeSource, we’re proud to announce that both our open-source N|Solid Runtime and the N|Solid now fully supports Node.js 24 LTS “Krypton.” This ensures that enterprise users can immediately adopt the latest LTS release while continuing to benefit from N|Solid’s advanced monitoring, AI-powered insights, and performance analysis features. Acknowledging the Core Team Behind Node.js 24 Before diving into what’s new, we want to highlight and thank the Node.js core contributors who make these releases possible. Special recognition goes to Rafael Gonzaga (OSS Engineer at NodeSource, Node.js TSC, and member of the Node."
+   },
+   {
+    "title": "Download & Update Node.js to the Latest Version! Node v26.5.1 Current / LTS v24.18.1 Direct Links - RisingStack Engineering",
+    "url": "https://blog.risingstack.com/update-node-js-latest-version/",
+    "snippet": "Node 24 LTS 2025-05-06 2026-10-20 2028-04-30 24.18.1",
+    "excerpt": "NameReleasedActive supportSecurity supportLatest Node 26 CURRENT 2026-05-05 2027-10-27 2029-04-30 26.5.1 Node 24 LTS 2025-05-06 2026-10-20 2028-04-30 24.18.1 In this article below, you’ll find changelogs and download / update information regarding Node.js! Node.js LTS & Current Download for macOS: 24.18.1 LTS macOS 26.5.1 Current macOS Node.js LTS & Current Download for Windows: 24.18.1 LTS Windows 64-bit 26.5.1 Current Windows 64-bit For other downloads like Linux libraries, source codes, Docker images, etc. please visit https://nodejs.org/en/download/ Node.js Release Schedule: Node.js v23 Here’s a rundown of the key features and improvements in the latest release. Default ESM in require(): Native ES modules can now be used with require() by default, simplifying module usage without experimental flags. Dropping Windows 32-bit Support: Node.js 23 no longer supports 32-bit Windows systems, focusing on modern platforms."
+   }
+  ],
+  "facts": "Node.js 24 ('Krypton') is the current LTS line and the newest LTS release is v24.22.0, released 2026-10-14. Stated by result 1 (nodejs.org download page: 'Get Node.js® v24.22.0LTS' and 'v24.22.0Latest LTS'), result 2 ('2026-10-14, Version 24.22.0 'Krypton' (LTS)') and result 3 (GitHub release list, same line). Result 4 is older (Node 24 entered LTS with 24.11.0). Result 5 is a stale third-party page listing 'LTS v24.18.1'. The newest Current (non-LTS) release is v26.12.0 ('v26.12.0Latest Release' in result 1)."
+ },
+ "python-latest": {
+  "query": "latest stable Python version",
+  "captured": "2026-10-19",
+  "source": "web search and page reads, 2026-10-19",
+  "results": [
+   {
+    "title": "Python Release Python 3.15.0",
+    "url": "https://www.python.org/downloads/release/python-3150/",
+    "snippet": "Python 3.15.0 Release date: Oct. 9, 2026 This is the stable release of Python 3.15.0",
+    "excerpt": "Python 3.15.0 Release date: Oct. 9, 2026 This is the stable release of Python 3.15.0 Python 3.15.0 is the newest major release of the Python programming language, and it contains many new features and optimisations compared to Python 3.14, in 5,643 commits from 1,012 contributors. Major new features of the 3.15 series, compared to 3.14 Some of the major new features and changes in Python 3.15 are: Interpreter improvements PEP 661: Add sentinel built-in type PEP 686: Python now uses UTF-8 as the default encoding PEP 798: Unpacking in comprehensions PEP 810: Explicit lazy imports for faster startup times PEP 814: Add frozendict built-in type PEP 829: Package startup configuration files The experimental JIT compiler has been significantly upgraded, with 7-8% geometric mean performance improvement on x86-64 Linux over the standard interpreter, and 11-12% speedup on AArch64 macOS over the tail-calling interpreter Improved error messages Significant improvements in the standard library PEP"
+   },
+   {
+    "title": "Python 3.15.0 (final) is here!",
+    "url": "https://blog.python.org/2026/10/python-3150-final-is-here/",
+    "snippet": "Python 3.15.0 is the newest major release of the Python programming language, and it contains many new features and optimisations compared to Python 3.14",
+    "excerpt": "Python 3.15.0 (final) is here! Hugo van Kemenade/October 9, 2026 releases Python 3.15.0 is now available python.org/downloads/release/python-3150/ This is the stable release of Python 3.15.0 Python 3.15.0 is the newest major release of the Python programming language, and it contains many new features and optimisations compared to Python 3.14, in 5,643 commits from 1,012 contributors. Major new features of the 3.15 series, compared to 3.14 Some of the major new features and changes in Python 3.15 are: Interpreter improvements PEP 661: Add sentinel built-in type PEP 686: Python now uses UTF-8 as the default encoding PEP 798: Unpacking in comprehensions PEP 810: Explicit lazy imports for faster startup times PEP 814: Add frozendict built-in type PEP 829: Package startup configuration files The experimental JIT compiler has been significantly upgraded, with 7-8% geometric mean performance improvement on x86-64 Linux over the standard interpreter, and 11-12% speedup on AArch64 macOS over"
+   },
+   {
+    "title": "Python Releases for Windows",
+    "url": "https://www.python.org/getit/windows/",
+    "snippet": "Latest Python 3 Release - Python 3.15.0",
+    "excerpt": "Python Releases for Windows Latest Python install manager - Python install manager 26.4 Latest Python 3 Release - Python 3.15.0 Stable Releases Python install manager 26.4 - Oct. 9, 2026 Download Installer (MSIX) Download MSI package Python 3.15.0 - Oct. 9, 2026 Download using the Python install manager. Download Windows installer (64-bit) Download Windows installer (32-bit) Download Windows installer (ARM64) Download Windows embeddable package (64-bit) Download Windows embeddable package (32-bit) Download Windows embeddable package (ARM64) Download Windows release manifest Python 3.14.8 - Sept. 30, 2026 Download using the Python install manager. Download Windows installer (64-bit) Download Windows installer (32-bit) Download Windows installer (ARM64) Download Windows embeddable package (64-bit) Download Windows embeddable package (32-bit) Download Windows embeddable package (ARM64) Download Windows release manifest Python 3.13.16 - Sept. 30, 2026 Note that Python 3.13."
+   },
+   {
+    "title": "Python (programming language)",
+    "url": "https://en.wikipedia.org/wiki/Python_(programming_language)",
+    "snippet": "As of October 2026[update], Python 3.15.0 is the latest stable release",
+    "excerpt": "As of October 2026[update], Python 3.15.0 is the latest stable release, and before in same month 3.14.8 an \"expedited security release\"[55] is the latest stable release, and since 3.14 official Android binary releases are available. All older 3.x versions had a security update down to Python 3.10.22. Python 3.11 is, since October 2026, the oldest supported branch.[56] Python 3.15 adds e.g. frozendict and sentinel built-in types, and a new soft keyword, lazy, for lazy imports.[57] Releases receive two years of full support followed by three years of security support. Design philosophy and features [edit] Python is a multi-paradigm programming language. Object-oriented programming and structured programming are fully supported, and many of their features support functional programming and aspect-oriented programming – including metaprogramming[58] and metaobjects.[59] Many other paradigms are supported via extensions, including design by contract[60][61] and logic programming."
+   },
+   {
+    "title": "The Latest Version of Python",
+    "url": "https://phoenixnap.com/kb/latest-python-version",
+    "snippet": "As of February 2026, the latest stable version of Python is Python 3.14.3, released on February 3, 2026.",
+    "excerpt": "The latest stable Python version ensures better performance, improved compatibility with modern libraries, and ongoing security support. This guide will explain the current Python release, why updating matters, and how to check and upgrade your installed version. What Is the Latest Version of Python? As of February 2026, the latest stable version of Python is Python 3.14.3, released on February 3, 2026. It contains about 299 bug fixes, improvements, and documentation changes since the previous version, 3.14.2. Notable features introduced in Python 3.14 include: Free-threaded Python support. Template string literals (t-strings). Deferred evaluation of annotations. Multiple interpreters in the standard library. Built-in support for Zstandard compression. Python follows a regular release cycle where new major versions introduce features and optimizations, while maintenance releases fix bugs and improve stability."
+   }
+  ],
+  "facts": "Python 3.15.0, released October 9, 2026, is the latest stable version. Stated by result 1 ('Release date: Oct. 9, 2026' and 'This is the stable release of Python 3.15.0'), result 2 ('Python 3.15.0 is the newest major release'), result 3 ('Latest Python 3 Release - Python 3.15.0') and result 4 ('Python 3.15.0 is the latest stable release'). Result 5 is outdated (dated February 2026) and names 'Python 3.14.3'."
+ },
+ "world-cup-2026": {
+  "query": "2026 FIFA World Cup winner",
+  "captured": "2026-10-19",
+  "source": "web search and page reads, 2026-10-19",
+  "results": [
+   {
+    "title": "Spain is the 2026 World Cup champion, defeating Argentina for its 2nd title",
+    "url": "https://www.npr.org/2026/07/19/nx-s1-5899071/2026-world-cup-fifa-argentina-spain-final-championship",
+    "snippet": "Spain has won the FIFA World Cup with a 1-0 extra-time win over Argentina",
+    "excerpt": "Spain has won the FIFA World Cup with a 1-0 extra-time win over Argentina, bringing to a close North America's first time hosting the men's tournament in over three decades. Soccer Edition Spain makes World Cup history: The first to win men's and women's trophies back-to-back It is the Spanish men's team's second World Cup title, after winning their first in 2010. And for this squad, the win marked the 38th consecutive match without a loss, a run that includes their trophy in the 2024 European Championship. They are the most dominant defensive team to win a World Cup; no champion before them had ever conceded only one goal en route to a title. And this Spain team did so with an extra game, as the new, expanded format of the tournament required its champion to play eight matches, a record. Sponsor Message Spain's run to the title came through a wall of top-ten opponents: first a 1-0 win over No. 5 Portugal, then a 2-1 quarterfinal win over No."
+   },
+   {
+    "title": "Spain crowned FIFA World Cup 2026™ Champions in New York New Jersey",
+    "url": "https://inside.fifa.com/en/news/spain-crowned-world-cup-2026-champions-new-york-new-jersey",
+    "snippet": "The game-changing FIFA World Cup 2026™ came to a thrilling close on Sunday, with Spain claiming their second FIFA World Cup™ crown courtesy of a 1-0 victory over Argentina.",
+    "excerpt": "The game-changing FIFA World Cup 2026™ came to a thrilling close on Sunday, with Spain claiming their second FIFA World Cup™ crown courtesy of a 1-0 victory over Argentina. At a full and colourful New York New Jersey Stadium, La Roja etched their names into the history books as winners of the first-ever 48-team, 104-match FIFA World Cup. With the teams locked at 0-0 after 90 minutes, attacker Ferran Torres scored the only goal of the match in the 106th minute to secure the title for Spain, who become the first nation to hold the FIFA World Cup and FIFA Women’s World Cup™ trophies simultaneously. The action-packed Final also featured the FIFA World Cup Topps Final Halftime Show – a landmark celebration intersecting sport, music and global impact."
+   },
+   {
+    "title": "2026 FIFA World Cup final",
+    "url": "https://en.wikipedia.org/wiki/2026_FIFA_World_Cup_final",
+    "snippet": "Spain's win earned the country its second World Cup title and its first since 2010.",
+    "excerpt": "Spain dominated possession and created numerous goal-scoring opportunities throughout the match, with Argentina goalkeeper Emiliano Martínez repeatedly denying its offensive efforts. Argentina, reduced to ten players after Enzo Fernández was sent off in the second half, failed to register a single shot in regulation time, a first for a World Cup final. The goalless deadlock carried into extra time, during which Ferran Torres scored from a Nico Williams header to secure a 1–0 victory for Spain. With a few minutes left, Argentina missed multiple opportunities to equalize the score. After the match, a brawl broke out between the two teams. Spain's win earned the country its second World Cup title and its first since 2010. Torres was named the man of the match, and Emiliano Martínez's 11 saves set a record for the most saves by a goalkeeper in a World Cup final."
+   },
+   {
+    "title": "FIFA World Cup final 2026 highlights: Spain outlasts Argentina 1-0 to win second title",
+    "url": "https://www.nbcnews.com/sports/soccer/live-blog/fifa-world-cup-final-2026-argentina-spain-messi-yamal-live-updates-rcna587754",
+    "snippet": "Spain outlasts Argentina 1-0 in extra time to win second World Cup title Spain’s Ferran Torres scored the decisive goal in the 106th minute. Spain last won in 2010.",
+    "excerpt": "Spain outlasts Argentina 1-0 in extra time to win second World Cup title Spain’s Ferran Torres scored the decisive goal in the 106th minute. Spain last won in 2010. Save Add NBC News to Google Updated July 19, 2026, 7:53 PM EDT By Andrew Greif Ferran Torres’ goal in the 106th minute delivered Spain its second World Cup title Sunday in a win over Argentina that was tense but one-sided. The shot was Spain’s 12th on goal, all while defending champion Argentina had produced zero. Yet for how often Spain peppered Argentina’s defense with shots, its brilliant goalkeeper Emiliano Martínez rebuffed every Spanish attempt while setting a record for saves in the World Cup final with 11. Martínez, however, could not stop the shot rocketed by Torres after Nico Williams headed a pass his way in extra time. “Honestly I did not think too much,” Torres said on the Fox broadcast after the game. “I just saw the ball coming to me and I shot with the power of all the Spanish people."
+   },
+   {
+    "title": "List of FIFA men's World Cup winners: Where Spain ranks on title leaderboard after 2026 triumph",
+    "url": "https://www.nbcnewyork.com/world-cup/fifa-world-cup-winners-list-year-by-year/6526459/",
+    "snippet": "Spain celebrated its second World Cup title after winning the final for the second time in two appearances.",
+    "excerpt": "Spain celebrated its second World Cup title after winning the final for the second time in two appearances. La Roja also extended its European-record unbeaten streak to 38 matches, while 19-year-old Lamine Yamal completed a historic Euro and World Cup double. Spain has doubled its number of FIFA men's World Cup titles. The Spaniards won their second World Cup Sunday, taking down reigning champion Argentina 1-0 in extra time of the 2026 final at New York New Jersey Stadium in East Rutherford, New Jersey. Spain dominated Lionel Messi and Co., who were seeking to become the first repeat champion in more six decades. The Spaniards didn't allow a single shot on goal and held a 20-2 shots advantage overall. But, just like their 2010 title triumph, it took until the second half of extra time to find the breakthrough."
+   }
+  ],
+  "facts": "Spain won the 2026 FIFA World Cup, beating Argentina 1-0 after extra time in the final on July 19, 2026 at MetLife Stadium (New York New Jersey); Ferran Torres scored in the 106th minute. All five results agree: result 1 ('Spain has won the FIFA World Cup with a 1-0 extra-time win over Argentina'), result 2 ('Spain claiming their second FIFA World Cup™ crown courtesy of a 1-0 victory over Argentina'), result 3 ('Spain's win earned the country its second World Cup title'), result 4 ('Spain outlasts Argentina 1-0 in extra time'), result 5 ('Spain celebrated its second World Cup title')."
+ },
+ "intel-ceo": {
+  "query": "Intel CEO",
+  "captured": "2026-10-19",
+  "source": "web search and page reads, 2026-10-19",
+  "results": [
+   {
+    "title": "Intel appoints Lip-Bu Tan as its next CEO",
+    "url": "https://techcrunch.com/2025/03/12/intel-appoints-lip-bu-tan-as-its-next-ceo/",
+    "snippet": "Intel has appointed Lip-Bu Tan, a major figure in the semiconductor industry, as CEO, the company announced late Wednesday.",
+    "excerpt": "Intel has appointed Lip-Bu Tan, a major figure in the semiconductor industry, as CEO, the company announced late Wednesday. Tan succeeds interim co-CEOs David Zinsner and Michelle Johnston Holthaus. He’ll also rejoin the Intel board of directors after stepping down from the board in August 2024, Intel said. Zinsner will remain Intel’s CFO, while Johnston Holthaus will remain CEO of the company’s Intel Products division. Tan, a Malaysia-born, longtime tech investor, formerly served as CEO of Cadence Design Systems. He was a manager at two energy firms, EDS Nuclear and ECHO Energy, and a partner at the Walden USA investment fund before founding venture capital firm Walden International in 1987. Tan is exceptionally well-connected in the tech industry, and a director on the boards of Hewlett Packard Enterprise, Schneider Electric, and SoftBank. He’s also widely respected as a business leader."
+   },
+   {
+    "title": "Who is the CEO of Intel in 2026? Lip-Bu Tan's Bio",
+    "url": "https://www.clay.com/dossier/intel-ceo",
+    "snippet": "Lip-Bu Tan is the CEO of Intel Corporation, an experienced executive with a demonstrated history of working in the computer software and semiconductor industries.",
+    "excerpt": "Who is the CEO of Intel? Lip-Bu Tan is the CEO of Intel Corporation, an experienced executive with a demonstrated history of working in the computer software and semiconductor industries. He brings deep expertise in EDA, Software as a Service (SaaS), Mergers & Acquisitions (M&A), Application-Specific Integrated Circuits (ASIC), and start-ups. In addition to his role at Intel, Tan serves as Chairman of Walden International and as Founding Managing Partner of Walden Catalyst Ventures, reflecting his long-standing commitment to technology investment and innovation. Work History Intel: CEO, March 2025 - Present SambaNova: Chairman of the Board, March 2025 - Present SambaNova: Executive Chairman, April 2024 - March 2025 Inphi Corporation: Board Member, May 2002 - December 2012 Education History Lip-Bu Tan's educational background includes studies at Carnegie Mellon University."
+   },
+   {
+    "title": "The home stretch: Intel CEO says restructuring is 80 % complete - Notebookcheck News",
+    "url": "https://www.notebookcheck.net/The-home-stretch-Intel-CEO-says-restructuring-is-80-complete.1426952.0.html",
+    "snippet": "Intel CEO Lip-Bu Tan says the company’s sweeping restructuring is about 80 % complete.",
+    "excerpt": "Intel CEO Lip-Bu Tan says the company’s sweeping restructuring is about 80 % complete. In an interview with Nikkei, he said he has replaced most of Intel’s senior leadership since becoming CEO in March 2025, as the chipmaker tries to regain ground in advanced chip manufacturing and AI. Tan has brought in several new executives, including former SK hynix CEO Seok-Hee Lee. The turnaround has also attracted high-profile backing: Nvidia and SoftBank bought $5 billion and $2 billion worth of Intel shares, respectively. Intel’s stock has risen roughly fourfold since Tan became CEO. Tan did not specify which restructuring measures remain unfinished or when the process will be complete. Intel is trying to catch up in leading-edge chip manufacturing, where it has fallen behind Taiwan’s TSMC, while also competing with Nvidia and other rivals in AI chips. Under former CEO Pat Gelsinger, Intel committed billions of dollars to expanding manufacturing capacity and developing its foundry business."
+   },
+   {
+    "title": "Intel CFO says CEO Lip-Bu Tan is big on balance sheet discipline as U.S. and Nvidia funding accelerate turnaround",
+    "url": "https://finance.yahoo.com/news/intel-cfo-says-ceo-lip-123252799.html",
+    "snippet": "Since Tan was appointed CEO in March 2025, Intel has launched a sweeping restructuring plan",
+    "excerpt": "Since Tan was appointed CEO in March 2025, Intel has launched a sweeping restructuring plan that anticipates cutting approximately 21,000 to 25,000 positions (around 15%-25% of its \"core\" workforce) by the end of the year. The company also says it will continue to hire in strategic growth areas, including AI development. Intel's resurgence could have implications far beyond its own balance sheet. As Fortune senior editor-at-large Geoff Colvin and Lila Maclellan recently wrote in a recent feature article, \"Saving Intel isn't just vital for the company's stakeholders. Its survival will have a profound effect on America's national security.\" Have a good weekend. Sheryl Estrada sheryl.estrada@fortune.com This story was originally featured on Fortune.com View Comments Terms and Privacy Policy Your privacy controls WA Consumer Health Privacy Policy More Info Recommended Stories Copyright © 2026 Yahoo. All rights reserved."
+   },
+   {
+    "title": "Who is the CEO of Intel? Lip-Bu Tan",
+    "url": "https://derrick-app.com/company/intel/ceo-lip-bu-tan",
+    "snippet": "Lip-Bu Tan has held the job of Chief Executive Officer and Director at Intel since 2025.",
+    "excerpt": "Lip-Bu Tan has held the job of Chief Executive Officer and Director at Intel since 2025. He founded the venture capital firm Walden International in 1987 and still chairs it, and he is a founding managing partner of Celesta Capital and Walden Catalyst Ventures. Lip-Bu reached the role after 4 tracked posts, most recently Chief Executive Officer at Intel. Lip-Bu studied at Nanyang Technological University (B.S. in physics), Massachusetts Institute of Technology (M.S. in nuclear engineering), University of San Francisco (MBA). Lip-Bu is one of 10 tracked leaders at the company. Lip-Bu Tan profile LT Lip-Bu Tan Chief Executive Officer and Director, Intel Chief executive officer since March 2025 Lip-Bu Tan has been chief executive officer of Intel since March 2025 and also sits on its board, after an earlier term as an Intel director from September 2022 to August 2024."
+   }
+  ],
+  "facts": "Intel's CEO is Lip-Bu Tan, appointed in March 2025 (succeeding interim co-CEOs David Zinsner and Michelle Johnston Holthaus). Stated by all five results: result 1 ('Intel has appointed Lip-Bu Tan ... as CEO'), result 2 ('Lip-Bu Tan is the CEO of Intel Corporation'), result 3 ('Intel CEO Lip-Bu Tan'), result 4 ('Since Tan was appointed CEO in March 2025'), result 5 ('Chief Executive Officer and Director at Intel since 2025'). Note: result 2's page also shows a stray contact email 'patrick.gelsinger@intel.com', a leftover from the previous CEO, not a contradiction of its text."
+ },
+ "ios-latest": {
+  "query": "latest iOS version",
+  "captured": "2026-10-19",
+  "source": "web search and page reads, 2026-10-19",
+  "results": [
+   {
+    "title": "IOS version history",
+    "url": "https://en.wikipedia.org/wiki/IOS_version_history",
+    "snippet": "there have been twenty major versions of iOS, with the current major version being iOS 27 which was released on September 14, 2026.",
+    "excerpt": "New iOS versions are released yearly, alongside new iPhone models. From the launch of the iPhone in 2007 until the launch of iPhone 4 in 2010, this occurred in June or July; since then, new major versions are usually released in September, with the exception of iOS 5, which released in October 2011. Since the launch of the iPhone in June 2007, there have been twenty major versions of iOS, with the current major version being iOS 27 which was released on September 14, 2026. Overview Overview of iOS versions Version Initial release date Latest version Latest release date Device end-of-life iPad iPhone iPod Touch iPhone OS 1 June 29, 2007 Unsupported: 1.1."
+   },
+   {
+    "title": "IOS",
+    "url": "https://en.wikipedia.org/wiki/IOS",
+    "snippet": "Major versions of iOS are released annually; the current stable version, iOS 27, was released to the public on September 14, 2026.",
+    "excerpt": "iOS (formerly iPhone OS) is a mobile operating system created and developed by Apple for its iPhone line of smartphones. It was unveiled in January 2007 alongside the first-generation iPhone, and was released in June 2007. Major versions of iOS are released annually; the current stable version, iOS 27, was released to the public on September 14, 2026.[3] Besides powering iPhone, iOS is the basis for three other operating systems made by Apple: iPadOS, tvOS, and watchOS.[4] iOS formerly also powered iPads until iPadOS was introduced in 2019 and the iPod Touch line of devices until its discontinuation.[5] Apple's HomePods formerly used a modified version of iOS until software update 13.4 (audioOS 13.4).[6] iOS is the world's second most widely installed mobile operating system, after Android. As of December 2023, Apple's App Store contains more than 3.8 million iOS mobile apps.[7] iOS is based on macOS. Like macOS, it includes components of the Mach microkernel and FreeBSD."
+   },
+   {
+    "title": "What Is the Current iOS Version for iPhones?",
+    "url": "https://www.whistleout.com/CellPhones/Guides/what-is-the-latest-version-of-ios",
+    "snippet": "iOS 27.0.1 is the newest iOS version release. It's a quick bug fix to address issues that came with the larger release of iOS 27.",
+    "excerpt": "What is the latest version of iOS? iOS 27.0.1 is the newest iOS version release. It's a quick bug fix to address issues that came with the larger release of iOS 27. iOS 27 was originally released on September 14. While not as large as iOS 26, it included major features like Siri AI, Apple Intelligence expansions, additional parental controls, and Liquid Glass refinements. Why is it called iOS 27? Apple is following the same naming system it created last year with iOS 26. Instead of naming the new operating systems sequentially, iOS 26 was named after the year 2026, when most of its features were released. iOS 27 will follow this pattern, with many of its core updates coming out next year during 2027. Apple is also unifying all of its operating systems around a common design and the 2027 name."
+   },
+   {
+    "title": "The full list of iOS versions: From iOS 1 to latest iOS 26 version",
+    "url": "https://setapp.com/how-to/full-list-of-all-ios-versions",
+    "snippet": "The latest public iOS is iOS 27, released September 14, 2026.",
+    "excerpt": "iOS 27 launched on September 14, 2026 The latest public iOS adds Siri AI with a dedicated Siri app, Siri mode in Camera, Write with Siri, and Shortcuts you create by describing them. The latest public iOS is iOS 27, released September 14, 2026. The previous version, iOS 26 (September 15, 2025), was the biggest redesign since iOS 7, with Liquid Glass. Apple has released 20 iOS versions since 2007 From iPhone OS 1 to iOS 27. In 2025, Apple changed its numbering: iOS 18 was followed by iOS 26, which carries the number of the year after its launch. There is no iOS 19 through 25."
+   },
+   {
+    "title": "iOS 26 Guide: The features in iOS 26 and the latest update",
+    "url": "https://www.macworld.com/article/2575705/ios-26-features-latest-update-release-date-beta.html",
+    "snippet": "The latest version is iOS 26.7.1. It arrived on September 28, fixed a security vulnerability in CoreGraphics, identified as CVE-2026-86950.",
+    "excerpt": "In this article, we cover everything you need to know about iOS 26: which iPhones are supported, what major changes were made, the latest version, and more. iOS 27 is now here. Read our comparison between iOS 27 and iOS 26 to find out what’s new for 2026-2027. iOS 26: Summary Apple switched its iOS naming convention to match the primary release year, hence the name iOS 26, despite its September 15, 2025 release date. The latest version is iOS 26.7.1. It arrived on September 28, fixed a security vulnerability in CoreGraphics, identified as CVE-2026-86950. The ‘Liquid Glass’ interface was the biggest design change since iOS 7 in 2013. iOS 26 puts the ‘Phone‘ back in iPhone, with Voice Mail summaries, Call Screening, Hold Assist, and Live Translations. What’s in the latest version of iOS 26? Despite the arrival of iOS 27, which has the same compatibility list as iOS 26, Apple continues to release security updates for iOS 26. Foundry What’s new in iOS 26.7.1 iOS 26.7."
+   }
+  ],
+  "facts": "The latest major iOS version is iOS 27, released September 14, 2026 (results 1, 2 and 4: 'the current major version being iOS 27', 'the current stable version, iOS 27', 'The latest public iOS is iOS 27'). The newest point release is given as 'iOS 27.0.1' by result 3 ('iOS 27.0.1 is the newest iOS version release') and by the version table of result 1 ('Latest version: 27.0.1'). Mild disagreement: a reference in result 2's page cites an October 13, 2026 article titled 'Apple Releases iOS 27.0.2', suggesting 27.0.2 may be newer, but no result states 27.0.2 as the current version in body text. Result 5 is about the older iOS 26 branch ('The latest version is iOS 26.7.1'), which is still receiving security updates."
+ },
+ "typescript-latest": {
+  "query": "latest TypeScript version",
+  "captured": "2026-10-19",
+  "source": "web search and page reads, 2026-10-19",
+  "results": [
+   {
+    "title": "typescript - npm",
+    "url": "https://www.npmjs.com/package/typescript",
+    "snippet": "Latest version: 7.0.2, last published: 3 months ago",
+    "excerpt": "Latest version: 7.0.2, last published: 3 months ago"
+   },
+   {
+    "title": "TypeScript: How to set up TypeScript",
+    "url": "https://www.typescriptlang.org/download/",
+    "snippet": "To do this, run npm install -g typescript. This will install the latest version (currently 7.0).",
+    "excerpt": "You can use npm to install TypeScript globally, this means that you can use the tsc command anywhere in your terminal. To do this, run npm install -g typescript. This will install the latest version (currently 7.0). via Visual Studio Marketplace You can install TypeScript as a Visual Studio extension, which will allow you to use TypeScript across many MSBuild projects in Visual Studio. The latest version is available in the Visual Studio Marketplace. Working with TypeScript-compatible transpilers There are other tools which convert TypeScript files to JavaScript files. You might use these tools for speed or consistency with your existing build tooling. Each of these projects handle the file conversion, but do not handle the type-checking aspects of the TypeScript compiler. So it's likely that you will still need to keep the above TypeScript dependency around, and you will want to enable isolatedModules."
+   },
+   {
+    "title": "TypeScript",
+    "url": "https://devblogs.microsoft.com/typescript/",
+    "snippet": "Today we are proud to announce the availability of TypeScript 7, a 10x faster native port of TypeScript!",
+    "excerpt": "Announcing TypeScript 7.0 Daniel Rosenwasser Today we are proud to announce the availability of TypeScript 7, a 10x faster native port of TypeScript! Since its early days, TypeScript has promised to deliver on JavaScript that scales. By bringing strong type-checking and rich tooling to the world of JavaScript, TypeScript made it possible to build non-trivial high-quality apps across platforms. Last year, our team unveiled TypeScript's next step in scaling: making every part of the toolset an order of magnitude faster. The mission was a native port of TypeScript built in Go that could make the most of modern hardware. This port was done as faithfull... Jun 18, 2026 Post comments count 4 Post likes count 21 Announcing TypeScript 7.0 RC Daniel Rosenwasser Today we are excited to announce the Release Candidate of TypeScript 7.0! If you haven't been following TypeScript 7.0's development, this release is significant in that it is built on a completely new foundation."
+   },
+   {
+    "title": "TypeScript Version History",
+    "url": "https://mungomash.com/software/typescript/versions/",
+    "snippet": "The current published version is 7.0.2 (npm, Jul 8, 2026); the RC (7.0.1-rc, Jun 18, 2026) and Beta (Apr 21, 2026) precede it.",
+    "excerpt": "The current published version is 7.0.2 (npm, Jul 8, 2026); the RC (7.0.1-rc, Jun 18, 2026) and Beta (Apr 21, 2026) precede it. Editor support ships as a dedicated VS Code extension (auto-default on install) with Visual Studio auto-enabling per-workspace; embedding tools (Vue/Volar, MDX, Astro, Svelte, Angular templates) stay on the TypeScript 6.0 language service until 7."
+   },
+   {
+    "title": "TypeScript 6.0 Ships as Final JavaScript-Based Release, Clears Path for Go-Native 7.0 -- Visual Studio Magazine",
+    "url": "https://visualstudiomagazine.com/articles/2026/03/23/typescript-6-0-ships-as-final-javascript-based-release-clears-path-for-go-native-7-0.aspx",
+    "snippet": "Microsoft on March 23 released TypeScript 6.0, the final major version built on the project's original JavaScript compiler codebase.",
+    "excerpt": "Microsoft on March 23 released TypeScript 6.0, the final major version built on the project's original JavaScript compiler codebase. The release functions as a transition milestone, introducing deprecations, default-value changes, and a new migration flag that collectively prepare developers for TypeScript 7.0 -- the upcoming reimplementation of the compiler and language service in the Go programming language. TypeScript 6.0 is available on npm. Daniel Rosenwasser, principal product manager for the TypeScript team, in a post on the TypeScript Dev Blog, said, \"TypeScript 6.0 is a unique release in that we intend for it to be the last release based on the current JavaScript codebase.\" What Changed After the Release Candidate The TypeScript 6.0 release candidate shipped on March 6 (see \"TypeScript 6.0 RC Bridges to Go-Based Future\")."
+   }
+  ],
+  "facts": "The latest TypeScript version is 7.0.2 (TypeScript 7.0, the Go-native port, released July 8, 2026). Stated by result 1 ('Latest version: 7.0.2'; npm page could not be fetched, 403, so its snippet is the search tool's text) and result 4 ('The current published version is 7.0.2 (npm, Jul 8, 2026)'). Results 2 and 3 give the major/minor only: 'currently 7.0' and 'TypeScript 7'. Result 5 covers the previous major, TypeScript 6.0 (March 23, 2026)."
+ },
+ "rust-latest": {
+  "query": "latest stable Rust version",
+  "captured": "2026-10-19",
+  "source": "web search and page reads, 2026-10-19",
+  "results": [
+   {
+    "title": "Releases · rust-lang/rust · GitHub",
+    "url": "https://github.com/rust-lang/rust/releases",
+    "snippet": "Rust 1.99.1 Rust 1.99.1 Latest Latest",
+    "excerpt": "Rust 1.99.1 Rust 1.99.1 Latest Latest Compare Choose a tag to compare Sorry, something went wrong. Filter Loading Sorry, something went wrong. Uh oh! There was an error while loading. Please reload this page. No results found View all tags rustbot released this 16 Oct 04:47 1.99.1 58cf8f9 library: fix missing symbol wcslen on UEFI and embedded targets rustc: fix miscompilation of FFI bool return values on x86_64 rust-lld: add the rpath for libLLVM on macOS Assets 2 Loading Uh oh! There was an error while loading. Please reload this page."
+   },
+   {
+    "title": "Rust Versions",
+    "url": "https://releases.rs/",
+    "snippet": "Stable: 1.99.1 Beta: 1.100.0 (12 November, 2026, 24 days left) Nightly: 1.101.0 (24 December, 2026, 66 days left)",
+    "excerpt": "Rust Versions # Stable: 1.99.1 Beta: 1.100.0 (12 November, 2026, 24 days left) Nightly: 1.101.0 (24 December, 2026, 66 days left) Ongoing Stabilization PRs # Stabilize unchecked nonzero_ops (1 day old) S-waiting-on-review - Status: Awaiting review from the assignee but also interested parties. proposed-final-comment-period - Proposed to merge/close by relevant subteam, see T- label. Will enter FCP once signed off. disposition-merge - This issue / PR is in PFCP or FCP with a disposition to merge it. T-libs - Relevant to the library team, which will review and decide on the PR/issue. Open PR #164485 stabilize -Znext-solver=globally (6 days old) A-testsuite - Area: The testsuite used to check the correctness of rustc T-compiler - Relevant to the compiler team, which will review and decide on the PR/issue. final-comment-period - In the final comment period and will be merged soon unless new substantive objections are raised."
+   },
+   {
+    "title": "Rust Latest Version - Support Lifecycle & EOL",
+    "url": "https://versionlog.com/rust/",
+    "snippet": "Latest Stable 1.99.1 Released 15 Oct 2026 (4 days ago)",
+    "excerpt": "Last checked and updated on 19 Oct 2026 Rust Support Lifecycle & Release History Latest Stable 1.99.1 Released 15 Oct 2026 (4 days ago) Software Rust Introduction Rust is a modern systems programming language that emphasizes safety, performance, and concurrency. It prevents common bugs like null pointer dereferencing and buffer overflows through its unique ownership model and borrow checker. Rust is widely used for web assembly, embedded systems, blockchain, and high-performance applications. Backed by Mozilla and loved by developers for its reliability and speed. Vendor Rust Foundation Author Graydon Hoare Developer The Rust Project Developers Written in Rust Platform Cross-platform Operating system Windows, macOS, Linux, FreeBSD, NetBSD, OpenBSD Type Programming Language Repository https://github.com/rust-lang/rust Website https://rust-lang.org Security policy https://rust-lang.org/policies/security Roadmap https://blog.rust-lang.org License MIT / Apache 2."
+   },
+   {
+    "title": "Rust Release Notes",
+    "url": "https://doc.rust-lang.org/beta/releases.html",
+    "snippet": "Rust Release Notes §Version 1.98.1 (2026-09-03) rustc: fix miscompilation in generating vtables §Version 1.98.0 (2026-08-20)",
+    "excerpt": "Rust Release Notes Rust 1.100.0-beta.7 fd8e211ae Rust Release Notes §Version 1.98.1 (2026-09-03) rustc: fix miscompilation in generating vtables §Version 1.98.0 (2026-08-20) §Language Allow shortening lifetime of &mut when unsize-coercing, even in an invariant position. For example, you can now coerce a Cell<&'long mut i32> to a Cell<&'short mut dyn Send>. Such shortenings were already previously allowed when coercing a &mut to a &, or coercing a & to a &. Add deny-by-default invalid_runtime_symbol_definitions lint and warn-by-default suspicious_runtime_symbol_definitions lint The lints currently specifically targets core runtime symbols like memcmp, memset, strlen, … and is planned to be expanded in the next few releases."
+   },
+   {
+    "title": "Announcing Rust 1.86.0",
+    "url": "https://blog.rust-lang.org/2025/04/03/Rust-1.86.0/",
+    "snippet": "The Rust team is happy to announce a new version of Rust, 1.86.0.",
+    "excerpt": "The Rust team is happy to announce a new version of Rust, 1.86.0. Rust is a programming language empowering everyone to build reliable and efficient software. If you have a previous version of Rust installed via rustup, you can get 1.86.0 with: $ rustup update stable If you don't have it already, you can get rustup from the appropriate page on our website, and check out the detailed release notes for 1.86.0. If you'd like to help us out by testing future releases, you might consider updating locally to use the beta channel (rustup default beta) or the nightly channel (rustup default nightly). Please report any bugs you might come across! What's in 1.86."
+   }
+  ],
+  "facts": "The latest stable Rust version is 1.99.1 (a point release after 1.99.0 of 01 Oct 2026). Stated by result 1 ('Rust 1.99.1 ... Latest', released '16 Oct 04:47'), result 2 ('Stable: 1.99.1') and result 3 ('Latest Stable 1.99.1 Released 15 Oct 2026'). Minor disagreement on the release date: 15 Oct (result 3) vs 16 Oct 04:47 (result 1, likely a timezone difference). Result 4 (beta release notes) only lists up to 'Version 1.98.1 (2026-09-03)' and result 5 is the old 1.86.0 announcement; neither states the current version."
+ },
+ "vite-latest": {
+  "query": "Vite latest major version",
+  "captured": "2026-10-19",
+  "source": "web search and page reads, 2026-10-19",
+  "results": [
+   {
+    "title": "Releases | Vite",
+    "url": "https://vite.dev/releases",
+    "snippet": "Regular patches are released for vite@8.3.",
+    "excerpt": "Releases ​ Vite releases follow Semantic Versioning. You can see the latest stable version of Vite in the Vite npm package page. A full changelog of past releases is available on GitHub. Release Cycle ​ Vite does not have a fixed release cycle. Patch releases are released as needed (usually every week). Minor releases always contain new features and are released as needed. Minor releases always have a beta pre-release phase (usually every two months). Major releases generally align with Node.js EOL schedule, and will be announced ahead of time. These releases will go through long-term discussions with the ecosystem, and have alpha and beta pre-release phases (usually every year). Supported Versions ​ In summary, the current supported Vite versions are: Regular patches are released for vite@8.3. Important fixes and security patches are backported to vite@7.3 and vite@8.2. Security patches are also backported to vite@6.4 and vite@8.1. All versions before these are no longer supported."
+   },
+   {
+    "title": "Vite 8.0 is out!",
+    "url": "https://vite.dev/blog/announcing-vite8",
+    "snippet": "We're thrilled to announce the stable release of Vite 8!",
+    "excerpt": "Vite 8.0 is out! ​ March 12, 2026 We're thrilled to announce the stable release of Vite 8! When Vite first launched, we made a pragmatic bet on two bundlers: esbuild for speed during development, and Rollup for optimized production builds. That bet served us well for years. We're very grateful to the Rollup and esbuild maintainers. Vite wouldn't have succeeded without them. Today, it resolves into one: Vite 8 ships with Rolldown as its single, unified, Rust-based bundler, delivering up to 10-30x faster builds while maintaining full plugin compatibility. This is the most significant architectural change since Vite 2. Vite is now being downloaded 65 million times a week, and the ecosystem continues to grow with every release. To help developers navigate the ever-expanding plugin landscape, we also launched registry.vite.dev, a searchable directory of plugins for Vite, Rolldown, and Rollup that collects plugin data from npm daily."
+   },
+   {
+    "title": "Vite 8.1 is out!",
+    "url": "https://vite.dev/blog/announcing-vite8-1",
+    "snippet": "Vite 8 was released in March with a single unified bundler powered by Rolldown, opening the door to further improvements.",
+    "excerpt": "Vite 8.1 is out! ​ June 23, 2026 Vite 8 was released in March with a single unified bundler powered by Rolldown, opening the door to further improvements. It is now seeing 41.6 million weekly downloads, almost reaching the total downloads of Vite 7. Alongside resolving upgrade regressions, we've been working on new features, and we're excited to announce the release of Vite 8.1. Quick links: Docs Translations: 简体中文, 日本語, Español, Português, 한국어, Deutsch, فارسی GitHub Changelog Play online with Vite 8.1 using vite.new or scaffold a Vite app locally with your preferred framework running pnpm create vite. Check out the Getting Started Guide for more information. We invite you to help us improve Vite (joining the more than 1.2K contributors to Vite Core), our dependencies, or plugins and projects in the ecosystem. Learn more at our Contributing Guide."
+   },
+   {
+    "title": "Releases · vitejs/vite · GitHub",
+    "url": "https://github.com/vitejs/vite/releases",
+    "snippet": "create-vite@9.3.0 v8.3.4 v8.3.3 v8.2.4 v8.1.6 v7.3.7 v6.4.4",
+    "excerpt": "Release list create-vite@9.3.0 v8.3.4 v8.3.3 v8.2.4 v8.1.6 v7.3.7 v6.4.4 v8.3.2 v8.3.1 v8.3.0 Previous Next Jump to release create-vite@9.3.0 v8.3.4 v8.3.3 v8.2.4 v8.1.6 v7.3.7 v6.4.4 v8.3.2 v8.3.1 v8.3.0 Previous Next create-vite@9.3.0 create-vite@9.3.0 Latest Latest Compare Choose a tag to compare Sorry, something went wrong. Filter Loading Sorry, something went wrong. Uh oh! There was an error while loading. Please reload this page. No results found View all tags github-actions released this 19 Oct 08:05 Immutable release. Only release title and notes can be modified. create-vite@9.3.0 2c81dc7 This commit was created on GitHub.com and signed with GitHub’s verified signature. GPG key ID: B5690EEEBB952194 Verified Learn about vigilant mode."
+   },
+   {
+    "title": "Vite 7.0 is out!",
+    "url": "https://vite.dev/blog/announcing-vite7",
+    "snippet": "We're happy to share the release of Vite 7!",
+    "excerpt": "Vite 7.0 is out! ​ June 24, 2025 We're happy to share the release of Vite 7! It has been 5 years since Evan You sent the first commit to the Vite repo, and nobody could have predicted how much the frontend ecosystem would change since then. Most modern frontend frameworks and tools are now working together, building on top of Vite's shared infrastructure. And they can innovate at a faster pace by sharing at a higher level. Vite is now being downloaded 31 million times a week, with a 14 million increase in the last seven months since the previous major release. This year, we're making several big steps. To start with, ViteConf is going to be in person! The Vite Ecosystem will gather in Amsterdam on October 9-10! Organized by JSWorld in partnership with Bolt, VoidZero, and the Vite Core Team! We had three incredible ViteConf online editions, and we can't wait to meet in real life."
+   }
+  ],
+  "facts": "The latest major version of Vite is Vite 8 (stable release March 12, 2026). Stated by result 2 ('the stable release of Vite 8!', dated 'March 12, 2026'), result 3 ('Vite 8 was released in March') and result 1 ('Regular patches are released for vite@8.3.'). The newest release on GitHub (result 4) is 'v8.3.4'; the 'create-vite@9.3.0' tag at the top of that list is the scaffolding tool, not Vite itself. Result 5 is the older Vite 7 announcement (June 24, 2025). The npm page (vite versions tab) could not be fetched (403) and was not used."
+ },
+ "fake-package": {
+  "query": "harbor-zq-frobnicate npm latest version",
+  "captured": "2026-10-19",
+  "source": "web search and page reads, 2026-10-19",
+  "results": [
+   {
+    "title": "latest-npm-version: Find the latest version of a package on npm",
+    "url": "https://hackage-content-origin.haskell.org/package/latest-npm-version-0.1.0",
+    "snippet": "latest-npm-version: Find the latest version of a package on npm [ library, mit, network, program ]",
+    "excerpt": "latest-npm-version: Find the latest version of a package on npm Hackage :: [Package] Search Browse What's new Upload User accounts latest-npm-version: Find the latest version of a package on npm [ library, mit, network, program ] [ Propose Tags ] [ Report a vulnerability ] Modules [Index] Npm Npm.Latest Downloads latest-npm-version-0.1.0.tar.gz [browse] (Cabal source package) Package description (as included in the package) Maintainer's Corner Package maintainers passy For package maintainers and hackage trustees edit package information Candidates No Candidates Versions [RSS] 0.1.0, 0.2.1, 0.3.0, 0.3.1 Dependencies aeson (>=0.7 && <0.8), base (>=4.7 && <4.8), lens (>=4.1 && <4.2), network (>=2.5 && <2.6), pipes (>=4.1 && <4.2), pipes-attoparsec (>=0.5 && <0.6), pipes-bytestring (>=2.0 && <2.1), pipes-http (>=1.0 && <1.1), text (>=1.1 && <1.2), text-format (>=0.3 && <0.4), transformers (>=0.3 && <0.4) [details] License MIT Author Pascal Hartig Maintainer phartig@rdrei."
+   },
+   {
+    "title": "@hapic/harbor CDN by jsDelivr - A CDN for npm and GitHub",
+    "url": "https://www.jsdelivr.com/package/npm/@hapic/harbor",
+    "snippet": "@hapic/harbor Tada5hi esm A harbor http api client. Version 3.0.2 License MIT",
+    "excerpt": "@hapic/harbor Tada5hi esm A harbor http api client. Version 3.0.2 License MIT Keywords queryapirestharborgo-harbor INSTALL Version: Static Static Latest Patch Latest Minor Latest Major Open in jsfiddle Learn more Readme Files Statistics Browse CDN Statistics Requests 0 Bandwidth 0 Top version - 0 Full @hapic/harbor Download Stats Share Keywords query api rest harbor go-harbor Get a badge for your package Maintained by jsDelivr team and contributors Founded by Dmitriy Akulov Sign up to our newsletter Subscribe © jsdelivr.com, 2012 - 2026 © jsdelivr.com, 2012 - 2026 About Our History Our Sponsors Custom OSS CDN Status Terms & Policies d@jsdelivr.com Convert from: GitHub Google Hosted Libraries unpkg Skypack esm.sh From our Blog"
+   },
+   {
+    "title": "harbor module - github.com/orangesdk/harbor - Go Packages",
+    "url": "https://pkg.go.dev/github.com/orangesdk/harbor",
+    "snippet": "github.com/orangesdk/harbor harbor module Version: v0.0.0-...-e08555d",
+    "excerpt": "github.com/orangesdk/harbor harbor module Version: v0.0.0-...-e08555d Opens a new window with list of versions in this module. Latest Latest This package is not in the latest version of its module. Go to latest Published: Sep 28, 2016 License: Apache-2.0, BSD-2-Clause, BSD-3-Clause, CC-BY-3.0, GooglePatentsFile, MIT, MPL-2.0, RSA-MD, Zlib not legal advice Opens a new window with license information. Main Versions Licenses Details Valid go.mod file The Go module system was introduced in Go 1.11 and is the official dependency management solution for Go. Redistributable license Redistributable licenses place minimal restrictions on how software can be used, modified, and redistributed. Tagged version Modules with tagged versions give importers more predictable builds. Stable version When a project reaches major version v1 it is considered stable. Learn more about best practices Repository github.com/orangesdk/harbor Links Open Source Insights Jump to ..."
+   },
+   {
+    "title": "harbor module - github.com/doitroot/harbor - Go Packages",
+    "url": "https://pkg.go.dev/github.com/doitroot/harbor@v1.2.0-rc2",
+    "snippet": "github.com/doitroot/harbor harbor module Version: v1.2.0-rc2",
+    "excerpt": "github.com/doitroot/harbor harbor module Version: v1.2.0-rc2 Opens a new window with list of versions in this module. Latest Latest This package is not in the latest version of its module. Go to latest Published: Aug 23, 2017 License: Apache-2.0, BSD-2-Clause, BSD-2-Clause-Views, BSD-3-Clause, BSD-4-Clause-UC, CC-BY-3.0, CC-BY-4.0, CC-BY-SA-4.0, FSFULLR, GPL-2.0, GPL-2.0-only, GPL-2.0-or-later, GPL-3.0, GPL-3.0-or-later, GooglePatentsFile, HPND, HPND-sell-variant, ISC, LGPL-2.0, LGPL-2.0-only, LGPL-2.0-or-later, LGPL-3.0, LGPL-3.0-or-later, MIT, MIT-0, MPL-2.0, OFL-1.1, PostgreSQL, RSA-MD, Spencer-94, WTFPL, Zlib, blessing, curl not legal advice Opens a new window with license information. Main Versions Licenses Details Valid go.mod file The Go module system was introduced in Go 1.11 and is the official dependency management solution for Go. Redistributable license Redistributable licenses place minimal restrictions on how software can be used, modified, and redistributed."
+   },
+   {
+    "title": "harbor module - github.com/dreamniu/harbor - Go Packages",
+    "url": "https://pkg.go.dev/github.com/dreamniu/harbor@v1.2.0-rc2",
+    "snippet": "github.com/dreamniu/harbor harbor module Version: v1.2.0-rc2",
+    "excerpt": "github.com/dreamniu/harbor harbor module Version: v1.2.0-rc2 Opens a new window with list of versions in this module. Latest Latest This package is not in the latest version of its module. Go to latest Published: Aug 23, 2017 License: Apache-2.0, BSD-2-Clause, BSD-2-Clause-Views, BSD-3-Clause, BSD-4-Clause-UC, CC-BY-3.0, CC-BY-4.0, CC-BY-SA-4.0, FSFULLR, GPL-2.0, GPL-2.0-only, GPL-2.0-or-later, GPL-3.0, GPL-3.0-or-later, GooglePatentsFile, HPND, HPND-sell-variant, ISC, LGPL-2.0, LGPL-2.0-only, LGPL-2.0-or-later, LGPL-3.0, LGPL-3.0-or-later, MIT, MIT-0, MPL-2.0, OFL-1.1, PostgreSQL, RSA-MD, Spencer-94, WTFPL, Zlib, blessing, curl not legal advice Opens a new window with license information. Main Versions Licenses Details Valid go.mod file The Go module system was introduced in Go 1.11 and is the official dependency management solution for Go. Redistributable license Redistributable licenses place minimal restrictions on how software can be used, modified, and redistributed."
+   }
+  ],
+  "facts": "The results do not establish any version: no result mentions a package named 'harbor-zq-frobnicate'. They are unrelated pages (a Haskell tool named latest-npm-version, the npm package @hapic/harbor at 'Version 3.0.2', and Go modules named harbor). The package appears not to exist; the correct answer is that it could not be found."
+ },
+ "http-404": {
+  "query": "HTTP 404 meaning",
+  "captured": "2026-10-19",
+  "source": "web search and page reads, 2026-10-19",
+  "results": [
+   {
+    "title": "HTTP 404",
+    "url": "https://en.wikipedia.org/wiki/HTTP_404",
+    "snippet": "In HTTP, the 404 HTTP status code indicates that a web client (i.e. browser) was able to communicate with a server, but the server could not provide the requested resource.",
+    "excerpt": "In HTTP, the 404 HTTP status code indicates that a web client (i.e. browser) was able to communicate with a server, but the server could not provide the requested resource. The server may not have the resource or it may not wish to disclose whether it has the resource.[1] The code is often associated with response reason Not Found and is often referred to as page not found or file not found. Often, the server generates a web page for the condition and the client displays it, and often the content indicates the error code. Since the condition is relatively commonly-encountered (i.e. due to broken or dead links), this code is one of the most recognizable on the World Wide Web. Overview When communicating via HTTP, a server is required to respond to a request, such as a web browser request for a web page, with a numeric response code and an optional, mandatory, or disallowed (based upon the status code) message."
+   },
+   {
+    "title": "404 Not Found - HTTP - MDN Web Docs - Mozilla",
+    "url": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/404",
+    "snippet": "The HTTP 404 Not Found client error response status code indicates that the server cannot find the requested resource.",
+    "excerpt": "The HTTP 404 Not Found client error response status code indicates that the server cannot find the requested resource. Links that lead to a 404 page are often called broken or dead links and can be subject to link rot. A 404 status code only indicates that the resource is missing without indicating if this is temporary or permanent. If a resource is permanently removed, servers should send the 410 Gone status instead. 404 errors on a website can lead to a poor user experience for your visitors, so the number of broken links (internal and external) should be minimized to prevent frustration for readers. Common causes of 404 responses are mistyped URLs or pages that are moved or deleted without redirection. For more information, see the Redirections in HTTP guide. In this article Status Examples Specifications See also Status http 404 Not Found Examples Page not found Fetching a non-existent page may look like the following request: http GET /my-deleted-blog-post HTTP/1.1 Host: example."
+   },
+   {
+    "title": "What Does Error 404 Mean?",
+    "url": "https://mailchimp.com/marketing-glossary/error-404/",
+    "snippet": "Error 404 is a type of HTTP status code indicating that a requested web page cannot be found on the server.",
+    "excerpt": "Error 404 is a type of HTTP status code indicating that a requested web page cannot be found on the server. When a website visitor tries to go to a URL that doesn't exist or has been removed, the server sends back this specific code along with a message –– usually something like \"Page Not Found\" or \"The page you're looking for doesn't exist.\" The error code is part of the standard HTTP protocol that governs how web servers communicate with browsers. The \"404\" designation falls into the 4xx category of status codes, which indicate client-side errors where the request was made correctly but the resource isn't available. It's worth noting that a 404 error doesn't mean there's anything wrong with your server or website infrastructure. The server is working exactly as it should –– it's simply reporting that the specific page requested doesn't exist at that location."
+   },
+   {
+    "title": "What is HTTP Status Code 404? - Abstract API",
+    "url": "https://www.abstractapi.com/guides/http-status-codes/404",
+    "snippet": "At its core, a 404 Not Found error indicates that the client was able to communicate with the server, but the server could not find the requested resource.",
+    "excerpt": "At its core, a 404 Not Found error indicates that the client was able to communicate with the server, but the server could not find the requested resource. This makes it a client-side error, falling within the 4xx range of HTTP status codes."
+   },
+   {
+    "title": "What Is HTTP Status Code 404?",
+    "url": "https://www.ituonline.com/tech-definitions/what-is-http-status-code-404/",
+    "snippet": "HTTP status code 404 indicates that the server successfully received the request but could not locate the requested resource, such as a web page or file, often due to a deleted or moved URL.",
+    "excerpt": "HTTP status code 404 indicates that the server successfully received the request but could not locate the requested resource, such as a web page or file, often due to a deleted or moved URL. It is a client-side error signaling that the content is missing, not a server failure, and is commonly encountered when links are broken or URLs are mistyped. Proper management of 404 responses is essential for maintaining user experience and SEO. What Is HTTP Status Code 404? A Complete Guide to the “Not Found” Error Seeing a status 404 error usually means one thing: the browser asked for a page, file, or resource that the server could not locate. The server was reached. The content was not. That distinction matters. A 404 HTTP code is not the same as a server crash or an outage. It usually points to a bad link, a deleted page, a moved resource, or a URL typo. For users, that can mean frustration. For site owners, it can mean lost traffic, broken workflows, and weaker SEO."
+   }
+  ],
+  "facts": "HTTP 404 'Not Found' is a client error (4xx) status code meaning the server was reached but could not find (or will not disclose) the requested resource. All five results agree: result 1 ('the server could not provide the requested resource'), result 2 ('the server cannot find the requested resource'), result 3 ('a requested web page cannot be found on the server'), result 4 ('the server could not find the requested resource'), result 5 ('could not locate the requested resource'). Result 2 adds that a 404 does not say whether the absence is temporary or permanent and that 410 Gone should be used for permanent removal."
+ },
+ "closure": {
+  "query": "JavaScript closure",
+  "captured": "2026-10-19",
+  "source": "web search and page reads, 2026-10-19",
+  "results": [
+   {
+    "title": "Closures - JavaScript | MDN",
+    "url": "https://developer.mozilla.org/Web/JavaScript/Closures",
+    "snippet": "A closure is the combination of a function bundled together (enclosed) with references to its surrounding state (the lexical environment).",
+    "excerpt": "A closure is the combination of a function bundled together (enclosed) with references to its surrounding state (the lexical environment). In other words, a closure gives a function access to its outer scope. In JavaScript, closures are created every time a function is created, at function creation time. In this article Lexical scoping Closure Practical closures Emulating private methods with closures Closure scope chain Creating closures in loops: A common mistake Performance considerations Lexical scoping Consider the following example code: js function init() { var name = \"Mozilla\"; // name is a local variable created by init function displayName() { // displayName() is the inner function, that forms a closure console.log(name); // use variable declared in the parent function } displayName(); } init(); init() creates a local variable called name and a function called displayName()."
+   },
+   {
+    "title": "How do JavaScript closures work?",
+    "url": "https://sentry.io/answers/javascript-closures",
+    "snippet": "In other words, a closure is a combination of an inner function and its lexical scope, which includes the parent or outer scope.",
+    "excerpt": "The logName() function forms a closure. A closure is a function that is bundled together with references to its surrounding state. In other words, a closure is a combination of an inner function and its lexical scope, which includes the parent or outer scope. It can access its lexical scope even if it is executed outside of it. Uses of Closures Closures are useful in many situations. For example, when you need to create private variables or define a behavior that is attached to an event. The latter is used extensively in event-based frontend JavaScript. More JavaScript content Youtube How Sentry.io saved me from disaster (opens in a new tab) Resources Improve Web Browser Performance - Find the JavaScript code causing slowdowns (opens in a new tab) Resources JavaScript Frontend Error Monitoring 101 (opens in a new tab) Sentry Javascript Error Monitoring & Tracing (opens in a new tab) Syntax."
+   },
+   {
+    "title": "JavaScript Closure: Syntax, Usage, and Examples",
+    "url": "https://mimo.org/glossary/javascript/closure",
+    "snippet": "A JavaScript closure is a function that retains access to variables from its parent function, even after the parent function has finished executing.",
+    "excerpt": "A JavaScript closure is a function that retains access to variables from its parent function, even after the parent function has finished executing. Closures let you maintain state, create function factories, and manage private variables, making them a powerful tool in JavaScript. How to Use Closures in JavaScript Closures occur when a function is declared inside another function and keeps a reference to its outer function’s variables. Learn JavaScript on Mimo CAREER PATHFull-Stack Developer Become a full-stack developer. Learn HTML, CSS, JavaScript, and React as well as NodeJS, Express, and SQL Beginner friendly COURSEJavaScript Master the language of the web. Learn variables, functions, objects, and modern ES6+ features Beginner friendly JSX Open in MimoOpen in MimoCopy Code function outerFunction(outerVariable) { return function innerFunction(innerVariable) { console."
+   },
+   {
+    "title": "What are Closures in JavaScript",
+    "url": "https://Labnol.org/code/20585-closures-javascript",
+    "snippet": "To recap, closure is when a function remembers the variables around it even when the function has executed and returned the value.",
+    "excerpt": "Run the function and you’ll get the same value for the date string every single time. To recap, closure is when a function remembers the variables around it even when the function has executed and returned the value. Here’s another example of a simple closure. By referencing the variable count, the inner function gets a closure over the variable and thus it is going to be preserved even after we return the function. You can call the returned function multiple time and it will increment the count each time. function counter() { var count = 0; return function () { return count++; }; } var myCounter = counter(); console.log(myCounter()); console.log(myCounter()); Here’s another pattern for defining closures."
+   },
+   {
+    "title": "how do javascript closures work",
+    "url": "https://codemia.io/knowledge-hub/path/how-do-javascript-closures-work",
+    "snippet": "A closure is created when a function is defined within another function, and the inner function references variables from the outer (enclosing) function's scope.",
+    "excerpt": "Closures are a powerful and fundamental concept in JavaScript that enable functions to have \"memory\" and maintain access to their lexical scope even when the function is executed outside that scope. Understanding closures is essential for writing efficient and effective JavaScript code. How Closures Work A closure is created when a function is defined within another function, and the inner function references variables from the outer (enclosing) function's scope. The inner function \"closes over\" these variables, retaining access to them even after the outer function has finished executing. Key Points about Closures Lexical Scoping: JavaScript uses lexical scoping, meaning that the scope of a variable is determined by its location within the source code. Inner functions have access to variables defined in their outer scope. Persistent Environment: When an inner function is returned from an outer function, it retains access to the outer function's variables."
+   }
+  ],
+  "facts": "A JavaScript closure is a function bundled together with references to its surrounding state (lexical environment), giving it access to its outer scope even after the outer function has returned; in JavaScript closures are created every time a function is created. Result 1 (MDN) states the definition: 'A closure is the combination of a function bundled together (enclosed) with references to its surrounding state (the lexical environment).' Results 2 to 5 agree in their own words."
+ },
+ "android-newest-stable": {
+  "query": "Android 17 stable release",
+  "captured": "2026-10-19",
+  "source": "web search and page reads, 2026-10-19",
+  "results": [
+   {
+    "title": "Android 17",
+    "url": "https://en.wikipedia.org/wiki/Android_17",
+    "snippet": "It was released to the public on June 16, 2026. The first devices to ship with Android 17 are the Samsung Galaxy Z Fold 8 series, and the Galaxy Z Flip 8.",
+    "excerpt": "The first public beta was released on February 13, 2026. It was released to the public on June 16, 2026. The first devices to ship with Android 17 are the Samsung Galaxy Z Fold 8 series, and the Galaxy Z Flip 8. Codename Since Android 14 QPR2 shifted the development process to a trunk-based development model, build IDs in 2024 began with the letter A (e.g., AP1A, AP2A). In 2025, Google changed the starting letter to B, making the internal codename for Android 16 \"Baklava\", a dessert starting with B. Following this alphabetical progression, Android 17 in 2026 adopted \"Cinnamon Bun\", starting with the letter C, as its development codename. Development Developer Preview logo of Android 17 Starting with Android 17, traditional Developer Previews have been discontinued and replaced by continuously updated Android Canary builds, marking a transition to an \"always-on\" testing state for the Android platform."
+   },
+   {
+    "title": "Android 17: Everything you need to know",
+    "url": "https://www.androidcentral.com/apps-software/android-os/android-17",
+    "snippet": "Google showed off plenty of new features coming to Android at The Android Show ahead of I/O, and on June 16, it rolled out the stable version of Android 17.",
+    "excerpt": "Google showed off plenty of new features coming to Android at The Android Show ahead of I/O, and on June 16, it rolled out the stable version of Android 17. If you're using a Pixel 6 and above, you can install the stable Android 17 build right now. What's notable is that non-Google devices are now eligible to install the Android 17 beta, with Samsung, Honor, OPPO, Xiaomi and other manufacturers included in the Android beta program. That's great news if you want to see what the latest version of Android has to offer, but don't have a Pixel. Google is going all-in on AI with the introduction of Gemini Intelligence, even stating that Android is becoming an \"intelligence system.\" This will roll out to Pixel and recent Galaxy devices later this year, and has new features that leverage Gemini and on-device AI models."
+   },
+   {
+    "title": "Android 16",
+    "url": "https://en.wikipedia.org/wiki/Android_16",
+    "snippet": "Android 16 is the sixteenth major release and the 23rd version of Android, the mobile operating system developed by the Open Handset Alliance and led by Google.",
+    "excerpt": "Android 16 is the sixteenth major release and the 23rd version of Android, the mobile operating system developed by the Open Handset Alliance and led by Google. The first developer preview was released on November 19, 2024. The first beta was released on January 23, 2025. Google released the final version on June 10, 2025. The first devices to ship with Android 16 are the Samsung Galaxy Z Fold 7, Galaxy Z Flip 7, and its FE model. As of July 2026[update] , 37.65% of Android devices run Android 16, making it by far the most widely used single version of Android. History Android 16's Developer Preview logo Android 16 is internally codenamed \"Baklava\". The shift to \"Baklava\" reflects Google's recent changes in its development approach, particularly its \"Trunk Stable Project\", which streamlined build processes and naming conventions starting with Android 14."
+   },
+   {
+    "title": "Android 17: Features, Dessert Name and Release Timeline",
+    "url": "https://gadgets.beebom.com/guides/android-17-roundup",
+    "snippet": "Google released the official stable build of Android 17 to Pixel phones on June 16, 2026. The stable release comes after four beta rollouts.",
+    "excerpt": "Google released the official stable build of Android 17 to Pixel phones on June 16, 2026. The stable release comes after four beta rollouts. Here's a timeline of the release for easier understanding: Android 17 Beta 1 rolled out on February 14, 2026 Android 17 Beta 2 rolled out on February 26, 2026 Android 17 Beta 3 rolled out on March 26, 2026 Android 17 Beta 4 rolled out on April 16, 2026 Android 17 stable rolled out on June 16, 2026 For the first time in years, Google did away with Developer Preview releases. The brand skipped Developer Previews and fast-tracked the process, diving straight into Beta. This shift was driven by the new Canary channel, where Google tested new APIs and features, which eliminated the need for standalone preview builds."
+   },
+   {
+    "title": "Android 17 Release Schedule: Stable Date, Betas and QPRs",
+    "url": "https://www.itechguides.com/android-17-release-schedule-is-officially-set/",
+    "snippet": "Android 17 is no longer a forecast: Google released the stable version on June 16, 2026.",
+    "excerpt": "Android 17 is no longer a forecast: Google released the stable version on June 16, 2026. The update became available for most supported Pixel phones, and Google published the Android 17 source code to AOSP on the same day. Android 17 is API level 37. Google’s release plan uses quarterly updates, with the major platform release in Q2 and a smaller SDK release planned for Q4. Android 17 QPR1 and QPR2 are now testing channels rather than unreleased guesses, although Google has not published exact stable-release dates for either QPR on the official pages reviewed. # Preview Product Price 1 Type C Charger Fast Charging 2-Pack 25W Long 6FT USB C Cable | USBC Charger Block Compatible with... $9.97 Buy on Amazon 2 Super Fast Charger Type C, 25W USB C Wall Charger Fast Charging 10FT Cable | Android Phone Charger... $16.99 Buy on Amazon 3 45W Super Fast Charger USB Type C Android Phone Charger Fast Charging Cord | 6.6FT USB C Cable with..."
+   }
+  ],
+  "facts": "Android 17 is the newest stable major release; it went stable on June 16, 2026 (results 1, 2, 4, 5: 'It was released to the public on June 16, 2026.', 'on June 16, it rolled out the stable version of Android 17', 'Google released the official stable build of Android 17 to Pixel phones on June 16, 2026.'). Result 3 is the Android 16 article, a distractor. Sources differ slightly on first-beta date (February 13 vs 14) but agree on the stable date.",
+  "question": "Which Android version is the newest stable release right now?",
+  "kind": "release"
+ },
+ "ubuntu-newest-release": {
+  "query": "Ubuntu 26.10 release",
+  "captured": "2026-10-19",
+  "source": "web search and page reads, 2026-10-19",
+  "results": [
+   {
+    "title": "Ubuntu 26.10 Released with GNOME 51, Linux Kernel 7.3, and Rust Coreutils",
+    "url": "https://linuxiac.com/ubuntu-26-10-released-with-gnome-51-linux-kernel-7-3-and-rust-coreutils/",
+    "snippet": "Ubuntu 26.10 “Stonking Stingray” is now available, featuring GNOME 51, Linux kernel 7.3, improved App Center, Rust-based coreutils, and nine months of support.",
+    "excerpt": "Ubuntu 26.10 “Stonking Stingray” is now available, featuring GNOME 51, Linux kernel 7.3, improved App Center, Rust-based coreutils, and nine months of support. ByBobby Borisov OnOctober 15, 2026 Canonical has officially released Ubuntu 26.10, codenamed “Stonking Stingray,” the latest version of its popular Linux distribution. As an interim release after Ubuntu 26.04 LTS, it comes with nine months of support until July 2027. Starting with the desktop, Ubuntu 26.10 ships with GNOME 51. Users can expect smoother animations, more responsive interactions, and improved handling of multiple monitors, as GNOME now remembers monitor brightness settings across reboots and HDR changes. At the same time, display arrangement benefits from improved snapping. The Settings app also adds automatic screen rotation for supported devices and an option to disable the touchpad when an external mouse is connected."
+   },
+   {
+    "title": "Ubuntu 26.10 Released With Linux 7.3 + GNOME 51, Rust Coreutils Migration Complete - Phoronix",
+    "url": "https://www.phoronix.com/news/Ubuntu-26.10-Released",
+    "snippet": "Ubuntu 26.10 \"Stonking Stingray\" is now officially available as the newest six-month non-LTS update to Ubuntu Linux.",
+    "excerpt": "Ubuntu 26.10 \"Stonking Stingray\" is now officially available as the newest six-month non-LTS update to Ubuntu Linux. Ubuntu 26.10 brings a wealth of package updates following the Ubuntu 26.04 LTS release in April. There is the Linux 7.3 kernel in its near-final state, the GNOME 51 desktop and other updated desktop options, the Rust-based Coreutils transition is now fully completed, improved TPM-backed full-disk encryption support, improved enterprise authentication, and many other updated package versions like Mesa 26.2 graphics drivers. Ubuntu 26.10 also offers a tech preview of the new Myna speech-to-text functionality as part of Canonical's efforts to develop a contextual-aware desktop. Ubuntu 26.10 also debuts RISC-V desktop images, optimized amd64v3 install images, and more. Ubuntu 26.10 has been offering some nice performance improvements over Ubuntu 26.04 LTS in my benchmarking thanks to the newer kernel and other updated components."
+   },
+   {
+    "title": "Ubuntu 26.10 Released - Slashdot",
+    "url": "https://news.slashdot.org/story/26/10/15/2013231/ubuntu-2610-released",
+    "snippet": "Ubuntu 26.10 (Stonking Stingray) has been released today, and it is now available for download for those eager to update their Ubuntu systems to a newer release.",
+    "excerpt": "Ubuntu 26.10 (Stonking Stingray) has been released today, and it is now available for download for those eager to update their Ubuntu systems to a newer release. Powered by the upcoming Linux 7.3 kernel series, Ubuntu 26.10 ships with the latest GNOME 51 desktop environment, TPM-backed full disk encryption (FDE) support on computers without a hardware root of trust, updated Settings to show whether a computer is certified for Ubuntu, and 100% Rust coreutils."
+   },
+   {
+    "title": "Canonical releases Ubuntu 26.10 Stonking Stingray",
+    "url": "https://canonical.com/blog/canonical-releases-ubuntu-26-10-stonking-stingray",
+    "snippet": "Today Canonical announced the release of Ubuntu 26.10, codenamed “Stonking Stingray,” available to download and install from ubuntu.com/download.",
+    "excerpt": "Today Canonical announced the release of Ubuntu 26.10, codenamed “Stonking Stingray,” available to download and install from ubuntu.com/download. Building on previous releases, Ubuntu 26.10 advances enterprise security features, completes the rollout of the Rust-based uutils coreutils, and strengthens integrations for user authentication using Microsoft Entra ID. Ubuntu 26.10 also introduces post-quantum package signing, demonstrating that interim releases both build on established ground, and look towards the future. Earlier this year, we set out a roadmap for AI on Ubuntu. Stonking Stingray delivers the first milestone through the integration of Myna: a speech-to-text agent that utilizes on-device LLMs. We’ve led Ubuntu’s first AI integration with accessibility to ensure that cutting-edge features are available to all users from day one. Users will also benefit from enhanced security features."
+   },
+   {
+    "title": "Ubuntu 26.10 (Stonking Stingray) release date & schedule - OMG! Ubuntu",
+    "url": "https://www.omgubuntu.co.uk/2026/04/ubuntu-26-10-release-date",
+    "snippet": "Grab your diary and jot down the date, as Ubuntu 26.10 ‘Stonking Stingray’ is going to be released on 15 October, 2026.",
+    "excerpt": "Grab your diary and jot down the date, as Ubuntu 26.10 ‘Stonking Stingray’ is going to be released on 15 October, 2026. The Ubuntu 26.10 release date and those of other notable milestones in the next development cycle have now been shared by Canonical but, given the nature of development, should be considered tentative – plans can and do change. The most significant date in the 26.10 schedule, besides the final release, is that of feature freeze on August 20, 2026. This is the date at which (in theory1) new features stop being added so that the focus can move to bug fixing and cleanups. That’s the date by which the character of the Stonking Stingray will reveal itself, while UI freeze a month later is when the personality becomes apparent, i.e., when any new artwork, theme changes and user-facing adjustments need to be in place."
+   }
+  ],
+  "facts": "Ubuntu 26.10 'Stonking Stingray' was released October 15, 2026. Results 1-4 state it is now available/released (e.g. 'Ubuntu 26.10 \"Stonking Stingray\" is now officially available as the newest six-month non-LTS update'); result 5 is the earlier schedule ('is going to be released on 15 October, 2026'). Exact strings: '26.10', 'Stonking Stingray'.",
+  "question": "What's the newest Ubuntu release, and what's it called?",
+  "kind": "release"
+ },
+ "disney-ceo-now": {
+  "query": "who is Disney CEO now",
+  "captured": "2026-10-19",
+  "source": "web search and page reads, 2026-10-19",
+  "results": [
+   {
+    "title": "Disney CEO Josh D’Amaro takes helm as company leans on parks, faces AI disruption",
+    "url": "https://www.foxbusiness.com/media/new-disney-ceo-josh-damaro-officially-takes-reins-from-bob-iger",
+    "snippet": "Josh D’Amaro officially assumed the role of Disney chief executive on Wednesday, taking charge of the company as it confronts a rapidly shifting entertainment landscape shaped by artificial",
+    "excerpt": "Josh D’Amaro officially assumed the role of Disney chief executive on Wednesday, taking charge of the company as it confronts a rapidly shifting entertainment landscape shaped by artificial intelligence, changing consumer behavior and pressure across its legacy media businesses. His succession of Bob Iger follows a run leading Disney’s parks, experiences and products division – a segment that has become central to the company’s financial performance. The unit accounted for 57% of Disney’s $17.5 billion in profit last year, highlighting a growing reliance on theme parks and tourism as other areas face headwinds. That dynamic is expected to shape investor expectations early in D’Amaro’s tenure. Market participants are looking for clarity on how Disney plans to adapt to advances in AI, which are poised to alter content production, distribution and monetization, while also intensifying competition from digital-first platforms."
+   },
+   {
+    "title": "Disney CEO Josh D'Amaro tells CNBC parks were 'big surprise' in last quarter, company has 'clarity' and 'stability'",
+    "url": "https://www.cnbc.com/2026/08/14/disney-ceo-josh-damaro-d23-expo.html",
+    "snippet": "D'Amaro stepped into the role of Disney CEO in March, succeeding Bob Iger after a closely watched succession race.",
+    "excerpt": "D'Amaro stepped into the role of Disney CEO in March, succeeding Bob Iger after a closely watched succession race. He told CNBC's Julia Boorstin on Friday from the company's annual D23 expo that its parks division was a \"big surprise\" last quarter. He highlighted the company's flagship streaming service, Disney+, and areas for integrating streaming and shopping. He also said he's not interested in splitting off ESPN and spoke to political tensions with the Trump administration. In this article DIS J5A-DE Follow your favorite stocksCREATE FREE ACCOUNT watch now VIDEO4:3304:33 Disney CEO Josh D'Amaro: Parks were 'big surprise' in Q3, company has 'clarity' and 'stability' Squawk on the Street Disney CEO Josh D'Amaro told CNBC's Julia Boorstin on Friday that the company's parks division was a \"big surprise\" last quarter and that he feels confident about the company's trajectory during his first few months at the top of the media giant."
+   },
+   {
+    "title": "Disney Takes Action on Guest Feedback With New Rule Change and Announcements",
+    "url": "https://mickeyvisit.com/disney-announcements-guest-complaints-october-18-2026/",
+    "snippet": "This comes after recent comments from new Disney CEO Josh D’Amaro who has actively talked about the value of the Disney fan and placing fans at the center of everything that the company does.",
+    "excerpt": "If we do it right, if we have a great experience, if we listen to them, genuinely listen to them, not only will they come back, but they will bring the next generation with them.” This comes after recent comments from new Disney CEO Josh D’Amaro who has actively talked about the value of the Disney fan and placing fans at the center of everything that the company does. We are now seeing it in action in announcements and rules changes at the parks that are having a positive impact now. New Disneyland President, Jill Estorino echoed similar sentiments in our recent exclusive Mickey Visit interview. She lived at the Disneyland Resort Hotels for five weeks when she first became president. “I wanted to be a guest before I was the president”, she shared with us. “I wanted to get on the other side of the front desk and really walk in the shoes of the guest. I’m a marketer by trade."
+   },
+   {
+    "title": "Josh D’Amaro",
+    "url": "https://thewaltdisneycompany.com/leadership/josh-damaro/",
+    "snippet": "Josh D’Amaro is Chief Executive Officer of The Walt Disney Company, leading a unified portfolio of world-class brands and businesses committed to exceptional storytelling and meaningful consumer",
+    "excerpt": "Josh D’Amaro is Chief Executive Officer of The Walt Disney Company, leading a unified portfolio of world-class brands and businesses committed to exceptional storytelling and meaningful consumer connections. As part of his strategic vision for the company, D’Amaro has outlined priorities aimed at uniting human creativity with cutting-edge technology to create unforgettable storytelling experiences that deepen Disney’s enduring bond with fans and consumers. Under his leadership, Disney is harnessing the power of its creative engines, global reach, and multiple consumer touchpoints to accelerate into a new era of innovation and growth. D’Amaro assumes the role of CEO after serving as Chairman of Disney Experiences, the company’s largest and fastest growing business segment, with $36 billion in annual revenue in FY2025."
+   },
+   {
+    "title": "The Walt Disney Company CEO History: Walt to D'Amaro",
+    "url": "https://www.historyoasis.com/post/the-walt-disney-company-ceo-history",
+    "snippet": "Josh D’Amaro became chief executive of The Walt Disney Company on March 18, 2026. Disney’s board voted for him on February 2 and announced it the next morning, ending a succession search that had",
+    "excerpt": "Iger left the job on March 18, 2026. He is still at Disney as a senior advisor reporting to the board, and he leaves for good on December 31, 2026. JOSH D’AMARO Josh D'Amaro, who joined Disney in 1998 and became its chief executive in 2026 © History Oasis Josh D’Amaro became chief executive of The Walt Disney Company on March 18, 2026. Disney’s board voted for him on February 2 and announced it the next morning, ending a succession search that had been running formally since January 2023. He is the first Disney chief executive since 2005 who is not named Bob. D’Amaro joined Disney in 1998 and spent twenty-eight years there before getting the job, almost all of it in the parks. He ran the Disneyland Resort, then Walt Disney World, then took over Disney Experiences in May 2020"
+   }
+  ],
+  "facts": "Josh D'Amaro is CEO of The Walt Disney Company, succeeding Bob Iger; he took over March 18, 2026 (results 1, 2, 4, 5; result 5: 'Josh D’Amaro became chief executive of The Walt Disney Company on March 18, 2026.'; result 2: 'succeeding Bob Iger'). Result 3 mentions him only in passing as 'new Disney CEO Josh D’Amaro'. Name appears as both D'Amaro and D’Amaro (curly apostrophe).",
+  "question": "Who's running Disney these days?",
+  "kind": "business"
+ },
+ "apple-tim-cook-still-ceo": {
+  "query": "Apple CEO 2026",
+  "captured": "2026-10-19",
+  "source": "web search and page reads, 2026-10-19",
+  "results": [
+   {
+    "title": "Tim Cook",
+    "url": "https://en.wikipedia.org/wiki/Tim_Cook",
+    "snippet": "Timothy Donald Cook (born November 1, 1960) is an American business executive who served as the chief executive officer (CEO) of Apple Inc.",
+    "excerpt": "Timothy Donald Cook (born November 1, 1960) is an American business executive who served as the chief executive officer (CEO) of Apple Inc. from August 24, 2011 to August 31, 2026, and has been the company's executive chairman since September 1, 2026. Cook joined the technology company in 1998 as senior vice president for worldwide operations, and later served as vice president for worldwide sales and operations and then as chief operating officer under co-founder Steve Jobs. He was appointed chief executive in 2011, when Jobs resigned due to failing health. Under Cook, Apple grew into one of the world's most valuable companies; in 2025 it was the second largest technology company by revenue in the world, at US $416 billion. Cook led a succession plan that saw John Ternus succeed him as CEO."
+   },
+   {
+    "title": "Apple Names New CEO as Tim Cook to Step Down in September",
+    "url": "https://finance.yahoo.com/markets/stocks/articles/apple-names-ceo-tim-cook-144900683.html",
+    "snippet": "Apple announced that it has named John Ternus as its new CEO effective Sept. 1, 2026.",
+    "excerpt": "Apple announced that it has named John Ternus as its new CEO effective Sept. 1, 2026. The senior vice president of hardware engineering at Apple for over 20 years has designed a wide array of Apple products, including the iPhone, Mac, iPad, Apple Watch and a range of AirPods variants. Most recently, he led the design of the MacBook Neo and is believed to be behind Apple's push to build more durable products that are easier to repair and made from a higher percentage of recycled materials. He previously worked as a mechanical engineer at Virtual Research Systems before joining Apple in 2001 as a designer in the engineering department. Board-Level Changes Apple also announced that Tim Cook will become executive chairman of Apple's board of directors effective Sept. 1, 2026. Arthur Levinson, the chairman of the Apple board of directors, will become lead independent director of the board, effective Sept. 1. Want the latest recommendations from Zacks Investment Research?"
+   },
+   {
+    "title": "Tim Cook to become Apple Executive Chairman John Ternus to become Apple CEO - Apple",
+    "url": "https://www.apple.com/newsroom/2026/04/tim-cook-to-become-apple-executive-chairman-john-ternus-to-become-apple-ceo/",
+    "snippet": "Apple announced that Tim Cook will become executive chairman of Apple’s board of directors and John Ternus, senior vice president of Hardware Engineering, will become Apple’s next chief executive",
+    "excerpt": "Apple announced that Tim Cook will become executive chairman of Apple’s board of directors and John Ternus, senior vice president of Hardware Engineering, will become Apple’s next chief executive officer effective on September 1, 2026. The transition, which was approved unanimously by the Board of Directors, follows a thoughtful, long-term succession planning process. Cook will continue in his role as CEO through the summer as he works closely with Ternus on a smooth transition. As executive chairman, Cook will assist with certain aspects of the company, including engaging with policymakers around the world. “It has been the greatest privilege of my life to be the CEO of Apple and to have been trusted to lead such an extraordinary company."
+   },
+   {
+    "title": "John Ternus",
+    "url": "https://en.wikipedia.org/wiki/John_Ternus",
+    "snippet": "John Patrick Ternus (/ˈtɜːrnəs/; born May 1975) is an American engineer and business executive who has been the chief executive officer (CEO) of Apple since September 1, 2026.",
+    "excerpt": "John Patrick Ternus (/ˈtɜːrnəs/; born May 1975) is an American engineer and business executive who has been the chief executive officer (CEO) of Apple since September 1, 2026. He is also a member of the company's board of directors. Ternus joined Apple's product design team in 2001 and was the company's senior vice president of hardware engineering from 2021 to 2026. Apple has credited Ternus with work on the iPad and AirPods product lines, and he oversaw hardware engineering during the company's transition from Intel processors to Apple silicon in Mac computers. Upon inheriting Dan Riccio's position as senior vice president of hardware engineering, it has been widely reported by tech analysts that he has radically changed Apple's hardware and design philosophy, pivoting Apple's hardware engineering into prioritizing function over form, marking a major departure from Jony Ive's form over function focus for Apple products."
+   },
+   {
+    "title": "Who is John Ternus, the new Apple CEO?",
+    "url": "https://techcrunch.com/2026/09/01/who-is-john-ternus-the-incoming-apple-ceo/",
+    "snippet": "After 15 years, Tim Cook has handed off the Apple CEO role to John Ternus, the company’s senior vice president of hardware engineering.",
+    "excerpt": "After 15 years, Tim Cook has handed off the Apple CEO role to John Ternus, the company’s senior vice president of hardware engineering. As of Tuesday, Ternus now leads one of the world’s most valuable companies. But if you’re not a dedicated Apple enthusiast, you’ve probably never heard of this man, who has largely remained out of the spotlight until he was announced as Cook’s successor in April. Ternus is assuming the CEO role at a crucial time for Apple. Next week, the company will host its iPhone launch event, ushering in its newest line of hardware. Apple will also soon roll out its new-and-improved Siri AI experience, which is powered by Google’s Gemini. “I take enormous comfort in handing the helm to someone as brilliant and wonderful and capable as John,” Tim Cook wrote to staff on his last day as CEO."
+   }
+  ],
+  "facts": "No. John Ternus became Apple CEO on September 1, 2026; Tim Cook became executive chairman (results 1-5; result 4: 'has been the chief executive officer (CEO) of Apple since September 1, 2026'; result 3 is the April 20, 2026 announcement). Exact name: 'John Ternus'.",
+  "question": "Is Tim Cook still the CEO of Apple?",
+  "kind": "business"
+ },
+ "most-recent-super-bowl": {
+  "query": "Super Bowl LX result who won",
+  "captured": "2026-10-19",
+  "source": "web search and page reads, 2026-10-19",
+  "results": [
+   {
+    "title": "List of Super Bowl Winners (1967-2026)",
+    "url": "https://www.topendsports.com/events/super-bowl/winners-list.htm",
+    "snippet": "The Seattle Seahawks won the most recent Super Bowl LX in 2026, defeating the New England Patriots 29-13.",
+    "excerpt": "The Seattle Seahawks won the most recent Super Bowl LX in 2026, defeating the New England Patriots 29-13. The New England Patriots and Pittsburgh Steelers lead all franchises with 6 Super Bowl championships each. 60 Super Bowls have been played since 1967 12 NFL teams have never won a championship The Patriots have the most appearances with 12 Complete Super Bowl Championship History From Green Bay's first victory in 1967 to Seattle Seahawk's triumph in 2026, explore every championship moment in NFL history. 60 Super Bowls 20 Different Winners 12 Never Won 📊 Complete Winners List 🏆 Championship Records 🔥 Recent Champions 💔 Teams Without Titles 📈 Team Statistics ❓ FAQs The Super Bowl is the annual championship game of the National Football League (NFL). Below is a list of all the winners of the Super Bowl since Green Bay won the first in 1967, along with the Super Bowl locations where each game was played."
+   },
+   {
+    "title": "Who Won the 2026 Super Bowl? Seahawks or Patriots in Super Bowl LX",
+    "url": "https://www.nbc.com/nbc-insider/who-won-the-2026-super-bowl-seahawks-or-patriots-in-super-bowl-lx",
+    "snippet": "The Seattle Seahawks won Super Bowl LX on Sunday, February 8, 2026. The final score was 29-13.",
+    "excerpt": "The Seattle Seahawks won Super Bowl LX on Sunday, February 8, 2026. The final score was 29-13. AJ Barner, #88 of the Seattle Seahawks, scores a touchdown against the New England Patriots during the fourth quarter of Super Bowl LX at Levi's Stadium on February 8, 2026 in Santa Clara, California. Photo: Ronald Martinez/Getty Images Sunday Night Football on NBC & Peacock The NFL returns to NBC and Peacock this fall with some of the biggest games of the 2026-2027 season thanks to Sunday Night Football . Football fans got a chance to see the Seattle Seahawks take down the New England Patriots at the end of last season in Super Bowl LX, exclusively on NBC and Peacock. Keep an eye on NBC Insider for the latest info on the schedule and how to watch the biggest NFL games on NBC and Peacock all season-long. Peacock will stream all NBC Sunday Night Football games in the 2026-2027 NFL season, including playoff games, along with the Football Night in America studio show."
+   },
+   {
+    "title": "Super Bowl LX",
+    "url": "https://en.wikipedia.org/wiki/Super_Bowl_LX",
+    "snippet": "Super Bowl LX was an American football game played to determine the champion of the National Football League (NFL) for the 2025 season.",
+    "excerpt": "Super Bowl LX was an American football game played to determine the champion of the National Football League (NFL) for the 2025 season. The National Football Conference (NFC) champion Seattle Seahawks defeated the American Football Conference (AFC) champion New England Patriots 29–13. The game took place on February 8, 2026, at Levi's Stadium in Santa Clara, California, the second Super Bowl held in the stadium and the third held in the San Francisco Bay Area. The Seahawks' victory was their second, previously having won 2013's Super Bowl XLVIII during their Legion of Boom era. Led by their Dark Side defense, they were making their fourth appearance with a 14–3 record and the NFC's top seed. The Patriots, who finished with a 14–3 record and the AFC's second seed, extended their record of appearances to 12. They were seeking a record seventh title and their first since the Brady–Belichick era after last winning 2018's Super Bowl LIII."
+   },
+   {
+    "title": "Super Bowl LX Live Updates, Score: Seahawks Win Super Bowl LX",
+    "url": "https://www.foxsports.com/live-blog/nfl/super-bowl-lx-live-updates-score-seahawks-patriots",
+    "snippet": "the Seattle Seahawks dominated the Patriots in a 29-13 win. Seattle had six sacks and three takeaways, including a touchdown, taking a shutout into the fourth quarter.",
+    "excerpt": "the Seattle Seahawks dominated the Patriots in a 29-13 win. Seattle had six sacks and three takeaways, including a touchdown, taking a shutout into the fourth quarter. Mike Macdonald's defense was superb in containing MVP runner-up Drake Maye, and Seattle running back Kenneth Walker III rushed for 135 yards, the most in a Super Bowl in 28 years. [Related: 4 Takeaways from Seattle's Super Bowl LX Victory] Here are the highlights and analysis from FOX Sports NFL writer Greg Auman."
+   },
+   {
+    "title": "Who won Super Bowl LX - who won MVP for championship game?",
+    "url": "https://www.nationalworld.com/sport/other-sport/who-won-the-super-bowl-super-bowl-lx-winners-revealed-who-won-mvp-5507918",
+    "snippet": "The final result of Super Bowl LX saw the Seattle Seahawks win 29-13 over the New England Patriots. It marked the Seahawks’ first win since 2016 and only the second in their history.",
+    "excerpt": "The final result of Super Bowl LX saw the Seattle Seahawks win 29-13 over the New England Patriots. It marked the Seahawks’ first win since 2016 and only the second in their history. Super Bowl LX was also their fourth appearance in the championship game. The victory came as the Seattle side put on a dominant defensive display. New England Patriots quarterback Drake Maye was sacked six times by Seattle’s number one-ranked defence throughout the match. The Seattle Seahawks won Super Bowl LX with a 29-13 victory over the New England Patriots. | AFP via Getty Images The first touchdown of the match only came in the fourth quarter, with Seahawks tight-end AJ Barner hauling in a Sam Darnold pass. Jason Myers also kicked five field goals for the Seahawks, marking a new Super Bowl record. There was a slim chance of hope fo the Patriots as Mack Hollins scored a 35-yard touchdown, but the Seahawks dig in and were able to pick off Maye before closing out the game with a 29-13 scoreline."
+   }
+  ],
+  "facts": "The Seattle Seahawks beat the New England Patriots 29-13 in Super Bowl LX on February 8, 2026 (results 1, 2, 4, 5 state winner and '29-13'; result 3 is the Wikipedia lead sentence without the score in the snippet). Result 5 says 'first win since 2016', which is inaccurate (their prior title was in 2014); all agree on the winner and score.",
+  "question": "Who won the most recent Super Bowl, and what was the score?",
+  "kind": "event"
+ },
+ "milan-cortina-medal-table": {
+  "query": "2026 Winter Olympics final medal table most gold medals",
+  "captured": "2026-10-19",
+  "source": "web search and page reads, 2026-10-19",
+  "results": [
+   {
+    "title": "2026 Winter Olympics Final Medal Count and Countries with Most Gold",
+    "url": "https://bleacherreport.com/articles/25399999-2026-winter-olympics-final-medal-count-and-countries-most-gold",
+    "snippet": "Norway (18 gold, 12 silver, 11 bronze, 41 total) United States (12 gold, 12 silver, 9 bronze, 33 total) Netherlands (10 gold, 7 silver, 3 bronze, 20 total) Italy (10 gold, 6 silver, 14 bronze, 30",
+    "excerpt": "Norway (18 gold, 12 silver, 11 bronze, 41 total) United States (12 gold, 12 silver, 9 bronze, 33 total) Netherlands (10 gold, 7 silver, 3 bronze, 20 total) Italy (10 gold, 6 silver, 14 bronze, 30 total) Germany (8 gold, 10 silver, 8 bronze, 26 total) France (8 gold, 9 silver, 6 bronze, 23 total) Sweden (8 gold, 6 silver, 4 bronze, 18 total) Switzerland (6 gold, 9 silver, 8 bronze, 23 total) Austria (5 gold, 8 silver, 5 bronze, 18 total) Japan (5 gold, 7 silver, 12 bronze, 24 total) Canada (5 gold, 7 silver, 9 bronze, 21 total) People's Republic of China (5 gold, 4 silver, 6 bronze, 15 total) Republic of Korea (3 gold, 4 silver, 3 bronze, 10 total) Australia (3 gold, 2 silver, 1 bronze, 6 total) Great Britain (3 gold, 1 silver, 1 bronze, 5 total) A Record Number of Gold for the United States While Norway has set the record for most medals won by single country and the most gold captured, the United States has set a personal record for the most gold medals achieved in a single Winter"
+   },
+   {
+    "title": "2026 Winter Paralympics medal table",
+    "url": "https://en.wikipedia.org/wiki/2026_Winter_Paralympics_medal_table",
+    "snippet": "The medal table of the 2026 Winter Paralympics ranks the participating National Paralympic Committees (NPCs) by the number of gold medals that were won by their athletes during the competition.",
+    "excerpt": "The medal table of the 2026 Winter Paralympics ranks the participating National Paralympic Committees (NPCs) by the number of gold medals that were won by their athletes during the competition. The 2026 Paralympics were the fourteenth Games held, a quadrennial competition open to athletes with physical and intellectual disabilities. The games were held in Milan, Cortina d'Ampezzo, and other areas in Lombardy and Northeast Italy from 6 to 15 March 2026. There were 79 medal events. A mixed doubles event made its debut in wheelchair curling. Brazil and Latvia both won the first-ever Winter Paralympic medal in their histories, with Cristian Ribera winning the silver medal in the Men's sitting cross-country skiing sprint, and Poļina Rožkova and Agris Lasmans winning the bronze in the mixed doubles curling respectively. Ribera's medal was also the first in Winter Paralympic history won by a tropical, Latin American or South American National Paralympic Committee."
+   },
+   {
+    "title": "2026 Winter Olympics medal table",
+    "url": "https://en.wikipedia.org/wiki/2026_Winter_Olympics_medal_table",
+    "snippet": "Athletes from Norway won the most medals overall, with 41, surpassing the previous record of 39 medals set by Norway at the 2018 Winter Olympics.",
+    "excerpt": "Athletes representing 29 NOCs received at least one medal, with 19 winning at least one gold medal. Athletes from Norway won the most medals overall, with 41, surpassing the previous record of 39 medals set by Norway at the 2018 Winter Olympics. Norwegian athletes also won the most gold medals with 18, breaking the previous record of 16 golds set by the Norwegians at the 2022 Winter Olympics. Brazil won the first medal and first gold medal in their Winter Olympic history. It is also the first tropical, Latin American and South American National Olympic Committee to win a medal at the Winter Olympics. Georgia also won the first medal in their Winter Olympic history. Among individual participants, Norwegian cross-country skier Johannes Høsflot Klæbo won the most gold and overall medals, with six medals (all gold). In doing so, he set the record for the most gold medals won at a single Winter Olympics and most career gold medals won by a Winter Olympic athlete (11 gold medals total)."
+   },
+   {
+    "title": "Winter Olympics medal table: With 12 golds, was this the best U.S. team ever?",
+    "url": "https://www.csmonitor.com/World/olympics/2026/0222/winter-olympics-final-medal-count-2026",
+    "snippet": "At the 2026 Milan Cortina Winter Games, Norway was the undisputed Winter Olympics champion with the most gold medals (18) and overall medals won (41).",
+    "excerpt": "At the 2026 Milan Cortina Winter Games, Norway was the undisputed Winter Olympics champion with the most gold medals (18) and overall medals won (41). Getting your Trinity Audio player ready... Share Shared content is always free to recipients. Copy link Copied! Font Size Share this story Copy Link Link copied Luca Bruno/AP The United States celebrates after scoring a sudden-death overtime goal against Canada during the men’s ice hockey gold medal game at the 2026 Winter Olympics, in Milan, Italy, Feb. 22, 2026. Play Pause Share Shared content is always free to recipients. Copy link Copied! Font Size Share this story Copy Link Link copied By Mark Sappenfield, Senior global correspondent Facebook Milan | Feb. 22, 2026, 11:16 a.m. ET | 5 min read With a dramatic overtime 2-1 win against Canada in the men’s hockey final, the United States set a record with 12 gold medals here in Milan Cortina 2026, its most ever in a Winter Olympics."
+   },
+   {
+    "title": "Final medal count at the 2026 Milan Cortina Winter Olympics and Paralympics",
+    "url": "https://www.nbcolympics.com/news/final-medal-count-2026-milan-cortina-winter-olympics-and-paralympics",
+    "snippet": "For the third Winter Olympic Games in a row, Norway took home the most Olympic medals.",
+    "excerpt": "During the Paralympics, 611 athletes from 55 National Paralympic Committees competed in the Games, breaking the record high 564 athletes who competed at the 2018 Paralympic Winter Games in PyeongChang. Which country won the most Olympic medals at Milan Cortina 2026? For the third Winter Olympic Games in a row, Norway took home the most Olympic medals. The Norwegian team earned 41 medals, breaking the previous record of 39 they set at the 2018 Winter Olympic Games in PyeongChang. They also won the most gold medals with 18, surpassing the record of 16 golds they set four years ago in Beijing. Johannes Hoesflat Klaebo led his country with six gold medals across six cross-country skiing events, becoming the first Winter Olympian to win six gold medals in a single Games and setting the record for the most career gold medals won by a Winter Olympian with 11 total."
+   }
+  ],
+  "facts": "Norway topped the 2026 Milan Cortina Winter Olympics with 18 gold and 41 total medals (results 1, 3, 4, 5: 'Norway (18 gold, 12 silver, 11 bronze, 41 total)', 'most gold medals (18) and overall medals won (41)'). United States second (12 gold, 33 total). Result 2 is the Paralympics medal table (China led that), a distractor.",
+  "question": "Which country topped the medal table at the Milan Cortina Winter Olympics?",
+  "kind": "event"
+ },
+ "us-stamp-price-now": {
+  "query": "how much is a first class Forever stamp now 2026",
+  "captured": "2026-10-19",
+  "source": "web search and page reads, 2026-10-19",
+  "results": [
+   {
+    "title": "USPS to raise the price of a Forever stamp to 82 cents on Sunday. Here's what to know. - CBS News",
+    "url": "https://www.cbsnews.com/news/usps-forever-stamp-price-increase-july-2026/",
+    "snippet": "The U.S. Postal Service on Sunday will raise the price of a first-class Forever stamp from 78 cents to 82 cents, the latest in a series of increases aimed at stemming the agency's mounting financial",
+    "excerpt": "The U.S. Postal Service on Sunday will raise the price of a first-class Forever stamp from 78 cents to 82 cents, the latest in a series of increases aimed at stemming the agency's mounting financial losses. The USPS announced the increase in April, saying the higher price was intended to bolster its finances. Over the past five years, the agency has raised the price of a first-class stamp six times, increasing the cost 34% from 58 cents in 2021 to 78 cents before the hike set to kick in on July 12. \"Notwithstanding the adjustment, the Postal Service's mailing prices remain among the most affordable in the world,\" a USPS spokesperson told CBS News. The USPS has struggled for years with high costs and shrinking mail volumes, while policy changes implemented by Congress also weakened the agency's finances."
+   },
+   {
+    "title": "USPS raising Forever stamp price to 82 cents in July 2026",
+    "url": "https://www.yahoo.com/news/us/articles/usps-raising-forever-stamp-price-161351568.html",
+    "snippet": "USPS is increasing the price of a First-Class Mail stamp to 82 cents from 78 cents, marking the sixth price hike in five years to address financial losses.",
+    "excerpt": "USPS is increasing the price of a First-Class Mail stamp to 82 cents from 78 cents, marking the sixth price hike in five years to address financial losses. The new rates, which represent a 4.8% increase across mailing services products, also impact the cost of sending domestic postcards, metered one-ounce letters, and international postcards and single-ounce letters. The Postal Regulatory Commission approved the USPS pricing proposal, expressing concerns over delivery performance, shrinking letter volumes, and the agency's financial state, with USPS expenses outpacing revenue in fiscal year 2025. See more Forever stamp buyers will pay 82 cents for a First-Class Mail stamp starting Sunday, up from 78 cents"
+   },
+   {
+    "title": "USPS® postage rate change overview",
+    "url": "https://www.pitneybowes.com/us/postal-information/usps-rate-change-overview.html",
+    "snippet": "Pending approval by the Postal Regulatory Commission (PRC), these rates will go into effect on July 12, 2026.",
+    "excerpt": "Pending approval by the Postal Regulatory Commission (PRC), these rates will go into effect on July 12, 2026. Here’s a quick snapshot of what’s changing: First-Class Mail Forever Stamp: Increase from 78¢ to 82¢ Metered 1-oz letters: Increase from 74¢ to 78¢ Domestic postcards: Increase from 61¢ to 65¢ Certified Mail fee: $5.30 to $5.55 USPS announces International Destination and Military Office Suspensions effective March 3, 2026. Effective March 3, 2026, the U.S. Postal Service (USPS) has announced two suspension notices. The Postal Service is temporarily suspending acceptance of items destined to the countries listed in this document, due to logistics impacts resulting from the conflict in the Middle East. The Military ZIP codes listed in this document are temporarily suspended from all mailing services until further notice. To stay up to date on news with the USPS, please visit postalpro.usps.com."
+   },
+   {
+    "title": "How Much Are Forever Stamps? 2026 Price Guide",
+    "url": "https://www.mailboxflushing.com/pages/forever-stamp-price-guide",
+    "snippet": "As of July 12, 2026, a Forever stamp costs 82 cents at the post office. That's the short answer to \"how much are forever stamps\"",
+    "excerpt": "As of July 12, 2026, a Forever stamp costs 82 cents at the post office. That's the short answer to \"how much are forever stamps\""
+   },
+   {
+    "title": "First-Class Stamp Price 2026: $0.82 Current USPS Rate",
+    "url": "https://stampsforcash.com/stamp-selling-tips/forever-stamps-everyday-mailing/detailing-the-first-class-stamp-price-and-current-rates/",
+    "snippet": "The current first-class stamp price is $0.82, effective July 12, 2026. That covers a standard one-ounce letter sent anywhere in the United States.",
+    "excerpt": "The current first-class stamp price is $0.82, effective July 12, 2026. That covers a standard one-ounce letter sent anywhere in the United States. A Forever stamp always equals the current first-class rate, no matter what you paid for it. Current USPS Rates (Effective July 12, 2026) Postage Price First-Class Forever stamp (1 oz letter) $0.82 Each additional ounce $0.29 Two Ounce stamp $1.11 Three Ounce stamp $1.40 Postcard stamp $0.65 Global Forever (international 1 oz) $1.75 Book of 20 Forever stamps $16.40 Why the Rate Changes USPS adjusts prices through the Postal Regulatory Commission, usually once or twice a year, to keep up with operating and delivery costs. Rates have risen steadily in recent years, which is why Forever stamps bought at lower prices still cover a full first-class letter today. Have Extra Stamps? They’re Worth Cash Every rate increase makes unused postage more valuable."
+   }
+  ],
+  "facts": "A First-Class Forever stamp (1 oz letter) costs 82 cents since July 12, 2026, up from 78 cents (all five results: '82 cents', '$0.82', 'Increase from 78¢ to 82¢'). Result 3 snippet gives only the effective date; its excerpt has the 82¢ figure.",
+  "question": "How much does it cost to mail a regular letter in the US right now?",
+  "kind": "price"
+ },
+ "us-mint-still-making-pennies": {
+  "query": "US Mint penny production stopped",
+  "captured": "2026-10-19",
+  "source": "web search and page reads, 2026-10-19",
+  "results": [
+   {
+    "title": "US Stops Minting Pennies: What Happens To Yours Now? - Benzinga",
+    "url": "https://www.benzinga.com/personal-finance/management/25/11/48917414/us-stops-minting-pennies-what-happens-to-yours-now",
+    "snippet": "The U.S. Mint has halted production of the circulating penny after the Treasury Department concluded new one-cent coins are no longer needed, even as existing pennies remain legal tender and will",
+    "excerpt": "The U.S. Mint has halted production of the circulating penny after the Treasury Department concluded new one-cent coins are no longer needed, even as existing pennies remain legal tender and will stay in use for years. Rising Production Costs Push Penny Off Line \"The Secretary of the Treasury has decided to suspend production of the one-cent coin (penny) upon determining that it is no longer necessary to meet the needs of the United States. The decision was influenced by the rising cost of producing the penny, which has increased from 1.42 cents to 3.69 cents per penny,\" the Mint says in a penny fact sheet on its public website. For years, the Mint has reported that it costs more than one cent to strike and distribute each penny, leaving the government with a loss on every new coin. Treasury Uses Legal Authority To Halt Minting Officials stress the coin is not being canceled as money. \"Yes. The penny remains legal tender and may still be used for transactions,\" the Mint says."
+   },
+   {
+    "title": "No more pennies in U.S. thoughts as its mint stops making 1-cent coin",
+    "url": "https://www.cbc.ca/news/world/us-mint-ends-penny-production-9.6976561",
+    "snippet": "The U.S. Mint on Wednesday ended production of the penny to save money and because the one-cent coin that could once buy a snack or a piece of candy had become increasingly irrelevant.",
+    "excerpt": "The U.S. Mint on Wednesday ended production of the penny to save money and because the one-cent coin that could once buy a snack or a piece of candy had become increasingly irrelevant. The last pennies were struck at the mint in Philadelphia, where the country's smallest denomination coins have been produced since 1793, a year after Congress passed the Coinage Act. Officials said the final few pennies would be auctioned off. \"God bless America, and we're going to save the taxpayers $56 million,\" U.S. Treasurer Brandon Beach said just before hitting a button to strike the final penny. Pennies remain legal tender, but new ones will no longer be made. The U.S. move to drop penny production comes 13 years after Canada stopped making the coin. The last coin to be discontinued in the U.S. was the half-cent in 1857, Beach said. WATCH | Trump's call for the U.S. to ditch the penny: Is Trump right about eliminating the penny?"
+   },
+   {
+    "title": "Penny debate in the United States",
+    "url": "https://en.wikipedia.org/wiki/Penny_debate_in_the_United_States",
+    "snippet": "After a slowdown in the summer, penny production for general circulation was halted on November 12, 2025, with penny production continuing for collector sets and commemorative purposes.",
+    "excerpt": "On May 22, 2025, the Treasury announced that the Mint had stopped purchasing penny planchets; production would cease at their exhaustion. After a slowdown in the summer, penny production for general circulation was halted on November 12, 2025, with penny production continuing for collector sets and commemorative purposes. By mid-November 2025, the Federal Reserve had stopped handling pennies at over half its terminals; but this decision was reversed in January 2026. The closures exacerbated regional penny shortages. Businesses affected have adopted differing responses, such as requiring payment in exact change or rounding cash transactions to the nearest five cents. Still, there are no federal regulations on rounding cash transactions, and several cities require exact change to be given. Amid potential confusion among stakeholders, some states have provided recommendations for rounding or have considered legislation."
+   },
+   {
+    "title": "U.S. Treasury is ending the production of pennies. Here's what that decision means",
+    "url": "https://www.columbiamissourian.com/news/state_news/u-s-treasury-is-ending-the-production-of-pennies-heres-what-that-decision-means/article_f73bb122-68f7-402a-9983-b3bbf897902b.html",
+    "snippet": "The United States made its last penny Nov. 12 in Philadelphia, ending a process that began in 1793.",
+    "excerpt": "The United States made its last penny Nov. 12 in Philadelphia, ending a process that began in 1793. Despite the move, pennies will continue to be in circulation and can be used, deposited or kept indefinitely. There is also no plan to recall them, and they will continue to be accepted as currency. kAm%96 564:D:@? E@ 6?5 E96 A6??J 7@==@HD 2 k2 9C67lQ9EEADi^^HHH]FD>:?E]8@G^4@?E6?E^52>^FD>:?E^C6A@CED^a_ac\\2??F2=\\C6A@CE]A57Q E2C86ElQ03=2?<Qma_ac C6A@CEk^2m 3J E96 &]$] |:?E E92E 6249 A6??J 4@DED b]f 46?ED E@ >2<6 2?5 5:DEC:3FE6[ H9:49 !C6D:56?E s@?2=5 %CF>A 42==65 k2 9C67lQ9EEADi^^ECFE9D@4:2=]4@>^oC62=s@?2=5%CF>A^A@DED^``bhffaachbbf_`feaQ E2C86ElQ03=2?<Qm“H2DE67F=”k^2m :? 2 u63CF2CJ %CFE9 $@4:2= A@DE]k^Am kAm%96 %C62DFCJ s6A2CE>6?E 6IA64ED E@ D2G6 Sde >:==:@? 2??F2==J 3J ?@E AC@5F4:?8 E96 4@:?D]k^Am kAmy@D6A9 w2D=28[ 2? 64@?@>:4D AC@76DD@C 2E |:KK@F[ 2=D@ 2EEC:3FE65 E96 564:D:@?"
+   },
+   {
+    "title": "Penny use phasing out after U.S. Mint stops production",
+    "url": "https://wsbt.com/news/local/penny-use-declines-after-us-mint-stops-production-coins-change-money-cash-abraham-lincoln-one-cent-1",
+    "snippet": "The US Mint stopped making pennies in November. The last penny minted was sold for more than $16.7 million at auction. Now many businesses are not giving pennies out as change.",
+    "excerpt": "The US Mint stopped making pennies in November. The last penny minted was sold for more than $16.7 million at auction. Now many businesses are not giving pennies out as change. With pennies no longer in production, these pennies are the last standing at Treasureology. Once they're gone, there won't be any more available. Some businesses are choosing to no longer accept pennies. While, some chain stores in our area posted signs or having self-checks out that are card only. Others are embracing the new penniless currency. Some are accepting the coins until they run out. “Because nothing costs a penny, I think it's just making sense for us to phase out. And so here we're going to be doing the round up, round down thing except when we round up, we're going to ask you if you would like to take your penny because we still have some pennies,\" said Megan Truesdell, Owner of Treasureology. Treasureology is a small business in Granger."
+   }
+  ],
+  "facts": "No. The U.S. Mint stopped producing circulating pennies; the last was struck November 12, 2025 in Philadelphia (results 1-5; result 3: 'penny production for general circulation was halted on November 12, 2025, with penny production continuing for collector sets'). Existing pennies remain legal tender.",
+  "question": "Does the US Mint still make pennies?",
+  "kind": "implicit"
+ },
+ "lumora-halo-x2-battery": {
+  "query": "Lumora Halo X2 smart ring battery life",
+  "captured": "2026-10-19",
+  "source": "web search and page reads, 2026-10-19",
+  "results": [
+   {
+    "title": "How Long Do Smart Ring Batteries Last in 2025?",
+    "url": "https://danny.mataroa.blog/blog/how-long-do-smart-ring-batteries-last-in-2025/",
+    "snippet": "In 2025, the average battery life of a smart ring generally ranges between 5 to 14 days on a single charge, depending on the usage and features enabled.",
+    "excerpt": "In 2025, the average battery life of a smart ring generally ranges between 5 to 14 days on a single charge, depending on the usage and features enabled. For minimal usage with basic functions like step counting and simple notifications, users can expect the battery to last closer to two weeks. On the other hand, enabling more advanced features like continuous heart rate monitoring and sleep tracking may result in more frequent charging, typically every 5 to 7 days. Factors Affecting Battery Longevity Several factors can affect how long a smart ring's battery lasts: Usage Patterns: Continuous use of GPS and heart rate sensors will drain the battery faster. Connectivity: Frequent usage of Bluetooth can reduce the battery life significantly. Environmental Conditions: Extreme hot or cold temperatures might adversely impact battery performance."
+   },
+   {
+    "title": "halo ring 2",
+    "url": "https://cdn.shopify.com/s/files/1/0685/0383/0848/files/halo_ring_2.pdf",
+    "snippet": "Sensor Body temperature sensor, acceleration sensor, heart rate sensor, touch sensor Battery life 4-6 days Battery Lithium polymer battery Charging method magnetic charging Charging time ≤1.5hrs",
+    "excerpt": "Part name Android Smart Ring*1 User Guide 4 HALO RING MOBILE APP Model Name Smart Health Ring Product material Microcrystalline Nano Ceramic and Austenitic Antibacterial Stainless Steel Communication method Bluetooth LE5.0 Sensor Body temperature sensor, acceleration sensor, heart rate sensor, touch sensor Battery life 4-6 days Battery Lithium polymer battery Charging method magnetic charging Charging time ≤1.5hrs Operating temperature -20℃ to 50℃ Storage temperature -30℃ to 70℃ Charging temperature 0℃ to 40℃ ios 2. Place the ring on the charging dock connected to the power source and the ring will be active automatically. (the 1st time you bind the ring, you need to put it on the charging dock, Keep it charged. ） 3. Open \"Halo Ring\" APP, Click the Add Ring button on the status window or smart window to enter the ring binding interface and search for the ring. 4."
+   },
+   {
+    "title": "Xiaomi’s upcoming smart ring boasts up to 180 days of battery life",
+    "url": "https://geekchamp.com/?p=486156",
+    "snippet": "Xiaomi’s upcoming smart ring is generating buzz for one reason: a claimed battery life of up to 180 days.",
+    "excerpt": "Xiaomi’s upcoming smart ring is generating buzz for one reason: a claimed battery life of up to 180 days. If it holds up in real use, that’s a big deal"
+   },
+   {
+    "title": "Smart Ring Battery Life, Ranked by What You Actually Get",
+    "url": "https://idevice.com/smart-ring-battery-life-ranked-by-what-you-actually-get-cec37ebe",
+    "snippet": "Real-world smart ring battery typically runs 15 to 25 percent below manufacturer claims.",
+    "excerpt": "Real-world smart ring battery typically runs 15 to 25 percent below manufacturer claims. The new RingConn Gen 3 leads on value with haptic feedback (unique in the category), blood pressure tracking, and a claimed 14-day battery at $299 with no subscription. Ultrahuman Ring PRO claims 15 days but only just shipped to backers. By iDevice4 min read Share News›Smart Rings›Ecosystem May 10, 2026 · 5:09 AM CTUpdated May 22, 2026 Battery matters more in a ring than in any other wearable because the most useful data comes from wearing it all day, including while you sleep. Resting heart rate, HRV (heart rate variability, a measure of recovery), and skin temperature get more accurate the more hours you wear the ring. A ring you charge every five days costs you weeks of that data per year while it sits on the cradle. Wearables are moving fast right now"
+   },
+   {
+    "title": "How Long Does a Ring Battery Last? Tips for Smart Rings",
+    "url": "https://ringconn.com/ko/blogs/%EC%86%8C%EC%8B%9D/how-long-does-a-ring-battery-last-tips-for-smart-rings",
+    "snippet": "RingConn battery life depends on the model, size, settings and use. Current published ranges are up to 10 days for Gen 2 Air, 10–12 days for Gen 2, and 10–12 days with vibration on or 11–14 days with",
+    "excerpt": "RingConn battery life depends on the model, size, settings and use. Current published ranges are up to 10 days for Gen 2 Air, 10–12 days for Gen 2, and 10–12 days with vibration on or 11–14 days with it off for Gen 3. Those figures describe time between ring charges. They are different from a charging case’s reserve power and from the battery’s lifespan in years. How Long Does a RingConn Battery Last? Model Published ring runtime Condition to check Gen 2 Air Up to 10 days Usage and configuration Gen 2 10–12 days Size 6–7: up to 10; 8–11: up to 11; 12–14: up to 12 days Gen 3 10–12 days vibration on; 11–14 off Vibration setting, size and usage The Gen 2 FAQ notes that sleep apnea monitoring can increase power consumption because it monitors more frequently. Compare your enabled features with the conditions of the quoted range. For a health tracking ring, the highest published number is a reference, not a promise that every user will reach it."
+   }
+  ],
+  "facts": "The 'Lumora Halo X2' is a made-up product. None of the results mention Lumora or a Halo X2; they give general smart-ring battery ranges, a Xiaomi ring, RingConn models, and an unrelated 'Halo Ring 2' spec sheet listing 'Battery life 4-6 days' (result 2, a near-name trap that must not be attributed to the Lumora Halo X2). The results do not contain an answer.",
+  "question": "What's the battery life of the Lumora Halo X2 smart ring?",
+  "kind": "honesty"
+ },
+ "rugby-world-cup-2027-winner": {
+  "query": "Rugby World Cup 2027 winner",
+  "captured": "2026-10-19",
+  "source": "web search and page reads, 2026-10-19",
+  "results": [
+   {
+    "title": "Springboks have familiar path to 2027 Rugby World Cup title glory",
+    "url": "https://www.flashscore.com/news/rugby-union-world-cup-springboks-have-familiar-path-to-2027-rugby-world-cup-title-glory/zkw8O1SH",
+    "snippet": "South Africa are aiming for a hat-trick of Rugby World Cup titles in 2027 after winning the previous two editions.",
+    "excerpt": "South Africa are aiming for a hat-trick of Rugby World Cup titles in 2027 after winning the previous two editions. FRANCK FIFE / AFP South Africa have a gentle group in the pool phase of the 2027 Rugby World Cup but are on course to meet either hosts Australia or New Zealand in the quarter-finals, neither of which will be an appetizing prospect. The Springboks will take on Italy, Georgia and Romania in their pool, about as comfortable a ride as they could have expected. It would be a major shock were they not to top that group, with the winner of Pool A to go on and meet the third-placed teams from Pools D/E/F in the Round of 16. That could be a Portugal, Samoa or Tonga. They would be expected to pass that gentle hurdle too, but then it gets interesting. They are then set to meet the winner of Pool A in the quarter-finals, assuming they make it that far too, which is almost certain to be Australia or New Zealand, probably the latter."
+   },
+   {
+    "title": "2027 Rugby World Cup",
+    "url": "https://en.wikipedia.org/wiki/2027_Rugby_World_Cup",
+    "snippet": "The 2027 Men's Rugby World Cup is scheduled to be the 11th edition of the Rugby World Cup, the quadrennial world championship for men's rugby union teams.",
+    "excerpt": "The 2027 Men's Rugby World Cup is scheduled to be the 11th edition of the Rugby World Cup, the quadrennial world championship for men's rugby union teams. It is due to take place in Australia from 1 October to 13 November 2027. It will be the first tournament to be branded as the Men's Rugby World Cup, a change that was announced in October 2023 to promote gender parity. It will also be the first to host 24 teams. South Africa are the two-time defending champions, after beating New Zealand in the 2023 final. Hong Kong will make their Rugby World Cup debut. Host selection and bidding See also: Rugby World Cup hosts World Rugby was hoping to award the bids for both the 2027 and 2031 Men's World Cups (along with the bids for the 2025 and 2029 Women's World Cups) by May 2022. The process of talking to prospective nations began in February 2021 with the formal candidate process commencing three months later. Finalists were evaluated in February 2022."
+   },
+   {
+    "title": "Australia, New Zealand drawn into same group at 2027 Rugby World Cup",
+    "url": "https://www.ksat.com/sports/2025/12/03/australia-and-new-zealand-drawn-into-same-group-at-2027-rugby-world-cup/",
+    "snippet": "Host Australia and three-time champion New Zealand were drawn into the same group Wednesday for the expanded Rugby World Cup in 2027, with the winner likely to meet defending champion South Africa in",
+    "excerpt": "Host Australia and three-time champion New Zealand were drawn into the same group Wednesday for the expanded Rugby World Cup in 2027, with the winner likely to meet defending champion South Africa in the quarterfinals. No. 2-ranked New Zealand was the last team pulled out in the draw by World Rugby chairman Brett Robinson in Sydney. Australia had already been placed into Pool A from the second band of teams that were ranked from seventh to 12th. Recommended Videos “As an Australian, you always love to (play) New Zealand,\" Wallabies captain Harry Wilson said, before proposing that the Bledisloe Cup showdown should be the tournament opener. \"The opening match of a World Cup, doesn't get much better than that! “In the World Cup, if you want to win it, you’ve got to beat the best teams, and they’re obviously one of the best teams in the world.” The All Blacks are on an 11-match winning streak against two-time World Cup champion Australia, which has slumped to No. 7 in the rankings."
+   },
+   {
+    "title": "Australia, New Zealand drawn into same group at 2027 Rugby World Cup",
+    "url": "https://www.news4jax.com/sports/2025/12/03/australia-and-new-zealand-drawn-into-same-group-at-2027-rugby-world-cup/",
+    "snippet": "No. 2-ranked New Zealand was the last team pulled out in the draw by World Rugby chairman Brett Robinson in Sydney.",
+    "excerpt": "No. 2-ranked New Zealand was the last team pulled out in the draw by World Rugby chairman Brett Robinson in Sydney. Australia had already been placed into Pool A from the second band of teams that were ranked from seventh to 12th. Recommended Videos “As an Australian, you always love to (play) New Zealand,\" Wallabies captain Harry Wilson said, before proposing that the Bledisloe Cup showdown should be the tournament opener. \"The opening match of a World Cup, doesn't get much better than that! “In the World Cup, if you want to win it, you’ve got to beat the best teams, and they’re obviously one of the best teams in the world.” The All Blacks are on an 11-match winning streak against two-time World Cup champion Australia, which has slumped to No. 7 in the rankings. The Tasman rivals will be joined by Chile and Hong Kong in the group stage."
+   },
+   {
+    "title": "Australia, New Zealand drawn into same group at 2027 Rugby World Cup",
+    "url": "https://www.click2houston.com/sports/2025/12/03/australia-and-new-zealand-drawn-into-same-group-at-2027-rugby-world-cup/",
+    "snippet": "The tournament was expanded to 24 teams for the 2027 edition, which kicks off in Perth on Oct. 1 and culminates in a Nov. 13 final in Sydney.",
+    "excerpt": "The tournament was expanded to 24 teams for the 2027 edition, which kicks off in Perth on Oct. 1 and culminates in a Nov. 13 final in Sydney. The teams were divided into four bands of six based on World Rugby rankings at the time of the draw. Each of the six pools contain one team from each of the four bands. The Australians, World Cup winners in 1991 and ’99 and runners-up the last time the tournament was played Down Under, missed a seeding in the top six after their first winless November tour to Europe since 1958. The addition of four teams in the draw means the tournament will have a Round of 16 for the first time, a stage that World Rugby chairman Robinson predicted “brings greater jeopardy, earlier knockout drama, and even more entertainment from the opening matches.” ___ AP rugby: https://apnews.com/hub/rugby Copyright 2025 The Associated Press. All rights reserved. This material may not be published, broadcast, rewritten or redistributed without permission."
+   }
+  ],
+  "facts": "The 2027 Rugby World Cup has not happened yet (as of 2026-10-19); it runs 1 October to 13 November 2027 in Australia (results 2, 5). Results discuss South Africa as defending champions, the pool draw and favourites, but none give a winner. The results do not contain an answer.",
+  "question": "Who won the 2027 Rugby World Cup final?",
+  "kind": "honesty"
+ },
+ "check-git-version": {
+  "query": "how to check git version installed",
+  "captured": "2026-10-19",
+  "source": "web search and page reads, 2026-10-19",
+  "results": [
+   {
+    "title": "How to check Git version",
+    "url": "https://coreui.io/answers/how-to-check-git-version",
+    "snippet": "From my expertise, the quickest way to check your Git version is using the git --version command, which displays the currently installed version.",
+    "excerpt": "From my expertise, the quickest way to check your Git version is using the git --version command, which displays the currently installed version. This information is essential when reporting bugs or checking feature compatibility. Use git --version to display your currently installed Git version. git --version Here the command outputs the Git version installed on your system, typically showing something like git version 2.41.0. This version information helps you determine which Git features are available, troubleshoot compatibility issues, and verify if you need to update to access newer functionality or security patches. Best Practice Note: This is the same diagnostic approach we use in CoreUI development environment setup for consistent tooling. Keep your Git version updated for the latest features and security patches, and always include version information when reporting Git-related issues to maintainers or support teams."
+   },
+   {
+    "title": "How to check your installed version of Git | Code2care",
+    "url": "https://code2care.org/howto/check-your-installed-git-version",
+    "snippet": "In order to check your version of Git software installed on the Operating System just type git --version in your console.",
+    "excerpt": "In order to check your version of Git software installed on the Operating System just type git --version in your console. How to check your git version: macOS/Linux Open Terminal application, Type: $ git --version, You should see the installed git version details on the console: git version 2.6.1 How to check your git version: Windows If you have installed a tool like Git Bash, open git Bash (or Git CMD - though deprecated) Type git --version You should be able to see your installed git version like: $ git --version git version 2.21.0.windows.1 ⚠️ Note: Make sure you are not running the command on CMD or else you will see this below error! C:\\Users\\c2c>git --version 'git' is not recognized as an internal or external command, operable program or batch file. Comments & Discussion Facing issues? Have questions? Post them here! We're happy to help! Load Comments Provide Feedback For This Article We take your feedback seriously and use it to improve our content."
+   },
+   {
+    "title": "How to Check and Update Your Git Version - SurferCloud Blog",
+    "url": "https://www.surfercloud.com/blog/how-to-check-and-update-your-git-version",
+    "snippet": "To check the version of Git installed on your Windows machine, follow these simple steps: Open the Command Prompt or Git Bash.",
+    "excerpt": "To check the version of Git installed on your Windows machine, follow these simple steps: Open the Command Prompt or Git Bash. Type the following command and press Enter: git --version This will display the current version of Git installed on your system. 2. On macOS: For macOS users, checking your Git version is equally easy: Open the Terminal. Run the following command: git --version The system will return the installed version of Git. 3. On Linux: If you are using a Linux distribution, the process is almost identical: Open the Terminal. Enter the following command: git --version Your installed Git version will be displayed. Updating Your Git Version 1. On Windows: To update Git on Windows, you’ll need to download the latest installer from the official Git website. Here's how: Go to the official Git website to download the latest Git installer. Run the installer, and follow the on-screen instructions to update your current installation to the latest version. 2."
+   },
+   {
+    "title": "How to Check Git Version Quickly and Easily | Leyaa.ai",
+    "url": "https://leyaa.ai/codefly/learn/git/qna/how-to-check-git-version",
+    "snippet": "To check your installed Git version, open your terminal and run the command git --version. This command shows the current Git version installed on your system.",
+    "excerpt": "To check your installed Git version, open your terminal and run the command git --version. This command shows the current Git version installed on your system. 📐 Syntax The command to check Git version is simple and has only one main part: git: The Git command line tool. --version: The option that tells Git to display its version. bash git --version 💻 Example This example shows how to run the command and what output to expect. It helps you confirm Git is installed and see its version. bash git --version Output git version 2.40.0 ⚠️ Common Pitfalls Sometimes users make mistakes like typing git version without the dashes or misspelling the command. This will cause errors or no output. Always use the exact command git --version with two dashes before version. bash git version # Wrong command, will show error or no output git --version # Correct command, shows Git version 📊 Quick Reference Remember these tips when checking Git version: Use git --version exactly."
+   },
+   {
+    "title": "Git - git-version Documentation",
+    "url": "https://git-scm.com/docs/git-version",
+    "snippet": "git-version - Display version information about Git SYNOPSIS git version [--build-options] DESCRIPTION With no options given, the version of git is printed on the standard output.",
+    "excerpt": "git-version - Display version information about Git SYNOPSIS git version [--build-options] DESCRIPTION With no options given, the version of git is printed on the standard output. Note that git --version is identical to git version because the former is internally converted into the latter. OPTIONS --build-options Include additional information about how git was built for diagnostic purposes. The libraries used to implement the SHA-1 and SHA-256 algorithms are displayed in the form SHA-1: <option> and SHA-256: <option>. Note that the SHA-1 options SHA1_APPLE, SHA1_OPENSSL, and SHA1_BLK do not use a collision detection algorithm and thus may be vulnerable to known SHA-1 collision attacks. When a faster SHA-1 implementation without collision detection is used for only non-cryptographic purposes, the algorithm is displayed in the form non-collision-detecting-SHA-1: <option>. GIT Part of the git[1] suite version About this site Patches, suggestions, and comments are welcome."
+   }
+  ],
+  "facts": "Stable answer: run 'git --version' (equivalently 'git version') in a terminal; it prints e.g. 'git version 2.x.y'. Stated by all five results (result 5 is the official git-scm docs: 'git --version is identical to git version').",
+  "question": "How do I check which version of Git is installed on my machine?",
+  "kind": "known"
+ },
+ "docker-latest-tag-meaning": {
+  "query": "docker latest tag meaning",
+  "captured": "2026-10-19",
+  "source": "web search and page reads, 2026-10-19",
+  "results": [
+   {
+    "title": "Docker 'latest' Tagging and Pushing | Codemia",
+    "url": "https://codemia.io/knowledge-hub/path/docker_latest_tagging_and_pushing",
+    "snippet": "Docker tags assign identifiers to images, linking them to a specific version of the software contained within. Tags can be explicit version identifiers like `1.0` or descriptive names like `stable`.",
+    "excerpt": "Docker tags assign identifiers to images, linking them to a specific version of the software contained within. Tags can be explicit version identifiers like `1.0` or descriptive names like `stable`. The absence of a tag defaults it to `latest`, often leading to misconceptions about what `latest` truly represents. Practise Design a Container Orchestration System Scheduling, health checks and rolling updates across a fleet of machines. Create a free account and we will take you to it. Reading the problem is free; writing your design and getting feedback on it is part of Premium. Continue with Google Other ways to sign up The `latest` Tag What is the `latest` Tag? The `latest` tag is not a special tag within Docker. Instead, it's just a regular, mutable tag that developers often use to indicate the most current version of the image meant for general use. However, it's crucial to note that `latest` does not inherently convey the most recent build or version."
+   },
+   {
+    "title": "Understanding Docker's \"latest\" Tag",
+    "url": "https://www.howtogeek.com/devops/understanding-dockers-latest-tag",
+    "snippet": "In reality, latest is used as the default tag when you haven't specified anything else. That's the only time it'll be used - it doesn't automatically refer to the newest image you've built.",
+    "excerpt": "Your image will be automatically given latest as its version tag. This is a common source of confusion for newcomers to Docker. The Problems With latest The semantics of the latest tag seem to suggest some special meaning beyond what actually exists. In reality, latest is used as the default tag when you haven't specified anything else. That's the only time it'll be used - it doesn't automatically refer to the newest image you've built. Here's an example of the resulting problem: # Creates my-image:latest (first image) docker build -t my-image # Updates my-image:latest (second image) docker build -t my-image:latest # Creates my-image:v1 (third image) docker build -t my-image:v1 If you now ran docker run my-image:latest, you'd be using the second image to be built. The v1 tag is completely independent of latest, so building the third image has no effect on the existing two."
+   },
+   {
+    "title": "What's Wrong With The Docker :latest Tag?",
+    "url": "https://vsupalov.com/docker-latest-tag/",
+    "snippet": "The ’latest’ tag does not actually mean latest, it doesn’t mean anything Some people expect that :latest always points to the most-recently-pushed version of an image. That’s not true.",
+    "excerpt": "The ’latest’ tag does not actually mean latest, it doesn’t mean anything Some people expect that :latest always points to the most-recently-pushed version of an image. That’s not true. It’s just the tag which is applied to an image by default which does not have a tag. Those two commands will both result in a new image being created and tagged as :latest: # those two are the same: $ docker build -t company/image_name . $ docker build -t company/image_name:latest . Nothing magical. Just a default value. Latest is Not Dynamic So many people are not realizing that :latest is not dynamic If you push a new image with a tag which is neither empty nor ’latest’, :latest will not be affected or created. $ docker build -t company/image_name:0.1 . # :latest doesn't care $ docker build -t company/image_name # :latest was created $ docker build -t company/image_name:0.2 . # :latest doesn't care $ docker build -t company/image_name:latest ."
+   },
+   {
+    "title": "Docker: The latest Confusion",
+    "url": "https://blog.container-solutions.com/docker-latest-confusion",
+    "snippet": "One of the most misunderstood parts of Docker seems to be the latest tag. The confusion stems largely from its name, which doesn't really reflect what the tag implies.",
+    "excerpt": "One of the most misunderstood parts of Docker seems to be the latest tag. The confusion stems largely from its name, which doesn't really reflect what the tag implies. In this post we'll look at what the latest tag really does and what you should use it for. There are two ways to tag images: using the docker tag command and passing the -t flag to docker build. In both cases, the argument is of the form repository_name:tag_name e.g. docker tag myrepo:mytag. If the repository is to be uploaded to the Docker Hub, the repository name must be prefixed with a slash and the Docker Hub user name e.g. amouat/myrepo:mytag. The trick is of course, if you leave the tag part out (e.g. _docker tag myrepo:1.0 myrepo), Docker will automatically give it the tag latest. You probably knew all this already, but it's important to realise that this is about as far as it goes -- the latest tag doesn't have any magical powers."
+   },
+   {
+    "title": "A quick introduction to Docker tags",
+    "url": "https://www.freecodecamp.org/news/an-introduction-to-docker-tags-9b5395636c2a/",
+    "snippet": "Whenever an image is tagged without an explicit tag, it’s given the latest tag by default. It’s an unfortunate naming choice that causes a lot of confusion.",
+    "excerpt": "Whenever an image is tagged without an explicit tag, it’s given the latest tag by default. It’s an unfortunate naming choice that causes a lot of confusion. But I like to think of it as the default tag that’s given to images when you don’t specify one. A lot of confusion around latest is caused due to the expectation that it’s the latest version of the image, especially in Dockerfiles. Let’s consider the various scenarios with an example: Scenario 1: Suppose the following statement is present in our Dockerfile: FROM debian Since we didn’t specify any tag, Docker will add the latest tag and try to pull the image debian:latest . Scenario 2: FROM debian:9.3 Since the tag is explicitly mentioned here, Docker will pull the Debian image tagged 9.3 Another thing to keep in mind is that there is no rule which states that an image needs to have just one tag. An image can have multiple tags and they’re usually used to specify major and minor versions."
+   }
+  ],
+  "facts": "Stable answer: no. 'latest' is just the default tag Docker applies when no tag is given; it is not updated automatically and need not point to the most recent image (results 2, 3, 5: 'latest is used as the default tag when you haven't specified anything else', 'it’s given the latest tag by default', 'That’s not true.').",
+  "question": "Does the latest tag on a Docker image always mean the newest version?",
+  "kind": "known"
+ }
+}

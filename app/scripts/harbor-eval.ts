@@ -10,7 +10,11 @@
 //   pnpm --filter oscode-app eval:harbor --cases bar-chart,fix-sum
 //   pnpm --filter oscode-app eval:harbor --replies replies.jsonl
 //   pnpm --filter oscode-app eval:harbor --harness-only --sections code
+//   pnpm --filter oscode-app eval:harbor --sections code --think-budget 1024
 //
+// A coding request thinks first with a capped thought, as on the phone
+// (harborThinks, HARBOR_THINK_BUDGET). --think-budget <n> tries another
+// budget; 0 answers every turn at once, the way Harbor did before.
 // --harness-only runs only the harness half (the bare half reads "not run"),
 // the quicker pass while one lever is tried; the number that is recorded
 // comes from a whole run.
@@ -38,7 +42,12 @@ import {
   type HarborSection,
 } from '../src/lib/harborEval.js';
 import { runCodeInVm as runCode } from './harborEvalCode.js';
-import { HARBOR_CONTEXT_TOKENS, HARBOR_SAMPLING } from '../src/lib/harbor.js';
+import {
+  HARBOR_CONTEXT_TOKENS,
+  HARBOR_SAMPLING,
+  HARBOR_THOUGHT_CUTOFF,
+} from '../src/lib/harbor.js';
+import type { DeviceTurnShape } from '../src/drivers/deviceModel.js';
 
 const args = process.argv.slice(2);
 const flag = (name: string) => {
@@ -46,7 +55,9 @@ const flag = (name: string) => {
   return i >= 0 ? args[i + 1] : undefined;
 };
 const flagValues = new Set(
-  ['--sections', '--cases', '--out', '--replies', '--resume'].map(flag).filter(Boolean),
+  ['--sections', '--cases', '--out', '--replies', '--resume', '--think-budget']
+    .map(flag)
+    .filter(Boolean),
 );
 const resume = flag('--resume');
 const prior: HarborRun[] = resume
@@ -61,6 +72,7 @@ const model = args.find((a) => !a.startsWith('--') && !flagValues.has(a)) ?? 'qw
 const host = process.env.OLLAMA_HOST ?? 'http://127.0.0.1:11434';
 const sections = flag('--sections')?.split(',') as HarborSection[] | undefined;
 const ids = flag('--cases')?.split(',');
+const thinkBudget = flag('--think-budget');
 const fixtures = join(dirname(fileURLToPath(import.meta.url)), 'harbor-eval');
 
 async function post(path: string, body: unknown): Promise<Response> {
@@ -112,24 +124,106 @@ async function chat(
   return { ok: true, data: { ...done, content } };
 }
 
-// Thinking stays off, as Harbor runs with Chain of Thought off. A model with no
-// thinking switch may refuse the field, so it is sent once and then dropped.
+/** Ollama's names for a turn's sampling. */
+function ollamaSampling(shape: DeviceTurnShape) {
+  const s = shape.sampling;
+  return {
+    temperature: s.temperature,
+    top_k: s.topK,
+    top_p: s.topP,
+    min_p: s.minP,
+    repeat_penalty: s.repeatPenalty,
+  };
+}
+
+/** One streamed /api/generate answer on a raw prompt, read to its end. */
+async function generate(
+  prompt: string,
+  options: Record<string, unknown>,
+): Promise<{ text: string; done: Omit<ChatDone, 'content'> & { done_reason?: string } }> {
+  let res = await post('/api/generate', { model, raw: true, stream: true, prompt, options });
+  if (!res.ok) {
+    const error = await res.text();
+    // The box ran out of memory and the kernel stopped the runner: once more,
+    // as a turn without a thought is.
+    if (!/runner has unexpectedly stopped/i.test(error)) {
+      throw new Error(`Ollama answered ${res.status}: ${error}`);
+    }
+    console.log('  (the model runner stopped; asking once more)');
+    await new Promise((r) => setTimeout(r, 10_000));
+    res = await post('/api/generate', { model, raw: true, stream: true, prompt, options });
+    if (!res.ok) throw new Error(`Ollama answered ${res.status}: ${await res.text()}`);
+  }
+  let text = '';
+  let done = {};
+  for (const line of (await res.text()).split('\n')) {
+    if (!line.trim()) continue;
+    const chunk = JSON.parse(line) as { response?: string; error?: string; done?: boolean };
+    if (chunk.error) throw new Error(chunk.error);
+    text += chunk.response ?? '';
+    if (chunk.done) done = chunk;
+  }
+  return { text, done };
+}
+
+/** A turn that thinks, asked the way the phone's runner asks it (LlamaRunner,
+ *  PromptFormat): the ChatML prompt ends on the open thought; the thought runs
+ *  to its end tag or its budget, a cut thought is closed with the cutoff
+ *  words, and the answer then gets its own cap. Ollama re-reads the prompt for
+ *  the answer, which the phone does not, so that second read is not counted. */
+async function thinkingTurn(
+  system: string,
+  messages: Array<{ role: string; content: string; images?: string[] }>,
+  shape: DeviceTurnShape,
+) {
+  if (messages.some((m) => m.images?.length)) throw new Error('A thinking turn with pictures has no raw path here.');
+  const chatml =
+    `<|im_start|>system\n${system}<|im_end|>\n` +
+    messages.map((m) => `<|im_start|>${m.role}\n${m.content}<|im_end|>\n`).join('') +
+    '<|im_start|>assistant\n<think>\n';
+  const options = { num_ctx: HARBOR_CONTEXT_TOKENS, ...ollamaSampling(shape) };
+  const thought = await generate(chatml, {
+    ...options,
+    num_predict: shape.thinkBudget,
+    stop: ['</think>'],
+  });
+  const cut = thought.done.done_reason === 'length';
+  const close = cut ? HARBOR_THOUGHT_CUTOFF : '\n</think>\n\n';
+  const answer = await generate(chatml + thought.text + close, {
+    ...options,
+    num_predict: shape.maxTokens,
+  });
+  return {
+    text: `<think>\n${thought.text}${close}${answer.text}`,
+    promptTokens: thought.done.prompt_eval_count,
+    promptMs: thought.done.prompt_eval_duration ? thought.done.prompt_eval_duration / 1e6 : undefined,
+    outputTokens: (thought.done.eval_count ?? 0) + (answer.done.eval_count ?? 0),
+    outputMs: ((thought.done.eval_duration ?? 0) + (answer.done.eval_duration ?? 0)) / 1e6,
+    thoughtTokens: thought.done.eval_count,
+    thoughtCut: cut,
+  };
+}
+
+// Thinking stays off unless the turn's shape says it thinks (a coding request
+// with the harness). A model with no thinking switch may refuse the field, so
+// it is sent once and then dropped.
 let thinkField = true;
-const complete: HarborComplete = async ({ system, messages, harness }) => {
-  // With the harness: Harbor's window, reply cap and sampling
-  // (lib/harbor.ts, drivers/onDeviceDriver.ts). Without: the same window and
+const complete: HarborComplete = async ({ system, messages, harness, shape: asked }) => {
+  // --think-budget: another budget for a thinking turn, or 0 for none.
+  const shape =
+    asked?.thinking && thinkBudget !== undefined
+      ? Number(thinkBudget) > 0
+        ? { ...asked, thinkBudget: Number(thinkBudget) }
+        : { ...asked, thinking: false, thinkBudget: 0, sampling: { ...HARBOR_SAMPLING } }
+      : asked;
+  if (harness && shape?.thinking) return thinkingTurn(system, messages, shape);
+  // With the harness: Harbor's window, reply cap and sampling, the phone's
+  // own (lib/harbor.ts, drivers/deviceModel.ts). Without: the same window and
   // cap, and Ollama's own sampling.
-  const options = harness
-    ? {
-        num_ctx: HARBOR_CONTEXT_TOKENS,
-        num_predict: HARBOR_EVAL_REPLY_TOKENS,
-        temperature: HARBOR_SAMPLING.temperature,
-        top_k: HARBOR_SAMPLING.topK,
-        top_p: HARBOR_SAMPLING.topP,
-        min_p: HARBOR_SAMPLING.minP,
-        repeat_penalty: HARBOR_SAMPLING.repeatPenalty,
-      }
-    : { num_ctx: HARBOR_CONTEXT_TOKENS, num_predict: HARBOR_EVAL_REPLY_TOKENS };
+  const options =
+    harness && shape
+      ? { num_ctx: HARBOR_CONTEXT_TOKENS, num_predict: shape.maxTokens, ...ollamaSampling(shape) }
+      : { num_ctx: HARBOR_CONTEXT_TOKENS, num_predict: HARBOR_EVAL_REPLY_TOKENS };
   // Streamed, so the answer's headers arrive with its first word: fetch gives
   // up on headers after 300 s, and a slow box writing a long reply in one
   // piece takes longer. The last line carries the same counts and timings.
@@ -190,14 +284,28 @@ const result = await runHarborEval({
       reply.outputTokens && reply.outputMs
         ? `  ${(reply.outputTokens / (reply.outputMs / 1000)).toFixed(1)} tok/s`
         : '';
+    const thought =
+      reply.thoughtTokens !== undefined
+        ? `  thought ${reply.thoughtTokens}${reply.thoughtCut ? ' (cut)' : ''}`
+        : '';
     console.log(
-      `${run.section.padEnd(9)} ${run.id.padEnd(16)} with ${pct(run.withHarness.score)}  without ${pct(run.without.score)}${speed}${misses}`,
+      `${run.section.padEnd(9)} ${run.id.padEnd(16)} with ${pct(run.withHarness.score)}  without ${pct(run.without.score)}${speed}${thought}${misses}`,
     );
     if (replies) appendFileSync(replies, `${JSON.stringify(run)}\n`);
   },
 });
 const seconds = Math.round((Date.now() - started) / 1000);
-const table = harborEvalTable(model, result, seconds);
+// How long a coding request takes with the harness: reading the prompt,
+// the thought and the answer, on this box.
+const thinking = result.runs.map((r) => r.withHarness.reply).filter((r) => r.thoughtTokens !== undefined);
+const codingLine = thinking.length
+  ? `\nA coding request with its thought: ${(
+      thinking.reduce((t, r) => t + ((r.promptMs ?? 0) + (r.outputMs ?? 0)) / 1000, 0) / thinking.length
+    ).toFixed(0)}s on average, ${Math.round(
+      thinking.reduce((t, r) => t + (r.thoughtTokens ?? 0), 0) / thinking.length,
+    )} thought tokens, ${thinking.filter((r) => r.thoughtCut).length} of ${thinking.length} cut at the budget.`
+  : '';
+const table = harborEvalTable(model, result, seconds) + codingLine;
 const out =
   flag('--out') ??
   `harbor-eval-${model.replace(/[^A-Za-z0-9.]+/g, '-')}-${new Date().toISOString().slice(0, 10)}.md`;

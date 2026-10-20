@@ -57,6 +57,86 @@ describe('the cases', () => {
     }
   });
 
+  // A right answer for every code case, so no case asks for what its tests
+  // cannot pass, and a new code case is not done until it has one here.
+  const RIGHT: Record<string, string> = {
+    'reverse-emoji': 'function reverseString(s) { return [...s].reverse().join(""); }',
+    palindrome:
+      'function isPalindrome(s) { const t = s.toLowerCase().replace(/[^a-z0-9]/g, ""); return t === [...t].reverse().join(""); }',
+    chunk:
+      'function chunk(arr, size) { const out = []; for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size)); return out; }',
+    'parse-query': `function parseQuery(qs) {
+      const out = {};
+      for (const [k, v] of new URLSearchParams(qs)) {
+        if (!(k in out)) out[k] = v;
+        else out[k] = [].concat(out[k], v);
+      }
+      return out;
+    }`,
+    'fix-sum':
+      'function sum(arr) { let t = 0; for (let i = 0; i < arr.length; i++) t += arr[i]; return t; }',
+    'group-by':
+      'function groupBy(items, keyFn) { const out = {}; for (const x of items) (out[keyFn(x)] ??= []).push(x); return out; }',
+    'camel-case': `function camelCase(s) {
+      return s.split(/[\\s_-]+/).filter(Boolean).map((w, i) =>
+        i ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w.toLowerCase()).join('');
+    }`,
+    retry: `async function retry(fn, times) {
+      let last;
+      for (let i = 0; i < times; i++) {
+        try { return await fn(); } catch (e) { last = e; }
+      }
+      throw last;
+    }`,
+    'title-case':
+      'function titleCase(s) { return s.split(" ").map((w) => w && w[0].toUpperCase() + w.slice(1).toLowerCase()).join(" "); }',
+    flatten:
+      'function flatten(arr) { return arr.reduce((out, x) => out.concat(Array.isArray(x) ? flatten(x) : [x]), []); }',
+    'unique-by':
+      'function uniqueBy(items, keyFn) { const seen = new Set(); return items.filter((x) => { const k = keyFn(x); if (seen.has(k)) return false; seen.add(k); return true; }); }',
+    'char-count': 'function charCount(s) { return [...s].length; }',
+    'format-bytes': `function formatBytes(n) {
+      const units = ['B', 'KB', 'MB', 'GB'];
+      let i = 0;
+      while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
+      return Number(n.toFixed(1)) + ' ' + units[i];
+    }`,
+    'map-series':
+      'async function mapSeries(items, fn) { const out = []; for (const x of items) out.push(await fn(x)); return out; }',
+    'csv-line': `function parseCsvLine(line) {
+      const out = [];
+      let field = '';
+      let quoted = false;
+      for (let i = 0; i < line.length; i++) {
+        const c = line[i];
+        if (quoted) {
+          if (c === '"' && line[i + 1] === '"') { field += '"'; i++; }
+          else if (c === '"') quoted = false;
+          else field += c;
+        } else if (c === '"') quoted = true;
+        else if (c === ',') { out.push(field); field = ''; }
+        else field += c;
+      }
+      out.push(field);
+      return out;
+    }`,
+    range: `function range(start, end, step = 1) {
+      const out = [];
+      for (let i = start; step > 0 ? i < end : i > end; i += step) out.push(i);
+      return out;
+    }`,
+  };
+
+  it('ask for code a right answer passes', async () => {
+    const coded = HARBOR_EVAL_CASES.filter((c) => c.code);
+    expect(coded.length).toBeGreaterThanOrEqual(16);
+    for (const c of coded) {
+      expect(RIGHT[c.id], `a right answer for ${c.id}`).toBeDefined();
+      const ran = await runCodeInVm(RIGHT[c.id], c.code!.tests, c.code!.fn);
+      expect(ran, c.id).toEqual({ ok: true });
+    }
+  }, 60_000);
+
   it('keep every picture checked in, at most 700 pixels a side', () => {
     const names = new Set(HARBOR_EVAL_CASES.flatMap((c) => c.pictures ?? []));
     expect(names.size).toBeGreaterThanOrEqual(8);

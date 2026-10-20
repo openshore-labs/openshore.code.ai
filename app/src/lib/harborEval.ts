@@ -18,9 +18,9 @@
 // the model, the pictures and the code runner are injected
 // (scripts/harbor-eval.ts runs it against Ollama on the reference box).
 import { NO_SEARCH_NOTE } from 'os-code/protocol';
-import { deviceMessages } from '../drivers/deviceModel.js';
+import { deviceMessages, deviceTurnShape, type DeviceTurnShape } from '../drivers/deviceModel.js';
 import { GUIDE_EVAL_CASES } from './guideEval.js';
-import { HARBOR_CONTEXT_TOKENS, buildHarborSystemPrompt } from './harbor.js';
+import { HARBOR_CONTEXT_TOKENS, HARBOR_MODEL_ID, buildHarborSystemPrompt } from './harbor.js';
 
 export type HarborSection = 'code' | 'pictures' | 'app' | 'limits' | 'everyday';
 
@@ -169,6 +169,124 @@ const CODE_CASES: HarborEvalCase[] = [
         let caught;
         try { await retry(never, 2); } catch (e) { caught = e; }
         if (!caught || caught.message !== 'last 2' || n !== 2) throw new Error('gives up after two');`,
+    },
+  },
+  // The second eight (2026-10-19) were written before any model answered
+  // them, so a lever drawn from the first eight's misses is judged on cases
+  // it was not written from, and the section moves in smaller steps.
+  {
+    id: 'title-case',
+    section: 'code',
+    message:
+      "Write a JavaScript function titleCase(s) that capitalizes the first letter of every word and lowercases the rest, so 'hELLO wORLD' becomes 'Hello World'.",
+    code: {
+      fn: 'titleCase',
+      tests: `
+        if (titleCase('hELLO wORLD') !== 'Hello World') throw new Error('mixed');
+        if (titleCase('a') !== 'A') throw new Error('one letter');
+        if (titleCase('') !== '') throw new Error('empty');`,
+    },
+  },
+  {
+    id: 'flatten',
+    section: 'code',
+    message:
+      'Write a JavaScript function flatten(arr) that flattens nested arrays to any depth, keeping the order.',
+    code: {
+      fn: 'flatten',
+      tests: `
+        const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+        if (!same(flatten([1, [2, [3, [4]]], 5]), [1, 2, 3, 4, 5])) throw new Error('deep');
+        if (!same(flatten([[], [[]]]), [])) throw new Error('empty arrays');`,
+    },
+  },
+  {
+    id: 'unique-by',
+    section: 'code',
+    message:
+      'Write a JavaScript function uniqueBy(items, keyFn) that keeps only the first item for each key, in their original order.',
+    code: {
+      fn: 'uniqueBy',
+      tests: `
+        const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+        const got = uniqueBy([{ id: 1, v: 'a' }, { id: 2, v: 'b' }, { id: 1, v: 'c' }], (x) => x.id);
+        if (!same(got, [{ id: 1, v: 'a' }, { id: 2, v: 'b' }])) throw new Error('first wins');`,
+    },
+  },
+  {
+    id: 'char-count',
+    section: 'code',
+    message:
+      'Write a JavaScript function charCount(s) that returns how many characters a string has, counting an emoji such as 🚢 as one character.',
+    code: {
+      fn: 'charCount',
+      tests: `
+        if (charCount('abc') !== 3) throw new Error('abc');
+        if (charCount('a🚢b') !== 3) throw new Error('emoji');
+        if (charCount('') !== 0) throw new Error('empty');`,
+    },
+  },
+  {
+    id: 'format-bytes',
+    section: 'code',
+    message:
+      "Write a JavaScript function formatBytes(n) that formats a byte count with units B, KB, MB and GB at 1024 per step, with at most one decimal and no trailing .0, so 1536 becomes '1.5 KB' and 1024 becomes '1 KB'.",
+    code: {
+      fn: 'formatBytes',
+      tests: `
+        if (formatBytes(0) !== '0 B') throw new Error('zero');
+        if (formatBytes(1024) !== '1 KB') throw new Error('1 KB');
+        if (formatBytes(1536) !== '1.5 KB') throw new Error('1.5 KB');
+        if (formatBytes(1048576) !== '1 MB') throw new Error('1 MB');`,
+    },
+  },
+  {
+    id: 'map-series',
+    section: 'code',
+    message:
+      'Write a JavaScript async function mapSeries(items, fn) that calls the async function fn on each item one after another, never two at once, and resolves to the results in order.',
+    code: {
+      fn: 'mapSeries',
+      tests: `
+        let running = 0;
+        let most = 0;
+        const slow = async (x) => {
+          running += 1; most = Math.max(most, running);
+          await new Promise((r) => setTimeout(r, 5));
+          running -= 1;
+          return x * 2;
+        };
+        const got = await mapSeries([1, 2, 3], slow);
+        if (JSON.stringify(got) !== '[2,4,6]') throw new Error('results');
+        if (most !== 1) throw new Error('two at once');`,
+    },
+  },
+  {
+    id: 'csv-line',
+    section: 'code',
+    message:
+      'Write a JavaScript function parseCsvLine(line) that splits one CSV line into its fields. A field in double quotes may hold commas, and two double quotes inside it stand for one.',
+    code: {
+      fn: 'parseCsvLine',
+      tests: `
+        const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+        if (!same(parseCsvLine('a,b,c'), ['a', 'b', 'c'])) throw new Error('plain');
+        if (!same(parseCsvLine('a,"b,c",d'), ['a', 'b,c', 'd'])) throw new Error('quoted comma');
+        if (!same(parseCsvLine('"say ""hi""",x'), ['say "hi"', 'x'])) throw new Error('doubled quote');`,
+    },
+  },
+  {
+    id: 'range',
+    section: 'code',
+    message:
+      'Write a JavaScript function range(start, end, step = 1) like Python\'s range: end is left out, and a negative step counts down.',
+    code: {
+      fn: 'range',
+      tests: `
+        const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+        if (!same(range(0, 5), [0, 1, 2, 3, 4])) throw new Error('up');
+        if (!same(range(5, 0, -2), [5, 3, 1])) throw new Error('down');
+        if (!same(range(0, 0), [])) throw new Error('empty');`,
     },
   },
 ];
@@ -422,6 +540,10 @@ export interface HarborRequest {
   messages: Array<{ role: 'user' | 'assistant'; content: string; images?: string[] }>;
   /** true: Harbor's own window and sampling; false: the server's defaults. */
   harness: boolean;
+  /** With the harness: how the phone asks this turn (whether it thinks, the
+   *  thought's budget, the answer's cap and the sampling), by the same rule
+   *  the drivers use (deviceTurnShape). */
+  shape?: DeviceTurnShape;
 }
 
 export interface HarborReply {
@@ -431,6 +553,9 @@ export interface HarborReply {
   promptMs?: number;
   outputTokens?: number;
   outputMs?: number;
+  /** A turn that thought: the thought's tokens, and whether its budget cut it. */
+  thoughtTokens?: number;
+  thoughtCut?: boolean;
 }
 
 export type HarborComplete = (request: HarborRequest) => Promise<HarborReply>;
@@ -458,12 +583,17 @@ export function harborEvalRequest(
   const turn = images.length
     ? { role: 'user' as const, content: c.message, images }
     : { role: 'user' as const, content: c.message };
+  if (!harness) return { system, messages: [turn], harness };
+  const shape = deviceTurnShape(
+    HARBOR_MODEL_ID,
+    { content: c.message, pictures: images.length > 0 },
+    { cot: false, guide: false, base: HARBOR_EVAL_REPLY_TOKENS, temperature: 0.7 },
+  );
   return {
     system,
-    messages: harness
-      ? deviceMessages(system, [turn], HARBOR_EVAL_REPLY_TOKENS, HARBOR_CONTEXT_TOKENS)
-      : [turn],
+    messages: deviceMessages(system, [turn], shape.replyRoom, HARBOR_CONTEXT_TOKENS),
     harness,
+    shape,
   };
 }
 
