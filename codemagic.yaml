@@ -39,6 +39,11 @@ workflows:
         # repo picker can send a person with no installation to the install
         # page. Public, not a secret; the client id stays in the group.
         VITE_GITHUB_APP_SLUG: openshore-code
+        # A timing line under each on-device reply, for measuring Harbor on an
+        # iPhone (prompt, thought and answer, in tokens and seconds). Measurement
+        # builds only: set it back to "0" (or remove it) before a build goes to
+        # anyone but the maintainer (2026-10-19, claude/harbor-vision).
+        VITE_HARBOR_TIMING: "1"
         # An iOS build never launches Electron. Skip the Electron binary
         # download in the electron package's install script, and skip the
         # electron-rebuild of node-pty in the app's postinstall

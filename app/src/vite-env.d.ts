@@ -7,6 +7,9 @@ interface ImportMetaEnv {
   /** The release tier this build carries: unset is 1 (Personal); 2, 3 or 4
    *  add that tier and every one before it (src/lib/focus.ts). */
   readonly VITE_RELEASE_TIER?: string;
+  /** "1" adds a timing line under each on-device reply (drivers/deviceModel.ts,
+   *  DEVICE_TIMING): for a device measurement build only, never a store build. */
+  readonly VITE_HARBOR_TIMING?: string;
   readonly VITE_SUPABASE_ANON_KEY?: string;
   readonly VITE_STRIPE_PUBLISHABLE_KEY?: string;
   readonly VITE_GDRIVE_IOS_CLIENT_ID?: string;

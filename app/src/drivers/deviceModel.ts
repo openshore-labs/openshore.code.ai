@@ -13,8 +13,11 @@ import {
   HARBOR_IMAGE_TOKENS,
   HARBOR_MAX_IMAGES,
   HARBOR_SAMPLING,
+  HARBOR_THINK_BUDGET,
+  HARBOR_THINK_SAMPLING,
   HARBOR_VISION_MODEL_ID,
   harborReadsImages,
+  harborThinks,
   isHarbor,
 } from '../lib/harbor.js';
 
@@ -65,6 +68,75 @@ export function deviceSamplingFor(
   temperature: number,
 ): { temperature: number; topK?: number; topP?: number; minP?: number; repeatPenalty?: number } {
   return isHarbor(modelId) ? { ...HARBOR_SAMPLING } : { temperature };
+}
+
+/** How one device turn is asked for: whether it thinks, whether its thought
+ *  shows, the answer's cap, the thought's budget (0: none, the thought shares
+ *  the cap), the room to keep free in the window, and its sampling. A Harbor
+ *  coding request thinks first with a capped thought and shows it, so a reply
+ *  that takes a while visibly works; Chain of Thought keeps its doubled cap on
+ *  every other turn. */
+export interface DeviceTurnShape {
+  thinking: boolean;
+  showThought: boolean;
+  maxTokens: number;
+  thinkBudget: number;
+  replyRoom: number;
+  sampling: ReturnType<typeof deviceSamplingFor>;
+}
+
+/** The thought's cutoff words, counted generously, kept free beside the budget. */
+const CUTOFF_ROOM = 64;
+
+export function deviceTurnShape(
+  modelId: string,
+  last: { content: string; pictures: boolean } | undefined,
+  opts: { cot: boolean; guide: boolean; base: number; temperature: number },
+): DeviceTurnShape {
+  if (isHarbor(modelId) && !opts.guide && last && harborThinks(last.content, last.pictures)) {
+    return {
+      thinking: true,
+      showThought: true,
+      maxTokens: opts.base,
+      thinkBudget: HARBOR_THINK_BUDGET,
+      replyRoom: opts.base + HARBOR_THINK_BUDGET + CUTOFF_ROOM,
+      sampling: { ...HARBOR_THINK_SAMPLING },
+    };
+  }
+  const cot = opts.cot && !opts.guide;
+  const maxTokens = cot ? opts.base * 2 : opts.base;
+  return {
+    thinking: cot,
+    showThought: cot,
+    maxTokens,
+    thinkBudget: 0,
+    replyRoom: maxTokens,
+    sampling: deviceSamplingFor(modelId, opts.temperature),
+  };
+}
+
+/** A test build's timing line under each reply (VITE_HARBOR_TIMING=1, set
+ *  only for a device measurement build): what the prompt, the thought and the
+ *  answer took on this device. Never on in a store build. */
+export const DEVICE_TIMING = import.meta.env?.VITE_HARBOR_TIMING === '1';
+
+export function deviceTimingLine(s: {
+  promptTokens: number;
+  promptSeconds: number;
+  thoughtTokens: number;
+  thoughtSeconds: number;
+  answerTokens: number;
+  answerSeconds: number;
+}): string {
+  const n = (x: number) => x.toLocaleString('en-US');
+  const sec = (x: number) => `${x.toFixed(1)} s`;
+  const rate = (tokens: number, seconds: number) =>
+    seconds > 0 ? `, ${(tokens / seconds).toFixed(1)} tokens/s` : '';
+  const thought = s.thoughtTokens
+    ? `; thought ${n(s.thoughtTokens)} tokens in ${sec(s.thoughtSeconds)}${rate(s.thoughtTokens, s.thoughtSeconds)}`
+    : '';
+  const total = s.promptSeconds + s.thoughtSeconds + s.answerSeconds;
+  return `Timing on this device: read the prompt (${n(s.promptTokens)} tokens) in ${sec(s.promptSeconds)}${thought}; answered ${n(s.answerTokens)} tokens in ${sec(s.answerSeconds)}${rate(s.answerTokens, s.answerSeconds)}; ${sec(total)} in all.`;
 }
 
 /** Whether this device model reads pictures right now. */

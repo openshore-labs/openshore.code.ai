@@ -55,7 +55,7 @@ import {
   deviceLoadFor,
   deviceMessages,
   devicePictures,
-  deviceSamplingFor,
+  deviceTurnShape,
   emptyReplyMessage,
   ensureDeviceModel,
   forgetDeviceModel,
@@ -133,7 +133,7 @@ import type { SeedTurn } from '../state/types.js';
 import { byomSecretKey, byomWireOf } from '../lib/byom.js';
 import { addressAnthropic } from './addressClient.js';
 import { isCurrentBenchId } from '../lib/currents.js';
-import { buildHarborSystemPrompt, isHarbor } from '../lib/harbor.js';
+import { buildHarborSystemPrompt, harborSearchesByDefault, isHarbor } from '../lib/harbor.js';
 import { buildHarborMiniSystemPrompt, guidedSetupLine, isHarborMini } from '../lib/harborMini.js';
 import {
   prepareGuideTurn,
@@ -656,6 +656,12 @@ export class StackDriver implements ChatDriver {
   private cot = false;
   private thinkSplitter = new ThinkTagSplitter();
   private deviceTurn?: { ref: Extract<StackModelRef, { kind: 'device' }>; placement?: Placement };
+  /** The person's own words this turn, so a device pass after a search still
+   *  shapes itself on them, not on the search results. */
+  private personAsk = '';
+  /** A device reply's thought shows though Chain of Thought is off: the turn
+   *  thinks on its own (a Harbor coding request). */
+  private deviceShowsThought = false;
   private guidePrompt?: string;
   // A card this driver put in front of the person (an image bound for a model
   // not placed for Image reading), waiting on their tap.
@@ -1402,6 +1408,8 @@ export class StackDriver implements ChatDriver {
     this.turnPack = undefined;
     this.answer = '';
     this.history.push({ role: 'user', content: text });
+    this.personAsk = text;
+    this.deviceShowsThought = false;
     this.turnClosed = false;
     this.emit({ type: 'task-start', input: text });
     // The vault pack for this send, gathered while routing runs (tech review J5); it
@@ -2436,7 +2444,7 @@ export class StackDriver implements ChatDriver {
     if (!text || this.aborted) return;
     // A thought is the model at work: the slow-start line is not needed.
     this.clearSlowStart();
-    if (this.cot) this.emit({ type: 'thinking-delta', text });
+    if (this.cot || this.deviceShowsThought) this.emit({ type: 'thinking-delta', text });
   }
 
   /** Show a piece of the answer and keep it for history (only what the
@@ -2628,13 +2636,39 @@ export class StackDriver implements ChatDriver {
     // Chain of Thought: Harbor Lite's guide turns are left alone (a 512-token
     // reply cannot carry a thought); any other pocket model thinks in tags,
     // with room for the thought beside the answer.
+    // A Harbor question about the world searches before Harbor writes a word
+    // (harborSearchesByDefault), with the person's own words as the query; the
+    // answer pass below is then told it already searched.
+    if (
+      !guide &&
+      isHarbor(ref.modelId) &&
+      this.search.mayAsk() &&
+      harborSearchesByDefault(this.personAsk, Boolean(load.visionId) && images.length > 0)
+    ) {
+      const resultText = await this.search.run(
+        this.personAsk.slice(0, 200),
+        this.context.researchOn === true,
+        this.emit,
+        this.abortController?.signal,
+        this.searchAfterPrivate(ref),
+      );
+      if (this.aborted) throw abortError();
+      this.history.push({ role: 'user', content: resultText });
+    }
     this.thinkSplitter = new ThinkTagSplitter();
     const base = this.systemFor(ref, placement, this.searchPrompt(), this.turnPackFor(ref));
     const system = guide ? base : this.withThinking(base, ref.modelId);
-    const maxTokens = guide ? 512 : this.cot ? 2048 : 1024;
     // This turn's pictures ride the person's last message, when the model
     // reads them (load.visionId is set only then).
     const pictures = load.visionId ? devicePictures(images) : [];
+    // A Harbor coding request thinks first with a capped thought; Chain of
+    // Thought gives any other turn room for a thought beside the answer.
+    const shape = deviceTurnShape(
+      ref.modelId,
+      { content: this.personAsk, pictures: pictures.length > 0 },
+      { cot: this.cot, guide, base: guide ? 512 : 1024, temperature: 0.6 },
+    );
+    this.deviceShowsThought = shape.showThought;
     const lastUser = this.history.map((m) => m.role).lastIndexOf('user');
     const res = await Llama.generate({
       requestId,
@@ -2646,12 +2680,13 @@ export class StackDriver implements ChatDriver {
             ? { role: m.role, content: m.content, images: pictures }
             : { role: m.role, content: m.content },
         ),
-        maxTokens,
+        shape.replyRoom,
         load.contextSize,
       ),
-      maxTokens,
-      ...deviceSamplingFor(ref.modelId, 0.6),
-      thinking: this.cot && !guide,
+      maxTokens: shape.maxTokens,
+      ...shape.sampling,
+      thinking: shape.thinking,
+      thinkBudget: shape.thinkBudget,
     });
     // A refused start already reported generationDone; only a started reply
     // needs the watchdog.

@@ -98,6 +98,10 @@ export interface LlamaPluginContract {
     minP?: number;
     repeatPenalty?: number;
     thinking?: boolean;
+    /** With thinking on: the most tokens the thought may take before the
+     *  runner closes it, and `maxTokens` caps the answer alone. 0 or absent:
+     *  no budget, and the thought shares `maxTokens`. */
+    thinkBudget?: number;
   }): Promise<{ started: boolean }>;
   stop(options: { requestId: string }): Promise<void>;
 
@@ -148,6 +152,20 @@ export interface LlamaPluginContract {
       requestId: string;
       stopReason: 'end' | 'stopped' | 'error';
       detail?: string;
+    }) => void,
+  ): Promise<PluginListenerHandle>;
+  /** What a reply took, sent just before its generationDone: the prompt
+   *  read, the thought (0 tokens when none), and the answer. */
+  addListener(
+    eventName: 'generationStats',
+    listener: (data: {
+      requestId: string;
+      promptTokens: number;
+      promptSeconds: number;
+      thoughtTokens: number;
+      thoughtSeconds: number;
+      answerTokens: number;
+      answerSeconds: number;
     }) => void,
   ): Promise<PluginListenerHandle>;
   addListener(

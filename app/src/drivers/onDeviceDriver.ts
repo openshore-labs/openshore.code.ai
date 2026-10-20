@@ -13,12 +13,14 @@ import {
   deviceMessages,
   devicePictures,
   deviceReadsImages,
-  deviceSamplingFor,
+  DEVICE_TIMING,
+  deviceTimingLine,
+  deviceTurnShape,
   emptyReplyMessage,
   ensureDeviceModel,
   forgetDeviceModel,
 } from './deviceModel.js';
-import { buildHarborSystemPrompt, isHarbor } from '../lib/harbor.js';
+import { buildHarborSystemPrompt, harborSearchesByDefault, isHarbor } from '../lib/harbor.js';
 import { buildHarborMiniSystemPrompt, guidedSetupLine, isHarborMini } from '../lib/harborMini.js';
 import { sanitizeGuideText } from '../lib/guideHarness.js';
 import { prepareGuideTurn, searchOffered, webOnlineNow } from '../lib/localSearch.js';
@@ -90,6 +92,12 @@ export class OnDeviceDriver implements ChatDriver {
   /** Chain of Thought for the reply in flight (read once per generation), and
    *  the splitter that keeps <think> text out of the answer either way. */
   private cot = false;
+  /** This reply's thought shows in the thinking block: Chain of Thought is
+   *  on, or the turn thinks on its own (a Harbor coding request). */
+  private showThought = false;
+  /** What the person asked this turn, so a pass after a search still shapes
+   *  itself on their words, not on the search results. */
+  private ask: { content: string; pictures: boolean } | undefined;
   private thinkSplitter = new ThinkTagSplitter();
 
   private readonly guide: boolean;
@@ -199,7 +207,7 @@ export class OnDeviceDriver implements ChatDriver {
   private route(pieces: ThoughtPiece[]): void {
     for (const p of pieces) {
       if (p.kind === 'text') this.show(this.search.push(p.text));
-      else if (this.cot) this.emit({ type: 'thinking-delta', text: p.text });
+      else if (this.showThought) this.emit({ type: 'thinking-delta', text: p.text });
     }
   }
 
@@ -230,6 +238,14 @@ export class OnDeviceDriver implements ChatDriver {
         this.route(this.thinkSplitter.push(delta));
       }),
     );
+    if (DEVICE_TIMING) {
+      this.deviceListeners.push(
+        await Llama.addListener('generationStats', (stats) => {
+          if (stats.requestId !== this.activeRequestId) return;
+          this.emit({ type: 'note', message: deviceTimingLine(stats) });
+        }),
+      );
+    }
     this.deviceListeners.push(
       await Llama.addListener('generationDone', ({ requestId, stopReason, detail }) => {
         // The runner confirmed a stop this driver already closed the turn on.
@@ -291,6 +307,7 @@ export class OnDeviceDriver implements ChatDriver {
     const turn = pictures.length
       ? { role: 'user' as const, content: text, images: pictures }
       : { role: 'user' as const, content: text };
+    this.ask = { content: text, pictures: pictures.length > 0 };
     this.turn = 1;
     this.search.begin();
     this.aborted = false;
@@ -343,6 +360,8 @@ export class OnDeviceDriver implements ChatDriver {
       if (this.aborted) return; // stopped during the guide's web search
       await preparing;
       if (this.aborted) return; // stopped while the pack gathered
+      await this.searchFirst(text, pictures.length > 0, send.signal);
+      if (this.aborted) return; // stopped during the search
       await this.generate();
     } catch (err) {
       this.clearWatchdog();
@@ -353,6 +372,27 @@ export class OnDeviceDriver implements ChatDriver {
         message: err instanceof Error ? err.message : String(err),
       });
     }
+  }
+
+  /** A Harbor question about the world searches before Harbor writes a word,
+   *  with the person's own words as the query (harborSearchesByDefault); the
+   *  results ride the turn, and the answer pass is told it already searched.
+   *  The pack is rendered first, so a chat that holds a private note asks
+   *  before the search leaves, as a search Harbor asked for would. */
+  private async searchFirst(text: string, pictures: boolean, signal: AbortSignal): Promise<void> {
+    if (!isHarbor(this.modelId) || !this.search.mayAsk()) return;
+    if (!harborSearchesByDefault(text, pictures)) return;
+    this.renderVaultPack();
+    const cause = this.hold.cause();
+    const results = await this.search.run(
+      text.slice(0, 200),
+      this.researchOn,
+      (e) => this.emit(e),
+      signal,
+      cause ? { afterPrivate: true, cause } : undefined,
+    );
+    if (this.aborted) return;
+    this.history.push({ role: 'user', content: results });
   }
 
   // The guide harness does the mechanical work before Harbor Lite writes a
@@ -384,9 +424,15 @@ export class OnDeviceDriver implements ChatDriver {
     const requestId = `req_${requestSeq++}`;
     this.activeRequestId = requestId;
     const system = this.systemPrompt();
-    // A thought needs room beside the answer, so a reasoning reply gets more.
-    const base = this.guide ? (this.searchable ? 768 : 512) : 1024;
-    const maxTokens = this.cot && !this.guideTurn ? base * 2 : base;
+    // A thought needs room beside the answer, so a reasoning reply gets more,
+    // and a Harbor coding request thinks first with a capped thought.
+    const shape = deviceTurnShape(this.modelId, this.ask, {
+      cot: this.cot,
+      guide: this.guideTurn,
+      base: this.guide ? (this.searchable ? 768 : 512) : 1024,
+      temperature: this.guide ? 0.4 : 0.7,
+    });
+    this.showThought = shape.showThought;
     const res = await Llama.generate({
       requestId,
       system,
@@ -396,12 +442,13 @@ export class OnDeviceDriver implements ChatDriver {
       messages: deviceMessages(
         system,
         this.history,
-        maxTokens,
+        shape.replyRoom,
         deviceLoadFor(this.modelId).contextSize,
       ),
-      maxTokens,
-      ...deviceSamplingFor(this.modelId, this.guide ? 0.4 : 0.7),
-      thinking: this.cot && !this.guideTurn,
+      maxTokens: shape.maxTokens,
+      ...shape.sampling,
+      thinking: shape.thinking,
+      thinkBudget: shape.thinkBudget,
     });
     // A refused start already reported generationDone; only a started reply
     // needs the watchdog.

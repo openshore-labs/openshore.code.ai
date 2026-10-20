@@ -87,6 +87,69 @@ export const HARBOR_SAMPLING = {
   repeatPenalty: 1.05,
 } as const;
 
+/** A coding request thinks first; everything else answers at once (founder,
+ *  2026-10-19: "capability to be right and build code is the main priority",
+ *  and a coding request is not expected back instantly, unlike chat). On the
+ *  box, the first eight code cases passed 4 of 8 without a thought and 6 of 8
+ *  with one. */
+const CODE_FENCE = /```/;
+const CODE_VERB =
+  /\b(write|implement|code|build|create|make|fix|debug|refactor|rewrite|optimi[sz]e|convert|port|translate)\b/i;
+const CODE_NOUN =
+  /\b(function|method|class|script|program|component|regex|regular expression|algorithm|sql|query string|unit tests?|bug|endpoint|snippet|code)\b/i;
+
+/** A turn with pictures answers at once for now: the eval cannot yet hand
+ *  Ollama a capped thought beside a picture, so that path has no number. */
+export function harborThinks(message: string, pictures = false): boolean {
+  if (pictures) return false;
+  if (CODE_FENCE.test(message)) return true;
+  return CODE_VERB.test(message) && CODE_NOUN.test(message);
+}
+
+/** A question about the world searches before Harbor writes a word; left to
+ *  decide, a 4B model skips searches it needs (on the box, 2026-10-19: every
+ *  wrong research answer was a skipped search, and searching by default took
+ *  10 held-out questions from 5 right to 9, and answered faster). It skips
+ *  only what stays true (how to do something, a concept, what a term means),
+ *  a coding request, and a question about the app, which Harbor's own facts
+ *  answer. A missed search costs a wrong answer; an extra one costs a
+ *  search, since the answer then takes one pass instead of two. */
+const STABLE =
+  /^\s*(how (do|can|should|would|to) |explain|define|what('s| is| are) the difference|why (do|does|is|are|did) |what does .+ mean|can you (explain|show|help me (write|fix|understand)))/i;
+const ABOUT_THE_APP =
+  /\b(openshore|harbor(?![-\w])|harbor lite|deepblue|vault|stack|dock(ing|ed)?|pair(ing)?|tailscale|cloud connections|crew|routines?|local library|my keys?|api keys?|this app|the app)\b/i;
+/** A question, not a request to do something ("Run npm test", "Convert 72 F"). */
+const QUESTION =
+  /(\?\s*$)|^\s*(who|what|when|where|which|why|how|is|are|was|were|does|do|did|can|could|has|have|will|should)\b/i;
+
+export function harborSearchesByDefault(question: string, pictures = false): boolean {
+  if (pictures || harborThinks(question) || !QUESTION.test(question)) return false;
+  if (ABOUT_THE_APP.test(question) || STABLE.test(question)) return false;
+  return true;
+}
+
+/** The most tokens a coding request's thought may take before the runner
+ *  closes it and the answer starts (LlamaRunner's thought cutoff). The answer
+ *  keeps its own cap beside it. */
+export const HARBOR_THINK_BUDGET = 2048;
+
+/** How Harbor picks words while it thinks: Qwen's own numbers for thinking on
+ *  a precise task (temperature 0.6, top-p 0.95, top-k 20), with the same light
+ *  repeat penalty as its answers. */
+export const HARBOR_THINK_SAMPLING = {
+  temperature: 0.6,
+  topK: 20,
+  topP: 0.95,
+  minP: 0,
+  repeatPenalty: 1.05,
+} as const;
+
+/** What the runner writes when a thought reaches its budget, the wording
+ *  Qwen documents for cutting a thought short; LlamaRunner.swift's
+ *  PromptFormat.thoughtCutoff says the same (a test holds the two together). */
+export const HARBOR_THOUGHT_CUTOFF =
+  '\n\nConsidering the limited time by the user, I have to give the solution based on the thinking directly now.\n</think>\n\n';
+
 // Whether Harbor's vision file is on this device, mirrored from settings by
 // the store on load and on every change (the chainOfThought.ts pattern: the
 // store imports the drivers, so they cannot import the store).
@@ -132,6 +195,20 @@ export const HARBOR_GREETING = [
 export const HARBOR_PICTURE_NOTE =
   'When the person sends a picture (a screenshot, a photo, a chart, or frames from a video, in order), read it closely before you answer: quote any text or error in it exactly, and say plainly what you cannot make out instead of guessing.';
 
+/** Today's date, read from the device's clock each time the prompt is built,
+ *  so "the latest" or "now" is read against today rather than the model's
+ *  training, and its searches name this year (on the box, 2026-10-19, it
+ *  searched for "latest iOS version 2025" without it). */
+export function harborDateLine(now: Date = new Date()): string {
+  const day = now.toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+  return `Today is ${day}.`;
+}
+
 function harborPersona(searchable: boolean, searchNote: string, sees: boolean): string {
   return [
     "You are Harbor, a coding model running fully on the user's phone, part of their OpenShore stack.",
@@ -143,6 +220,7 @@ function harborPersona(searchable: boolean, searchNote: string, sees: boolean): 
     'You can also answer questions about the OpenShore app, grounded in its own repository. Explain any front-end feature or setup step, and take the person as deep as they want on setting their system up. Never reveal backend build internals, infrastructure, or how OpenShore is implemented under the hood; keep to what the person can see and do in the app.',
     'An everyday question that is not about code or the app gets a plain answer, and then you stop. Bring up OpenShore only when the person asks about the app; never add a note about what OpenShore is, does, or does not do.',
     'Voice: warm, brief, plainspoken, confident.',
+    harborDateLine(),
     searchNote,
     'Ground app questions in the facts below. If you do not know, say so and point to the right screen.',
     'Whenever the person must paste something (a command, a query, a config line), put it in its own fenced code block, one per step, nothing else in the block. Never inline a command in a sentence.',

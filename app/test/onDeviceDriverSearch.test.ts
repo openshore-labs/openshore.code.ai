@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { callbacks, generateCalls, searchMock, resolveSearchKeyMock } = vi.hoisted(() => ({
   callbacks: {} as Record<string, (payload: any) => void>,
-  generateCalls: [] as Array<{ requestId: string }>,
+  generateCalls: [] as Array<{ requestId: string; system: string }>,
   searchMock: vi.fn(),
   resolveSearchKeyMock: vi.fn(),
 }));
@@ -19,7 +19,7 @@ vi.mock('../src/lib/llamaPlugin.js', () => ({
     stop: async () => {},
     ensureLocal: async () => ({ ready: true }),
     load: async () => ({ ok: true }),
-    generate: async (opts: { requestId: string }) => {
+    generate: async (opts: { requestId: string; system: string }) => {
       generateCalls.push(opts);
     },
   },
@@ -34,6 +34,7 @@ vi.mock('../src/lib/webSearch.js', () => ({
 
 const { OnDeviceDriver } = await import('../src/drivers/onDeviceDriver.js');
 const { HARBOR_MODEL_ID } = await import('../src/lib/harbor.js');
+const { SEARCHED_NOTE } = await import('os-code/protocol');
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
@@ -52,7 +53,8 @@ describe('OnDeviceDriver web search loop (Harbor)', () => {
     driver.subscribe((e) => events.push(e));
     await tick();
 
-    driver.send('what is the latest on X?');
+    // A request, not a question, so the model decides whether to search.
+    driver.send('Tell me the latest on X');
     await tick();
     expect(generateCalls).toHaveLength(1);
 
@@ -290,5 +292,47 @@ describe('a search after a private read', () => {
     expect(asks.length).toBeGreaterThan(0);
     expect(asks.every((a) => a.ask === undefined)).toBe(true);
     driver.dispose();
+  });
+
+  it('searches a question about the world before Harbor writes a word', async () => {
+    searchMock.mockResolvedValue([{ title: 'FIFA', url: 'https://fifa.com', snippet: 'Spain won.' }]);
+    const events: any[] = [];
+    const driver = new OnDeviceDriver(HARBOR_MODEL_ID, 'Harbor');
+    driver.subscribe((e) => events.push(e));
+    await tick();
+
+    driver.send('Who won the 2026 FIFA World Cup?');
+    await tick();
+    await tick();
+
+    expect(searchMock).toHaveBeenCalledWith('Who won the 2026 FIFA World Cup?', undefined);
+    // One pass, told it already searched: no SEARCH: round trip.
+    expect(generateCalls).toHaveLength(1);
+    expect(generateCalls[0]!.system).toContain(SEARCHED_NOTE);
+    expect(events.some((e) => e.type === 'citations')).toBe(true);
+
+    callbacks.token!({ requestId: generateCalls[0]!.requestId, delta: 'Spain won.' });
+    callbacks.generationDone!({ requestId: generateCalls[0]!.requestId, stopReason: 'end' });
+    await tick();
+    expect(events.find((e) => e.type === 'text-final')?.text).toBe('Spain won.');
+  });
+
+  it('answers a how-to, a coding request and an app question without searching first', async () => {
+    for (const ask of [
+      'How do I check which version of Git is installed?',
+      'Write a JavaScript function that reverses a string.',
+      'What does the Vault do?',
+    ]) {
+      generateCalls.length = 0;
+      searchMock.mockReset();
+      const driver = new OnDeviceDriver(HARBOR_MODEL_ID, 'Harbor');
+      driver.subscribe(() => {});
+      await tick();
+      driver.send(ask);
+      await tick();
+      await tick();
+      expect(searchMock, ask).not.toHaveBeenCalled();
+      expect(generateCalls, ask).toHaveLength(1);
+    }
   });
 });
