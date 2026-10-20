@@ -36,14 +36,14 @@ final class Reply: @unchecked Sendable {
 }
 
 func ask(
-    _ id: String, _ turns: [ChatTurn], maxTokens: Int = 200, thinking: Bool = false,
+    _ id: String, _ turns: [ChatTurn], maxTokens: Int = 200, thinking: Bool = false, thinkBudget: Int = 0,
     after: ((Reply) -> Void)? = nil
 ) -> Reply {
     let reply = Reply()
     let started = Date()
     let ok = runner.generate(
         requestId: id, system: system, turns: turns, maxTokens: maxTokens, sampling: sampling,
-        thinking: thinking,
+        thinking: thinking, thinkBudget: thinkBudget,
         onDelta: { delta in
             reply.lock.lock()
             let first = reply.text.isEmpty
@@ -115,7 +115,18 @@ check("answers after the reload", again.reason == "end" && !again.text.isEmpty)
 // 6. With thinking on, a model with a thinking switch thinks first.
 let thought = ask("thinking", [ChatTurn(role: "user", content: "What is 17 times 23?", images: [])], maxTokens: 1500, thinking: true)
 check("thinking on ends cleanly", thought.reason == "end" && !thought.text.isEmpty)
-print("note: thinking on \(thought.text.contains("</think>") ? "produced a thought" : "produced no thought tags")")
+check("thinking on opens the thought with its tag", thought.text.hasPrefix(PromptFormat.openThought))
+print("note: thinking on \(thought.text.contains(PromptFormat.thoughtEnd) ? "closed its thought" : "did not close its thought within the shared cap")")
+
+// 6b. A coding request's thought is capped: at its budget the runner closes
+// it, and the answer still gets its own room.
+let capped = ask(
+    "thought budget",
+    [ChatTurn(role: "user", content: "Write a JavaScript function camelCase(s) that turns 'hello world-foo_bar' into 'helloWorldFooBar'.", images: [])],
+    maxTokens: 400, thinking: true, thinkBudget: 64)
+let afterThought = capped.text.components(separatedBy: PromptFormat.thoughtEnd).last ?? ""
+check("a budgeted thought is cut at its budget", capped.text.contains(PromptFormat.thoughtCutoff))
+check("the answer follows a cut thought", capped.reason == "end" && afterThought.contains("camelCase"))
 
 // 7. A model without a vision file says so for a picture.
 _ = runner.load(id: "harbor", path: args[1], visionPath: nil, contextSize: 8192)

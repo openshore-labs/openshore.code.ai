@@ -61,6 +61,17 @@ final class LlamaRunner {
     private let abortLock = NSLock()
     private var abortDecode = false
 
+    /// What one reply took, for a test build's timing line: the prompt read,
+    /// the thought, and the answer, each in tokens and seconds.
+    struct ReplyStats {
+        var promptTokens = 0
+        var promptSeconds = 0.0
+        var thoughtTokens = 0
+        var thoughtSeconds = 0.0
+        var answerTokens = 0
+        var answerSeconds = 0.0
+    }
+
     private static let backend: Void = { llama_backend_init() }()
 
     private static let threads: Int32 = {
@@ -137,7 +148,10 @@ final class LlamaRunner {
 
     /// Streams a reply. `turns` is the whole visible conversation; the last
     /// turn is the person's, and its pictures (and any earlier ones the JS side
-    /// kept) go to the vision file.
+    /// kept) go to the vision file. With thinking on and a `thinkBudget`, the
+    /// thought may take that many tokens before the runner closes it with
+    /// `PromptFormat.thoughtCutoff`, and `maxTokens` caps the answer alone;
+    /// without a budget the thought shares `maxTokens`.
     func generate(
         requestId: String,
         system: String,
@@ -145,7 +159,9 @@ final class LlamaRunner {
         maxTokens: Int,
         sampling: Sampling,
         thinking: Bool,
+        thinkBudget: Int = 0,
         onDelta: @escaping (String) -> Void,
+        onStats: ((ReplyStats) -> Void)? = nil,
         onDone: @escaping (_ stopReason: String, _ detail: String?) -> Void
     ) -> Bool {
         guard let last = turns.last, last.role == "user" else {
@@ -169,7 +185,8 @@ final class LlamaRunner {
         work.async { [self] in
             reply(
                 requestId: requestId, system: system, turns: turns, maxTokens: maxTokens,
-                sampling: sampling, thinking: thinking, onDelta: onDelta)
+                sampling: sampling, thinking: thinking, thinkBudget: thinkBudget, onDelta: onDelta,
+                onStats: onStats)
         }
         return true
     }
@@ -192,11 +209,14 @@ final class LlamaRunner {
         maxTokens: Int,
         sampling: Sampling,
         thinking: Bool,
-        onDelta: @escaping (String) -> Void
+        thinkBudget: Int,
+        onDelta: @escaping (String) -> Void,
+        onStats: ((ReplyStats) -> Void)?
     ) {
         // Unloaded or replaced before this reply began: that already reported.
         guard status(requestId).live else { return }
         setAbort(false)
+        let began = Date()
         guard let context, let model, let vocab else {
             finish(requestId, "error", "No model is loaded on this iPhone yet.")
             return
@@ -210,6 +230,9 @@ final class LlamaRunner {
         /// positions, so the reply's room is counted from this, not `position`.
         var filled = 0
         let pictures = turns.contains { !$0.images.isEmpty }
+        /// The prompt ends inside an open thought (the template's own thinking
+        /// branch), so the reply starts mid-thought.
+        let opensThought = thinking && PromptFormat.isChatML(template) && PromptFormat.hasThinkingSwitch(template)
 
         if pictures {
             guard let vision = openVision(model) else {
@@ -314,18 +337,64 @@ final class LlamaRunner {
         defer { llama_sampler_free(sampler) }
         var single = llama_batch_init(1, 0, 1)
         defer { llama_batch_free(single) }
+        var stats = ReplyStats(promptTokens: max(filled, Int(position)), promptSeconds: Date().timeIntervalSince(began))
+        var thoughtEnded: Date?
+        let replyBegan = Date()
         var pending: [UInt8] = []
-        var produced = 0
-        let budget = min(maxTokens, windowSize - max(filled, Int(position)) - 1)
-        while produced < budget {
+        // The thought the prompt opened is shown with its tag, so the JS side
+        // keeps it out of the answer like any other thought.
+        var inThought = opensThought
+        if inThought { onDelta(PromptFormat.openThought) }
+        let budgeted = inThought && thinkBudget > 0
+        var thought = 0
+        var answered = 0
+        /// The last few characters written, to see the thought's end tag even
+        /// when it arrives in pieces.
+        var tail = ""
+        let room = windowSize - max(filled, Int(position)) - 1
+        // A budgeted thought and its answer each have a cap, and together the
+        // window's room; otherwise the thought and the answer share maxTokens.
+        let cap = budgeted ? room : min(maxTokens, room)
+        while thought + answered < cap {
+            if budgeted && answered >= maxTokens { break }
             let now = status(requestId)
             guard now.live else { return }
             if now.stopped { break }
+            if budgeted && inThought && thought >= thinkBudget {
+                // The thought ran out of room: close it the way Qwen documents,
+                // and the answer starts from what was thought so far.
+                let close = tokenize(PromptFormat.thoughtCutoff, vocab: vocab, addSpecial: false)
+                guard thought + close.count + 1 < room else { break }
+                if !pending.isEmpty {
+                    onDelta(String(decoding: pending, as: UTF8.self))
+                    pending = []
+                }
+                guard decode(close[...], from: Int(position), context: context) else {
+                    decodeFailed(requestId, memory: memory)
+                    return
+                }
+                onDelta(PromptFormat.thoughtCutoff)
+                position += llama_pos(close.count)
+                if !memoryDirty { cached += close }
+                thought += close.count
+                inThought = false
+                thoughtEnded = Date()
+                continue
+            }
             let token = llama_sampler_sample(sampler, context, -1)
             if llama_vocab_is_eog(vocab, token) { break }
             pending += piece(token, vocab: vocab)
             let text = PromptFormat.takeCompleteUTF8(&pending)
-            if !text.isEmpty { onDelta(text) }
+            if !text.isEmpty {
+                onDelta(text)
+                if inThought {
+                    tail = String((tail + text).suffix(16))
+                    if tail.contains(PromptFormat.thoughtEnd) {
+                        inThought = false
+                        thoughtEnded = Date()
+                    }
+                }
+            }
             single.n_tokens = 1
             single.token[0] = token
             single.pos[0] = position
@@ -338,9 +407,19 @@ final class LlamaRunner {
             }
             position += 1
             if !memoryDirty { cached.append(token) }
-            produced += 1
+            if inThought {
+                thought += 1
+            } else {
+                answered += 1
+            }
         }
         if !pending.isEmpty { onDelta(String(decoding: pending, as: UTF8.self)) }
+        let ended = Date()
+        stats.thoughtTokens = thought
+        stats.thoughtSeconds = opensThought ? (thoughtEnded ?? ended).timeIntervalSince(replyBegan) : 0
+        stats.answerTokens = answered
+        stats.answerSeconds = ended.timeIntervalSince(thoughtEnded ?? replyBegan)
+        if status(requestId).live { onStats?(stats) }
         finish(requestId, status(requestId).stopped ? "stopped" : "end", nil)
     }
 
@@ -363,7 +442,8 @@ final class LlamaRunner {
         if PromptFormat.isChatML(template) {
             return PromptFormat.chatML(
                 system: system, turns: turns, marker: marker,
-                thinkingOff: !thinking && PromptFormat.hasThinkingSwitch(template))
+                thinkingOff: !thinking && PromptFormat.hasThinkingSwitch(template),
+                thoughtOpen: thinking && PromptFormat.hasThinkingSwitch(template))
         }
         // Any other family goes through llama.cpp's own template table.
         var pairs: [(role: String, content: String)] = []
@@ -393,15 +473,16 @@ final class LlamaRunner {
         return String(decoding: buffer[0..<Int(length)].map { UInt8(bitPattern: $0) }, as: UTF8.self)
     }
 
-    private func tokenize(_ text: String, vocab: OpaquePointer) -> [llama_token] {
+    /// `addSpecial` false for words that continue a reply (no start token).
+    private func tokenize(_ text: String, vocab: OpaquePointer, addSpecial: Bool = true) -> [llama_token] {
         let length = Int32(text.utf8.count)
         var room = Int32(length) + 8
         var tokens = [llama_token](repeating: 0, count: Int(room))
-        var count = llama_tokenize(vocab, text, length, &tokens, room, true, true)
+        var count = llama_tokenize(vocab, text, length, &tokens, room, addSpecial, true)
         if count < 0 {
             room = -count
             tokens = [llama_token](repeating: 0, count: Int(room))
-            count = llama_tokenize(vocab, text, length, &tokens, room, true, true)
+            count = llama_tokenize(vocab, text, length, &tokens, room, addSpecial, true)
         }
         return count > 0 ? Array(tokens[0..<Int(count)]) : []
     }

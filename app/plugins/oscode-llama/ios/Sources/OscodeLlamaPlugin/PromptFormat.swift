@@ -32,6 +32,20 @@ enum PromptFormat {
     /// own `enable_thinking=false` branch writes it.
     static let emptyThought = "<think>\n\n</think>\n\n"
 
+    /// The open thought the template writes when thinking is on: the model
+    /// starts inside it, so it thinks before every such answer.
+    static let openThought = "<think>\n"
+
+    /// What closes a thought that reached its budget, in the words Qwen
+    /// documents for cutting a thought short, so the answer starts from what
+    /// was thought so far (app/src/lib/harbor.ts, HARBOR_THOUGHT_CUTOFF, says
+    /// the same, held by a test).
+    static let thoughtCutoff =
+        "\n\nConsidering the limited time by the user, I have to give the solution based on the thinking directly now.\n</think>\n\n"
+
+    /// The tag that ends a thought, as the model writes it.
+    static let thoughtEnd = "</think>"
+
     /// A turn's text with one media marker per picture in front of it, the
     /// order Qwen's template uses (the pictures, then the words).
     static func withMarkers(_ turn: ChatTurn, marker: String) -> String {
@@ -40,8 +54,11 @@ enum PromptFormat {
     }
 
     /// The whole conversation in ChatML, ending on the open assistant turn.
-    /// `thinkingOff` writes the empty thought there.
-    static func chatML(system: String, turns: [ChatTurn], marker: String, thinkingOff: Bool) -> String {
+    /// `thinkingOff` writes the empty thought there, `thoughtOpen` the open
+    /// one (a template with the thinking switch, thinking on).
+    static func chatML(
+        system: String, turns: [ChatTurn], marker: String, thinkingOff: Bool, thoughtOpen: Bool = false
+    ) -> String {
         var out = ""
         if !system.isEmpty {
             out += "<|im_start|>system\n\(system)<|im_end|>\n"
@@ -51,7 +68,11 @@ enum PromptFormat {
             out += "<|im_start|>\(role)\n\(withMarkers(turn, marker: marker))<|im_end|>\n"
         }
         out += "<|im_start|>assistant\n"
-        if thinkingOff { out += emptyThought }
+        if thinkingOff {
+            out += emptyThought
+        } else if thoughtOpen {
+            out += openThought
+        }
         return out
     }
 

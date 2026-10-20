@@ -413,10 +413,22 @@ public class OscodeLlamaPlugin: CAPPlugin, CAPBridgedPlugin {
             maxTokens: call.getInt("maxTokens") ?? 1024,
             sampling: sampling,
             thinking: call.getBool("thinking") ?? false,
+            thinkBudget: call.getInt("thinkBudget") ?? 0,
             onDelta: { [weak self] delta in
                 self?.notifyListeners("token", data: [
                     "requestId": requestId,
                     "delta": delta
+                ])
+            },
+            onStats: { [weak self] stats in
+                self?.notifyListeners("generationStats", data: [
+                    "requestId": requestId,
+                    "promptTokens": stats.promptTokens,
+                    "promptSeconds": stats.promptSeconds,
+                    "thoughtTokens": stats.thoughtTokens,
+                    "thoughtSeconds": stats.thoughtSeconds,
+                    "answerTokens": stats.answerTokens,
+                    "answerSeconds": stats.answerSeconds
                 ])
             },
             onDone: { [weak self] stopReason, detail in
