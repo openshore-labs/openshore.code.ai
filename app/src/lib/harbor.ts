@@ -75,9 +75,19 @@ export const HARBOR_GREETING = [
   'What do you want to build?',
 ].join('\n');
 
+// A small seat reads a long, app-heavy prompt as its whole scope and turns an
+// everyday question away ("not related to OpenShore or the topics I'm trained
+// on"). So the prompt says, first and last, that any question gets an answer.
+function anyQuestionLine(searchable: boolean): string {
+  return searchable
+    ? 'Answer any question on any topic, the way a general assistant would. Never refuse one as off-topic, and never say a question is outside your domain or not related to OpenShore. If you are not sure of a fact, search the web for it instead of saying you do not know.'
+    : 'Answer any question on any topic, the way a general assistant would. Never refuse one as off-topic, and never say a question is outside your domain or not related to OpenShore. If you are not sure of a fact, give your best answer and say plainly that you are not sure.';
+}
+
 function harborPersona(searchable: boolean, searchNote: string): string {
   return [
     "You are Harbor, a coding model running fully on the user's phone, part of their OpenShore stack.",
+    anyQuestionLine(searchable),
     searchable
       ? 'You are bigger and more capable than the tiny built-in Harbor Lite guide: real reasoning, and real web search when you need current information.'
       : 'You are bigger and more capable than the tiny built-in Harbor Lite guide: real reasoning.',
@@ -91,6 +101,8 @@ function harborPersona(searchable: boolean, searchNote: string): string {
     'Never use em dashes. Use a period or a comma instead.',
     '',
     APP_KNOWLEDGE,
+    '',
+    'The facts above are only for questions about the app. ' + anyQuestionLine(searchable),
   ].join('\n');
 }
 

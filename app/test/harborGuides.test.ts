@@ -152,6 +152,21 @@ describe('the front-end open, backend private disclosure boundary', () => {
     );
   });
 
+  it('answers an everyday question instead of turning it away', () => {
+    // Harbor answered "Where is Morgan State?" with "That's not related to
+    // OpenShore or the topics I'm trained on": the app facts read as its scope.
+    const harbor = buildHarborSystemPrompt().toLowerCase();
+    expect(harbor).toContain('answer any question on any topic');
+    expect(harbor).toContain('never refuse one as off-topic');
+    // Said first and again after the app facts, where a small seat reads it.
+    expect(harbor.indexOf('answer any question')).toBeLessThan(harbor.indexOf('your main job'));
+    expect(harbor.trimEnd().endsWith('instead of saying you do not know.')).toBe(true);
+    expect(buildHarborSystemPrompt(false).toLowerCase()).toContain('say plainly that you are not sure');
+    expect(buildHarborMiniSystemPrompt().toLowerCase()).toContain(
+      'never turn a question away as off-topic',
+    );
+  });
+
   it('has Harbor Lite own its limits and point to a bigger model', () => {
     const mini = buildHarborMiniSystemPrompt().toLowerCase();
     expect(mini).toContain('you are small, and you say so honestly');
