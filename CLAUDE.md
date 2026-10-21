@@ -474,7 +474,7 @@ Production's migration history is the authority on numbers. Migrations go to
 production from main only (CTO 4). Every applied file is pinned in
 `supabase/production-history.tsv` and never edited or renumbered (CTO 11). A
 new file takes the next number above both main's newest and production's
-newest, and every push uses `--skip-vault`. Production holds 0001 to 0027 and 0029 to 0031 (2026-10-14; 0028 is unused, passwordless moved from it to 0031 before it went in); its
+newest, and every push uses `--skip-vault`. Production holds 0001 to 0027 and 0029 to 0032 (0032 on 2026-10-21; 0028 is unused, passwordless moved from it to 0031 before it went in); its
 0019 and 0020 are the privacy branch's files (pushed 2026-09-24), held on main
 byte for byte, main's Org Vault v1 file is `0021_org_vault_v1.sql`, and 0021 to
 0026 went in on 2026-09-30 through the SQL editor, the founder's call, each
