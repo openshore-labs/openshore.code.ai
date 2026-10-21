@@ -1,7 +1,14 @@
 // Deno tests for push-send's session hash and push-unregister's request
 // (security review 2026-10-01, follow-ups 2 and 3). Run: `deno test _shared/push.test.ts`.
 import { assertEquals, assertNotEquals } from 'https://deno.land/std@0.224.0/assert/mod.ts';
-import { MAX_GRANT_IDS, hmacSha256Hex, parseUnregister, sessionHashKey } from './push.ts';
+import {
+  MAX_GRANT_IDS,
+  claimMissing,
+  hmacSha256Hex,
+  parseUnregister,
+  readClaim,
+  sessionHashKey,
+} from './push.ts';
 
 const TOKEN = 'ab'.repeat(32);
 const ID = '11111111-1111-4111-8111-111111111111';
@@ -53,4 +60,26 @@ Deno.test('parseUnregister: refuses an empty or malformed request', () => {
   ]) {
     assertEquals(parseUnregister(body).ok, false, JSON.stringify(body));
   }
+});
+
+Deno.test('readClaim: only push_send_claim\'s four answers', () => {
+  assertEquals(readClaim('sent'), 'sent');
+  assertEquals(readClaim('throttled'), 'throttled');
+  assertEquals(readClaim('cooled'), 'cooled');
+  assertEquals(readClaim('deduped'), 'deduped');
+  assertEquals(readClaim('ok'), undefined);
+  assertEquals(readClaim(null), undefined);
+  assertEquals(readClaim(['sent']), undefined);
+});
+
+Deno.test('claimMissing: an unknown function, never another failure', () => {
+  assertEquals(claimMissing({ code: 'PGRST202', message: 'Could not find the function' }), true);
+  assertEquals(claimMissing({ code: '42883', message: 'function does not exist' }), true);
+  assertEquals(
+    claimMissing({ message: 'Could not find the function public.push_send_claim in the schema cache' }),
+    true,
+  );
+  assertEquals(claimMissing({ code: '22023', message: 'push_send_claim: bad arguments' }), false);
+  assertEquals(claimMissing({ code: '57014', message: 'canceling statement due to statement timeout' }), false);
+  assertEquals(claimMissing(null), false);
 });

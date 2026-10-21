@@ -26,6 +26,29 @@ export async function hmacSha256Hex(key: string, input: string): Promise<string>
     .join('');
 }
 
+// push-send's checks run in one locked step in the database (0032's
+// push_send_claim): the daily ceiling, the cooldown on "done" pushes, and the
+// dedupe row. These are its answers.
+export type ClaimOutcome = 'sent' | 'throttled' | 'cooled' | 'deduped';
+const CLAIM_OUTCOMES: readonly ClaimOutcome[] = ['sent', 'throttled', 'cooled', 'deduped'];
+
+/** push_send_claim's answer, or undefined when it is not one of its four. */
+export function readClaim(data: unknown): ClaimOutcome | undefined {
+  return typeof data === 'string' && (CLAIM_OUTCOMES as readonly string[]).includes(data)
+    ? (data as ClaimOutcome)
+    : undefined;
+}
+
+/** Whether an RPC error says push_send_claim is not in the database yet (the
+ *  function deployed before 0032 was applied), so push-send keeps its older
+ *  count-then-insert checks instead of failing the send. PostgREST answers an
+ *  unknown function with PGRST202 (and Postgres with 42883). */
+export function claimMissing(error: { code?: string; message?: string } | null | undefined): boolean {
+  if (!error) return false;
+  if (error.code === 'PGRST202' || error.code === '42883') return true;
+  return /push_send_claim/.test(error.message ?? '') && /could not find|does not exist/i.test(error.message ?? '');
+}
+
 // An APNs device token is 32 bytes, delivered to the app as 64 hex characters.
 const APNS_TOKEN = /^[0-9a-f]{64}$/i;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

@@ -16,12 +16,34 @@
 // the log cannot be matched to a session on the person's computer without the
 // key. The retention job deletes the rows after 2 days (0027).
 //
+// The three checks run in one locked step in the database (0032's
+// push_send_claim), so two sends at once cannot both slip under the daily
+// ceiling. Until 0032 is applied the function is missing and push-send keeps
+// its older count-then-insert checks, so the deploy order does not matter.
+//
+// What Apple sees: the banner, the kind, and the session id in the payload's
+// data, which the phone needs to open that chat on a tap (lib/notices.ts
+// decodeTap). The thread id that groups banners is the keyed hash instead,
+// so the raw id rides only where the app reads it.
+//
+// A phone that received a push is marked as seen (push_devices.updated_at),
+// so the 180-day clean-up (0027) never drops a phone in daily use.
+//
 // Env: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, PUSH_SESSION_HASH_KEY (at least
 // 32 characters; without it nothing is sent, so a raw session id is never
 // stored), and the APNS_* secrets used by _shared/apns.ts.
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  createClient,
+  type SupabaseClient,
+} from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, json } from "../_shared/cors.ts";
-import { hmacSha256Hex, sessionHashKey } from "../_shared/push.ts";
+import {
+  claimMissing,
+  hmacSha256Hex,
+  readClaim,
+  sessionHashKey,
+  type ClaimOutcome,
+} from "../_shared/push.ts";
 import {
   apnsConfigured,
   sendApns,
@@ -41,6 +63,54 @@ async function sha256Hex(input: string): Promise<string> {
   return Array.from(new Uint8Array(digest))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
+}
+
+type Admin = SupabaseClient;
+
+// The checks as push-send ran them before 0032: count, then insert. Kept for
+// the window between this deploy and the migration; push_send_claim is the
+// same three checks in the same order, under a lock.
+async function claimWithoutLock(
+  admin: Admin,
+  userId: string,
+  sessionHash: string,
+  dedupeKey: string,
+  kind: "approval" | "done",
+): Promise<ClaimOutcome> {
+  const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const { count: sentToday, error: countErr } = await admin
+    .from("push_sends")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .gte("created_at", dayAgo);
+  if (countErr) throw new Error(`push_sends count failed: ${countErr.message}`);
+  if ((sentToday ?? 0) >= DAILY_CEILING) return "throttled";
+
+  if (kind === "done") {
+    const coolAgo = new Date(Date.now() - DONE_COOLDOWN_MS).toISOString();
+    const { count: recent, error: recentErr } = await admin
+      .from("push_sends")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("session_id", sessionHash)
+      .gte("created_at", coolAgo);
+    if (recentErr) {
+      throw new Error(`push_sends cooldown check failed: ${recentErr.message}`);
+    }
+    if ((recent ?? 0) > 0) return "cooled";
+  }
+
+  const { error: dedupeErr } = await admin.from("push_sends").insert({
+    user_id: userId,
+    session_id: sessionHash,
+    dedupe_key: dedupeKey,
+  });
+  if (dedupeErr) {
+    // 23505 = unique_violation: already sent this exact push.
+    if ((dedupeErr as { code?: string }).code === "23505") return "deduped";
+    throw new Error(`push_sends insert failed: ${dedupeErr.message}`);
+  }
+  return "sent";
 }
 
 function messageFor(kind: "approval" | "done"): {
@@ -114,52 +184,36 @@ Deno.serve(async (req) => {
     // The only form of the session id this function stores or queries.
     const sessionHash = await hmacSha256Hex(hashKey, sessionId);
 
-    // Daily ceiling across all of this user's sessions.
-    const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    const { count: sentToday, error: countErr } = await admin
-      .from("push_sends")
-      .select("id", { count: "exact", head: true })
-      .eq("user_id", userId)
-      .gte("created_at", dayAgo);
-    if (countErr)
-      throw new Error(`push_sends count failed: ${countErr.message}`);
-    if ((sentToday ?? 0) >= DAILY_CEILING) {
-      return json({ ok: true, throttled: true }, 200, req);
-    }
-
-    // Per-session cooldown for terminal "finished" pushes. Approvals are the run
-    // blocking on the user and bypass the cooldown, but still de-dupe below.
-    if (kind === "done") {
-      const coolAgo = new Date(Date.now() - DONE_COOLDOWN_MS).toISOString();
-      const { count: recent, error: recentErr } = await admin
-        .from("push_sends")
-        .select("id", { count: "exact", head: true })
-        .eq("user_id", userId)
-        .eq("session_id", sessionHash)
-        .gte("created_at", coolAgo);
-      if (recentErr)
-        throw new Error(
-          `push_sends cooldown check failed: ${recentErr.message}`,
-        );
-      if ((recent ?? 0) > 0) return json({ ok: true, cooled: true }, 200, req);
-    }
-
-    // Idempotency: one row per (user, dedupe_key). If the insert conflicts, an
-    // identical push already went out (a push-send retry), so do not buzz again.
-    // The dedupe key carries the hash too, never the raw id.
+    // The daily ceiling across all of this user's sessions, the per-session
+    // cooldown for terminal "finished" pushes (approvals are the run blocking
+    // on the user and bypass it), and idempotency: one row per (user, dedupe
+    // key), so a push-send retry does not buzz again. The dedupe key carries
+    // the hash too, never the raw id.
     const dedupeKey = `${sessionHash}:${kind}:${seq ?? "na"}`;
-    const { error: dedupeErr } = await admin.from("push_sends").insert({
-      user_id: userId,
-      session_id: sessionHash,
-      dedupe_key: dedupeKey,
-    });
-    if (dedupeErr) {
-      // 23505 = unique_violation: already sent this exact push.
-      if ((dedupeErr as { code?: string }).code === "23505") {
-        return json({ ok: true, deduped: true }, 200, req);
-      }
-      throw new Error(`push_sends insert failed: ${dedupeErr.message}`);
+    let outcome: ClaimOutcome;
+    const { data: claimed, error: claimErr } = await admin.rpc(
+      "push_send_claim",
+      {
+        p_user: userId,
+        p_session_hash: sessionHash,
+        p_dedupe_key: dedupeKey,
+        p_kind: kind,
+        p_daily_ceiling: DAILY_CEILING,
+        p_cooldown_ms: DONE_COOLDOWN_MS,
+      },
+    );
+    if (claimErr && claimMissing(claimErr)) {
+      outcome = await claimWithoutLock(admin, userId, sessionHash, dedupeKey, kind);
+    } else if (claimErr) {
+      throw new Error(`push_send_claim failed: ${claimErr.message}`);
+    } else {
+      const read = readClaim(claimed);
+      if (!read) throw new Error("push_send_claim gave no answer");
+      outcome = read;
     }
+    if (outcome === "throttled") return json({ ok: true, throttled: true }, 200, req);
+    if (outcome === "cooled") return json({ ok: true, cooled: true }, 200, req);
+    if (outcome === "deduped") return json({ ok: true, deduped: true }, 200, req);
 
     // Target devices come only from the grant's user, never from the request.
     const { data: devices, error: devErr } = await admin
@@ -170,17 +224,22 @@ Deno.serve(async (req) => {
 
     const { title, body } = messageFor(kind);
     let sent = 0;
+    const delivered: string[] = [];
     for (const device of devices ?? []) {
       const result = await sendApns({
         deviceToken: device.device_token as string,
         environment: device.aps_environment as ApsEnvironment,
         title,
         body,
-        threadId: sessionId,
+        // Groups this session's banners; the keyed hash groups them as well
+        // as the id would, and Apple keeps one copy of the id fewer.
+        threadId: sessionHash,
+        // The phone resolves the tap to its chat from this id.
         data: { sessionId, kind },
       });
       if (result.ok) {
         sent += 1;
+        delivered.push(device.device_token as string);
         continue;
       }
       // A dead token (the app was deleted, or the token rotated): drop it so it
@@ -196,6 +255,21 @@ Deno.serve(async (req) => {
           .eq("device_token", device.device_token);
       } else {
         console.error("apns send failed", result.status, result.reason);
+      }
+    }
+
+    // A phone that took a push is in use: mark it seen, so the 180-day
+    // clean-up (0027) only ever drops a phone that has gone quiet. Never
+    // fails the send; the push already went out.
+    if (delivered.length > 0) {
+      try {
+        const { error: seenErr } = await admin
+          .from("push_devices")
+          .update({ updated_at: new Date().toISOString() })
+          .in("device_token", delivered);
+        if (seenErr) console.error("push_devices seen update failed", seenErr.message);
+      } catch (seenErr) {
+        console.error("push_devices seen update failed", seenErr);
       }
     }
 
