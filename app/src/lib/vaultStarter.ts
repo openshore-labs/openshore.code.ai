@@ -165,9 +165,7 @@ export async function vaultStarterOffered(s: VaultStarterState): Promise<boolean
 
 /** One item the preview lists and the apply adds. */
 export type VaultStarterItem =
-  | { kind: 'settings' }
-  | { kind: 'folder'; path: string }
-  | { kind: 'note'; path: string };
+  { kind: 'settings' } | { kind: 'folder'; path: string } | { kind: 'note'; path: string };
 
 /** What the preview shows (the settings line only when the file will be
  *  written) and what `applyVaultStarter` adds, in order. */

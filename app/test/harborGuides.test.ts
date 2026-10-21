@@ -161,7 +161,9 @@ describe('the front-end open, backend private disclosure boundary', () => {
     // Said first and again after the app facts, where a small seat reads it.
     expect(harbor.indexOf('answer any question')).toBeLessThan(harbor.indexOf('your main job'));
     expect(harbor.trimEnd().endsWith('instead of saying you do not know.')).toBe(true);
-    expect(buildHarborSystemPrompt(false).toLowerCase()).toContain('say plainly that you are not sure');
+    expect(buildHarborSystemPrompt(false).toLowerCase()).toContain(
+      'say plainly that you are not sure',
+    );
     expect(buildHarborMiniSystemPrompt().toLowerCase()).toContain(
       'never turn a question away as off-topic',
     );
