@@ -109,6 +109,38 @@ describe('isRepoOAuthConfigured', () => {
   });
 });
 
+describe('the sign-in token on repo-oauth (CTO security review, 2026-10-21)', () => {
+  it("sends the person's access token with /exchange when signed in", async () => {
+    const mod = await loadModule();
+    mod.setRepoOAuthAuth(async () => ({ accessToken: 'jwt_person' }));
+    mockFetchOnce({ accessToken: 'gho_abc' });
+    expect((await mod.connectRepoOAuth('github')).ok).toBe(true);
+    const [, init] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect((init as RequestInit).headers).toMatchObject({
+      'content-type': 'application/json',
+      authorization: 'Bearer jwt_person',
+    });
+  });
+
+  it('still calls without one when signed out or when the refresh fails', async () => {
+    const mod = await loadModule();
+    mod.setRepoOAuthAuth(async () => {
+      throw new Error('Your sign-in expired. Sign in again.');
+    });
+    mockFetchOnce({ accessToken: 'gho_abc' });
+    expect((await mod.connectRepoOAuth('github')).ok).toBe(true);
+    const [, init] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect((init as RequestInit).headers).toEqual({ 'content-type': 'application/json' });
+  });
+
+  it("reads the server's refusal as its own sentence", async () => {
+    const mod = await loadModule();
+    mockFetchOnce({ error: 'sign_in_required' }, false, 401);
+    const res = await mod.connectRepoOAuth('github');
+    expect(res).toEqual({ ok: false, error: 'Sign in to OpenShore to connect a repository.' });
+  });
+});
+
 describe('connectRepoOAuth', () => {
   it('exchanges the code through the function and stores the tokens', async () => {
     const mod = await loadModule();

@@ -108,9 +108,12 @@ verify_jwt = false
 [functions.delete-account]
 verify_jwt = true
 
-# Repo OAuth (GitHub, GitLab, Bitbucket). The provider redirect cannot carry a
-# Supabase bearer, and /exchange requires a valid single-use provider code, so
-# no JWT. The provider client secret lives only in this function's secrets.
+# Repo OAuth (GitHub, GitLab, Bitbucket). The provider redirect (GET /callback)
+# cannot carry a Supabase bearer, so the gateway checks no JWT. The app sends
+# the person's token with POST /exchange and /refresh, and the function itself
+# refuses a POST without a valid one once the REPO_OAUTH_REQUIRE_SIGN_IN secret
+# is "true" (off until the build that sends it is what people run). The
+# provider client secret lives only in this function's secrets.
 [functions.repo-oauth]
 verify_jwt = false
 

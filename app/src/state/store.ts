@@ -483,6 +483,7 @@ import {
   repoToken,
   disconnectRepoOAuth,
   resumeRepoOAuthFromLink,
+  setRepoOAuthAuth,
 } from '../lib/gitos/repoOAuth.js';
 import {
   TEAM_PATH_MAX,
@@ -5082,6 +5083,8 @@ export const useApp = create<AppState>((set, get, api) => {
   // trigger lands in the store's memory too.
   setReviewsAuth(() => freshAuth());
   setAbuseReviewAuth(() => freshAuth());
+  // Repository sign-in sends the person's token to repo-oauth on the same door.
+  setRepoOAuthAuth(() => freshAuth());
 
   // Accounts (lib/accountGate.ts): the room the sign-in sheet was opened for,
   // so signing in carries on to it.

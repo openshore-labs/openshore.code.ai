@@ -105,7 +105,7 @@ export const EGRESS: EgressEntry[] = [
   {
     id: 'team',
     recipient: 'OpenShore (us)',
-    what: 'Your organization (its name, seats, and plan), the email addresses you invite and their roles, notes you put in a team vault, and team project settings, so your team can read them.',
+    what: 'Your organization (its name, seats, and plan), the email addresses you invite and their roles, notes you put in a team vault, and team project settings, so your team can read them. An invite nobody accepts is deleted, address and all, after 90 days.',
     when: 'Only when you set up an organization or invite someone, and in a team vault or a team project.',
     start: 'off',
     hosts: ['env:VITE_SUPABASE_URL'],
@@ -114,7 +114,7 @@ export const EGRESS: EgressEntry[] = [
   {
     id: 'repo-signin',
     recipient: 'OpenShore (us)',
-    what: 'Connecting GitHub, GitLab, or Bitbucket: the sign-in exchange passes through our server, so the access token passes through it when you connect and each time it is refreshed. Our server keeps no copy and writes none of it to a log.',
+    what: 'Connecting GitHub, GitLab, or Bitbucket: the sign-in exchange passes through our server, so the access token passes through it when you connect and each time it is refreshed, along with your OpenShore sign-in, so only a signed-in account can use the exchange. Our server keeps no copy and writes none of it to a log.',
     when: 'Only when you connect one.',
     start: 'tap',
     hosts: ['env:VITE_SUPABASE_URL', 'github.com', 'gitlab.com', 'bitbucket.org'],

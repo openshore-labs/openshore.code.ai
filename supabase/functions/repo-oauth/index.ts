@@ -20,6 +20,16 @@
 // Supabase bearer, and a caller of /exchange must already hold a valid,
 // single-use provider code bound to our own app to get anything back.
 //
+// Sign-in on the POST routes (CTO security review, 2026-10-21): the app sends
+// the person's Supabase access token with /exchange and /refresh (Repositories
+// needs an account, lib/accountGate.ts). With REPO_OAUTH_REQUIRE_SIGN_IN set
+// to "true" as a function secret, a POST without a valid token is refused with
+// sign_in_required, so the function is no longer an open door to the client
+// secret. It is off by default because the builds already installed send no
+// token: turn it on once the build that sends one is what people run. The
+// GET /callback never needs it. CORS follows CORS_ALLOWED_ORIGINS
+// (_shared/cors.ts), as every function does.
+//
 // PKCE (BE-12): the app sends a S256 code_challenge on authorize and the
 // matching code_verifier on /exchange, which this function forwards. On the
 // desktop another application can register the oscode:// scheme and catch the
@@ -31,6 +41,7 @@
 // text used to travel through the deep link and /exchange into a toast; both
 // paths now map to fixed codes the app translates itself.
 import { corsHeaders, json } from '../_shared/cors.ts';
+import { requireSignIn, signedIn } from '../_shared/repoOAuth.ts';
 
 type Provider = 'github' | 'gitlab' | 'bitbucket';
 
@@ -256,6 +267,18 @@ Deno.serve(async (req) => {
   // --- POST /exchange and /refresh: the secret is used here, over TLS only.
   if (req.method !== 'POST') {
     return json({ error: 'method_not_allowed' }, 405, req);
+  }
+
+  // A signed-in caller only, once the secret turns the check on (see the
+  // header). The token is checked with the auth server, never decoded here,
+  // and nothing about the caller is kept.
+  if (requireSignIn(Deno.env.get('REPO_OAUTH_REQUIRE_SIGN_IN'))) {
+    const ok = await signedIn(
+      req.headers.get('Authorization'),
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+    );
+    if (!ok) return json({ error: 'sign_in_required' }, 401, req);
   }
 
   const payload = (await req.json().catch(() => ({}))) as {

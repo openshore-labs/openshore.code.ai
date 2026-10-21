@@ -276,12 +276,37 @@ interface TokenSet {
   expiresAt?: number;
 }
 
+/** The signed-in session with a live access token, or undefined when signed
+ *  out. The store hands its own in (setRepoOAuthAuth), so a refresh this
+ *  triggers is the store's one refresh, never a second with a spent token. */
+type RepoOAuthAuth = () => Promise<{ accessToken: string } | undefined>;
+let repoOAuthAuth: RepoOAuthAuth | undefined;
+
+/** Wire the store's session in (state/store.ts). Until it is, a call goes
+ *  without one, as it does signed out. */
+export function setRepoOAuthAuth(auth: RepoOAuthAuth): void {
+  repoOAuthAuth = auth;
+}
+
+/** The person's access token for repo-oauth's POST routes, which refuse a
+ *  call without one once the server turns the check on (CTO security review,
+ *  2026-10-21). A failed refresh sends none; the function answers
+ *  sign_in_required then, which reads as its own sentence. */
+async function signedInHeader(): Promise<Record<string, string>> {
+  try {
+    const session = await repoOAuthAuth?.();
+    return session?.accessToken ? { authorization: `Bearer ${session.accessToken}` } : {};
+  } catch {
+    return {};
+  }
+}
+
 async function postFunction(route: string, body: unknown): Promise<TokenSet> {
   const base = functionBase();
   if (!base) throw new Error('Sign-in is not configured on this build.');
   const res = await fetch(`${base}/${route}`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...(await signedInHeader()) },
     body: JSON.stringify(body),
   });
   const data = (await res.json().catch(() => ({}))) as {
@@ -453,6 +478,7 @@ const FRIENDLY: Record<string, string> = {
   unknown_provider: 'That provider is not supported.',
   missing_code: 'The sign-in response was missing its code.',
   missing_refresh: 'There is no saved sign-in to renew. Connect again.',
+  sign_in_required: 'Sign in to OpenShore to connect a repository.',
 };
 
 export function friendlyError(code: string): string {
