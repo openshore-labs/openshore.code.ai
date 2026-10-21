@@ -1,0 +1,9 @@
+# A stand-in for pg_cron in the strict rebuild (supabase/scripts/replay-strict.sh).
+# It keeps cron.job, cron.schedule and cron.unschedule with pg_cron's shapes so
+# the migrations' retention blocks run and the pgTAP files can read the jobs;
+# nothing is ever run on a clock. Never installed anywhere but a CI scratch
+# server.
+comment = 'stand-in for pg_cron in the strict rebuild; runs nothing'
+default_version = '1.0'
+relocatable = false
+schema = cron

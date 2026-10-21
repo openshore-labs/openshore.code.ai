@@ -19,6 +19,13 @@
 // newest export_my_data or left out with a written reason, so a new table
 // cannot fall out of the export unnoticed (the house pattern of classifying
 // every key).
+//
+// And grants: from 2026-10-30 a Supabase database built afresh grants the
+// Data API roles nothing on a new table, so 0032 restated every table's
+// grants, and every table or view a later file creates must name its grants
+// for service_role, anon and authenticated in that same file (CTO security
+// review, 2026-10-21). CI's sql-strict job builds with no default grants and
+// runs pgTAP, so a miss fails there too.
 import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -257,7 +264,6 @@ describe('Download my data covers every table', () => {
   // Left out, each with its reason (0026's header says the same).
   const EXEMPT: Record<string, string> = {
     org_entitlements: "a team's plan, keyed by the team; it names no person",
-    apple_notifications_seen: "Apple's notification ids for replay defence; they name no person",
     review_moderators: 'an operator allowlist the service role seeds; 0019 left it out',
     abuse_reports:
       'whether a report prepared under 18 U.S.C. 2258A is disclosed to its subject is a counsel call (F4)',
@@ -326,5 +332,95 @@ describe("0026's retention re-schedule", () => {
     expect(sql.slice(check, unschedule)).toMatch(
       /raise exception 'cron job oscode_guardrail_retention belongs to %/,
     );
+  });
+});
+
+/** The tables and views a file creates in public, less any it drops. */
+function createdIn(sql: string): string[] {
+  const out = new Set<string>();
+  for (const m of sql.matchAll(
+    /create (?:or replace )?(?:table|view) (?:if not exists )?public\.([a-z_]+)/g,
+  ))
+    out.add(m[1]);
+  for (const m of sql.matchAll(/drop (?:table|view) (?:if exists )?public\.([a-z_]+)/g))
+    out.delete(m[1]);
+  return [...out];
+}
+
+/** For each table a GRANT or REVOKE names, the roles it names, by verb. */
+function grantsIn(sql: string): Map<string, { grant: Set<string>; revoke: Set<string> }> {
+  const plain = sql.replace(/--[^\n]*/g, '');
+  const out = new Map<string, { grant: Set<string>; revoke: Set<string> }>();
+  const re = /\b(grant|revoke)\s+[^;]*?\son\s+(?:table\s+)?([^;]*?)\s(to|from)\s+([^;]+);/gi;
+  for (const m of plain.matchAll(re)) {
+    const target = m[2];
+    if (/^\s*(function|sequence|schema|all\s)/i.test(target)) continue;
+    const roles = m[4].split(',').map((r) => r.trim().toLowerCase());
+    for (const t of target.matchAll(/public\.([a-z_]+)/g)) {
+      const entry = out.get(t[1]) ?? { grant: new Set<string>(), revoke: new Set<string>() };
+      for (const r of roles) entry[m[1].toLowerCase() === 'grant' ? 'grant' : 'revoke'].add(r);
+      out.set(t[1], entry);
+    }
+  }
+  return out;
+}
+
+/** What a file is missing: `<table>: <role>` for each role it leaves to the defaults. */
+function missingGrants(sql: string): string[] {
+  const grants = grantsIn(sql);
+  const missing: string[] = [];
+  for (const t of createdIn(sql)) {
+    const g = grants.get(t);
+    if (!g?.grant.has('service_role')) missing.push(`${t}: service_role`);
+    for (const role of ['anon', 'authenticated']) {
+      if (!g || !(g.grant.has(role) || g.revoke.has(role))) missing.push(`${t}: ${role}`);
+    }
+  }
+  return missing;
+}
+
+describe('every table names its grants (no Supabase defaults after 2026-10-30)', () => {
+  it('0032 grants the service role and strips anon on every table there is', () => {
+    const sql = read('0032_explicit_grants.sql').toString('utf8');
+    expect(sql).toMatch(/execute format\('grant all on public\.%I to service_role', t\)/);
+    expect(sql).toMatch(/execute format\('revoke all on public\.%I from anon', t\)/);
+    expect(sql).toMatch(
+      /execute format\('revoke truncate, references, trigger on public\.%I from authenticated', t\)/,
+    );
+  });
+
+  it('every file after 0032 grants each table it creates to all three roles itself', () => {
+    const later = files()
+      .sort()
+      .filter((f) => f.slice(0, 4) > '0032');
+    const misses = later.flatMap((f) =>
+      missingGrants(read(f).toString('utf8')).map((m) => `${f} ${m}`),
+    );
+    expect(
+      misses,
+      'add grant ... to service_role, and a grant or revoke for anon and authenticated',
+    ).toEqual([]);
+  });
+
+  it('the check reads a file the way it is meant to', () => {
+    const bare = 'create table if not exists public.thing (id int);\n';
+    expect(missingGrants(bare)).toEqual([
+      'thing: service_role',
+      'thing: anon',
+      'thing: authenticated',
+    ]);
+    const full =
+      bare +
+      '-- grant all on public.thing to service_role; (a comment does not count)\n' +
+      'grant all on public.thing to service_role;\n' +
+      'revoke all on public.thing from anon;\n' +
+      'grant select, insert (id) on table public.thing to authenticated;\n';
+    expect(missingGrants(full)).toEqual([]);
+    expect(
+      missingGrants(
+        bare + 'grant execute on function public.thing() to service_role, anon, authenticated;\n',
+      ),
+    ).toHaveLength(3);
+    expect(missingGrants(bare + 'drop table if exists public.thing;\n')).toEqual([]);
   });
 });

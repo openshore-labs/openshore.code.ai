@@ -409,3 +409,39 @@ jobs:
           bash supabase/scripts/local-vault.sh supabase db reset --local
           supabase db dump --local --schema public -f "$RUNNER_TEMP/fresh.sql"
           diff -u "$RUNNER_TEMP/replayed.sql" "$RUNNER_TEMP/fresh.sql"
+
+  # The strict rebuild (CTO security review, 2026-10-21). From 2026-10-30 a
+  # Supabase database built afresh (a branch, `db reset` on a newer CLI)
+  # grants anon, authenticated and service_role nothing on a new table by
+  # default, so a migration that leaned on the old defaults works on
+  # production and breaks the next rebuild. This job builds every migration
+  # on the runner's own PostgreSQL with no default grants at all and runs the
+  # pgTAP suite there. No image and no CLI: supabase/replay/strict/stubs.sql
+  # stands in for the roles, the auth schema and Vault, and a pg_cron
+  # stand-in keeps the job table without running anything.
+  sql-strict:
+    needs: changes
+    if: needs.changes.outputs.db == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: postgres
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Start the runner's PostgreSQL with pgTAP and the pg_cron stand-in
+        run: |
+          set -euo pipefail
+          ver="$(ls /usr/lib/postgresql | sort -n | tail -1)"
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq "postgresql-$ver-pgtap"
+          share="$(/usr/lib/postgresql/$ver/bin/pg_config --sharedir)"
+          sudo cp supabase/replay/strict/pg_cron.control supabase/replay/strict/pg_cron--1.0.sql "$share/extension/"
+          sudo systemctl start postgresql.service
+          sudo -u postgres psql -q -c "alter user postgres password 'postgres'"
+
+      - name: Build every migration with no default grants and run the pgTAP suite
+        run: bash supabase/scripts/replay-strict.sh

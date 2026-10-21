@@ -53,12 +53,15 @@ enable pg_cron on a hosted project and re-run the block to schedule it.
 rolled-back transaction with its own plan: `tests/rls.test.sql` (32 assertions
 over 0015's row-level security cases), `tests/org_vault.test.sql` (144 over 0021, 0024 and
 0025), `tests/account_deletion.test.sql` (68 over 0022, its section 6
-deletion functions included, and 0023), and `tests/guardrail_privacy.test.sql`
-(57 over production's 0019 and 0020, 0022's appeal address, and 0026). Every file scopes its counts to its own ids, since it
+deletion functions included, and 0023), `tests/guardrail_privacy.test.sql`
+(57 over production's 0019 and 0020, 0022's appeal address, and 0026), and
+`tests/grants.test.sql` (26 over 0032: every table's grants, the RPCs anon no
+longer reaches, the push grant that cannot be un-revoked, the ladder's one row
+per outcome, and `push_send_claim`). Every file scopes its counts to its own ids, since it
 also runs on a database that is not empty. (Files outside `tests/`, such as
 `replay/`, are not pgTAP files and must stay out of it.)
 
-CI (`.github/workflows/ci.yml`) builds the database two ways, and both must pass
+CI (`.github/workflows/ci.yml`) builds the database three ways, and each must pass
 pgTAP:
 
 - **`sql`, from empty:** `bash supabase/scripts/local-vault.sh supabase db
@@ -68,19 +71,30 @@ pgTAP:
      `production-history.tsv` against its file's hash and sets the other files
      aside.
   2. The database is built from production's files only.
-  3. `replay/production_rows.sql` loads rows with production's shape (a team
-     with an invite, case-duplicate note paths, a queued report and its repeat,
-     a submitted report under legal hold, keyed block rows, reviews) and
-     snapshots every fingerprint and hold.
+  3. `replay/production_rows.sql` loads rows with production's shape for the
+     next push (for 0032: a team with a stale and a fresh invite, a claimed
+     seat and a revoked row, a phone, a live and a revoked push grant, a
+     ladder with the old repeated rows, a row in the table 0032 drops) and
+     snapshots what the push must leave alone.
   4. The pending files come back, and the local dry run must list exactly
      them.
   5. `supabase db push --local --skip-vault --yes` applies them the way
      production's push will.
-  6. `replay/after_push.sql` checks what must hold (the history, the rename,
-     the dedupe, no fingerprint keyed twice, the author keys, the cron jobs, the
-     export, the ladder, and the deletion functions on production's rows).
+  6. `replay/after_push.sql` checks what must hold (for 0032: the history,
+     every table's grants, no row changed by the push, the dropped table and
+     the jobs that named it, the privacy job run once on these rows, the push
+     grant that stays revoked, and the ladder's one row per outcome).
   7. The full pgTAP suite runs on the result.
   8. Its schema must equal one built from empty.
+- **`sql-strict`, with no default grants:** from 2026-10-30 a Supabase
+  database built afresh grants anon, authenticated and service_role nothing
+  on a new table. `bash supabase/scripts/replay-strict.sh` builds every
+  migration on a plain PostgreSQL with no default grants at all
+  (`replay/strict/stubs.sql` stands in for the roles, the auth schema and
+  Vault; `replay/strict/pg_cron*` for pg_cron, running nothing) and runs every
+  pgTAP file there, so a table that leaned on the old defaults fails CI. A
+  file after 0032 must also name each new table's grants for all three roles
+  (`app/test/supabaseMigrations.test.ts`).
 
 `deno test functions/_shared` covers the pure decisions: `entitlement.test.ts`
 (the entitled statuses, seat bands, checkout routing and ignored prices) and
