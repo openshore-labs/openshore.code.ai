@@ -76,6 +76,20 @@ export type DeleteAccountOutcome =
    *  changed on the device either. */
   | { kind: 'failed' };
 
+/** How the Delete account sheet proves a recent sign-in when delete-account
+ *  answers reauth_required (the security review's F2): a fresh email code to
+ *  the account's own address, traded for a new session for the same account.
+ *  Built from the store's sendSignInEmail and confirmByCode
+ *  (hooks/useAuth.ts); both throw when refused. */
+export interface DeleteReauth {
+  /** The signed-in account's address, where the code goes. */
+  email: string;
+  /** Email a fresh sign-in code to that address. */
+  sendCode: () => Promise<void>;
+  /** Trade the 6 digits for a new session for this same account. */
+  confirmCode: (code: string) => Promise<void>;
+}
+
 /** A success body from either function. */
 export interface DeleteAccountAnswer {
   ok?: boolean;

@@ -12,14 +12,25 @@
 // code with nothing from the request or the database echoed back.
 
 import { LIVE_SUBSCRIPTION_STATUSES } from './entitlement.ts';
+import { requireSignIn } from './repoOAuth.ts';
 
-/** The only error bodies delete-account sends: `{ error: <code> }`. */
-export const DELETE_ACCOUNT_ERRORS = ['unauthorized', 'owns_org', 'billing', 'failed'] as const;
+/** The only error bodies delete-account sends: `{ error: <code> }`.
+ *  `reauth_required` goes out only while DELETE_REQUIRE_RECENT_SIGN_IN is on
+ *  (finding F2, 2026-10-21); every app build since package C (2026-09-29)
+ *  already reads it, from the 2026-09-24 function. */
+export const DELETE_ACCOUNT_ERRORS = [
+  'unauthorized',
+  'reauth_required',
+  'owns_org',
+  'billing',
+  'failed',
+] as const;
 export type DeleteAccountError = (typeof DELETE_ACCOUNT_ERRORS)[number];
 
 /** The HTTP status each code goes out with. */
 export const DELETE_ACCOUNT_STATUS: Record<DeleteAccountError, number> = {
   unauthorized: 401,
+  reauth_required: 401,
   owns_org: 409,
   billing: 502,
   failed: 500,
@@ -151,4 +162,86 @@ export function ownedOrgsGone(planned: readonly string[], answered: unknown): bo
   if (!Array.isArray(answered)) return false;
   const gone = new Set(answered.filter((id): id is string => typeof id === 'string'));
   return planned.every((id) => gone.has(id));
+}
+
+// ------------------------------------------------------------ recent sign-in (F2)
+
+/** Whether delete-account asks for a recent sign-in: only when the
+ *  DELETE_REQUIRE_RECENT_SIGN_IN secret is "true" or "1", read the way
+ *  repo-oauth reads REPO_OAUTH_REQUIRE_SIGN_IN. Unset, the function behaves
+ *  exactly as it did before F2. It is turned on only once the build that
+ *  answers reauth_required with an email code is what people run. */
+export function recentSignInRequired(raw: string | undefined): boolean {
+  return requireSignIn(raw);
+}
+
+/** How recent a sign-in must be: ten minutes, the window the 2026-09-24
+ *  function used, the one the app's copy names, and 0031's passkey step-up. */
+export const RECENT_SIGN_IN_S = 10 * 60;
+
+/** How far ahead of this clock a sign-in time may sit and still count (the
+ *  auth server and the function run on different machines). */
+export const CLOCK_SKEW_S = 60;
+
+/** The `amr` methods that are a sign-in the person made: an email code or
+ *  link (and a new account's first email), a passkey, or a provider. Never
+ *  `token_refresh` or `anonymous`, so a session kept alive by refreshing
+ *  does not read as recent. An unknown method does not count either. */
+export const SIGN_IN_METHODS: ReadonlySet<string> = new Set([
+  'otp',
+  'magiclink',
+  'email/signup',
+  'webauthn',
+  'oauth',
+  'sso/saml',
+  'password',
+]);
+
+/** The claims of an access token, read without checking its signature. Only
+ *  call it on a token the auth server has already accepted (auth.getUser
+ *  with the same token, and verify_jwt at the gateway). */
+export function tokenClaims(token: string): Record<string, unknown> | undefined {
+  const part = token.split('.')[1];
+  if (!part) return undefined;
+  try {
+    const b64 = part.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4);
+    const claims = JSON.parse(atob(padded));
+    return claims && typeof claims === 'object' && !Array.isArray(claims)
+      ? (claims as Record<string, unknown>)
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** When this session last signed in, in seconds since the epoch: the newest
+ *  `amr` entry with a sign-in method. Supabase keeps each method's time in
+ *  the session (auth.mfa_amr_claims) and carries it in every token the
+ *  session refreshes into, while `iat` moves with each refresh, so `iat`
+ *  says nothing about the sign-in. Undefined when the token names none. */
+export function lastSignInAt(claims: Record<string, unknown> | undefined): number | undefined {
+  const amr = claims?.amr;
+  if (!Array.isArray(amr)) return undefined;
+  let newest: number | undefined;
+  for (const entry of amr) {
+    if (!entry || typeof entry !== 'object') continue;
+    const { method, timestamp } = entry as { method?: unknown; timestamp?: unknown };
+    if (typeof method !== 'string' || !SIGN_IN_METHODS.has(method)) continue;
+    if (typeof timestamp !== 'number' || !Number.isFinite(timestamp)) continue;
+    if (newest === undefined || timestamp > newest) newest = timestamp;
+  }
+  return newest;
+}
+
+/** Whether the bearer's session signed in within RECENT_SIGN_IN_S of `nowMs`.
+ *  A header that is not a bearer, a token that cannot be read, or one that
+ *  names no sign-in reads as not recent: the app then asks for a code. */
+export function signedInRecently(authorization: string, nowMs: number = Date.now()): boolean {
+  const m = /^Bearer\s+(\S+)$/i.exec(authorization.trim());
+  if (!m) return false;
+  const at = lastSignInAt(tokenClaims(m[1]));
+  if (at === undefined) return false;
+  const age = nowMs / 1000 - at;
+  return age <= RECENT_SIGN_IN_S && age >= -CLOCK_SKEW_S;
 }

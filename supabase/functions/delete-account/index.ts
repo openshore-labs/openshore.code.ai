@@ -46,14 +46,22 @@
 // { error: code } with a code from DELETE_ACCOUNT_ERRORS. Nothing from the
 // request or the database is echoed.
 //
-// Not here, and live in the 2026-09-24 function until this one is deployed:
-// the ten-minute re-sign-in check, deleting a team that still has members,
-// and refunds (decisions F2 and F3; they return with the privacy
-// branch's own PR).
+// A recent sign-in (the security review's F2, 2026-10-21): with DELETE_REQUIRE_RECENT_SIGN_IN
+// set to "true", a session whose last sign-in (the token's `amr`) is older
+// than ten minutes is refused with 401 reauth_required before step 1, and the
+// app asks for a fresh email code, then tries again. Unset, nothing changes.
+// It is turned on only once the build with that code step is what people
+// run; a build since package C (2026-09-29) reads the code too, and tells the
+// person to sign out and back in.
+//
+// Not here: deleting a team that still has members, and refunds (CTO 11's
+// owner flow and refund decisions; they return with the privacy branch's own
+// PR).
 //
 // Env (Supabase function secrets): SUPABASE_URL, SUPABASE_ANON_KEY
 // (auto-injected), SUPABASE_SERVICE_ROLE_KEY, STRIPE_SECRET_KEY (only read
-// when there is a Stripe customer or subscription to cancel).
+// when there is a Stripe customer or subscription to cancel),
+// DELETE_REQUIRE_RECENT_SIGN_IN (optional, off unless "true" or "1").
 import Stripe from 'https://esm.sh/stripe@14?target=deno';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders, json } from '../_shared/cors.ts';
@@ -63,6 +71,8 @@ import {
   otherActiveMembers,
   ownedOrgsGone,
   planAccountDeletion,
+  recentSignInRequired,
+  signedInRecently,
   subscriptionMayBill,
   subscriptionsToCancel,
   type BillingRow,
@@ -120,6 +130,16 @@ Deno.serve(async (req) => {
     } = await asUser.auth.getUser();
     if (!user) return refuse('unauthorized', req);
     const uid = user.id;
+
+    // ---- 0. a recent sign-in (F2), only while the secret turns it on, and
+    // before anything is read or written. The auth server has just accepted
+    // this token, so its claims are its own.
+    if (
+      recentSignInRequired(Deno.env.get('DELETE_REQUIRE_RECENT_SIGN_IN')) &&
+      !signedInRecently(authHeader)
+    ) {
+      return refuse('reauth_required', req);
+    }
 
     // Service-role client for everything after (bypasses RLS on purpose),
     // always filtered to this one user id.

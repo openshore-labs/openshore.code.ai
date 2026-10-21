@@ -26,7 +26,7 @@ import {
 export function ProfileSheet() {
   const open = useProfileSheet((s) => s.open);
   const hide = useProfileSheet((s) => s.hide);
-  const { signedIn, email } = useAuth();
+  const { signedIn, email, deleteReauth } = useAuth();
   const setView = useApp((s) => s.setView);
   const deleteAccount = useApp((s) => s.deleteAccount);
   const jump = useSettingsJump((s) => s.jump);
@@ -82,7 +82,12 @@ export function ProfileSheet() {
 
       {/* Delete account (Apple 5.1.1(v)): last, as in Settings; its goodbye
           closes this sheet too. */}
-      <DeleteAccount signedIn={signedIn} onDelete={deleteAccount} onDone={hide} />
+      <DeleteAccount
+        signedIn={signedIn}
+        onDelete={deleteAccount}
+        reauth={deleteReauth}
+        onDone={hide}
+      />
     </Sheet>
   );
 }

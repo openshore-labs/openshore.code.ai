@@ -359,7 +359,7 @@ export function SettingsScreen() {
   const vaultStorageName =
     PROVIDER_ROSTER.find((r) => r.id === vaultProviderId)?.label ?? vaultProviderId;
   const editMode = settings.permissionMode ?? DEFAULT_PERMISSION_MODE;
-  const { configured, signedIn, email } = useAuth();
+  const { configured, signedIn, email, deleteReauth } = useAuth();
   const insightsOn = Boolean(settings.insightsOptIn);
   const humanizeOn = settings.humanizeWriting !== false;
   const chainOfThoughtOn = settings.chainOfThought === true;
@@ -1513,7 +1513,12 @@ export function SettingsScreen() {
         ) : null}
         {/* Delete account (Apple 5.1.1(v), UX review ruling 3): last in the sheet,
             shown only while signed in; its goodbye closes this sheet too. */}
-        <DeleteAccount signedIn={signedIn} onDelete={deleteAccount} onDone={close} />
+        <DeleteAccount
+          signedIn={signedIn}
+          onDelete={deleteAccount}
+          reauth={deleteReauth}
+          onDone={close}
+        />
       </Sheet>
 
       <Sheet open={sheet === 'log'} onClose={close}>

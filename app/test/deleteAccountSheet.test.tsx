@@ -259,11 +259,336 @@ describe('where the row lives', () => {
     );
     const sheet = settings.slice(settings.indexOf("<Sheet open={sheet === 'account'}"));
     const card = sheet.indexOf('<SignInCard variant="sheet" />');
-    const row = sheet.indexOf(
-      '<DeleteAccount signedIn={signedIn} onDelete={deleteAccount} onDone={close} />',
+    const row = sheet.search(
+      /<DeleteAccount\s+signedIn=\{signedIn\}\s+onDelete=\{deleteAccount\}\s+reauth=\{deleteReauth\}\s+onDone=\{close\}\s+\/>/,
     );
     expect(card).toBeGreaterThan(-1);
     expect(row).toBeGreaterThan(card);
     expect(row).toBeLessThan(sheet.indexOf('</Sheet>'));
+  });
+
+  it('gets the code step in the Profile sheet too', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const profile = readFileSync(
+      join(process.cwd(), 'src', 'components', 'ProfileSheet.tsx'),
+      'utf8',
+    );
+    expect(profile).toMatch(/<DeleteAccount[^>]*reauth=\{deleteReauth\}/);
+  });
+});
+
+// ---- a recent sign-in (the security review's F2, 2026-10-21)
+
+interface Reauth {
+  email: string;
+  sendCode: () => Promise<void>;
+  confirmCode: (code: string) => Promise<void>;
+  sent: number;
+  confirmed: string[];
+}
+
+function reauthFake(over: Partial<Pick<Reauth, 'sendCode' | 'confirmCode'>> = {}): Reauth {
+  const r: Reauth = {
+    email: 'sam@example.com',
+    sent: 0,
+    confirmed: [],
+    sendCode: async () => {
+      r.sent++;
+    },
+    confirmCode: async (code: string) => {
+      r.confirmed.push(code);
+    },
+  };
+  if (over.sendCode) {
+    const send = over.sendCode;
+    r.sendCode = async () => {
+      r.sent++;
+      await send();
+    };
+  }
+  if (over.confirmCode) {
+    const confirm = over.confirmCode;
+    r.confirmCode = async (code: string) => {
+      r.confirmed.push(code);
+      await confirm(code);
+    };
+  }
+  return r;
+}
+
+async function showWithReauth(onDelete: () => Promise<DeleteAccountOutcome>, reauth: Reauth) {
+  const { DeleteAccount } = await import('../src/components/DeleteAccount.js');
+  await dom.render(
+    <DeleteAccount signedIn onDelete={onDelete} reauth={reauth} onDone={() => done++} />,
+  );
+}
+
+/** The sheet on screen now: one that is not playing its exit. */
+const live = () => [...dom.container.querySelectorAll('.confirm-card:not(.closing)')];
+const liveText = () =>
+  live()
+    .map((el) => el.textContent ?? '')
+    .join(' ');
+
+/** Tap a button in a sheet that is not leaving (the ask and the code sheet
+ *  share labels while one leaves and the other arrives). */
+async function tapLive(label: string) {
+  const { act } = await import('react');
+  const button = live()
+    .flatMap((el) => [...el.querySelectorAll('button')])
+    .find((b) => b.textContent === label);
+  if (!button) throw new Error(`No live "${label}" button in: ${liveText()}`);
+  await act(async () => {
+    button.dispatchEvent(new window.Event('click', { bubbles: true }));
+  });
+}
+
+const liveButton = (label: string) =>
+  live()
+    .flatMap((el) => [...el.querySelectorAll('button')])
+    .find((b) => b.textContent === label) as HTMLButtonElement | undefined;
+
+describe('a recent sign-in, by email code', () => {
+  it('goes straight to the goodbye when the session is recent (the server never asks)', async () => {
+    const c = await copy();
+    const r = reauthFake();
+    let calls = 0;
+    await showWithReauth(async () => {
+      calls++;
+      return { kind: 'deleted', appleNote: false };
+    }, r);
+    await tapRow();
+    await dom.click(c.confirm);
+    await dom.settle();
+    expect(calls).toBe(1);
+    expect(r.sent).toBe(0);
+    expect(liveText()).not.toContain(c.codeTitle);
+    expect(liveText()).toContain(c.doneTitle);
+  });
+
+  it('asks for a code when the session is stale, emails it at once, and deletes with it', async () => {
+    const c = await copy();
+    const r = reauthFake();
+    const answers: DeleteAccountOutcome[] = [
+      { kind: 'reauth_required' },
+      { kind: 'deleted', appleNote: false },
+    ];
+    let calls = 0;
+    await showWithReauth(async () => answers[calls++]!, r);
+    await tapRow();
+    await dom.click(c.confirm);
+    await dom.settle();
+    // The ask gives way to the code sheet; the old sign-out line never shows.
+    expect(liveText()).toContain(c.codeTitle);
+    expect(liveText()).toContain('We sent a 6-digit code to sam@example.com.');
+    expect(liveText()).not.toContain(c.reauth);
+    expect(r.sent).toBe(1);
+    expect(calls).toBe(1);
+    // Nothing deletes on a short code; the button waits for six digits.
+    expect(liveButton(c.codeConfirm)?.disabled).toBe(true);
+    await dom.type('000000', '12 34 5');
+    expect(liveButton(c.codeConfirm)?.disabled).toBe(true);
+    await dom.type('000000', '123 456');
+    expect(liveButton(c.codeConfirm)?.disabled).toBe(false);
+    // Typing the sixth digit is not the delete: the person taps it.
+    expect(r.confirmed).toEqual([]);
+    await tapLive(c.codeConfirm);
+    await dom.settle();
+    expect(r.confirmed).toEqual(['123456']);
+    expect(calls).toBe(2);
+    expect(liveText()).toContain(c.doneTitle);
+  });
+
+  it('says a wrong code did not work, clears the field, and deletes nothing', async () => {
+    const c = await copy();
+    const { CODE_REFUSED } = await import('../src/state/emailSignInOps.js');
+    const r = reauthFake({
+      confirmCode: async () => {
+        throw new Error(CODE_REFUSED);
+      },
+    });
+    let calls = 0;
+    await showWithReauth(async () => {
+      calls++;
+      return { kind: 'reauth_required' };
+    }, r);
+    await tapRow();
+    await dom.click(c.confirm);
+    await dom.settle();
+    await dom.type('000000', '999999');
+    await tapLive(c.codeConfirm);
+    await dom.settle();
+    expect(live()[0]?.querySelector('[role="alert"]')?.textContent).toBe(CODE_REFUSED);
+    expect(dom.value('000000')).toBe('');
+    expect(calls).toBe(1);
+    expect(liveText()).toContain(c.codeTitle);
+    expect(liveText()).not.toContain(c.doneTitle);
+  });
+
+  it('sends a new code only after the wait, and says it went', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const c = await copy();
+      const { NEW_CODE_SENT, SEND_NEW_CODE, resendIn } =
+        await import('../src/state/emailSignInOps.js');
+      const r = reauthFake();
+      await showWithReauth(async () => ({ kind: 'reauth_required' }), r);
+      await tapRow();
+      await dom.click(c.confirm);
+      await dom.settle();
+      expect(r.sent).toBe(1);
+      expect(liveText()).toContain(resendIn(60));
+      expect(liveButton(SEND_NEW_CODE)).toBeUndefined();
+      const { act } = await import('react');
+      await act(async () => {
+        vi.advanceTimersByTime(61_000);
+      });
+      await tapLive(SEND_NEW_CODE);
+      await dom.settle();
+      expect(r.sent).toBe(2);
+      expect(liveText()).toContain(NEW_CODE_SENT);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('says a code could not be sent, and offers a new one at once', async () => {
+    const c = await copy();
+    const { SEND_NEW_CODE, RATE_LIMITED } = await import('../src/state/emailSignInOps.js');
+    let fail: Error | undefined = new Error('Failed to fetch');
+    const r = reauthFake({
+      sendCode: async () => {
+        if (fail) throw fail;
+      },
+    });
+    await showWithReauth(async () => ({ kind: 'reauth_required' }), r);
+    await tapRow();
+    await dom.click(c.confirm);
+    await dom.settle();
+    expect(live()[0]?.querySelector('[role="alert"]')?.textContent).toBe(c.codeSendFailed);
+    fail = new Error('email rate limit exceeded');
+    await tapLive(SEND_NEW_CODE);
+    await dom.settle();
+    expect(live()[0]?.querySelector('[role="alert"]')?.textContent).toBe(RATE_LIMITED);
+    fail = undefined;
+    await tapLive(SEND_NEW_CODE);
+    await dom.settle();
+    expect(r.sent).toBe(3);
+    expect(live()[0]?.querySelector('[role="alert"]')).toBeNull();
+  });
+
+  it('keeps the account on Keep my account, and the sheet plays its exit', async () => {
+    const c = await copy();
+    const r = reauthFake();
+    let calls = 0;
+    await showWithReauth(async () => {
+      calls++;
+      return { kind: 'reauth_required' };
+    }, r);
+    await tapRow();
+    await dom.click(c.confirm);
+    await dom.settle();
+    await tapLive(c.keep);
+    // Still mounted, leaving: the exit plays before it goes.
+    const leaving = [...dom.container.querySelectorAll('.confirm-card.closing')].map(
+      (el) => el.textContent ?? '',
+    );
+    expect(leaving.some((t) => t.includes(c.codeTitle))).toBe(true);
+    expect(liveText()).not.toContain(c.codeTitle);
+    expect(calls).toBe(1);
+    expect(r.confirmed).toEqual([]);
+    expect(done).toBe(0);
+  });
+
+  it('retries the delete without a second code after a failure past the code', async () => {
+    const c = await copy();
+    const r = reauthFake();
+    const answers: DeleteAccountOutcome[] = [
+      { kind: 'reauth_required' },
+      { kind: 'failed' },
+      { kind: 'deleted', appleNote: false },
+    ];
+    let calls = 0;
+    await showWithReauth(async () => answers[calls++]!, r);
+    await tapRow();
+    await dom.click(c.confirm);
+    await dom.settle();
+    await dom.type('000000', '123456');
+    await tapLive(c.codeConfirm);
+    await dom.settle();
+    expect(live()[0]?.querySelector('[role="alert"]')?.textContent).toBe(c.failed);
+    expect(live()[0]?.querySelector('[placeholder="000000"]')).toBeNull();
+    await tapLive(c.codeConfirm);
+    await dom.settle();
+    expect(r.confirmed).toEqual(['123456']);
+    expect(calls).toBe(3);
+    expect(liveText()).toContain(c.doneTitle);
+  });
+
+  it('asks for a new code when the server still wants a recent sign-in', async () => {
+    const c = await copy();
+    const r = reauthFake();
+    await showWithReauth(async () => ({ kind: 'reauth_required' }), r);
+    await tapRow();
+    await dom.click(c.confirm);
+    await dom.settle();
+    await dom.type('000000', '123456');
+    await tapLive(c.codeConfirm);
+    await dom.settle();
+    expect(live()[0]?.querySelector('[role="alert"]')?.textContent).toBe(c.codeAgain);
+    expect(dom.value('000000')).toBe('');
+  });
+
+  it('owns_org and the goodbye still follow from the code sheet', async () => {
+    const c = await copy();
+    const r = reauthFake();
+    const answers: DeleteAccountOutcome[] = [{ kind: 'reauth_required' }, { kind: 'owns_org' }];
+    let calls = 0;
+    await showWithReauth(async () => answers[calls++]!, r);
+    await tapRow();
+    await dom.click(c.confirm);
+    await dom.settle();
+    await dom.type('000000', '123456');
+    await tapLive(c.codeConfirm);
+    await dom.settle();
+    expect(liveText()).toContain(c.ownsOrgTitle);
+  });
+});
+
+describe('useAuth().deleteReauth', () => {
+  it('emails the code to the signed-in address and confirms it for this account', async () => {
+    const { useApp } = await import('../src/state/store.js');
+    const { useAuth } = await import('../src/hooks/useAuth.js');
+    const sentTo: string[] = [];
+    const confirmed: string[] = [];
+    useApp.setState({
+      authSession: {
+        accessToken: 'a',
+        refreshToken: 'r',
+        expiresAt: Date.now() + 60_000,
+        user: { id: 'u1', email: 'sam@example.com' },
+      },
+      sendSignInEmail: async (to: string) => {
+        sentTo.push(to);
+      },
+      confirmByCode: async (code: string) => {
+        confirmed.push(code);
+      },
+    });
+    let seen: ReturnType<typeof useAuth>['deleteReauth'];
+    function Probe() {
+      seen = useAuth().deleteReauth;
+      return null;
+    }
+    await dom.render(<Probe />);
+    expect(seen!.email).toBe('sam@example.com');
+    await seen!.sendCode();
+    await seen!.confirmCode('123456');
+    expect(sentTo).toEqual(['sam@example.com']);
+    expect(confirmed).toEqual(['123456']);
+    useApp.setState({ authSession: undefined });
+    await dom.render(<Probe />);
+    expect(seen).toBeUndefined();
   });
 });

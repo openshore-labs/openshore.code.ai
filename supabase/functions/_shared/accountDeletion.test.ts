@@ -8,12 +8,17 @@ import { assertEquals } from 'https://deno.land/std@0.224.0/assert/mod.ts';
 import {
   DELETE_ACCOUNT_ERRORS,
   DELETE_ACCOUNT_STATUS,
+  RECENT_SIGN_IN_S,
   deletedAnswer,
+  lastSignInAt,
   otherActiveMembers,
   ownedOrgsGone,
   planAccountDeletion,
+  recentSignInRequired,
+  signedInRecently,
   subscriptionMayBill,
   subscriptionsToCancel,
+  tokenClaims,
   type DeletionFacts,
 } from './accountDeletion.ts';
 
@@ -169,7 +174,95 @@ Deno.test('subscriptions: only canceled and incomplete_expired are finished', ()
 });
 
 Deno.test('errors: a fixed set of codes, each with its status', () => {
-  assertEquals([...DELETE_ACCOUNT_ERRORS], ['unauthorized', 'owns_org', 'billing', 'failed']);
+  assertEquals(
+    [...DELETE_ACCOUNT_ERRORS],
+    ['unauthorized', 'reauth_required', 'owns_org', 'billing', 'failed'],
+  );
   assertEquals(DELETE_ACCOUNT_STATUS.owns_org, 409);
   assertEquals(DELETE_ACCOUNT_STATUS.unauthorized, 401);
+  // The code and status every app build since package C reads as "sign in
+  // again" (app/src/state/accountDeletion.ts, from the 2026-09-24 function).
+  assertEquals(DELETE_ACCOUNT_STATUS.reauth_required, 401);
+});
+
+// ---- recent sign-in (the security review's F2)
+
+const NOW_MS = Date.UTC(2026, 9, 21, 12, 0, 0);
+const NOW_S = NOW_MS / 1000;
+
+function b64url(text: string): string {
+  return btoa(text).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+/** A token with these claims (the signature is never read here). */
+function token(claims: Record<string, unknown>): string {
+  return `${b64url('{"alg":"HS256","typ":"JWT"}')}.${b64url(JSON.stringify(claims))}.sig`;
+}
+
+function bearer(amr: unknown, extra: Record<string, unknown> = {}): string {
+  return `Bearer ${token({ sub: 'u1', iat: NOW_S, amr, ...extra })}`;
+}
+
+Deno.test('recent sign-in: the flag is on only for true or 1, and off when unset', () => {
+  assertEquals(recentSignInRequired(undefined), false);
+  assertEquals(recentSignInRequired(''), false);
+  assertEquals(recentSignInRequired('false'), false);
+  assertEquals(recentSignInRequired('yes'), false);
+  assertEquals(recentSignInRequired('true'), true);
+  assertEquals(recentSignInRequired(' TRUE '), true);
+  assertEquals(recentSignInRequired('1'), true);
+});
+
+Deno.test('recent sign-in: the window is ten minutes', () => {
+  assertEquals(RECENT_SIGN_IN_S, 600);
+});
+
+Deno.test('recent sign-in: an email code inside the window counts, outside it does not', () => {
+  assertEquals(signedInRecently(bearer([{ method: 'otp', timestamp: NOW_S - 30 }]), NOW_MS), true);
+  assertEquals(signedInRecently(bearer([{ method: 'otp', timestamp: NOW_S - 600 }]), NOW_MS), true);
+  assertEquals(signedInRecently(bearer([{ method: 'otp', timestamp: NOW_S - 601 }]), NOW_MS), false);
+  assertEquals(
+    signedInRecently(bearer([{ method: 'magiclink', timestamp: NOW_S - 120 }]), NOW_MS),
+    true,
+  );
+  assertEquals(
+    signedInRecently(bearer([{ method: 'email/signup', timestamp: NOW_S - 120 }]), NOW_MS),
+    true,
+  );
+});
+
+Deno.test('recent sign-in: iat says nothing, since it moves with every refresh', () => {
+  // A token refreshed a second ago from a sign-in an hour old.
+  const stale = bearer([{ method: 'otp', timestamp: NOW_S - 3600 }], { iat: NOW_S - 1 });
+  assertEquals(signedInRecently(stale, NOW_MS), false);
+});
+
+Deno.test('recent sign-in: the newest sign-in method decides; refreshes never count', () => {
+  const amr = [
+    { method: 'otp', timestamp: NOW_S - 3600 },
+    { method: 'token_refresh', timestamp: NOW_S - 5 },
+    { method: 'anonymous', timestamp: NOW_S - 5 },
+    { method: 'something_new', timestamp: NOW_S - 5 },
+  ];
+  assertEquals(lastSignInAt(tokenClaims(bearer(amr).slice(7))), NOW_S - 3600);
+  assertEquals(signedInRecently(bearer(amr), NOW_MS), false);
+  amr.push({ method: 'otp', timestamp: NOW_S - 60 });
+  assertEquals(signedInRecently(bearer(amr), NOW_MS), true);
+});
+
+Deno.test('recent sign-in: a little clock skew is allowed, a far future time is not', () => {
+  assertEquals(signedInRecently(bearer([{ method: 'otp', timestamp: NOW_S + 30 }]), NOW_MS), true);
+  assertEquals(signedInRecently(bearer([{ method: 'otp', timestamp: NOW_S + 3600 }]), NOW_MS), false);
+});
+
+Deno.test('recent sign-in: no amr, a broken token or no bearer reads as not recent', () => {
+  assertEquals(signedInRecently(`Bearer ${token({ sub: 'u1', iat: NOW_S })}`, NOW_MS), false);
+  assertEquals(signedInRecently(bearer('otp'), NOW_MS), false);
+  assertEquals(signedInRecently(bearer([{ method: 'otp' }]), NOW_MS), false);
+  assertEquals(signedInRecently(bearer([{ method: 'otp', timestamp: 'now' }]), NOW_MS), false);
+  assertEquals(signedInRecently('Bearer not-a-token', NOW_MS), false);
+  assertEquals(signedInRecently('Bearer a.!!!.c', NOW_MS), false);
+  assertEquals(signedInRecently('', NOW_MS), false);
+  assertEquals(signedInRecently('Basic abc', NOW_MS), false);
+  assertEquals(tokenClaims(`a.${b64url('[1,2]')}.c`), undefined);
 });

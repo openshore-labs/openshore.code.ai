@@ -122,7 +122,7 @@ export const EGRESS: EgressEntry[] = [
   {
     id: 'account-deletion',
     recipient: 'OpenShore (us)',
-    what: 'Your sign-in, asking our server to delete your account. It erases the account, cancels a plan you pay us for on the web, and keeps only a one-way hash of your email if an operator had ended the account for abuse, plus any record under a legal hold until the hold ends. Apple subscriptions are cancelled with Apple.',
+    what: 'Your sign-in, asking our server to delete your account. It erases the account, cancels a plan you pay us for on the web, and keeps only a one-way hash of your email if an operator had ended the account for abuse, plus any record under a legal hold until the hold ends. Apple subscriptions are cancelled with Apple. If your last sign-in was more than ten minutes ago, our server may ask for a recent one first: a fresh sign-in code goes to your email, as when you sign in.',
     when: 'Only when you tap Delete account and confirm.',
     start: 'tap',
     hosts: ['env:VITE_SUPABASE_URL'],
