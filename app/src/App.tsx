@@ -14,7 +14,7 @@ import { platform } from './lib/platform.js';
 import { Sidebar } from './components/Sidebar.js';
 import { WebSearchAsk } from './components/WebSearchAsk.js';
 import { AccountGateSheet } from './components/AccountGateSheet.js';
-import { ProfileSheet } from './components/ProfileSheet.js';
+import { useProfileSheet } from './lib/profile.js';
 import { featureOn, roomOpen } from './lib/focus.js';
 import { SlackWater } from './components/SlackWater.js';
 import { CurrentArrival, CurrentWaterline } from './components/CurrentArrival.js';
@@ -73,6 +73,9 @@ const LocalLibraryScreen = room(
   () => import('./screens/LocalLibraryScreen.js'),
   'LocalLibraryScreen',
 );
+// The profile sheet carries the delete flow and the whole "What leaves this
+// device" list, so it warms with the rooms and mounts on its first open.
+const ProfileSheet = room(() => import('./components/ProfileSheet.js'), 'ProfileSheet');
 
 // The later tiers' rooms and surfaces (lib/focus.ts ROOM_FEATURE, and the
 // teams sheets) exist only in a build that carries them. The gate is spelled
@@ -151,6 +154,11 @@ export function App() {
   const toastPresence = useExitPresence(Boolean(toast));
   const lastToast = useRef(toast);
   if (toast) lastToast.current = toast;
+  // Once opened the profile sheet stays mounted, so its exit always plays.
+  const profileOpen = useProfileSheet((s) => s.open);
+  const profileOpenedRef = useRef(false);
+  if (profileOpen) profileOpenedRef.current = true;
+  const profileOpened = profileOpenedRef.current;
   // The outgoing room dissolves under the incoming one (a DOM snapshot, not a
   // second mount), and the drawer follows the finger from the screen's edge.
   const mainRef = useRef<HTMLDivElement>(null);
@@ -502,7 +510,11 @@ export function App() {
         ) : null}
         <WebSearchAsk />
         <AccountGateSheet />
-        <ProfileSheet />
+        {profileOpened ? (
+          <Suspense fallback={null}>
+            <ProfileSheet />
+          </Suspense>
+        ) : null}
         {/* Agentic Currents: the arrival that flows from the switch to the
           edges, and the faint water-line that frames every screen while a
           current is on. Both render nothing when none is on. */}

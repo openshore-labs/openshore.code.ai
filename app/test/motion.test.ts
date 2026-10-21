@@ -53,7 +53,9 @@ describe('motion readers', () => {
     expect(GESTURE).not.toMatch(/drawerProps|mode\.current = 'close'/);
     expect(APP).not.toMatch(/dragProps=/);
     expect(SIDEBAR).not.toMatch(/dragProps|exitMs/);
-    expect(SIDEBAR).toMatch(/className=\{`drawer-scrim[\s\S]*?onClick=\{\(\) => setDrawer\(false\)\}/);
+    expect(SIDEBAR).toMatch(
+      /className=\{`drawer-scrim[\s\S]*?onClick=\{\(\) => setDrawer\(false\)\}/,
+    );
   });
 
   it('have a registered --drawer-width to read, and the drawer uses it', () => {
