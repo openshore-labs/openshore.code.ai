@@ -130,8 +130,9 @@ revoke insert, update on public.model_reviews from authenticated;
 grant select, delete on public.model_reviews to authenticated;
 
 -- user_blocks: 0011's grants (blocking now runs through block_review_author).
-revoke update on public.user_blocks from authenticated;
-grant select, insert, delete on public.user_blocks to authenticated;
+-- UPDATE stays: an older installed build may block with an upsert, and the
+-- user_blocks_all policy already holds every row to its owner.
+grant select, insert, update, delete on public.user_blocks to authenticated;
 
 -- review_eula_acceptance: the app upserts its acceptance (insert, then update
 -- on a conflict) and reads it back.

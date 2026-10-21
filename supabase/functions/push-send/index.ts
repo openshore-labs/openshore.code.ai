@@ -266,6 +266,7 @@ Deno.serve(async (req) => {
         const { error: seenErr } = await admin
           .from("push_devices")
           .update({ updated_at: new Date().toISOString() })
+          .eq("user_id", userId)
           .in("device_token", delivered);
         if (seenErr) console.error("push_devices seen update failed", seenErr.message);
       } catch (seenErr) {
