@@ -212,8 +212,15 @@ export function DeleteAccount({
     setCodeProblem(undefined);
     setResent(false);
     setVerified(false);
-    setSentAt(0);
     setStep('code');
+    // Reopened inside the resend wait: the code already sent still works, and
+    // asking again would only meet the server's rate limit.
+    const stillWaiting = sentAt > 0 && Date.now() - sentAt < RESEND_WAIT_S * 1000;
+    if (stillWaiting) {
+      setNow(Date.now());
+      return;
+    }
+    setSentAt(0);
     void sendCode(false);
   };
   // As with the ask, nothing closes the code sheet while the server is at work.

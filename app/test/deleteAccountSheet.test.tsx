@@ -501,6 +501,25 @@ describe('a recent sign-in, by email code', () => {
     expect(done).toBe(0);
   });
 
+  it('reopened inside the wait, keeps the code it sent instead of asking again', async () => {
+    const c = await copy();
+    const { SEND_NEW_CODE } = await import('../src/state/emailSignInOps.js');
+    const r = reauthFake();
+    await showWithReauth(async () => ({ kind: 'reauth_required' }), r);
+    await tapRow();
+    await dom.click(c.confirm);
+    await dom.settle();
+    expect(r.sent).toBe(1);
+    await tapLive(c.keep);
+    await dom.settle();
+    await tapRow();
+    await dom.click(c.confirm);
+    await dom.settle();
+    expect(liveText()).toContain(c.codeTitle);
+    expect(r.sent).toBe(1);
+    expect(liveButton(SEND_NEW_CODE)).toBeUndefined();
+  });
+
   it('retries the delete without a second code after a failure past the code', async () => {
     const c = await copy();
     const r = reauthFake();
