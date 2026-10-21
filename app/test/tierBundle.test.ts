@@ -159,6 +159,8 @@ describe('the bundle check CI runs on the Personal build', () => {
     expect(LAZY_LIBRARIES).toEqual([
       { name: 'highlight.js', marker: 'highlightAuto' },
       { name: 'pdf.js', marker: 'pdfjsWorker' },
+      { name: '@anthropic-ai/sdk', marker: 'browser-like environment' },
+      { name: 'jsQR', marker: 'attemptBoth' },
     ]);
     write(
       'assets/jsx-runtime-b2.js',

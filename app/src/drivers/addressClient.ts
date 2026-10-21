@@ -6,7 +6,8 @@
 // OpenAI-format path never sends either. Kept apart from stackDriver so a test
 // can build it on the real SDK and read the headers it actually sends.
 // Test: app/test/byomAnthropicHeaders.test.ts.
-import Anthropic from '@anthropic-ai/sdk';
+import type Anthropic from '@anthropic-ai/sdk';
+import { loadAnthropic } from './anthropicSdk.js';
 import { normalizeAnthropicBase } from '../lib/byom.js';
 
 /** What an address is not sent: the SDK's version, the browser and its
@@ -33,10 +34,21 @@ export const ADDRESS_DROPPED_HEADERS = [
 /** The SDK with no credential chain of its own: with no key it would look
  *  for one on the machine (a profile, an environment token) and could add it
  *  as a bearer. An address gets the person's key or nothing. */
-class AddressAnthropic extends Anthropic {
-  protected override _shouldResolveDefaultCredentials(): boolean {
-    return false;
-  }
+let addressSdk: Promise<typeof Anthropic> | undefined;
+function addressAnthropicClass(): Promise<typeof Anthropic> {
+  addressSdk ??= loadAnthropic().then(
+    (Sdk) =>
+      class AddressAnthropic extends Sdk {
+        protected override _shouldResolveDefaultCredentials(): boolean {
+          return false;
+        }
+      },
+    (err: unknown) => {
+      addressSdk = undefined;
+      throw err;
+    },
+  );
+  return addressSdk;
 }
 
 /** `transport` with the dropped headers taken off every request, whatever
@@ -51,11 +63,12 @@ export function addressFetch(transport: typeof fetch): typeof fetch {
 
 /** A client for one address, on `transport` (the Claude path's streaming
  *  fetch in the app). */
-export function addressAnthropic(o: {
+export async function addressAnthropic(o: {
   baseUrl: string;
   key: string | null;
   transport: typeof fetch;
-}): Anthropic {
+}): Promise<Anthropic> {
+  const AddressAnthropic = await addressAnthropicClass();
   return new AddressAnthropic({
     apiKey: o.key,
     authToken: null,

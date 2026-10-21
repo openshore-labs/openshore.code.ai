@@ -59,7 +59,7 @@ function capture() {
 
 async function streamOnce(key: string | null) {
   const { seen, transport } = capture();
-  const client = addressAnthropic({ baseUrl: 'http://192.168.1.20:4000/v1', key, transport });
+  const client = await addressAnthropic({ baseUrl: 'http://192.168.1.20:4000/v1', key, transport });
   const final = await client.messages
     .stream({ model: 'house', max_tokens: 64, messages: [{ role: 'user', content: 'hi' }] })
     .finalMessage();

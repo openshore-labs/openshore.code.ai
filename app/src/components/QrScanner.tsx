@@ -5,7 +5,7 @@
 // Info.plist). If the camera cannot be opened, the sheet says so and the person
 // falls back to typing or pasting, never a silent failure.
 import { useEffect, useRef, useState } from 'react';
-import { decodeQrFromImageData } from '../lib/qrDecode.js';
+import type { PixelBuffer } from '../lib/qrImage.js';
 import { Sheet } from './Sheet.js';
 import { SheetTitle } from './SheetHead.js';
 
@@ -65,18 +65,20 @@ function Camera({
     let done = false;
     // The last foreign QR, so one held in view is reported once, not every frame.
     let lastForeign: string | undefined;
+    // The decoder loads with the camera, never at launch (lib/qrImage.ts).
+    let decode: ((img: PixelBuffer) => string | undefined) | undefined;
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
     const tick = () => {
       if (done) return;
       const video = videoRef.current;
-      if (video && ctx && video.readyState >= 2 && video.videoWidth > 0) {
+      if (decode && video && ctx && video.readyState >= 2 && video.videoWidth > 0) {
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
         ctx.drawImage(video, 0, 0);
         const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const text = decodeQrFromImageData(img);
+        const text = decode(img);
         if (text && text !== lastForeign) {
           if (onDecode(text)) {
             done = true;
@@ -96,10 +98,12 @@ function Camera({
           setError(CAMERA_BLOCKED);
           return;
         }
+        const decoder = import('../lib/qrImage.js');
         stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: { ideal: 'environment' } },
           audio: false,
         });
+        decode = (await decoder).decodeQrFromImageData;
         // Closed while the camera was still opening: let it go at once.
         if (done) {
           stream.getTracks().forEach((t) => t.stop());

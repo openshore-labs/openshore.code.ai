@@ -20,7 +20,8 @@
 // keyword heuristic, not a model; on-device models are text-only (no vision,
 // not driven for autonomous sub-steps); the image-gen category routes as text
 // and does not yet render images; "home" models require pairing.
-import Anthropic from '@anthropic-ai/sdk';
+import type Anthropic from '@anthropic-ai/sdk';
+import { loadAnthropic } from './anthropicSdk.js';
 import type { PluginListenerHandle } from '@capacitor/core';
 import type {
   ApprovalAnswer,
@@ -2784,7 +2785,7 @@ export class StackDriver implements ChatDriver {
    *  stream through. */
   private async addressClient(ref: Extract<StackModelRef, { kind: 'byom' }>): Promise<Anthropic> {
     const key = (await secretGet(byomSecretKey(ref.id)))?.trim() || null;
-    return addressAnthropic({ baseUrl: ref.baseUrl, key, transport: streamingFetch });
+    return await addressAnthropic({ baseUrl: ref.baseUrl, key, transport: streamingFetch });
   }
 
   /** Your own model at an address in the Anthropic format (2026-10-09): a
@@ -2863,7 +2864,8 @@ export class StackDriver implements ChatDriver {
     const ws = (
       await storeGetJson<{ anthropicWorkspaceId?: string }>('oscode.settings.v1')
     )?.anthropicWorkspaceId?.trim();
-    return new Anthropic({
+    const Sdk = await loadAnthropic();
+    return new Sdk({
       apiKey: key,
       dangerouslyAllowBrowser: true,
       fetch: streamingFetch,

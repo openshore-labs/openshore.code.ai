@@ -460,7 +460,12 @@ rule is pinned by tests; keep them:
   by registry composition alone.
 - **The tier-1 bundle carries no later-tier code**: later rooms are gated at
   build time (`SHIPS_*` in `app/src/lib/focus.ts`), and CI runs
-  `pnpm --filter oscode-app check:bundle`.
+  `pnpm --filter oscode-app check:bundle`. Run it after `pnpm -r build`
+  before pushing a change to the app: it prints the room left below the
+  2,000,000-byte launch ceiling and warns under 100 KB. When launch grows,
+  move what waits for a tap (a sheet, a scanner, a provider's SDK) behind a
+  dynamic import (`drivers/anthropicSdk.ts`, `lib/qrImage.ts`, the profile
+  sheet in `App.tsx`); never raise the ceiling to make room.
 - **Migrations are pushed from `main` only**; a held branch renumbers its
   migrations above main's newest and production's newest when it merges
   (CTO 4, CTO 11; see the migration history rule below).

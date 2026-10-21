@@ -39,12 +39,23 @@ export const LAZY_LIBRARIES = [
   { name: 'highlight.js', marker: 'highlightAuto' },
   // pdf.js reads an attached PDF (lib/pdfText.ts), loaded on the first one.
   { name: 'pdf.js', marker: 'pdfjsWorker' },
+  // The Anthropic SDK (about 140 KB) loads on the first Claude or
+  // Anthropic-format request (drivers/anthropicSdk.ts); the marker is a line of
+  // its own browser warning.
+  { name: '@anthropic-ai/sdk', marker: 'browser-like environment' },
+  // jsQR (about 130 KB) loads when the docking scanner's camera opens
+  // (lib/qrImage.ts).
+  { name: 'jsQR', marker: 'attemptBoth' },
 ];
 
 /** Ceilings, in bytes. Before the split the launch was one 2,560,450-byte
  *  chunk. Crossing one means a room or a heavy library went back into the
  *  launch path. */
 export const BUDGET = { entryBytes: 400_000, bootBytes: 2_000_000 };
+
+/** Under this much room below the launch ceiling, the report warns, so the
+ *  commit that eats the last of it is not the first anyone hears of it. */
+export const HEADROOM_WARN_BYTES = 100_000;
 
 function filesUnder(dir) {
   return readdirSync(dir).flatMap((name) => {
@@ -143,6 +154,12 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     `loaded at launch: ${kb(report.bootBytes)} (${report.bootBytes} bytes) in ${report.bootChunks.length} chunks`,
   );
   console.log(`all JavaScript: ${kb(report.totalJsBytes)} in ${report.chunks} chunks`);
+  const room = BUDGET.bootBytes - report.bootBytes;
+  console.log(`room below the launch ceiling: ${kb(room)}`);
+  if (room >= 0 && room < HEADROOM_WARN_BYTES)
+    console.log(
+      `warning: launch is within ${kb(HEADROOM_WARN_BYTES)} of its ceiling; move something that waits for a tap behind a dynamic import before it fails`,
+    );
   const tier = process.env.VITE_RELEASE_TIER?.trim();
   const later = tier === '2' || tier === '3' || tier === '4';
   const problems = bundleProblems(report);

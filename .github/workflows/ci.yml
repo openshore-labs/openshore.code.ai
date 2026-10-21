@@ -157,14 +157,6 @@ jobs:
       - name: Build every package
         run: pnpm -r build
 
-      # A Personal build carries no later tier (docs/release-tiers.md): no
-      # Stack Health, Launch, Local Library, or Admin room, none of their words,
-      # and every room its own chunk that waits for its first open. Reads the
-      # app build the step above just made (VITE_RELEASE_TIER unset), reports
-      # what a launch loads, and fails on anything that should not be there.
-      - name: Check the Personal bundle
-        run: pnpm --filter oscode-app check:bundle
-
       # Prettier drift used to be invisible: neither package's formatting was
       # checked here, so files quietly diverged from .prettierrc. `pnpm format`
       # in a package fixes what this step reports. On a pull request the
@@ -198,6 +190,17 @@ jobs:
 
       - name: Test the edge-function shared modules
         run: deno test supabase/functions/_shared
+
+      # A Personal build carries no later tier (docs/release-tiers.md): no
+      # Stack Health, Launch, Local Library, or Admin room, none of their words,
+      # and every room its own chunk that waits for its first open. Reads the
+      # app build made above (VITE_RELEASE_TIER unset), reports what a launch
+      # loads and the room left below its ceiling, and fails on anything that
+      # should not be there. It runs last: when it ran right after the build,
+      # a launch a few KB over its ceiling skipped format, lint, typecheck and
+      # every test on main for six commits (2026-10-19).
+      - name: Check the Personal bundle
+        run: pnpm --filter oscode-app check:bundle
 
   # The house-style checks on a pull request: format, lint, and the style
   # tests (the em dash rule, motion and spacing tokens, the UI guards, exact

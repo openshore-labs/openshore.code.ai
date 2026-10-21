@@ -4,12 +4,8 @@
 // parse it into the address + token the connect step needs.
 import { describe, expect, it } from 'vitest';
 import QRCode from 'qrcode';
-import {
-  decodeQrFromImageData,
-  pairableAddress,
-  pairingLink,
-  parsePairingQr,
-} from '../src/lib/qrDecode.js';
+import { pairableAddress, pairingLink, parsePairingQr } from '../src/lib/qrDecode.js';
+import { decodeQrFromImageData } from '../src/lib/qrImage.js';
 
 /** Rasterize a QR symbol into RGBA pixels with a quiet zone, like a frame. */
 function rasterize(text: string, scale = 6, quiet = 4) {

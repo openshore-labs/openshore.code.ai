@@ -6,7 +6,8 @@
 // (providerClient.ts), and Stop ends the turn at once (cloudChat.ts).
 // Chat-only from the phone: repo tools need the desktop connection, and the
 // UI says so.
-import Anthropic from '@anthropic-ai/sdk';
+import type Anthropic from '@anthropic-ai/sdk';
+import { loadAnthropic, loadedAnthropic } from './anthropicSdk.js';
 import type { ApprovalAnswer, DriverEvent } from 'os-code/protocol';
 import type { AppVaultPack, ChatContext, ChatDriver, DriverEventSink } from './types.js';
 import {
@@ -140,7 +141,8 @@ export class CloudClaudeDriver implements ChatDriver {
   readonly kind = 'cloud' as const;
   private emitter = new DriverEmitter();
   private history: Anthropic.MessageParam[] = [];
-  private client: Anthropic;
+  /** Built on the first send, once the SDK has loaded (anthropicSdk.ts). */
+  private readonly client: () => Promise<Anthropic>;
   /** The send in flight: Stop ends it, and only it. */
   private turn?: CloudTurn;
   private readonly vaultPack?: AppVaultPack;
@@ -170,12 +172,17 @@ export class CloudClaudeDriver implements ChatDriver {
     this.writingVoice = opts.writingVoice;
     this.modelLabel = opts.modelLabel ?? this.model;
     const ws = workspaceId?.trim();
-    this.client = new Anthropic({
-      apiKey,
-      dangerouslyAllowBrowser: true,
-      fetch: streamingFetch,
-      ...(ws ? { defaultHeaders: { 'anthropic-workspace-id': ws } } : {}),
-    });
+    let client: Promise<Anthropic> | undefined;
+    this.client = () =>
+      (client ??= loadAnthropic().then(
+        (Sdk) =>
+          new Sdk({
+            apiKey,
+            dangerouslyAllowBrowser: true,
+            fetch: streamingFetch,
+            ...(ws ? { defaultHeaders: { 'anthropic-workspace-id': ws } } : {}),
+          }),
+      ));
     // A mid-chat switch seeds the prior turns so this model continues the thread.
     // A turn that drew on a local-only note reaches this cloud seat as the
     // stub, never the text (I5).
@@ -226,7 +233,7 @@ export class CloudClaudeDriver implements ChatDriver {
       // The first request that carries the placeholder says so, once (F).
       const notice = this.placeholder.take(this.model, this.modelLabel, this.stubbedReply);
       if (notice) turn.emit(notice);
-      const client = anthropicClient(this.client, {
+      const client = anthropicClient(await this.client(), {
         model: this.model,
         ...claudeRequestThinking(this.model, 16000, cot),
         system: claudeRequestSystem(this.basePrompt(), {
@@ -271,7 +278,7 @@ export class CloudClaudeDriver implements ChatDriver {
             : undefined,
       });
     } catch (err) {
-      if (turn.signal.aborted || isAbortError(err) || err instanceof Anthropic.APIUserAbortError) {
+      if (turn.signal.aborted || isAbortError(err) || isSdkError(err, 'APIUserAbortError')) {
         turn.finish('aborted');
       } else turn.finish('error', describeError(err));
     }
@@ -333,30 +340,45 @@ export class CloudClaudeDriver implements ChatDriver {
 // to explain the charge. It says the account is out of Claude usage and points
 // at a local model, which keeps working with no account behind it. The exact
 // fallback line lives in usageFallback so the transcript can offer the tap.
+/** Whether `err` is the SDK's error of that name. Nothing is, before the SDK
+ *  has loaded. */
+function isSdkError(
+  err: unknown,
+  name:
+    | 'APIUserAbortError'
+    | 'AuthenticationError'
+    | 'BadRequestError'
+    | 'RateLimitError'
+    | 'APIConnectionError',
+): boolean {
+  const Sdk = loadedAnthropic();
+  return Sdk ? err instanceof Sdk[name] : false;
+}
+
 function isOutOfUsage(err: unknown): boolean {
   // Depleted credits come back as a 400 whose message names the balance.
-  if (err instanceof Anthropic.BadRequestError) {
+  if (isSdkError(err, 'BadRequestError') && err instanceof Error) {
     return /credit balance|billing|quota/i.test(err.message);
   }
   return false;
 }
 
 export function describeError(err: unknown): string {
-  if (err instanceof Anthropic.AuthenticationError) {
+  if (isSdkError(err, 'AuthenticationError')) {
     return 'Claude rejected the API key. Update it under Connections.';
   }
-  if (err instanceof Anthropic.BadRequestError && needsWorkspaceId(err.message)) {
+  if (isSdkError(err, 'BadRequestError') && err instanceof Error && needsWorkspaceId(err.message)) {
     return WORKSPACE_HINT;
   }
   if (isOutOfUsage(err)) {
     return `No more Claude usage on your account right now. ${SWITCH_TO_LOCAL}`;
   }
-  if (err instanceof Anthropic.RateLimitError) {
+  if (isSdkError(err, 'RateLimitError')) {
     // A usage cap and a transient burst both surface as 429; either way, a
     // local model is the way through without waiting on the account.
     return `Claude has no usage available on your account right now. ${SWITCH_TO_LOCAL} You can also try again in a moment.`;
   }
-  if (err instanceof Anthropic.APIConnectionError) {
+  if (isSdkError(err, 'APIConnectionError')) {
     return 'Could not reach Claude. Check the connection and try again.';
   }
   return err instanceof Error ? err.message : String(err);

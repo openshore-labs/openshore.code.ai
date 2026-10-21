@@ -1,21 +1,6 @@
-// QR decoding, kept DOM-free so the scan path is testable in Node: hand it
-// pixels (an ImageData or anything with the same data/width/height shape) and
-// get the decoded text, or undefined. The camera loop in QrScanner feeds it
-// frames; a test feeds it a rasterized QR it encoded itself.
-import jsQR from 'jsqr';
+// The pairing link a docking QR carries: making it, and reading it back from
+// the text the scanner decoded (lib/qrImage.ts turns camera pixels into text).
 import { hostIsLocal } from 'os-code/protocol';
-
-export interface PixelBuffer {
-  data: Uint8ClampedArray;
-  width: number;
-  height: number;
-}
-
-export function decodeQrFromImageData(img: PixelBuffer): string | undefined {
-  const code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
-  const text = code?.data?.trim();
-  return text ? text : undefined;
-}
 
 /** The desktop's pairing QR (pairing review, UX review 2026-10-01) is a link,
  *  `oscode://pair?u=<address>&c=<claim>`, so the iPhone's own Camera app opens
