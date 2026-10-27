@@ -58,6 +58,12 @@ export type EvalPageCheck = 'on' | 'off';
  *  two runs differ by the excerpts alone. */
 export type EvalRetrieval = 'on' | 'off';
 
+/** Lessons (founder, 2026-10-27): 'on' gives every task's session the
+ *  project's kept lessons in its brief (from `osc eval --lessons <file>`),
+ *  'off' runs the same tasks without, so the two runs differ by the lessons
+ *  alone. Copy claims nothing for them until this shows a number (tenet 2). */
+export type EvalLessons = 'on' | 'off';
+
 /** Union decoding (tech review 6): 'on' sets `harness.decoding.union: 'on'` for the
  *  run, 'off' sets 'off'. It engages only on a tiny or small seat on the
  *  text bridge, which each trace's `unionTurns` shows. */
@@ -74,6 +80,7 @@ export interface EvalVariant {
   pageCheck?: EvalPageCheck;
   retrieval?: EvalRetrieval;
   unionDecoding?: EvalUnionDecoding;
+  lessons?: EvalLessons;
 }
 
 /** What the loop did on one run, so a zero is a diagnosis and not just a
@@ -157,6 +164,7 @@ export interface DriveContext {
   pageCheck?: EvalPageCheck;
   retrieval?: EvalRetrieval;
   unionDecoding?: EvalUnionDecoding;
+  lessons?: EvalLessons;
 }
 
 /** A drive may return just the final text, or the text plus a trace of what
@@ -233,6 +241,8 @@ export interface EvalV2Options {
   handoff?: EvalHandoffLayer;
   /** Run with the page check on or off. */
   pageCheck?: EvalPageCheck;
+  /** Run with the project's lessons in the brief ('on') or without ('off'). */
+  lessons?: EvalLessons;
   /** Run with retrieval before turn one on or off. */
   retrieval?: EvalRetrieval;
   /** Run with union decoding on or off. */
@@ -329,6 +339,7 @@ export async function runEvalV2(
   if (options.pageCheck) variant.pageCheck = options.pageCheck;
   if (options.retrieval) variant.retrieval = options.retrieval;
   if (options.unionDecoding) variant.unionDecoding = options.unionDecoding;
+  if (options.lessons) variant.lessons = options.lessons;
   const tasks = options.tasks ?? defaultTasks(variant, options.suite);
   const attempts = Math.max(1, Math.floor(options.attempts ?? 1));
   const scores: EvalV2TaskScore[] = [];
@@ -409,7 +420,8 @@ function hasVariant(variant: EvalVariant): boolean {
     variant.handoff !== undefined ||
     variant.pageCheck !== undefined ||
     variant.retrieval !== undefined ||
-    variant.unionDecoding !== undefined
+    variant.unionDecoding !== undefined ||
+    variant.lessons !== undefined
   );
 }
 
@@ -425,6 +437,7 @@ export function variantSuffix(variant: EvalVariant): string {
   if (variant.pageCheck) out += `-page-${variant.pageCheck}`;
   if (variant.retrieval) out += `-retrieval-${variant.retrieval}`;
   if (variant.unionDecoding) out += `-union-${variant.unionDecoding}`;
+  if (variant.lessons) out += `-lessons-${variant.lessons}`;
   return out;
 }
 

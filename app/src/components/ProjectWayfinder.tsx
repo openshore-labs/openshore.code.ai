@@ -8,7 +8,9 @@
 // the variables and the script reach the session's commands
 // (os-code/src/harness/projectEnv.ts). The chat in a project can fill these
 // in too (lib/appActions.ts); this sheet is where the person sees and owns them.
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { lessonDoubtful } from 'os-code/protocol';
+import { Switch } from './Switch.js';
 import { parseEnvText, type ProjectNetwork } from 'os-code/protocol';
 import { useApp } from '../state/store.js';
 import type { Project } from '../state/types.js';
@@ -68,21 +70,23 @@ export function ProjectWayfinderSheet({
   const [draft, setDraft] = useState<Draft | undefined>();
 
   // Re-read what is kept each time the sheet opens: the variables live sealed
-  // on this device, and the chat may have filled a field since.
+  // on this device, and the chat may have filled a field since. Only on open,
+  // so the Lessons switch below never wipes an edit in progress.
+  const latest = useRef(project);
+  latest.current = project;
   useEffect(() => {
     if (!open) return;
     let alive = true;
-    void readProjectEnvText(project.id).then((env) => {
+    void readProjectEnvText(latest.current.id).then((env) => {
       if (!alive) return;
-      const d = draftOf(project, env);
+      const d = draftOf(latest.current, env);
       setSaved(d);
       setDraft(d);
     });
     return () => {
       alive = false;
     };
-    // Reseed on open, and when the project's kept fields change underneath.
-  }, [open, project]);
+  }, [open, project.id]);
 
   const dirty =
     Boolean(draft && saved) &&
@@ -199,6 +203,8 @@ export function ProjectWayfinderSheet({
             </p>
           </div>
 
+          <ProjectLessons project={project} />
+
           <div className="sheet-actions">
             <button type="submit" className={dirty ? 'btn primary' : 'btn quiet'} disabled={!dirty}>
               Save
@@ -207,5 +213,68 @@ export function ProjectWayfinderSheet({
         </form>
       )}
     </Sheet>
+  );
+}
+
+/** Lessons (founder, 2026-10-27): the switch that lets the harness propose
+ *  lessons from this project's setbacks, and the ones the person kept, each
+ *  with where it came from and a Remove. A lesson that keeps riding into
+ *  setbacks says it may be out of date; it is never removed on its own. Both
+ *  apply at once, apart from Save above. */
+function ProjectLessons({ project }: { project: Project }) {
+  const { updateProject, setProjectLessons, showToast } = useApp();
+  const kept = useApp((s) => s.projectLessons[project.id] ?? []);
+  const on = project.lessons === true;
+  return (
+    <div className="field wayfinder-lessons">
+      <div className="wayfinder-lessons-head">
+        <span className="field-label" id="wayfinder-lessons">
+          Lessons
+        </span>
+        <Switch
+          checked={on}
+          label="Learn from this project"
+          onChange={(next) => {
+            void updateProject(project.id, { lessons: next || undefined });
+            showToast(next ? 'Lessons on for this project.' : 'Lessons off for this project.');
+          }}
+        />
+      </div>
+      <p className="hint">
+        After a task that hits a setback (a failed check, a step you turned down, your correction),
+        the chat offers one short lesson for next time. Nothing is kept until you tap Keep. Kept
+        lessons stay sealed on this device, ride every chat here, and are cleared with your chats.
+      </p>
+      {kept.length ? (
+        <div className="check-list">
+          {kept.map((l) => (
+            <div key={l.id} className="multiselect-row lesson-row">
+              <span className="grow">
+                {l.text}
+                <span className="hint">
+                  {' '}
+                  · {lessonDoubtful(l) ? 'may be out of date, ' : ''}from {l.source}
+                </span>
+              </span>
+              <button
+                type="button"
+                className="suggestion"
+                aria-label={`Remove the lesson: ${l.text}`}
+                onClick={() =>
+                  void setProjectLessons(
+                    project.id,
+                    kept.filter((x) => x.id !== l.id),
+                  )
+                }
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : on ? (
+        <p className="hint">No lessons kept yet.</p>
+      ) : null}
+    </div>
   );
 }

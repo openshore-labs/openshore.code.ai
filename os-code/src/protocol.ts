@@ -758,6 +758,29 @@ export {
 } from './harness/projectEnv.js';
 export type { ProjectNetwork } from './harness/projectEnv.js';
 
+// Lessons: a project's harness keeps a few approved lessons from what
+// actually happened (step 8 of the harness plan, brought forward 2026-10-27).
+export {
+  LESSONS_MAX,
+  LESSON_MAX_CHARS,
+  alreadyKept,
+  cleanLesson,
+  distilPrompt,
+  hasSetback,
+  isCorrection,
+  lessonBudgetChars,
+  lessonDoubtful,
+  lessonFromCorrection,
+  lessonSource,
+  lessonsBlock,
+  lessonsToRide,
+  parseDistilled,
+  scoreLessons,
+  signalsFrom,
+  taskWentWell,
+} from './harness/lessons.js';
+export type { Lesson, LessonSignal } from './harness/lessons.js';
+
 /** Wire shapes the daemon serves that are not agent events. */
 export interface DaemonSessionInfo {
   id: string;

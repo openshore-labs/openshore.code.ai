@@ -50,6 +50,7 @@ import { isPhone } from '../lib/platform.js';
 import { REWIND_ACTION } from '../state/rewindOps.js';
 import { appActionsAsked } from '../lib/appActions.js';
 import { projectActionsAsked } from '../lib/projectFence.js';
+import { LessonCard } from './LessonCard.js';
 import type { ChatCardAction } from './Markdown.js';
 import { mendEmDashes } from '../lib/replyDashes.js';
 
@@ -735,6 +736,8 @@ export function MessageList({
               return <ToolCard key={item.id} item={item} />;
             case 'command':
               return <CommandCard key={item.id} item={item} />;
+            case 'lesson':
+              return <LessonCard key={item.id} item={item} />;
             case 'status':
               return (
                 <div key={item.id} className="msg-status">

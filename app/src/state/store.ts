@@ -206,7 +206,7 @@ import type { Attachment } from '../lib/attachments.js';
 import { OnDeviceDriver } from '../drivers/onDeviceDriver.js';
 import { MockDriver } from '../drivers/mockDriver.js';
 import { StackDriver, type StackVaultTools } from '../drivers/stackDriver.js';
-import { DesktopChatDriver, ipcFreeChat } from '../drivers/desktopChatDriver.js';
+import { DesktopChatDriver, daemonFreeChat, ipcFreeChat } from '../drivers/desktopChatDriver.js';
 import {
   FIRST_SEAT_COPY,
   defaultComposerSource,
@@ -627,7 +627,15 @@ import { largeGetJson, largeSetJson } from '../lib/largeStore.js';
 import { projectEnvFor, readProjectEnvText, writeProjectEnvText } from '../lib/projectEnv.js';
 import { agentInProject, agentSelectionPatch } from '../lib/projectAgents.js';
 import type { ProjectContract } from '../lib/projectFence.js';
-import { projectNetworkNote } from 'os-code/protocol';
+import { readLessons, writeLessons } from '../lib/lessons.js';
+import { createLessonWatch } from './lessonOps.js';
+import {
+  lessonBudgetChars,
+  lessonsBlock,
+  lessonsToRide,
+  projectNetworkNote,
+  type Lesson,
+} from 'os-code/protocol';
 import {
   WebSearchSheets,
   answersSheet,
@@ -1603,6 +1611,9 @@ interface AppState {
   /** Which project the `project` detail room is showing. Set by openProject;
    *  read by the detail screen and by a chat opened from it (its way back). */
   viewProjectId?: string;
+  /** Each project's kept lessons (lib/lessons.ts), read at launch from the
+   *  sealed store so a chat's brief can carry them without a wait. */
+  projectLessons: Record<string, Lesson[]>;
   /** A vault folder the Vault room opens at next, taken once by the room
    *  (a project's own folder, Projects/<project>, made if it is not there). */
   vaultOpenAt?: string;
@@ -1919,6 +1930,12 @@ interface AppState {
    *  (lib/appActions.ts). Resolves false for a key or value the app does not
    *  take, which changes nothing. */
   applyAppAction(key: string, value: string): Promise<boolean>;
+  /** Keep a proposed lesson (its card's tap), or let it go. */
+  keepLesson(conversationId: string, itemId: string): Promise<void>;
+  dismissLesson(conversationId: string, itemId: string): void;
+  /** Replace a project's kept lessons (Project Wayfinder's Lessons: edit or
+   *  remove one). */
+  setProjectLessons(projectId: string, lessons: Lesson[]): Promise<void>;
   /** Write one field a model proposed in a project's chat, on the person's
    *  tap (lib/projectActions.ts). False for a value the field does not take. */
   applyProjectAction(projectId: string, key: string, value: string): Promise<boolean>;
@@ -1955,7 +1972,10 @@ interface AppState {
   updateProject(
     id: string,
     patch: Partial<
-      Pick<Project, 'name' | 'instructions' | 'repoIds' | 'access' | 'network' | 'setupScript'>
+      Pick<
+        Project,
+        'name' | 'instructions' | 'repoIds' | 'access' | 'network' | 'setupScript' | 'lessons'
+      >
     >,
   ): Promise<void>;
   /** A project's Agents selection (founder, 2026-10-27): the agents from
@@ -3158,6 +3178,8 @@ export const useApp = create<AppState>((set, get, api) => {
         };
       });
     }
+    // Lessons watch the task this send starts (state/lessonOps.ts).
+    lessonWatch.arm(conversationId, text);
     driver.send(text, attachments);
   }
 
@@ -3395,6 +3417,7 @@ export const useApp = create<AppState>((set, get, api) => {
           hapticSuccess();
         }
         afterEvent(event);
+        lessonWatch.event(conversationId, event);
       }
       // Persist snapshots for phone-local conversations. P2-12: snapshot at
       // both bookends (task-start captures the user's message immediately;
@@ -4308,6 +4331,7 @@ export const useApp = create<AppState>((set, get, api) => {
       [
         project?.instructions?.trim(),
         projectNetworkNote(project?.network),
+        lessonsLine(project),
         repoContextLine(conv.repoIds ?? []),
       ]
         .filter(Boolean)
@@ -4348,6 +4372,76 @@ export const useApp = create<AppState>((set, get, api) => {
         agents: (s.crew ?? []).filter((a) => agentInProject(a, projectId, p)).map((a) => a.name),
       });
     };
+  }
+
+  /** Lessons watch each chat in a project that has them on
+   *  (state/lessonOps.ts): scores move by outcome, and a setback proposes one
+   *  lesson as a card, asked of the chat's own machine's local model. */
+  const lessonWatch = createLessonWatch({
+    project: (conversationId) => {
+      const s = get();
+      const projectId = s.conversations[conversationId]?.projectId;
+      const p = projectId ? s.settings.projects?.find((x) => x.id === projectId) : undefined;
+      return p?.lessons ? p : undefined;
+    },
+    lessons: (projectId) => get().projectLessons[projectId] ?? [],
+    setLessons: (projectId, lessons) => get().setProjectLessons(projectId, lessons),
+    propose: (conversationId, proposal) => {
+      set((state) => {
+        const c = state.conversations[conversationId];
+        if (!c) return state;
+        const item = {
+          kind: 'lesson' as const,
+          id: newId(),
+          status: 'proposed' as const,
+          ...proposal,
+        };
+        return {
+          conversations: {
+            ...state.conversations,
+            [conversationId]: { ...c, thread: { ...c.thread, items: [...c.thread.items, item] } },
+          },
+        };
+      });
+      persistConversationsSoon();
+    },
+    distiller: (conversationId) => {
+      const s = get();
+      const conv = s.conversations[conversationId];
+      if (!conv) return undefined;
+      const where = conversationWhere(s.settings, conv);
+      if (where.kind === 'local')
+        return isDesktop() && bridge() ? ipcFreeChat(bridge()!) : undefined;
+      const target = dockedTarget(where);
+      return target ? daemonFreeChat(target) : undefined;
+    },
+    today: () => new Date().toLocaleDateString('en-CA'),
+  });
+
+  /** The project's kept lessons as a brief block, the best that fit, while
+   *  its Lessons are on (os-code/src/harness/lessons.ts). */
+  function lessonsLine(project: Project | undefined): string | undefined {
+    if (!project?.lessons) return undefined;
+    const kept = get().projectLessons[project.id] ?? [];
+    return lessonsBlock(lessonsToRide(kept, lessonBudgetChars(undefined)));
+  }
+
+  /** Mark a lesson card kept or let go, in the chat that showed it. */
+  function markLesson(conversationId: string, itemId: string, status: 'kept' | 'dismissed'): void {
+    set((state) => {
+      const c = state.conversations[conversationId];
+      if (!c) return state;
+      const items = c.thread.items.map((i) =>
+        i.id === itemId && i.kind === 'lesson' ? { ...i, status } : i,
+      );
+      return {
+        conversations: {
+          ...state.conversations,
+          [conversationId]: { ...c, thread: { ...c.thread, items } },
+        },
+      };
+    });
+    persistConversationsSoon();
   }
 
   /** Whether the chat's project closed the web (Project Wayfinder's
@@ -4600,7 +4694,9 @@ export const useApp = create<AppState>((set, get, api) => {
         // among them is where the session works when the source names no cwd.
         const repoLine = repoContextLine(conv.repoIds ?? []);
         const instructions =
-          [project?.instructions?.trim(), repoLine].filter(Boolean).join('\n\n') || undefined;
+          [project?.instructions?.trim(), lessonsLine(project), repoLine]
+            .filter(Boolean)
+            .join('\n\n') || undefined;
         // The project's tokens and secrets, when the person has turned the
         // feature on, so a local model can use them. Read from the sealed
         // device-local store here and handed to the in-process desktop engine
@@ -8964,6 +9060,7 @@ export const useApp = create<AppState>((set, get, api) => {
     viewTrail: [],
     drawerOpen: false,
     conversations: {},
+    projectLessons: {},
     order: [],
     settings: { onboarded: false, claudeModel: DEFAULT_CLAUDE_MODEL, deviceModels: {} },
     cloudKeyPresent: false,
@@ -9083,6 +9180,12 @@ export const useApp = create<AppState>((set, get, api) => {
         };
       }
       const cloudKeyPresent = Boolean(await secretGet(ANTHROPIC_KEY_KEY));
+      // Each project's kept lessons, so a chat's brief carries them at once.
+      const projectLessons: Record<string, Lesson[]> = {};
+      for (const p of settings.projects ?? []) {
+        const kept = await readLessons(p.id);
+        if (kept.length) projectLessons[p.id] = kept;
+      }
       const connectedProviders: Record<string, boolean> = {};
       for (const p of PROVIDERS) {
         connectedProviders[p.id] = Boolean(await secretGet(providerSecretKey(p.id)));
@@ -9291,6 +9394,7 @@ export const useApp = create<AppState>((set, get, api) => {
             }
           : emptyRoutinesState(),
         cloudKeyPresent,
+        projectLessons,
         connectedProviders,
         codemagicConnected,
         searchKeyConfigured,
@@ -10115,6 +10219,41 @@ export const useApp = create<AppState>((set, get, api) => {
       return true;
     },
 
+    async keepLesson(conversationId, itemId) {
+      const conv = get().conversations[conversationId];
+      const item = conv?.thread.items.find((i) => i.id === itemId);
+      if (!item || item.kind !== 'lesson' || item.status !== 'proposed') return;
+      const kept = get().projectLessons[item.projectId] ?? [];
+      await get().setProjectLessons(item.projectId, [
+        ...kept,
+        {
+          id: newId(),
+          text: item.text,
+          source: item.source,
+          createdAt: new Date().toISOString(),
+          good: 0,
+          bad: 0,
+        },
+      ]);
+      markLesson(conversationId, itemId, 'kept');
+      get().showToast('Lesson kept. Project Wayfinder lists it.');
+      logEvent('lesson_kept');
+    },
+
+    dismissLesson(conversationId, itemId) {
+      markLesson(conversationId, itemId, 'dismissed');
+    },
+
+    async setProjectLessons(projectId, lessons) {
+      set((state) => {
+        const next = { ...state.projectLessons };
+        if (lessons.length) next[projectId] = lessons;
+        else delete next[projectId];
+        return { projectLessons: next };
+      });
+      await writeLessons(projectId, lessons).catch(() => {});
+    },
+
     async applyProjectAction(projectId, key, value) {
       // Loaded on the first tap, so a launch never carries it.
       const { mergeEnvText, projectActionPlan } = await import('../lib/projectActions.js');
@@ -10745,8 +10884,9 @@ export const useApp = create<AppState>((set, get, api) => {
       // Wipe the project's sealed tokens and secrets so nothing lingers in the
       // device store after the project is gone.
       await writeProjectSecrets(id, '');
-      // And its Project Wayfinder variables.
+      // And its Project Wayfinder variables, and its lessons.
       await writeProjectEnvText(id, '').catch(() => {});
+      await get().setProjectLessons(id, []);
       // And its handoff (tech review J13): nothing of the project lingers here.
       await clearHandoffs(handoffStorage, { projectId: id }).catch(() => {});
       // Chats that lived in the project stay, but drop their now-dead link. Mark
@@ -14577,6 +14717,10 @@ export const useApp = create<AppState>((set, get, api) => {
 
     async clearConversations() {
       for (const id of [...get().order]) get().deleteConversation(id);
+      // Lessons are cleared with the chats they came from (the harness plan).
+      for (const projectId of Object.keys(get().projectLessons)) {
+        await get().setProjectLessons(projectId, []);
+      }
       // Recent is cleared with the chats (UX review X4).
       if (get().settings.vaultRecent) {
         await get()

@@ -554,7 +554,7 @@ extended that day by the graduated enforcement ladder (migration
       lockdown, downloads always ask); (6) the pure-core extraction with a
       Node-free guard and subagents drawing down the parent's rails; (7) the
       phone host; (8) Lessons, local only, per owner and workspace, cleared with
-      the chats. Plan and rulings: `docs/premium-harness-proposal.md`,
+      the chats (BUILT per project 2026-10-27, DECISIONS; its eval is to run). Plan and rulings: `docs/premium-harness-proposal.md`,
       `docs/premium-harness-advisory-memos.md`, `CLAUDE.md`. Pricing (Personal
       $50, Micro $100, Small $250, Growth $500, Scale $1000) is a Board gate and
       the site copy change, not harness work.

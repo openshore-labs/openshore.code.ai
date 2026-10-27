@@ -304,6 +304,26 @@ the model never writes a field itself, since a script and variables run on the
 person's machine. Copy never claims network access governs a shell command.
 Guards: `os-code/test/projectEnv.test.ts`, `app/test/projectWayfinder.test.ts`.
 
+## Lessons: a project's harness adapts, with the person's yes (founder, 2026-10-27)
+
+The harness plan's step 8, brought forward and built per project. Never
+self-modification: the harness keeps a few short lessons from what actually
+happened. Outcomes it can verify (a failed check, a step turned down, an error
+end, the person's correction) are watched from a send made on this device;
+after a setback one lesson is proposed, the person's own correction or one line
+from the chat's machine's local model through its free chat, and only the
+person's Keep on its card makes it standing context. A lesson filter refuses
+addresses, rule overrides, secrets and fetch-and-run lines. Kept lessons stay
+sealed per project on the device (`app/src/lib/lessons.ts`), ride the brief
+while the project's switch in Project Wayfinder is on (off by default), are
+scored by outcome and marked "may be out of date" for the person to remove,
+and are cleared with the chats and the project. Pure core
+`os-code/src/harness/lessons.ts`; the watch `app/src/state/lessonOps.ts`.
+Do NOT let a lesson be kept without the tap, do NOT send a distil question to
+a cloud model, and do NOT claim a lift in copy until `osc eval --deep --lessons
+<file>` against `--lessons off` shows it on the reference box (tenet 2).
+Guards: `os-code/test/lessons.test.ts`, `app/test/projectLessons.test.ts`.
+
 ## Chain of Thought is BUILT (off by default, founder 2026-09-25)
 
 A Settings switch (Settings, Reasoning, `settings.chainOfThought`), OFF by

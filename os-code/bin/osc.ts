@@ -216,6 +216,10 @@ program
   )
   .option('--page-check <on|off>', 'deep only: the page check (no test suite needed) on or off')
   .option(
+    '--lessons <file|off>',
+    "deep only: run with a project's lessons (a file, one a line) in every task's brief, or off to run without",
+  )
+  .option(
     '--retrieval <on|off>',
     'deep or floor: search the workspace for the task and give the model the best excerpts before its first turn, or not',
   )

@@ -295,6 +295,7 @@ interface ProjectDoc {
   network?: Project['network'];
   setupScript?: string;
   excludedAgentIds?: string[];
+  lessons?: boolean;
   createdAt: string;
 }
 
@@ -309,6 +310,7 @@ export function projectDoc(p: Project): string {
     ...(p.network && p.network !== 'full' ? { network: p.network } : {}),
     ...(p.setupScript ? { setupScript: p.setupScript } : {}),
     ...(p.excludedAgentIds?.length ? { excludedAgentIds: p.excludedAgentIds } : {}),
+    ...(p.lessons ? { lessons: true } : {}),
     createdAt: p.createdAt,
   };
   return JSON.stringify(d);
@@ -340,6 +342,7 @@ export function projectFromDoc(text: string, id: string, existing?: Project): Pr
     ...(Array.isArray(d.excludedAgentIds)
       ? { excludedAgentIds: d.excludedAgentIds.filter((x): x is string => typeof x === 'string') }
       : {}),
+    ...(d.lessons === true ? { lessons: true } : {}),
     createdAt: d.createdAt,
   };
 }

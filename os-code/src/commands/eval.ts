@@ -1,5 +1,7 @@
 // osc eval: probe a model with the eval harness and report whether the
 // profile earns the "blessed" flag the catalog surfaces.
+import { readFileSync } from 'node:fs';
+import { cleanLesson, lessonsBlock } from '../harness/lessons.js';
 import { t, GLYPHS } from '../brand/theme.js';
 import { loadConfig } from '../config/load.js';
 import { ProviderRegistry } from '../providers/registry.js';
@@ -15,6 +17,7 @@ import {
   type DriveTask,
   type DriveTrace,
   type EvalHandoffLayer,
+  type EvalLessons,
   type EvalNumCtx,
   type EvalPageCheck,
   type EvalPromptCache,
@@ -78,6 +81,9 @@ export interface EvalOptions {
   handoff?: string;
   /** Deep only: the page check on or off for the run (v1 Phase 1). */
   pageCheck?: string;
+  /** Deep only: a file of lessons, one a line, to run with in every task's
+   *  brief, or 'off' to run the same tasks without. */
+  lessons?: string;
   /** Deep only: the task set, 'code' (the default) or 'everyday', the jobs a
    *  person who is not a developer brings. */
   suite?: string;
@@ -158,6 +164,7 @@ export async function evalCommand(options: EvalOptions): Promise<void> {
     CLAUDE_CODE_BASELINE,
   ]);
   const lifts = parseLiftFlags(options);
+  const lessons = parseLessonsFlag(options.lessons, (path) => readFileSync(path, 'utf8'));
   for (const parsed of [
     vaultPack,
     numCtx,
@@ -167,6 +174,7 @@ export async function evalCommand(options: EvalOptions): Promise<void> {
     baseline,
     pageCheck,
     lifts,
+    lessons,
   ]) {
     if (parsed && typeof parsed === 'object' && 'error' in parsed) {
       warnLine(parsed.error);
@@ -183,12 +191,13 @@ export async function evalCommand(options: EvalOptions): Promise<void> {
       suite ||
       baseline ||
       pageCheck ||
+      lessons ||
       liftFlags.retrieval ||
       liftFlags.unionDecoding) &&
     !options.deep
   ) {
     warnLine(
-      '--vault-pack, --num-ctx, --prompt-cache, --handoff, --page-check, --retrieval, --union-decoding, --suite and --baseline measure the agent loop, so they go with --deep (--retrieval and --union-decoding also go with --floor).',
+      '--vault-pack, --num-ctx, --prompt-cache, --handoff, --page-check, --lessons, --retrieval, --union-decoding, --suite and --baseline measure the agent loop, so they go with --deep (--retrieval and --union-decoding also go with --floor).',
     );
     process.exitCode = 1;
     return;
@@ -207,11 +216,12 @@ export async function evalCommand(options: EvalOptions): Promise<void> {
       promptCache ||
       handoff ||
       pageCheck ||
+      lessons ||
       liftFlags.retrieval ||
       liftFlags.unionDecoding)
   ) {
     warnLine(
-      "--baseline runs another agent on the same model, so the engine's --vault-pack, --num-ctx, --prompt-cache, --handoff, --page-check, --retrieval and --union-decoding do not apply to it.",
+      "--baseline runs another agent on the same model, so the engine's --vault-pack, --num-ctx, --prompt-cache, --handoff, --page-check, --lessons, --retrieval and --union-decoding do not apply to it.",
     );
     process.exitCode = 1;
     return;
@@ -233,6 +243,8 @@ export async function evalCommand(options: EvalOptions): Promise<void> {
     if (typeof pageCheck === 'string') variant.pageCheck = pageCheck;
     if (liftFlags.retrieval) variant.retrieval = liftFlags.retrieval;
     if (liftFlags.unionDecoding) variant.unionDecoding = liftFlags.unionDecoding;
+    const lessonsRun = lessons as { lessons: EvalLessons; lines: string[] } | undefined;
+    if (lessonsRun) variant.lessons = lessonsRun.lessons;
     await runDeep(
       config,
       providers,
@@ -242,6 +254,7 @@ export async function evalCommand(options: EvalOptions): Promise<void> {
       options.yes === true,
       variant,
       chosenSuite,
+      lessonsRun?.lines,
     );
     return;
   }
@@ -305,6 +318,8 @@ export async function runDeep(
   assumeYes: boolean,
   variant: EvalVariant = {},
   suite?: EvalSuite,
+  /** The kept lessons a `lessons: 'on'` run puts in every task's brief. */
+  lessons?: string[],
 ): Promise<EvalV2Report | undefined> {
   header(`Deep eval of ${model} on ${providerId}`);
   if (suite === 'everyday') {
@@ -367,6 +382,7 @@ export async function runDeep(
     providers,
     providerId,
     cloudApproved: () => cloudApproved,
+    ...(lessons?.length ? { lessons } : {}),
   });
 
   try {
@@ -455,6 +471,8 @@ export interface DeepDriveOptions {
   /** Builds a handoff task's handoff from its scripted chat. Defaults to the
    *  harness's own `buildHandoff`, the code a real session end runs. */
   buildHandoff?: typeof buildHandoff;
+  /** The kept lessons a `lessons: 'on'` run puts in every task's brief. */
+  lessons?: string[];
 }
 
 /**
@@ -631,6 +649,11 @@ export function deepDrive(options: DeepDriveOptions): DriveTask {
       onEvent: (e) => events.push(e),
       persistRule: () => false,
       vaultContext,
+      // A lessons run gives the session the kept lessons in its brief, the
+      // block a project's chats carry; 'off' runs the same tasks without.
+      ...(context.lessons === 'on' && options.lessons?.length
+        ? { instructions: lessonsBlock(options.lessons.map((text) => ({ text }))) }
+        : {}),
     });
     try {
       await agent.run(prompt);
@@ -678,7 +701,33 @@ export function describeVariant(variant: EvalVariant): string {
   if (variant.pageCheck) parts.push(`page check ${variant.pageCheck}`);
   if (variant.retrieval) parts.push(`retrieval ${variant.retrieval}`);
   if (variant.unionDecoding) parts.push(`union decoding ${variant.unionDecoding}`);
+  if (variant.lessons) parts.push(`lessons ${variant.lessons}`);
   return parts.join(', ');
+}
+
+/** `--lessons`: 'off', or a file of lessons, one a line (a leading "- " is
+ *  dropped, and a line the lessons filter would refuse is left out, the same
+ *  rule a kept lesson meets). An error string names what is wrong. */
+export function parseLessonsFlag(
+  value: string | undefined,
+  read: (path: string) => string,
+): { lessons: EvalLessons; lines: string[] } | { error: string } | undefined {
+  if (value === undefined) return undefined;
+  if (value === 'off') return { lessons: 'off', lines: [] };
+  let text: string;
+  try {
+    text = read(value);
+  } catch {
+    return {
+      error: `--lessons: could not read ${value}. Give a file of lessons, one a line, or off.`,
+    };
+  }
+  const lines = text
+    .split(/\r?\n/)
+    .map((l) => cleanLesson(l.replace(/^\s*[-*]\s+/, '')))
+    .filter((l): l is string => Boolean(l));
+  if (!lines.length) return { error: `--lessons: ${value} holds no lesson.` };
+  return { lessons: 'on', lines };
 }
 
 // A plain `node ...` invocation and nothing else: no chaining, no redirection

@@ -141,6 +141,16 @@ export type ThreadItem =
   // A turn that ended short. `byYou` marks the person's own Stop (UX review ruling
   // 5): a quiet marker, never a failure card, and nothing to rescue.
   | { kind: 'stopped'; id: string; message: string; byYou?: true }
+  // A lesson the project's harness proposes after a task with a setback
+  // (lib/lessons, founder 2026-10-27): kept only on the person's tap.
+  | {
+      kind: 'lesson';
+      id: string;
+      projectId: string;
+      text: string;
+      source: string;
+      status: 'proposed' | 'kept' | 'dismissed';
+    }
   // The server cut the chat to fit a window smaller than the prompt (C1, UX review
   // 6): once per chat per model, teal. `room` is what the card may offer:
   // 'more' (the "Give it more room" action, about `gb` more memory when the
@@ -408,6 +418,10 @@ export interface Project {
   /** The agents from Agents this project leaves out (every agent is in a
    *  project unless deselected here), so an agent made later is in. */
   excludedAgentIds?: string[];
+  /** Lessons (founder, 2026-10-27): the harness proposes lessons from this
+   *  project's setbacks for the person to keep. Off unless turned on. The
+   *  lessons themselves stay sealed on this device (lib/lessons.ts). */
+  lessons?: boolean;
   /** Where this project's coding sessions run (2026-10-12; copy
    *  says Runs on): a docked machine's address, or THIS_COMPUTER on a
    *  desktop (lib/runsOn.ts). Unset follows the device's own choice. Device

@@ -7059,6 +7059,16 @@ button.vault-tag {
 .wayfinder .field .hint {
   margin-top: 6px;
 }
+/* Lessons: the label and its switch on one line. */
+.wayfinder-lessons-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.lesson-row {
+  cursor: default;
+}
 
 /* Sidebar project bucket switcher */
 .project-switch {
