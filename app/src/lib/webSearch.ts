@@ -52,11 +52,26 @@ export async function webSearch(
   key: SearchKey | undefined,
   count = DEFAULT_COUNT,
 ): Promise<WebSearchResult[]> {
+  return uniqueByUrl(await searchOn(query, key, count));
+}
+
+function searchOn(
+  query: string,
+  key: SearchKey | undefined,
+  count: number,
+): Promise<WebSearchResult[]> {
   if (key?.backend === 'brave' && key.apiKey) return braveSearch(query, key.apiKey, count);
   if (key?.backend === 'tavily' && key.apiKey) return tavilySearch(query, key.apiKey, count);
   if (key?.backend === 'perplexity' && key.apiKey)
     return perplexitySearch(query, key.apiKey, count);
   return duckduckgoSearch(query, count);
+}
+
+/** One result per address, so the model's [n] and the Sources list's n are
+ *  the same source (the list keeps one per address too). */
+function uniqueByUrl(results: WebSearchResult[]): WebSearchResult[] {
+  const seen = new Set<string>();
+  return results.filter((r) => !seen.has(r.url) && Boolean(seen.add(r.url)));
 }
 
 /** Resolve the search backend for a turn. Research (default off) reuses the
@@ -207,6 +222,10 @@ function hostOf(url: string): string {
 export function formatSearchResults(query: string, results: WebSearchResult[]): string {
   if (!results.length)
     return `No results for "${query}". Answer from what you already know instead.`;
-  const lines = results.map((r, i) => `${i + 1}. ${r.title}\n   ${r.url}\n   ${r.snippet}`.trim());
-  return `Search results for "${query}":\n${lines.join('\n')}\n\nAnswer the user's question using these. Cite a source URL when you rely on one.`;
+  // Numbered the way the citations card numbers them, so a reply's [1] is
+  // the card's first source (the Perplexity way, founder 2026-10-27).
+  const lines = results.map((r, i) =>
+    `[${i + 1}] ${r.title}\n    ${r.url}\n    ${r.snippet}`.trim(),
+  );
+  return `Search results for "${query}":\n${lines.join('\n')}\n\nAnswer the user's question from these sources, citing each one you rely on by its number like [1]. Where they disagree, or do not cover the question, say so.`;
 }

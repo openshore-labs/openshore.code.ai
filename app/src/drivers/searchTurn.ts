@@ -43,10 +43,16 @@ export type SearchDecision =
 export class SearchTurn {
   private filter = new SearchLineFilter(false);
   private spent?: { query: string; results: string };
+  /** The person's message before this one, and this one, for a follow-up's
+   *  query; kept across messages, read once per message. */
+  private previous?: string;
+  private current?: string;
 
   /** A new message: nothing searched yet. */
   begin(): void {
     this.spent = undefined;
+    if (this.current !== undefined) this.previous = this.current;
+    this.current = undefined;
     this.filter = new SearchLineFilter(false);
   }
 
@@ -105,13 +111,15 @@ export class SearchTurn {
     return results;
   }
 
-  /** Search first (founder, 2026-10-27): a research or factual question is
-   *  searched before the model writes a word, so a small model answers from
-   *  results instead of guessing. Returns the results turn to push after the
-   *  person's message, or undefined when this message does not search first
-   *  (search-first is off, the web is not offered, the search is spent, or
-   *  the message is small talk, code or writing). It is this message's one
-   *  search, so the answer pass reads that it is spent. */
+  /** Search first, the Perplexity way (founder, 2026-10-27): outside coding,
+   *  a message is searched before the model writes a word, so an open model
+   *  answers from current sources instead of what it half remembers. Returns
+   *  the results turn to push after the person's message, or undefined when
+   *  this message does not search first (search-first is off, the web is not
+   *  offered, the search is spent, or the message is code, small talk,
+   *  arithmetic, or an edit of given text). A short follow-up searches with
+   *  the message before it. It is this message's one search, so the answer
+   *  pass reads that it is spent. */
   async first(
     text: string,
     researchOn: boolean,
@@ -120,8 +128,11 @@ export class SearchTurn {
     priv?: AfterPrivate,
     offered: boolean = searchOffered(),
   ): Promise<string | undefined> {
+    // The first call of a message carries the person's own words; a later
+    // one (a fallback seat) only finds the search spent or declined.
+    if (this.current === undefined) this.current = text;
     if (!searchFirstOn() || !this.mayAsk(offered)) return undefined;
-    const query = searchFirstQuery(text);
+    const query = searchFirstQuery(this.current, this.previous);
     if (!query) return undefined;
     return this.run(query, researchOn, emit, signal, priv);
   }

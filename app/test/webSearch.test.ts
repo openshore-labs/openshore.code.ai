@@ -33,9 +33,9 @@ describe('formatSearchResults', () => {
     const text = formatSearchResults('cats', [
       { title: 'About cats', url: 'https://example.com/cats', snippet: 'Cats are animals.' },
     ]);
-    expect(text).toContain('1. About cats');
+    expect(text).toContain('[1] About cats');
     expect(text).toContain('https://example.com/cats');
-    expect(text).toContain('Cite a source URL');
+    expect(text).toContain('by its number like [1]');
   });
 
   it('tells the model to answer from what it knows when there are no results', () => {

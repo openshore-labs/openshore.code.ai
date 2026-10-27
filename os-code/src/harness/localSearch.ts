@@ -19,54 +19,73 @@ export const NO_SEARCH_NOTE =
  *  message may make is spent, so the model answers now instead of asking
  *  again (a second search line is never run, and never shown). */
 export const SEARCHED_NOTE =
-  'You already searched the web for this message, and the results are in the conversation. Answer now, from those results and what you know. Do not ask to search again.';
+  'You already searched the web for this message, and the numbered results are in the conversation. Answer now, from those results, the way a careful researcher would: rely on the sources over your own memory, cite each claim you take from them by its number like [1], say plainly where the sources disagree with each other or with what you believed, and if they do not cover the question, say so rather than guessing. Do not ask to search again.';
 
 const MAX_QUERY_CHARS = 200;
 
-// Search first (founder, 2026-10-27). A small local model knows little and
-// guesses the rest, and it seldom asks for a search on its own, so for a
-// research or factual question the host searches before the model writes a
-// word and the model answers from the results (tenet 3: retrieval first, the
-// way the guide harness already does for Harbor Lite). Small talk, code,
-// writing and pasted text are left to the model, which may still ask.
+// Search first, the Perplexity way (founder, 2026-10-27). An open model is
+// strong at code in its own context, but knowing real-world facts is not a
+// reasonable expectation of it, so outside coding the host searches before
+// the model writes a word, every message, and the model answers from the
+// numbered sources (tenet 3: retrieval first). A short follow-up is searched
+// with the question before it. Left to the model, which may still ask: code,
+// small talk, arithmetic, and edits of text the person handed it.
 
 const SMALL_TALK =
-  /^(hi|hello|hey|yo|thanks|thank you|thx|ty|ok|okay|cool|nice|great|awesome|lol|haha|yes|no|yep|nope|sure|good (morning|afternoon|evening|night)|how are you|how's it going|who are you|what'?s up|sup)\b[\s!.?]*$/;
+  /^(hi|hello|hey|yo|thanks|thank you|thx|ty|ok|okay|cool|nice|great|awesome|perfect|got it|lol|haha|yes|no|yep|nope|sure|bye|good (morning|afternoon|evening|night)|how are you|how's it going|who are you|what'?s up|sup)\b[\s!.?]*$/;
 const HAS_CODE =
   /```|^\s{4}\S|[;{}]\s*$|=>|\b(def|const|let|var|function|import|return)\b\s*[\w(]/m;
-const MAKE_ASK =
-  /^(please\s+)?(write|draft|rewrite|rephrase|reword|summari[sz]e|translate|edit|proofread|fix|debug|refactor|implement|make|create|generate|build|compose|brainstorm|outline|format|convert|calculate|solve)\b/;
+const CODE_ASK =
+  /\b(write|build|make|create|code|fix|debug|refactor|implement|generate|convert|optimi[sz]e|review|test)\b[^.?!]{0,40}\b(code|function|script|program|class|component|module|regex|sql|query|api|endpoint|bug|error|stack trace|app|website|site|game|tests?|unit tests?|python|javascript|typescript|swift|kotlin|rust|go|java|c\+\+|react|html|css|shell|bash)\b/;
+const CODING_TOPIC =
+  /\b(compile|compiler|typecheck|lint|stack trace|traceback|segfault|null pointer|undefined is not|exception|my (code|repo|function|build|tests?)|this (code|function|error|bug|repo))\b/;
+const EDIT_GIVEN =
+  /^(please\s+)?(rewrite|rephrase|reword|proofread|edit|shorten|tidy|polish|format|translate|summari[sz]e|fix the grammar)\b[^.?!]{0,30}\b(this|these|that|it|my|the following|below|above)\b|:\s*\n/;
 const ABOUT_THIS_CHAT =
   /\b(you (just )?said|your (last|previous) (answer|reply|message)|(the|this) (code|text|paragraph|email|essay|message|file|list) (above|below))\b/;
 const ARITHMETIC = /^[\d\s+\-*/().^%=x,]+\??$/;
-const ASKS =
-  /\?\s*$|^(who|what|what's|whats|when|where|why|how|which|is|are|was|were|can|could|does|do|did|will|should|would|has|have|tell me|explain|define|describe|compare|look up|search|find|research|latest|news)\b/;
+/** A follow-up that leans on the question before it. */
+const FOLLOW_UP =
+  /^(and|but|what about|how about|why|how so|really|is it|are they|does it|did they|so|then|also|it|that|they|he|she|this)\b/;
 
-/** The longest message that is still a question rather than pasted text. */
-const MAX_QUESTION_CHARS = 400;
+/** The longest piece of a message used as a query. */
+const MAX_MESSAGE_CHARS = 600;
 
-/** The search query to run before the model answers, or undefined when this
- *  message is not a research or factual question. Pure, so the eval can pin
- *  it. */
-export function searchFirstQuery(message: string): string | undefined {
-  const text = message.trim();
-  if (!text || text.length > MAX_QUESTION_CHARS) return undefined;
-  const lower = text.toLowerCase();
-  if (SMALL_TALK.test(lower) || ARITHMETIC.test(lower)) return undefined;
-  if (HAS_CODE.test(text) || MAKE_ASK.test(lower) || ABOUT_THIS_CHAT.test(lower)) return undefined;
-  if (!ASKS.test(lower)) return undefined;
-  const query = text
+function cleanQuery(text: string): string {
+  return text
     .replace(/^(hey|hi|hello|so|ok|okay)[,!.\s]+/i, '')
     .replace(
-      /^(can you|could you|would you|please)\s+(tell me|explain|find out|look up|search( for)?)\s*/i,
+      /^(can you|could you|would you|please)\s+(tell me|explain|find out|look up|check|search( for)?)\s*/i,
       '',
     )
-    .replace(/^(look up|search( for)?|research|find)\s+/i, '')
+    .replace(/^(look up|search( for)?|research|find|check)\s+/i, '')
     .replace(/[?!.]+$/, '')
     .trim();
-  // A follow-up of a word or two ("why?", "and tomorrow?") leans on the chat
-  // so far; the model asks for itself if it needs to.
-  if (query.split(/\s+/).length < 3) return undefined;
+}
+
+/** The search query to run before the model answers, or undefined when this
+ *  message is left to the model (code, small talk, arithmetic, an edit of
+ *  given text). `previous` is the person's message before this one, so a
+ *  short follow-up ("and in 2023?") searches with what it follows. Pure, so
+ *  the eval can pin it. */
+export function searchFirstQuery(message: string, previous?: string): string | undefined {
+  const text = message.trim();
+  if (!text) return undefined;
+  const lower = text.toLowerCase();
+  if (SMALL_TALK.test(lower) || ARITHMETIC.test(lower)) return undefined;
+  if (HAS_CODE.test(text) || CODE_ASK.test(lower) || CODING_TOPIC.test(lower)) return undefined;
+  if (EDIT_GIVEN.test(lower) || ABOUT_THIS_CHAT.test(lower)) return undefined;
+  // Pasted text: its first line carries the ask, the rest is the material.
+  const head = text.length > MAX_MESSAGE_CHARS ? (text.split('\n')[0] ?? '') : text;
+  let query = cleanQuery(head);
+  if (!query) return undefined;
+  const words = query.split(/\s+/).length;
+  const followUp = FOLLOW_UP.test(query.toLowerCase());
+  if (words < 4 || followUp) {
+    const before = previous ? searchFirstQuery(previous) : undefined;
+    if (before) query = `${before} ${query}`;
+    else if (followUp || words < 2) return undefined;
+  }
   return query.slice(0, MAX_QUERY_CHARS);
 }
 

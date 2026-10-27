@@ -89,38 +89,60 @@ describe('SearchLineFilter', () => {
   });
 });
 
-describe('searchFirstQuery (search first, founder 2026-10-27)', () => {
-  it('searches a research or factual question, cleaned to a query', () => {
+describe('searchFirstQuery (search first, the Perplexity way, founder 2026-10-27)', () => {
+  it('searches anything factual, question or not, cleaned to a query', () => {
     expect(searchFirstQuery('Who won the 2022 World Cup?')).toBe('Who won the 2022 World Cup');
-    expect(searchFirstQuery('what is new in swift 6?')).toBe('what is new in swift 6');
     expect(searchFirstQuery('Can you tell me how tides work?')).toBe('how tides work');
     expect(searchFirstQuery('look up the best time to visit Lisbon')).toBe(
       'the best time to visit Lisbon',
     );
-    expect(searchFirstQuery('Tell me about the Apollo 13 mission')).toBe(
-      'Tell me about the Apollo 13 mission',
+    expect(searchFirstQuery('I heard the Great Wall is visible from space')).toBe(
+      'I heard the Great Wall is visible from space',
+    );
+    expect(searchFirstQuery('bitcoin price')).toBe('bitcoin price');
+    expect(searchFirstQuery('Write a short essay on the causes of World War I')).toBe(
+      'Write a short essay on the causes of World War I',
     );
   });
 
-  it('leaves small talk, short follow-ups and arithmetic to the model', () => {
-    for (const m of ['hello', 'thanks!', 'how are you?', 'why?', 'and tomorrow?', '2 + 2?']) {
+  it('searches a short follow-up with the message before it', () => {
+    const before = 'Who won the 2022 World Cup?';
+    expect(searchFirstQuery('and in 2018?', before)).toBe('Who won the 2022 World Cup and in 2018');
+    expect(searchFirstQuery('why?', before)).toBe('Who won the 2022 World Cup why');
+    expect(searchFirstQuery('and tomorrow?')).toBeUndefined();
+    expect(searchFirstQuery('why?')).toBeUndefined();
+  });
+
+  it('leaves small talk and arithmetic to the model', () => {
+    for (const m of ['hello', 'thanks!', 'how are you?', 'got it', '2 + 2?']) {
       expect(searchFirstQuery(m)).toBeUndefined();
     }
   });
 
-  it('leaves code, writing and questions about the chat itself to the model', () => {
+  it('leaves coding to the model, where it is strongest', () => {
     for (const m of [
       'write a function that reverses a string',
-      'Summarize this article for me?',
       'why does `const x = () => 1;` fail?',
-      'what did you mean by your last answer?',
-      'translate "good morning" into French',
+      'fix the bug in my react component',
+      'I get a traceback when I run the script',
+      'def add(a, b): return a + b',
     ]) {
       expect(searchFirstQuery(m)).toBeUndefined();
     }
   });
 
-  it('leaves pasted text to the model', () => {
-    expect(searchFirstQuery(`what is this? ${'word '.repeat(120)}`)).toBeUndefined();
+  it('leaves edits of given text and questions about the chat to the model', () => {
+    for (const m of [
+      'Summarize this article for me',
+      'rewrite this paragraph to be shorter',
+      'what did you mean by your last answer?',
+    ]) {
+      expect(searchFirstQuery(m)).toBeUndefined();
+    }
+  });
+
+  it('searches pasted material by its first line', () => {
+    const q = searchFirstQuery(`Is this claim true?\n${'word '.repeat(200)}`);
+    expect(q).toBe('Is this claim true');
   });
 });

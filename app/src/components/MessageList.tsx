@@ -893,9 +893,11 @@ export function MessageList({
         {!thread.busy && thread.citations.length > 0 ? (
           <div className="citations">
             <div className="citations-title">Sources</div>
-            {thread.citations.slice(0, 8).map((c) => (
+            {/* Numbered as the model was handed them, so a reply's [1] is the
+                first source here (one search per message, reset each turn). */}
+            {thread.citations.slice(0, 8).map((c, i) => (
               <a key={c.url} href={c.url} target="_blank" rel="noreferrer">
-                {c.title || c.url}
+                <span className="citation-n">[{i + 1}]</span> {c.title || c.url}
               </a>
             ))}
           </div>

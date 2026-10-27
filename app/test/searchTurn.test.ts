@@ -565,6 +565,20 @@ describe('search first (founder, 2026-10-27)', () => {
     driver.dispose();
   });
 
+  it('a short follow-up searches with the question before it', async () => {
+    const driver = new StackDriver(pocket, 'offshore');
+    collect(driver);
+    driver.send('Who won the 2022 World Cup?');
+    await settle();
+    reply(0, 'Argentina [1].');
+    await settle();
+    driver.send('and in 2018?');
+    await settle();
+    expect(h.search).toHaveBeenCalledTimes(2);
+    expect(h.search.mock.calls[1]![0]).toBe('Who won the 2022 World Cup and in 2018');
+    driver.dispose();
+  });
+
   it('a declined search never searches first', async () => {
     setSearchConsent(async () => false, { allowed: () => 'declined', searchFirst: () => true });
     const driver = new StackDriver(pocket, 'offshore');

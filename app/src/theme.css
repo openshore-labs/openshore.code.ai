@@ -4415,6 +4415,11 @@ button.vault-tag {
   padding: 2px 0;
 }
 
+.citation-n {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
 /* -------------------------------------------------------------- composer */
 
 .composer-wrap {
