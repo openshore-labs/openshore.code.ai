@@ -623,6 +623,7 @@ import { ownerBoundProvider } from './teamOwner.js';
 import { dropTeamIndexes, noteTeamIndex } from './teamIndexes.js';
 import { projectWorkspaces, reconcileToast, summarizeReconcile } from '../lib/repoReconcile.js';
 import { setSearchConsent, type SearchAllowed } from '../lib/localSearch.js';
+import { largeGetJson, largeSetJson } from '../lib/largeStore.js';
 import {
   WebSearchSheets,
   answersSheet,
@@ -8977,7 +8978,7 @@ export const useApp = create<AppState>((set, get, api) => {
       for (const [id, models] of Object.entries(settings.providerModels ?? {})) {
         applyLiveModels(id, models);
       }
-      const persisted = (await storeGetJson<PersistedConversations>(CONVERSATIONS_KEY)) ?? {
+      const persisted = (await largeGetJson<PersistedConversations>(CONVERSATIONS_KEY)) ?? {
         order: [],
         conversations: {},
       };
@@ -15746,6 +15747,12 @@ async function persistRoutines(routines: RoutineView[], runs: RoutineRun[]): Pro
   await storeSetJson(ROUTINES_KEY, { routines, runs });
 }
 
+/** Said once when chats could not be saved (the device key is locked, or the
+ *  disk refused the write). */
+export const CHATS_NOT_SAVED =
+  "Your latest chat couldn't be saved on this device, so it may be gone after you close the app.";
+let chatsUnsavedSaid = false;
+
 async function persistConversations(state: Pick<AppState, 'order' | 'conversations'>) {
   const conversations: Record<string, Conversation> = {};
   // The disk order is bounded so a very long history cannot grow storage
@@ -15769,7 +15776,15 @@ async function persistConversations(state: Pick<AppState, 'order' | 'conversatio
         : {}),
     };
   }
-  await storeSetJson(CONVERSATIONS_KEY, { order: savedOrder, conversations });
+  const saved = await largeSetJson(CONVERSATIONS_KEY, { order: savedOrder, conversations }).catch(
+    () => false,
+  );
+  // A chat that did not reach the disk is said once per launch, never kept
+  // quiet: it would be gone after a relaunch (2026-10-27).
+  if (!saved && !chatsUnsavedSaid) {
+    chatsUnsavedSaid = true;
+    useApp.getState().showToast(CHATS_NOT_SAVED);
+  }
   // The chat files follow the sealed store, never the other way round.
   try {
     chatFileMirror.sync();
