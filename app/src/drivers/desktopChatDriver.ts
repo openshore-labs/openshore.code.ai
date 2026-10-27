@@ -250,6 +250,27 @@ export class DesktopChatDriver implements ChatDriver {
     this.search.begin();
     this.emit({ type: 'task-start', input: text });
     this.history.push({ role: 'user', content: text });
+    // A research question is searched before the model writes a word
+    // (searchTurn.ts, `first`); the results ride in as the next turn.
+    try {
+      const cause = this.hold.cause();
+      const results = await this.search.first(
+        text,
+        this.researchOn,
+        (e) => this.emit(e),
+        this.abortController.signal,
+        cause ? { afterPrivate: true, cause } : undefined,
+      );
+      if (this.aborted) return;
+      if (results !== undefined) this.history.push({ role: 'user', content: results });
+    } catch (err) {
+      if (this.aborted || isAbortError(err)) {
+        this.finish('aborted');
+        return;
+      }
+      this.finish('error', err instanceof Error ? err.message : 'The web search failed.');
+      return;
+    }
     await this.turn(1);
   }
 

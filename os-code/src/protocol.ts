@@ -739,6 +739,7 @@ export {
   SEARCH_PROTOCOL_NOTE,
   SearchLineFilter,
   parseSearchLine,
+  searchFirstQuery,
 } from './harness/localSearch.js';
 
 /** Wire shapes the daemon serves that are not agent events. */

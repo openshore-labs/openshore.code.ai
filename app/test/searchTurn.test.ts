@@ -488,3 +488,103 @@ describe('a search after a private read, on every driver that searches', () => {
     driver.dispose();
   });
 });
+
+describe('search first (founder, 2026-10-27)', () => {
+  beforeEach(() => {
+    setSearchConsent(async () => true, { searchFirst: () => true });
+  });
+
+  it('a pocket model in a Stack chat answers from results it did not ask for', async () => {
+    const driver = new StackDriver(pocket, 'offshore');
+    const events = collect(driver);
+    driver.send('Who won the 2022 World Cup?');
+    await settle();
+    expect(h.search).toHaveBeenCalledTimes(1);
+    expect(h.search.mock.calls[0]![0]).toBe('Who won the 2022 World Cup');
+    expect(h.generates).toHaveLength(1);
+    expect(h.generates[0]!.system).toContain(SEARCHED_NOTE);
+    expect(JSON.stringify(h.generates[0]!.messages)).toContain('RESULTS for');
+    reply(0, 'Argentina.');
+    await settle();
+    expect(shown(events)).toBe('Argentina.');
+    expect(lastDone(events)).toMatchObject({ reason: 'complete' });
+    driver.dispose();
+  });
+
+  it('your own model in a Stack chat', async () => {
+    h.stream.mockResolvedValueOnce(oai('Node 24 shipped in May 2025.'));
+    const driver = new StackDriver(box, 'offshore');
+    const events = collect(driver);
+    driver.send('when did node 24 ship?');
+    await vi.waitFor(() => expect(lastDone(events)).toBeDefined());
+    expect(h.search).toHaveBeenCalledTimes(1);
+    expect(h.stream).toHaveBeenCalledTimes(1);
+    expect(bodyOf(0).messages[0]!.content).toContain(SEARCHED_NOTE);
+    expect(JSON.stringify(bodyOf(0).messages)).toContain('RESULTS for');
+    expect(shown(events)).toBe('Node 24 shipped in May 2025.');
+    driver.dispose();
+  });
+
+  it('a pocket model in its own chat', async () => {
+    const driver = new OnDeviceDriver('qwen-pocket', 'Pocket');
+    const events = collect(driver);
+    await tick();
+    driver.send('what is new in swift 6?');
+    await settle();
+    expect(h.search).toHaveBeenCalledTimes(1);
+    expect(h.generates[0]!.system).toContain(SEARCHED_NOTE);
+    reply(0, 'Strict concurrency.');
+    await settle();
+    expect(shown(events)).toBe('Strict concurrency.');
+    driver.dispose();
+  });
+
+  it("the desktop's free chat, sent search: false since the search is spent", async () => {
+    h.stream.mockResolvedValueOnce(desk('A guitarist.'));
+    const driver = new DesktopChatDriver({ baseUrl: 'http://desk', token: 't' });
+    const events = collect(driver);
+    driver.send('who was jimi hendrix?');
+    await vi.waitFor(() => expect(lastDone(events)).toBeDefined());
+    expect(h.search).toHaveBeenCalledTimes(1);
+    expect(bodyOf(0).search).toBe(false);
+    expect(bodyOf(0).context).toContain(SEARCHED_NOTE);
+    expect(shown(events)).toBe('A guitarist.');
+    driver.dispose();
+  });
+
+  it('small talk and code are left to the model, which may still ask', async () => {
+    const driver = new StackDriver(pocket, 'offshore');
+    const events = collect(driver);
+    driver.send('thanks');
+    await settle();
+    expect(h.search).not.toHaveBeenCalled();
+    expect(h.generates[0]!.system).toContain(SEARCH_PROTOCOL_NOTE);
+    reply(0, 'Any time.');
+    await settle();
+    expect(shown(events)).toBe('Any time.');
+    driver.dispose();
+  });
+
+  it('a declined search never searches first', async () => {
+    setSearchConsent(async () => false, { allowed: () => 'declined', searchFirst: () => true });
+    const driver = new StackDriver(pocket, 'offshore');
+    collect(driver);
+    driver.send('Who won the 2022 World Cup?');
+    await settle();
+    expect(h.search).not.toHaveBeenCalled();
+    expect(h.generates[0]!.system).toContain(NO_SEARCH_NOTE);
+    driver.dispose();
+  });
+
+  it('Harbor Lite keeps its own guide harness', async () => {
+    const driver = new OnDeviceDriver(HARBOR_MINI_MODEL_ID, HARBOR_MINI_MODEL_NAME);
+    collect(driver);
+    await tick();
+    driver.send('what is new in swift 6?');
+    await settle();
+    // One search, the guide's own (three results), never a second.
+    expect(h.search).toHaveBeenCalledTimes(1);
+    expect(h.search.mock.calls[0]![2]).toBe(3);
+    driver.dispose();
+  });
+});

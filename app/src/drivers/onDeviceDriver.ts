@@ -323,6 +323,8 @@ export class OnDeviceDriver implements ChatDriver {
       if (isHarborMini(this.modelId)) await this.prepareGuideTurn(text);
       this.history.push({ role: 'user', content: text });
       if (this.aborted) return; // stopped during the guide's web search
+      if (this.searchable) await this.searchFirst(text);
+      if (this.aborted) return; // stopped during the search
       await preparing;
       if (this.aborted) return; // stopped while the pack gathered
       await this.generate();
@@ -353,6 +355,28 @@ export class OnDeviceDriver implements ChatDriver {
     );
     this.afterNote = turn.after;
     this.turnPrompt = turn.prompt;
+  }
+
+  // A research question is searched before the model writes a word
+  // (searchTurn.ts, `first`), and the results ride in as the next turn the
+  // way a search the model asked for does.
+  private async searchFirst(text: string): Promise<void> {
+    const cause = this.hold.cause();
+    try {
+      const results = await this.search.first(
+        text,
+        this.researchOn,
+        (e) => this.emit(e),
+        this.sendController?.signal,
+        cause ? { afterPrivate: true, cause } : undefined,
+      );
+      if (results !== undefined && !this.aborted) {
+        this.history.push({ role: 'user', content: results });
+      }
+    } catch (err) {
+      if (this.aborted || isAbortError(err)) return;
+      throw err;
+    }
   }
 
   private async generate(): Promise<void> {

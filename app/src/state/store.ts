@@ -8920,6 +8920,9 @@ export const useApp = create<AppState>((set, get, api) => {
             effectiveProfile(autoProfile(get().connectivity), get().settings.profileOverride),
             'cloud',
           ),
+        // A local model's research question is searched before it answers
+        // (founder, 2026-10-27); "Let models search the web" off stops it.
+        searchFirst: () => true,
       });
 
       // Wire the team vault (org tier) to the signed-in session: a fresh-token

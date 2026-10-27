@@ -7,6 +7,7 @@ import {
   SEARCH_PROTOCOL_NOTE,
   SearchLineFilter,
   parseSearchLine,
+  searchFirstQuery,
 } from '../src/harness/localSearch.js';
 
 function stream(filter: SearchLineFilter, deltas: string[]): string {
@@ -85,5 +86,41 @@ describe('SearchLineFilter', () => {
     expect(SEARCHED_NOTE).toMatch(/already searched/i);
     expect(SEARCHED_NOTE).toMatch(/do not ask to search again/i);
     expect(SEARCHED_NOTE).not.toContain(SEARCH_PREFIX);
+  });
+});
+
+describe('searchFirstQuery (search first, founder 2026-10-27)', () => {
+  it('searches a research or factual question, cleaned to a query', () => {
+    expect(searchFirstQuery('Who won the 2022 World Cup?')).toBe('Who won the 2022 World Cup');
+    expect(searchFirstQuery('what is new in swift 6?')).toBe('what is new in swift 6');
+    expect(searchFirstQuery('Can you tell me how tides work?')).toBe('how tides work');
+    expect(searchFirstQuery('look up the best time to visit Lisbon')).toBe(
+      'the best time to visit Lisbon',
+    );
+    expect(searchFirstQuery('Tell me about the Apollo 13 mission')).toBe(
+      'Tell me about the Apollo 13 mission',
+    );
+  });
+
+  it('leaves small talk, short follow-ups and arithmetic to the model', () => {
+    for (const m of ['hello', 'thanks!', 'how are you?', 'why?', 'and tomorrow?', '2 + 2?']) {
+      expect(searchFirstQuery(m)).toBeUndefined();
+    }
+  });
+
+  it('leaves code, writing and questions about the chat itself to the model', () => {
+    for (const m of [
+      'write a function that reverses a string',
+      'Summarize this article for me?',
+      'why does `const x = () => 1;` fail?',
+      'what did you mean by your last answer?',
+      'translate "good morning" into French',
+    ]) {
+      expect(searchFirstQuery(m)).toBeUndefined();
+    }
+  });
+
+  it('leaves pasted text to the model', () => {
+    expect(searchFirstQuery(`what is this? ${'word '.repeat(120)}`)).toBeUndefined();
   });
 });

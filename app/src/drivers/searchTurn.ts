@@ -20,8 +20,14 @@ import {
   SEARCHED_NOTE,
   SEARCH_PROTOCOL_NOTE,
   SearchLineFilter,
+  searchFirstQuery,
 } from 'os-code/protocol';
-import { searchForModel, searchOffered, type AfterPrivate } from '../lib/localSearch.js';
+import {
+  searchFirstOn,
+  searchForModel,
+  searchOffered,
+  type AfterPrivate,
+} from '../lib/localSearch.js';
 import { raceAbort } from './providerClient.js';
 
 /** The line history keeps for a search once the answer is in. */
@@ -97,6 +103,27 @@ export class SearchTurn {
     const results = await raceAbort(searchForModel(query, researchOn, emit, priv), signal);
     this.spent = { query, results };
     return results;
+  }
+
+  /** Search first (founder, 2026-10-27): a research or factual question is
+   *  searched before the model writes a word, so a small model answers from
+   *  results instead of guessing. Returns the results turn to push after the
+   *  person's message, or undefined when this message does not search first
+   *  (search-first is off, the web is not offered, the search is spent, or
+   *  the message is small talk, code or writing). It is this message's one
+   *  search, so the answer pass reads that it is spent. */
+  async first(
+    text: string,
+    researchOn: boolean,
+    emit: (event: DriverEvent) => void,
+    signal?: AbortSignal,
+    priv?: AfterPrivate,
+    offered: boolean = searchOffered(),
+  ): Promise<string | undefined> {
+    if (!searchFirstOn() || !this.mayAsk(offered)) return undefined;
+    const query = searchFirstQuery(text);
+    if (!query) return undefined;
+    return this.run(query, researchOn, emit, signal, priv);
   }
 
   /** Once the answer is in (or the turn ends any other way), replace the raw

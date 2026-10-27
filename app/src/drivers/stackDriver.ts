@@ -2618,6 +2618,7 @@ export class StackDriver implements ChatDriver {
       // Stopped during the guide's web search: unwind the way a stopped load does.
       if (this.aborted) throw abortError();
     }
+    if (!guide) await this.searchFirstFor(ref);
     this.deviceTurn = { ref, placement };
     // Harbor Lite never speaks the search protocol (its harness searched for
     // it); every other pocket model is filtered on every pass.
@@ -2709,6 +2710,23 @@ export class StackDriver implements ChatDriver {
     await again();
   }
 
+  /** Search first (searchTurn.ts, `first`): a local seat's research
+   *  question is searched before its first pass, and the results ride in as
+   *  the next turn the way a search the seat asked for does. Once per
+   *  message, so a fallback seat or the answer pass never searches again. */
+  private async searchFirstFor(ref: StackModelRef): Promise<void> {
+    const results = await this.search.first(
+      this.lastUserText(),
+      this.context.researchOn === true,
+      this.emit,
+      this.abortController?.signal,
+      this.searchAfterPrivate(ref),
+      this.webReachable() && searchOffered(),
+    );
+    if (this.aborted) throw abortError();
+    if (results !== undefined) this.history.push({ role: 'user', content: results });
+  }
+
   /** A search the seat `ref` wrote, once this chat holds a private note's
    *  text on a seat that stays on this network (a read, a marked turn, or a
    *  private pin): it asks every time, and one bound for Perplexity does not
@@ -2753,6 +2771,7 @@ export class StackDriver implements ChatDriver {
     // A plain text turn on your own model may search the web the way a pocket
     // model does. An Agentic Current's bench model brings its own tools.
     const searchable = !images.length && !this.context.codemagicAccess && !isCurrentBenchId(ref.id);
+    if (searchable) await this.searchFirstFor(ref);
     const system = this.systemFor(
       ref,
       placement,

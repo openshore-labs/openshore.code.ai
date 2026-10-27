@@ -56,17 +56,32 @@ export type SearchAllowed = 'allowed' | 'declined' | 'unknown';
 export interface SearchStateReaders {
   allowed?: () => SearchAllowed;
   online?: () => boolean;
+  /** Whether a local model's research question is searched before it
+   *  answers (founder, 2026-10-27). The store turns it on; a host with none
+   *  waits for the model to ask, as before. */
+  searchFirst?: () => boolean;
 }
 
 const browserOnline = (): boolean =>
   typeof navigator === 'undefined' || (navigator as { onLine?: boolean }).onLine !== false;
 let allowedReader: () => SearchAllowed = () => 'unknown';
 let onlineReader: () => boolean = browserOnline;
+let searchFirstReader: () => boolean = () => false;
 
 export function setSearchConsent(gate: SearchConsent, readers: SearchStateReaders = {}): void {
   consent = gate;
   allowedReader = readers.allowed ?? (() => 'unknown');
   onlineReader = readers.online ?? browserOnline;
+  searchFirstReader = readers.searchFirst ?? (() => false);
+}
+
+/** Whether this host searches a research question before the model answers. */
+export function searchFirstOn(): boolean {
+  try {
+    return searchFirstReader();
+  } catch {
+    return false;
+  }
 }
 
 /** The person's answer to web search right now, without asking. */
