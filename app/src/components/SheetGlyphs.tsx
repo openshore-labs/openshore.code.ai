@@ -145,6 +145,17 @@ export function MoreGlyph({ size = 22 }: { size?: number }) {
   );
 }
 
+/** Rename: a bare pencil, beside a name it changes (a project's title,
+ *  2026-10-27). Never the compose mark, which means New chat. */
+export function PencilGlyph({ size = 18 }: { size?: number }) {
+  return (
+    <Icon size={size}>
+      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z" />
+      <path d="M14.5 5.5l3 3" />
+    </Icon>
+  );
+}
+
 /** New chat: a pen over a page, the compose mark the Claude and iOS apps
  *  use, so beside a chat's own name it never reads as rename. One drawing
  *  for the Chats room's bar and an open chat's bar (D7). */

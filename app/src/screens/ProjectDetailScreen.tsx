@@ -5,9 +5,10 @@
 // and a setup script, the way Claude Code sets one up) and who works in it
 // (Agents), then in later tiers the currents and the team roster, then the
 // project's chats as one flat list, and a floating New chat pill. Every
-// project draws on the whole Vault, so it pins no notes. What the room does
-// to the project itself (make active, rename, share, delete) sits behind the
-// "..." in the bar. Reached by tapping a project on the Projects list.
+// project draws on the whole Vault, so it pins no notes. The pencil beside
+// the name renames it, and what the room does to the project itself sits at
+// the foot of the page, Delete project last and red, behind a confirm
+// (founder, 2026-10-27). Reached by tapping a project on the Projects list.
 //
 // Honest scope: projects are device-local today, so the team-access controls
 // configure who WILL have access once a project is shared with the team (a
@@ -40,7 +41,7 @@ import { ReachDot, chatReach, relativeTime } from './ChatsScreen.js';
 import { useTitleHero } from '../lib/heroTitle.js';
 import { durationMs } from '../lib/motion.js';
 import { Icon } from '../components/Icon.js';
-import { MoreGlyph, PlusGlyph } from '../components/SheetGlyphs.js';
+import { PencilGlyph, PlusGlyph } from '../components/SheetGlyphs.js';
 import { useCompact } from '../hooks/useCompact.js';
 import { RoomGlyph } from '../components/Sidebar.js';
 
@@ -83,9 +84,8 @@ export function ProjectDetailScreen() {
   // Only a company admin can lift a local project onto the org server.
   const canShare = Boolean(project && !project.shared && isCommercial && stackAdmin(account));
 
-  // The sheets this room opens: the "..." menu, the name, Project
-  // Wayfinder, the agents, the repositories, and the delete confirm.
-  const [menu, setMenu] = useState(false);
+  // The sheets this room opens: the name, Project Wayfinder, the agents,
+  // the repositories, and the delete confirm.
   const [renaming, setRenaming] = useState<string | undefined>();
   const [wayfinderOpen, setWayfinderOpen] = useState(false);
   const [agentsOpen, setAgentsOpen] = useState(false);
@@ -138,24 +138,6 @@ export function ProjectDetailScreen() {
     await updateProject(project.id, { name: renaming.trim() || 'Untitled project' });
     setRenaming(undefined);
   };
-  // A menu row closes the menu first, so only one sheet is ever up.
-  const fromMenu = (run: () => void) => () => {
-    setMenu(false);
-    run();
-  };
-
-  const more = (
-    <button
-      type="button"
-      className="icon-btn press-fb"
-      aria-label="Project options"
-      title="Project options"
-      onClick={() => setMenu(true)}
-    >
-      <MoreGlyph />
-    </button>
-  );
-
   // The desktop's New chat: the same bar button as Projects' New project,
   // beside the options.
   const barNew =
@@ -172,20 +154,24 @@ export function ProjectDetailScreen() {
 
   return (
     <div className="screen project-room-screen">
-      <BackBar
-        title={project.name}
-        action={
-          <>
-            {barNew}
-            {more}
-          </>
-        }
-        titleHiddenUntil={titleRef}
-      />
+      <BackBar title={project.name} action={barNew} titleHiddenUntil={titleRef} />
       <div className="screen-inner project-room">
-        <h1 ref={titleRef} className="project-hero-title project-room-title">
-          {project.name}
-        </h1>
+        <div className="project-room-head">
+          <h1 ref={titleRef} className="project-hero-title project-room-title">
+            {project.name}
+          </h1>
+          {mayEdit ? (
+            <button
+              type="button"
+              className="icon-btn project-rename press-fb"
+              aria-label="Rename project"
+              title="Rename"
+              onClick={() => setRenaming(project.name)}
+            >
+              <PencilGlyph />
+            </button>
+          ) : null}
+        </div>
         {/* Where its chats run (2026-10-12), as the pill under the title
             (2026-10-27): a choice of this device's, so a reader of a shared
             project still cannot start one there. */}
@@ -296,6 +282,56 @@ export function ProjectDetailScreen() {
             </p>
           )}
         </section>
+
+        {/* What the room does to the project itself, at the foot of the page
+            (founder, 2026-10-27): Delete project last, red, and it asks
+            first. */}
+        {!isActive || canShare || (teams && project.shared && mayEdit) || mayEdit ? (
+          <section
+            className="project-room-foot project-section"
+            style={{ '--i': 6 } as CSSProperties}
+          >
+            {!isActive ? (
+              <button
+                type="button"
+                className="btn quiet block"
+                onClick={() => {
+                  setActiveProject(project.id);
+                  showToast(`New chats in Chats now go to ${project.name}.`);
+                }}
+              >
+                Make this the active project
+              </button>
+            ) : null}
+            {canShare ? (
+              <button
+                type="button"
+                className="btn quiet block"
+                onClick={() => void shareProject(project.id)}
+              >
+                Share with team
+              </button>
+            ) : null}
+            {teams && project.shared && mayEdit ? (
+              <button
+                type="button"
+                className="btn quiet block"
+                onClick={() => void unshareProject(project.id)}
+              >
+                Stop sharing
+              </button>
+            ) : null}
+            {mayEdit ? (
+              <button
+                type="button"
+                className="btn danger block"
+                onClick={() => setConfirmDelete(true)}
+              >
+                Delete project
+              </button>
+            ) : null}
+          </section>
+        ) : null}
       </div>
 
       {mayWrite && compact ? (
@@ -312,71 +348,6 @@ export function ProjectDetailScreen() {
           </button>
         </div>
       ) : null}
-
-      {/* The "..." menu: what the room does to the project itself. */}
-      <Sheet open={menu} onClose={() => setMenu(false)}>
-        <SheetHead title={project.name} onClose={() => setMenu(false)} />
-        <div className="project-options">
-          {!isActive ? (
-            <button
-              type="button"
-              className="project-options-row press-fb press-fb--row"
-              onClick={fromMenu(() => {
-                setActiveProject(project.id);
-                showToast(`${project.name} is your active project.`);
-              })}
-            >
-              Make active
-              <span className="project-options-sub">New chats are saved here.</span>
-            </button>
-          ) : null}
-          {mayEdit ? (
-            <button
-              type="button"
-              className="project-options-row press-fb press-fb--row"
-              onClick={fromMenu(() => setRenaming(project.name))}
-            >
-              Rename
-            </button>
-          ) : null}
-          {repoCount ? (
-            <button
-              type="button"
-              className="project-options-row press-fb press-fb--row"
-              onClick={fromMenu(() => openProjectMemory(project.id))}
-            >
-              What it has learned
-            </button>
-          ) : null}
-          {canShare ? (
-            <button
-              type="button"
-              className="project-options-row press-fb press-fb--row"
-              onClick={fromMenu(() => void shareProject(project.id))}
-            >
-              Share with team
-            </button>
-          ) : null}
-          {teams && project.shared && mayEdit ? (
-            <button
-              type="button"
-              className="project-options-row press-fb press-fb--row"
-              onClick={fromMenu(() => void unshareProject(project.id))}
-            >
-              Stop sharing
-            </button>
-          ) : null}
-          {mayEdit ? (
-            <button
-              type="button"
-              className="project-options-row project-delete press-fb press-fb--row"
-              onClick={fromMenu(() => setConfirmDelete(true))}
-            >
-              Delete project
-            </button>
-          ) : null}
-        </div>
-      </Sheet>
 
       <ProjectWayfinderSheet
         project={project}

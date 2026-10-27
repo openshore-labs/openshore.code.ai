@@ -162,6 +162,29 @@ describe('the project room', () => {
   });
 });
 
+describe('the project room foot (founder, 2026-10-27)', () => {
+  it('the pencil renames, and Delete project asks before it deletes', async () => {
+    const { ProjectDetailScreen } = await import('../src/screens/ProjectDetailScreen.js');
+    await dom.render(<ProjectDetailScreen />);
+    const { act } = await import('react');
+    const pencil = dom.container.querySelector<HTMLElement>('[aria-label="Rename project"]')!;
+    await act(async () => {
+      pencil.click();
+    });
+    await dom.settle();
+    expect(dom.text()).toContain('Rename project');
+
+    await dom.click('Delete project');
+    await dom.settle();
+    expect(dom.text()).toContain('Delete this project?');
+    // Nothing is gone until the confirm.
+    expect(useApp.getState().settings.projects).toHaveLength(1);
+    await dom.click('Delete');
+    await dom.settle();
+    expect(useApp.getState().settings.projects ?? []).toHaveLength(0);
+  });
+});
+
 describe('Computer, the three ways in', () => {
   it('offers your computer, a server at home and a rented server', async () => {
     const { PairScreen } = await import('../src/screens/PairScreen.js');

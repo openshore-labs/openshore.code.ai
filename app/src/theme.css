@@ -13617,6 +13617,29 @@ button.settings-row:active {
 .project-room-title {
   margin-bottom: 10px;
 }
+/* The name and its pencil (2026-10-27): the pencil sits on the title's
+   first line, and a long name wraps beside it. */
+.project-room-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+}
+.project-room-head .project-room-title {
+  min-width: 0;
+}
+.project-rename {
+  flex: none;
+  margin-top: 2px;
+  color: var(--muted);
+}
+/* What the room does to the project itself, at the foot of the page, clear
+   of the phone's floating New chat. */
+.project-room-foot {
+  display: grid;
+  gap: 10px;
+  margin-top: var(--section-gap);
+  padding-bottom: 96px;
+}
 .project-room-tags {
   display: flex;
   flex-wrap: wrap;

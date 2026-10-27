@@ -135,11 +135,15 @@ describe('project room', () => {
     expect(detail).not.toContain('ProjectVaultPins');
   });
 
-  it('keeps make active, rename and delete in the menu, and a long title truncates', () => {
-    const menu = detail.slice(detail.indexOf('<Sheet open={menu}'));
-    expect(menu.slice(0, menu.indexOf('</Sheet>'))).toMatch(
-      /Make active[\s\S]*Rename[\s\S]*Delete project/,
-    );
+  it('renames by the pencil beside the name, deletes from the foot, and a long title truncates', () => {
+    // Founder, 2026-10-27: no "..." menu; a pencil beside the name, and a red
+    // Delete project at the foot of the page that asks first.
+    expect(detail).not.toContain('MoreGlyph');
+    expect(detail).toMatch(/project-room-head[\s\S]{0,400}aria-label="Rename project"/);
+    const foot = detail.slice(detail.indexOf('project-room-foot'));
+    expect(foot).toMatch(/className="btn danger block"[\s\S]{0,80}setConfirmDelete\(true\)/);
+    expect(detail).toContain('<Sheet open={confirmDelete}');
+    expect(detail).toContain('Delete this project?');
     expect(THEME).toMatch(
       /\.project-chat-title \{[^}]*display: block;[^}]*text-overflow: ellipsis/,
     );
