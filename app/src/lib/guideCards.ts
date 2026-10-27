@@ -312,7 +312,7 @@ const ALL_GUIDE_CARDS: readonly GuideCard[] = [
     id: 'chats',
     title: 'Chats',
     where: 'Menu, Chats',
-    text: "The active project's chats, and any chat whose project was deleted, newest first, with search. Tap to open, swipe left to delete, hold to rename. Sessions running on your paired computer show here too, so you can pick them up from the phone.",
+    text: 'Every chat, the ones in your projects too, newest first, with search. Tap to open, swipe left to delete, hold to rename. Sessions running on your paired computer show here too, so you can pick them up from the phone.',
     keywords: [
       'chats',
       'history',

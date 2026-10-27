@@ -278,8 +278,12 @@ Cloud seats are untouched for now.
 ## Project Wayfinder: every project its own environment (founder, 2026-10-27)
 
 A project is set up the way an environment is in Claude Code. New project asks
-for a name and opens the room; Runs on is the pill under the title (no
-Active); the doors are Repositories, **Project Wayfinder** and **Agents**.
+for a name and opens the room; Runs on is the pill under the title, a pencil
+beside the name renames it, and a red Delete project at the foot asks first;
+the doors are Repositories, **Project Wayfinder** and **Agents**. There is no
+active project: Chats and Recents list every chat, and a chat belongs to a
+project only when started from it (`activeProjectId` is only the one-use
+pointer for that).
 Project Wayfinder holds Instructions, Network access (Full, Search only, None),
 Environment variables and a Setup script, and each is wired, not decoration:
 the instructions and a network line ride every chat's brief; network access

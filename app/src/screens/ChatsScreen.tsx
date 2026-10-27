@@ -259,8 +259,6 @@ export function ChatsScreen() {
   const compact = useCompact();
 
   const projects = settings.projects ?? [];
-  const activeProject = projects.find((p) => p.id === settings.activeProjectId) ?? projects[0];
-  const projectId = activeProject?.id;
 
   // The chats in scope (lib/chatScope.ts), each with where the search found it.
   const q = query.trim().toLowerCase();
@@ -269,13 +267,13 @@ export function ChatsScreen() {
       order.flatMap((id) => {
         const conv = conversations[id];
         if (!conv) return [];
-        if (!inChatScope(conv, projectId)) return [];
+        if (!inChatScope(conv)) return [];
         const match = matchChat(conv, q);
         if (!match) return [];
         const at = new Date(conv.updatedAt).getTime();
         return [{ kind: 'chat' as const, id, at, conv, match }];
       }),
-    [order, conversations, projectId, q],
+    [order, conversations, q],
   );
 
   // Sessions on the paired desktop with no chat here. Best effort: a desktop
@@ -470,7 +468,8 @@ export function ChatsScreen() {
                   <span className="chat-row-sub">
                     <ReachDot reach={chatReach(conv)} />
                     {relativeTime(conv.updatedAt)} ·{' '}
-                    {conv.unfiled && !conv.projectId ? 'No project' : sourceShort(conv)}
+                    {(conv.projectId && projects.find((p) => p.id === conv.projectId)?.name) ||
+                      sourceShort(conv)}
                   </span>
                 </div>
               </SwipeRow>
@@ -493,13 +492,7 @@ export function ChatsScreen() {
           <div className="chat-empty">
             <h2>{q ? `Nothing matches “${query.trim()}”` : 'Nothing here yet'}</h2>
             {q ? <p>Search looks through chat names and what was said in them.</p> : null}
-            {!q ? (
-              <p>
-                {activeProject
-                  ? `Start a chat and it stays with ${activeProject.name}.`
-                  : 'Your first chat starts a project called My work.'}
-              </p>
-            ) : null}
+            {!q ? <p>Every chat you start shows here, the ones in your projects too.</p> : null}
             {!q ? (
               <button type="button" className="btn ghost press-fb" onClick={() => startNewChat()}>
                 Start a chat

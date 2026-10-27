@@ -93,8 +93,9 @@ describe('the doors', () => {
     expect(read('src/components/Composer.tsx')).toMatch(
       /\{ name: 'new', hint: 'Start a new chat' \}/,
     );
+    // In a project's chat, /new stays in that project (2026-10-27).
     expect(read('src/screens/ChatScreen.tsx')).toMatch(
-      /case 'new':\s*case 'clear':\s*startNewChat\(\)/,
+      /case 'new':\s*case 'clear':[\s\S]{0,160}startProjectChat\(conv\.projectId\);\s*else startNewChat\(\)/,
     );
   });
 });

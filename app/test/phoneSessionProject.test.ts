@@ -123,9 +123,11 @@ describe('a phone-driven session carries the project', () => {
 
     // The phone: the paired computer's hub opens the session.
     h.desktop = false;
+    useApp.getState().startProjectChat(projectId);
     await useApp.getState().newConversation({ kind: 'desktop', cwd: CWD });
     // The desktop: its own in-process engine opens it.
     h.desktop = true;
+    useApp.getState().startProjectChat(projectId);
     await useApp.getState().newConversation({ kind: 'desktop', cwd: CWD });
 
     const phone = h.phoneCreates.at(-1)!;

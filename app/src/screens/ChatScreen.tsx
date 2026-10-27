@@ -280,6 +280,7 @@ export function ChatScreen({ compact }: { compact: boolean }) {
     rewindTo,
     revisePlan,
     startNewChat,
+    startProjectChat,
     compactActive,
     renameConversation,
     activeIsAgent,
@@ -488,7 +489,9 @@ export function ChatScreen({ compact }: { compact: boolean }) {
       }
       case 'new':
       case 'clear':
-        startNewChat();
+        // In a project's chat, a new one stays in that project.
+        if (conv?.projectId) startProjectChat(conv.projectId);
+        else startNewChat();
         return;
       case 'compact':
         void compactActive(arg || undefined);
@@ -930,14 +933,14 @@ export function ChatScreen({ compact }: { compact: boolean }) {
         ) : null}
         {/* New chat, one tap from any open chat on phone and desktop (D7,
             2026-10-07, built as recommended, D): the Chats room's
-            compose, beside the status. It starts a chat in the active project
-            the same way. Not on the empty new chat itself, which has nothing
+            compose, beside the status. In a project's chat it starts another
+            in that project, otherwise a plain one (2026-10-27). Not on the empty new chat itself, which has nothing
             to leave. */}
         {conv && (!isEmpty || resuming) ? (
           <button
             type="button"
             className="icon-btn chat-compose press-fb"
-            onClick={() => startNewChat()}
+            onClick={() => (conv.projectId ? startProjectChat(conv.projectId) : startNewChat())}
             aria-label="New chat"
             title="New chat"
           >

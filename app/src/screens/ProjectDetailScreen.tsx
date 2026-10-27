@@ -52,7 +52,6 @@ export function ProjectDetailScreen() {
     conversations,
     order,
     activeId,
-    setActiveProject,
     updateProject,
     deleteProject,
     setProjectAccess,
@@ -67,7 +66,6 @@ export function ProjectDetailScreen() {
 
   const project = settings.projects?.find((p) => p.id === viewProjectId);
   const account = settings.account;
-  const isActive = (settings.activeProjectId ?? settings.projects?.[0]?.id) === project?.id;
   // Teams are v4 (docs/release-tiers.md): a Personal build shows no roster,
   // no sharing, and no team counts, whatever account an earlier build saved.
   const teams = featureOn('teams');
@@ -286,23 +284,11 @@ export function ProjectDetailScreen() {
         {/* What the room does to the project itself, at the foot of the page
             (founder, 2026-10-27): Delete project last, red, and it asks
             first. */}
-        {!isActive || canShare || (teams && project.shared && mayEdit) || mayEdit ? (
+        {canShare || mayEdit ? (
           <section
             className="project-room-foot project-section"
             style={{ '--i': 6 } as CSSProperties}
           >
-            {!isActive ? (
-              <button
-                type="button"
-                className="btn quiet block"
-                onClick={() => {
-                  setActiveProject(project.id);
-                  showToast(`New chats in Chats now go to ${project.name}.`);
-                }}
-              >
-                Make this the active project
-              </button>
-            ) : null}
             {canShare ? (
               <button
                 type="button"

@@ -97,16 +97,10 @@ describe('chatReach', () => {
 // The Chats room and Recents share one reach: the active project's chats,
 // plus the chats a deleted project left behind, which belong to no project.
 describe('inChatScope', () => {
-  it('keeps an unfiled chat in scope while a project is active', () => {
-    expect(inChatScope({ ...conv('x'), unfiled: true }, 'p1')).toBe(true);
-  });
-
-  it("leaves another project's chat out", () => {
-    expect(inChatScope({ ...conv('x'), projectId: 'p2' }, 'p1')).toBe(false);
-  });
-
-  it('leaves a legacy chat with no project out while one is active, and in when none is', () => {
-    expect(inChatScope(conv('x'), 'p1')).toBe(false);
-    expect(inChatScope(conv('x'), undefined)).toBe(true);
+  // Founder, 2026-10-27: no active project, so Chats and Recents list every chat.
+  it('keeps every chat in scope, in a project or not', () => {
+    expect(inChatScope({ ...conv('x'), unfiled: true })).toBe(true);
+    expect(inChatScope({ ...conv('x'), projectId: 'p2' })).toBe(true);
+    expect(inChatScope(conv('x'))).toBe(true);
   });
 });

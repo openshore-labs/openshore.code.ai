@@ -250,6 +250,7 @@ describe('on the desktop', () => {
     expect(h.creates.at(-1)?.target).toBe(VPS.baseUrl);
 
     await useApp.getState().setProjectRunsOn(projectId, THIS_COMPUTER);
+    useApp.getState().startProjectChat(projectId);
     const id = (await useApp.getState().newConversation({ kind: 'desktop', cwd: '/home/me/app' }))!;
     expect(h.local.at(-1)).toEqual({ cwd: '/home/me/app' });
     expect(useApp.getState().conversations[id]!.source).toMatchObject({ hub: THIS_COMPUTER });

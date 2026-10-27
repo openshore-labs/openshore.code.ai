@@ -1556,9 +1556,10 @@ export function conversationWhere(settings: AppSettings, conv: Conversation): Wh
     : projectWhere(project, ctx);
 }
 
-/** Where a new chat in the active project would run, before it exists. */
+/** Where the next new chat would run, before it exists: its project's
+ *  machine when it was started from a project, else this device's. */
 export function newChatWhere(settings: AppSettings): Where {
-  const id = settings.activeProjectId ?? settings.projects?.[0]?.id;
+  const id = settings.activeProjectId;
   const project = id ? settings.projects?.find((p) => p.id === id) : undefined;
   return projectWhere(project, whereContextOf(settings));
 }
@@ -9227,33 +9228,8 @@ export const useApp = create<AppState>((set, get, api) => {
         settingsDirty = true;
       }
 
-      // Bucket migration: a LEGACY saved chat with no project (one that predates
-      // projects) would vanish from every list once any project exists, so adopt
-      // it into the active (or first) project. P2-13: a chat explicitly unfiled
-      // by deleteProject carries `unfiled`, so it is left alone here instead of
-      // being silently re-adopted on the next launch. Unfiled chats still show
-      // in Chats and Recents, through lib/chatScope.ts.
-      const orphanIds = Object.keys(conversations).filter(
-        (id) => !conversations[id]!.projectId && !conversations[id]!.unfiled,
-      );
-      if (orphanIds.length) {
-        let activeProjectId = settings.activeProjectId ?? settings.projects?.[0]?.id;
-        if (!activeProjectId) {
-          const proj: Project = {
-            id: `p${Date.now().toString(36)}${(convSeq++).toString(36)}`,
-            name: 'My work',
-            repoIds: [],
-            createdAt: new Date().toISOString(),
-          };
-          settings.projects = [...(settings.projects ?? []), proj];
-          settings.activeProjectId = proj.id;
-          activeProjectId = proj.id;
-        }
-        for (const id of orphanIds) {
-          conversations[id] = { ...conversations[id]!, projectId: activeProjectId };
-        }
-        settingsDirty = true;
-      }
+      // A chat with no project stays that way (founder, 2026-10-27: there is
+      // no active project to file it into); Chats and Recents list every chat.
 
       // Stale build runs: the poller cannot survive a relaunch, so any run left
       // in a non-terminal state is orphaned. Settle it so Build is not bricked.
@@ -9814,12 +9790,14 @@ export const useApp = create<AppState>((set, get, api) => {
       }
       logEvent('source_chosen', { kind: source.kind });
       const id = newId();
-      // Every chat belongs to the active project (or the first one). Resolve
-      // what exists synchronously; a missing default is created just below,
-      // AFTER the conversation is on screen, so a first message never waits on
-      // project setup to become visible (B3).
+      // A chat belongs to a project only when it was started from one
+      // (startProjectChat names it, founder 2026-10-27); any other chat
+      // belongs to none. The name is used once.
       const s0 = get().settings;
-      let projectId = s0.activeProjectId ?? s0.projects?.[0]?.id;
+      const projectId = s0.projects?.some((p) => p.id === s0.activeProjectId)
+        ? s0.activeProjectId
+        : undefined;
+      if (s0.activeProjectId) void get().saveSettings({ activeProjectId: undefined });
       const seedItems = opts?.seedItems ?? [];
       // The chat's repositories: what the caller picked, else the project's.
       const project = get().settings.projects?.find((p) => p.id === projectId);
@@ -9863,17 +9841,6 @@ export const useApp = create<AppState>((set, get, api) => {
       if (first) void persistConversations(get());
       building.add(id);
       try {
-        // Create the default bucket now, if none existed, and patch it onto the
-        // conversation before the driver is built (so its instructions carry the
-        // project's brief). The chat is already on screen throughout.
-        if (!projectId) {
-          projectId = await get().createProject('My work');
-          set((s) => {
-            const c = s.conversations[id];
-            if (!c) return s;
-            return { conversations: { ...s.conversations, [id]: { ...c, projectId } } };
-          });
-        }
         const built = get().conversations[id] ?? conv;
         const driver = await buildDriver(
           built,
@@ -10125,6 +10092,8 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     startNewChat() {
+      // A plain chat: it goes into no project.
+      if (get().settings.activeProjectId) void get().saveSettings({ activeProjectId: undefined });
       set({ activeId: undefined, view: 'chat', viewTrail: [], drawerOpen: false });
     },
 
@@ -10312,7 +10281,7 @@ export const useApp = create<AppState>((set, get, api) => {
         createdAt: new Date().toISOString(),
       };
       const projects = [...(get().settings.projects ?? []), project];
-      await get().saveSettings({ projects, activeProjectId: id });
+      await get().saveSettings({ projects });
       logEvent('project_create');
       return id;
     },
@@ -10565,9 +10534,9 @@ export const useApp = create<AppState>((set, get, api) => {
     },
 
     startProjectChat(projectId) {
-      // A fresh, empty chat scoped to the project. Making the project active is
-      // what binds the chat to it (newConversation reads activeProjectId on the
-      // first send); the ['project'] trail gives the chat a way back to here.
+      // A fresh, empty chat in the project: naming it here is what binds the
+      // chat to it (newConversation reads activeProjectId on the first send,
+      // once); the ['project'] trail gives the chat a way back to here.
       get().setActiveProject(projectId);
       set({
         activeId: undefined,
@@ -14399,12 +14368,8 @@ export const useApp = create<AppState>((set, get, api) => {
 
     async askAboutVaultNote(path) {
       const s = get();
-      const projectId = s.settings.activeProjectId ?? s.settings.projects?.[0]?.id;
-      const open = s.activeId ? s.conversations[s.activeId] : undefined;
-      // The chat open now when it is the active project's; otherwise a new
-      // chat there, whose composer takes the excerpt.
-      const conversationId =
-        open && (!projectId || open.projectId === projectId) ? open.id : undefined;
+      // The chat open now, else a new chat, whose composer takes the excerpt.
+      const conversationId = s.activeId && s.conversations[s.activeId] ? s.activeId : undefined;
       const result = await get().composerVaultExcerpt(path, conversationId);
       if (!result.ok) {
         get().showToast(result.reason);
@@ -15062,7 +15027,7 @@ export const useApp = create<AppState>((set, get, api) => {
       if (!line) return;
       const { activeId } = get();
       const conv = activeId ? get().conversations[activeId] : undefined;
-      const projectId = conv?.projectId ?? get().settings.activeProjectId;
+      const projectId = conv?.projectId;
       const project = get().settings.projects?.find((p) => p.id === projectId);
       if (!project) {
         get().showToast('Open a chat in a project to save an instruction to it.');

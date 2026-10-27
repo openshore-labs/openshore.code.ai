@@ -100,6 +100,8 @@ const INSTRUCTIONS = 'Always answer in French. The repo uses pnpm.';
 async function projectWithInstructions(): Promise<void> {
   const id = await useApp.getState().createProject('Alpha');
   await useApp.getState().updateProject(id, { instructions: INSTRUCTIONS });
+  // The chat is started from the project, the way its New chat does.
+  useApp.getState().startProjectChat(id);
 }
 
 /** Constructor args with any per-reply context getter called, as a driver

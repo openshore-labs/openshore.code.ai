@@ -466,7 +466,6 @@ const RECENT_UNMEASURED = 5;
 export function recentChats(
   order: readonly string[],
   conversations: Record<string, Conversation>,
-  projectId: string | undefined,
 ): Conversation[] {
   return order
     .map((id) => conversations[id])
@@ -475,7 +474,7 @@ export function recentChats(
         Boolean(c) &&
         // A fresh chat with nothing said yet is not a place to dip back into.
         !(c!.title === 'New chat' && c!.thread.items.length === 0) &&
-        inChatScope(c!, projectId),
+        inChatScope(c!),
     )
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 }
@@ -489,10 +488,8 @@ function RecentChats({
   i: number;
   drawer?: boolean;
 }) {
-  const { order, conversations, activeId, view, openConversation, setView, settings } = useApp();
-  const projects = settings.projects ?? [];
-  const project = projects.find((p) => p.id === settings.activeProjectId) ?? projects[0];
-  const chats = recentChats(order, conversations, project?.id);
+  const { order, conversations, activeId, view, openConversation, setView } = useApp();
+  const chats = recentChats(order, conversations);
   // Right-click a recent chat: Open, Rename, Delete (components/ChatMenu.tsx).
   const actions = useChatActions();
   const box = useRef<HTMLElement | null>(null);
@@ -531,7 +528,7 @@ function RecentChats({
       {shown.length > 0 ? (
         <>
           <h2 className="sidebar-recents-head">
-            <span>{projects.length > 1 && project ? `Recents in ${project.name}` : 'Recents'}</span>
+            <span>Recents</span>
           </h2>
           {shown.map((c) => (
             <button

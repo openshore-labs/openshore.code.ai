@@ -172,11 +172,22 @@ describe('org invariants', () => {
 describe('project bucketing', () => {
   beforeEach(resetStore);
 
-  it('a chat lands in the active project', async () => {
+  it('a chat started from a project lands there, and any other chat in none', async () => {
+    // Founder, 2026-10-27: no active project. A project's New chat names it,
+    // once; a plain New chat goes into no project.
     const s = useApp.getState();
     const projectId = await s.createProject('Alpha');
-    const savedId = await s.newConversation({ kind: 'mock' });
-    expect(useApp.getState().conversations[savedId]!.projectId).toBe(projectId);
+    useApp.getState().startProjectChat(projectId);
+    const inProject = await s.newConversation({ kind: 'mock' });
+    expect(useApp.getState().conversations[inProject]!.projectId).toBe(projectId);
+    const next = await s.newConversation({ kind: 'mock' });
+    expect(useApp.getState().conversations[next]!.projectId).toBeUndefined();
+    useApp.getState().startProjectChat(projectId);
+    useApp.getState().startNewChat();
+    const plain = await s.newConversation({ kind: 'mock' });
+    expect(useApp.getState().conversations[plain]!.projectId).toBeUndefined();
+    // No "My work" project appears for a plain chat.
+    expect(useApp.getState().settings.projects).toHaveLength(1);
   });
 
   it('every chat is persisted', async () => {
@@ -398,6 +409,7 @@ describe('deleteProject unfiling (P2-13)', () => {
   it('unfiles chats and init does not re-adopt them', async () => {
     const s = useApp.getState();
     const projectId = await s.createProject('Alpha');
+    useApp.getState().startProjectChat(projectId);
     const savedId = await s.newConversation({ kind: 'mock' });
     await s.deleteProject(projectId);
     const conv = useApp.getState().conversations[savedId]!;
@@ -423,7 +435,7 @@ describe('deleteProject unfiling (P2-13)', () => {
     expect(useApp.getState().settings.projects ?? []).toHaveLength(0);
   });
 
-  it('still adopts a LEGACY orphan (no project, not unfiled)', async () => {
+  it('leaves a LEGACY orphan (no project, not unfiled) in no project', async () => {
     // A pre-projects chat persisted with neither projectId nor unfiled.
     mem.set(SETTINGS_KEY, JSON.stringify({ onboarded: true, claudeModel: 'x', deviceModels: {} }));
     mem.set(
@@ -453,8 +465,9 @@ describe('deleteProject unfiling (P2-13)', () => {
     useApp.setState({ initStarted: false, ready: false, conversations: {}, order: [] });
     await useApp.getState().init();
     const legacy = useApp.getState().conversations['legacy']!;
-    expect(legacy.projectId).toBeDefined();
-    expect(useApp.getState().settings.projects ?? []).toHaveLength(1);
+    // Chats lists every chat, so nothing is filed for it to show.
+    expect(legacy.projectId).toBeUndefined();
+    expect(useApp.getState().settings.projects ?? []).toHaveLength(0);
   });
 });
 
