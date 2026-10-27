@@ -742,6 +742,22 @@ export {
   searchFirstQuery,
 } from './harness/localSearch.js';
 
+// Project Wayfinder: a project's own environment, the `.env` text, the
+// limits a session create is held to, and the network levels.
+export {
+  PROJECT_ENV_MAX_VALUE,
+  PROJECT_ENV_MAX_VARS,
+  PROJECT_NETWORKS,
+  SETUP_SCRIPT_MAX_CHARS,
+  cleanProjectEnv,
+  cleanSetupScript,
+  isEnvName,
+  isProjectNetwork,
+  parseEnvText,
+  projectNetworkNote,
+} from './harness/projectEnv.js';
+export type { ProjectNetwork } from './harness/projectEnv.js';
+
 /** Wire shapes the daemon serves that are not agent events. */
 export interface DaemonSessionInfo {
   id: string;

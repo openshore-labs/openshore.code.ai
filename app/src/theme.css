@@ -7043,6 +7043,23 @@ button.vault-tag {
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
+/* A field whose control is not a single input (a segmented choice) names
+   it the way a label does. */
+.field .field-label {
+  display: block;
+  font-size: var(--text-3);
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+/* Project Wayfinder's variables and setup script are code. */
+.field textarea.mono {
+  font-family: var(--font-mono);
+  font-size: var(--text-3);
+}
+.wayfinder .field .hint {
+  margin-top: 6px;
+}
+
 /* Sidebar project bucket switcher */
 .project-switch {
   position: relative;
@@ -13606,6 +13623,20 @@ button.settings-row:active {
   gap: 6px;
   margin: -2px 0 14px;
 }
+/* Runs on, the pill under a project's title (2026-10-27): a door, so it
+   answers the finger, and a long machine name ends in an ellipsis. */
+.runs-on-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  border: 0;
+  cursor: pointer;
+}
+.runs-on-pill-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .project-pills {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -13638,6 +13669,14 @@ button.settings-row:active {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+/* Project Wayfinder is set up: a small mark, so the door reads as a place. */
+.project-pill > .project-pill-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
 }
 .project-pill:disabled {
   color: var(--muted);

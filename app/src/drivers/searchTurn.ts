@@ -48,6 +48,15 @@ export class SearchTurn {
   private previous?: string;
   private current?: string;
 
+  /** The chat's project closed the web (Project Wayfinder's network access
+   *  none): nothing is offered, asked for, or searched first. Read live. */
+  private closed: () => boolean = () => false;
+
+  /** Close this chat's web while `closed` answers true. */
+  closedBy(closed: () => boolean): void {
+    this.closed = closed;
+  }
+
   /** A new message: nothing searched yet. */
   begin(): void {
     this.spent = undefined;
@@ -64,13 +73,13 @@ export class SearchTurn {
   /** Whether the model may ask for a search on this pass: the web is offered
    *  (in reach, not declined) and the search is not yet spent. */
   mayAsk(offered: boolean = searchOffered()): boolean {
-    return offered && !this.searched;
+    return offered && !this.searched && !this.closed();
   }
 
   /** The system note for this pass. */
   note(offered: boolean = searchOffered()): string {
     if (this.searched) return SEARCHED_NOTE;
-    return offered ? SEARCH_PROTOCOL_NOTE : NO_SEARCH_NOTE;
+    return offered && !this.closed() ? SEARCH_PROTOCOL_NOTE : NO_SEARCH_NOTE;
   }
 
   /** Arm the filter for one generation. `enabled` is false only for a seat

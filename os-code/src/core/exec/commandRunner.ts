@@ -10,7 +10,7 @@
 // Git for Windows' bash when it is installed, else PowerShell.
 import { spawn, type ChildProcess } from 'node:child_process';
 import { redactSecrets } from '../security/redaction.js';
-import { scrubbedEnv } from './childEnv.js';
+import { isSecretEnvName, scrubbedEnv } from './childEnv.js';
 import { killProcessTree, shellForThisMachine } from './shell.js';
 
 export interface CommandRunOptions {
@@ -35,6 +35,13 @@ export interface CommandRunOptions {
    * other command starts with the scrubbed environment.
    */
   keepEnv?: readonly string[];
+  /**
+   * The project's own environment variables (Project Wayfinder, founder
+   * 2026-10-27), set on top of the scrubbed environment. The person typed
+   * them for this project, so a secret-looking name passes here; its value is
+   * redacted from the output, so the model never reads it back.
+   */
+  env?: Readonly<Record<string, string>>;
   /**
    * False keeps no copy of the output: onChunk still sees every chunk, and
    * the result's stdout and stderr are empty. For a program that runs for
@@ -127,7 +134,7 @@ export class CommandRun {
         const windows = process.platform === 'win32';
         child = spawn(shell.file, shell.args(opts.command), {
           cwd: opts.cwd,
-          env: scrubbedEnv(process.env, opts.keepEnv),
+          env: { ...scrubbedEnv(process.env, opts.keepEnv), ...opts.env },
           // Its own process group on POSIX, so a kill reaches the tree. On
           // Windows a detached child would open its own console window, and
           // the tree kill (taskkill /T) does not need a group.
@@ -212,7 +219,7 @@ export class CommandRun {
       clearTimeout(state.timer);
       state.timer = undefined;
     }
-    const merged = redactSecrets(state.carry + raw);
+    const merged = redactProjectEnv(redactSecrets(state.carry + raw), this.opts.env);
     const hold = Math.min(CARRY_CHARS, merged.length);
     const ready = merged.slice(0, merged.length - hold);
     state.carry = merged.slice(merged.length - hold);
@@ -267,6 +274,22 @@ export class CommandRun {
     if (wait > 0) this.stopTimer = setTimeout(end, wait);
     else end();
   }
+}
+
+/** The values of a project's secret-looking variables, cut from a command's
+ *  output (a value of four characters or fewer is left, it would only cut
+ *  ordinary words). A value split across two chunks wider than the held tail
+ *  can still slip through; the variable's name is what the model should use. */
+export function redactProjectEnv(
+  text: string,
+  env: Readonly<Record<string, string>> | undefined,
+): string {
+  if (!env) return text;
+  let out = text;
+  for (const [name, value] of Object.entries(env)) {
+    if (value.length > 4 && isSecretEnvName(name)) out = out.split(value).join(`[${name}]`);
+  }
+  return out;
 }
 
 export function runCommand(opts: CommandRunOptions): CommandRun {

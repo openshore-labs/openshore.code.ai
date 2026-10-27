@@ -40,6 +40,7 @@ import { LocalDriver, storedSessionProject } from '../../daemon/session.js';
 import { buildCodeMap } from '../../context/codeMap.js';
 import { vaultFileTest } from '../tools/workspaceNotes.js';
 import { readRepoInstructions } from './instructions.js';
+import { projectNetworkNote } from '../../harness/projectEnv.js';
 import { gateProjectSecrets } from './secretsGate.js';
 import { humanizerEnabled } from './humanizerStandard.js';
 import { memoryEnabled } from './memorySwitch.js';
@@ -90,6 +91,16 @@ export interface BootstrapOptions {
    *  orchestrator is local; a cloud orchestrator drops it. See the gate in
    *  bootstrapSession. */
   projectSecrets?: string;
+  /** The project's environment (Project Wayfinder, founder 2026-10-27):
+   *  variables set on every command the session runs, never journaled. */
+  projectEnv?: Readonly<Record<string, string>>;
+  /** A setup script run once on the command lane when a fresh session opens,
+   *  with the project's variables, the way Claude Code prepares an
+   *  environment. The person wrote it (or tapped a proposal of it in). */
+  setupScript?: string;
+  /** The agent's network tools for this project: 'search' keeps web search
+   *  only, 'none' none of them. Undefined is 'full'. */
+  network?: 'full' | 'search' | 'none';
   /** The permission mode to start in (default: ask for writes and shell). */
   permissionMode?: PermissionMode;
   /** The app's "Humanize Writing" setting for this session. Undefined leaves
@@ -253,7 +264,12 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
   // same project, and the standing instructions drop. A caller's own wins.
   const stored = options.sessionId ? storedSessionProject(options.sessionId) : {};
   const projectName = options.projectName ?? stored.projectName;
-  const instructions = options.instructions ?? stored.instructions;
+  // Project Wayfinder's network access, kept like a switch: a narrowing a
+  // revived session must not lose. The model reads it beside the brief.
+  const network = options.network ?? stored.switches?.network;
+  const baseInstructions = options.instructions ?? stored.instructions;
+  const instructions =
+    [baseInstructions, projectNetworkNote(network)].filter(Boolean).join('\n\n') || undefined;
   // The app's switches the same way: a revived session keeps the person's
   // Humanize Writing, Memory, and Chain of Thought choices.
   const humanize = options.humanize ?? stored.switches?.humanize;
@@ -419,6 +435,7 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     offline: options.profile === 'headless',
     offlineSearch: options.profile === 'headless' && options.routineSearch === true,
     ...(config.tools.webFetch === 'off' ? { webFetch: false } : {}),
+    ...(network && network !== 'full' ? { network } : {}),
     ...(processes ? { processes: true, processesOffered: () => modeNow() !== 'plan' } : {}),
   };
   const tools = buildToolRegistry(registryOptions);
@@ -501,7 +518,9 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
     persist: options.persist,
     project: {
       projectName,
-      instructions,
+      // The person's own brief is what is kept; the network line is added
+      // again from the kept switch on a revive.
+      instructions: baseInstructions,
       switches: {
         humanize,
         memory: memorySwitch,
@@ -509,6 +528,7 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
         ...(webSearch === false ? { webSearch: false } : {}),
         ...(currents ? { currents } : {}),
         ...(harnessCurrents ? { harnessCurrents } : {}),
+        ...(network && network !== 'full' ? { network } : {}),
       },
     },
     handoff,
@@ -559,6 +579,10 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
   // keep one Hermes session per OpenShore session.
   if (currents) toolContext.currents = currents;
   toolContext.sessionId = driver.id;
+  if (options.projectEnv && Object.keys(options.projectEnv).length) {
+    toolContext.projectEnv = options.projectEnv;
+    driver.projectEnv = options.projectEnv;
+  }
 
   // The process tools' seam: each program is a run on this driver's command
   // lane, `runCommand(cmd, {source: 'agent'})` behind startAgentProcess (which
@@ -651,6 +675,15 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
   });
   driver.attachAgent(agent);
   modeNow = () => agent.permissionMode;
+
+  // Project Wayfinder's setup script: once, when a fresh session opens, on
+  // the command lane with the project's variables, so its card and its
+  // result are in the transcript and the model reads how it went.
+  const setupScript = options.setupScript?.trim();
+  if (!options.sessionId && setupScript) {
+    driver.emit({ type: 'status', message: "Running this project's setup script." });
+    driver.runCommand(setupScript);
+  }
 
   // Rehydrating a stored session (daemon restarted): the journal replayed into
   // the driver, but a fresh AgentSession has no memory. Seed its history from

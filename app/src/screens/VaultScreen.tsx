@@ -343,7 +343,6 @@ export function VaultScreen() {
     vaultBringPrevious,
     askAboutVaultNote,
     pinVaultNoteToProject,
-    canEditProjectPins,
     vaultHubOfferShown,
     vaultAcceptHubMove,
     vaultDeclineHubMove,
@@ -2545,7 +2544,10 @@ export function VaultScreen() {
           trashReal={caps.trash}
           confirmDelete={confirmDelete}
           canAsk={!team}
-          canPin={Boolean(!team && pinProjectId && canEditProjectPins(pinProjectId))}
+          // Pins are retired (founder, 2026-10-27): every project draws on
+          // the whole Vault, and how a project reaches the Vault is to be
+          // redesigned, so no note offers Pin to project context for now.
+          canPin={false}
           canOutline={outlineOffered(outlineHeadings)}
           onOutline={() => {
             setMenuOpen(false);

@@ -108,6 +108,11 @@ export interface ToolRegistryOptions {
   // 2026-10-01). Results are titles, links and snippets; webFetch, Codemagic,
   // the currents and the model handoffs stay out. Ignored under egress lockdown.
   offlineSearch?: boolean;
+  // The project's network access (Project Wayfinder, founder 2026-10-27):
+  // 'search' keeps webSearch alone of the network tools, 'none' registers
+  // none of them. Undefined or 'full' changes nothing. It shapes the agent's
+  // own tools; a shell command is the shell's, so copy never claims more.
+  network?: 'full' | 'search' | 'none';
   // False leaves webFetch out: the person set opening web pages to Never
   // (`tools.webFetch: off`). Undefined means on.
   webFetch?: boolean;
@@ -233,7 +238,9 @@ export function buildToolRegistry(options: ToolRegistryOptions): ToolRegistry {
   // Web tools reach the internet, so they are the one outbound path a secret
   // could leak through. Under egress lockdown, and on an offline run, they are
   // not registered at all.
-  if (!options.egressLockdown && !options.offline) {
+  if (!options.egressLockdown && !options.offline && options.network === 'search') {
+    if (options.webSearch !== false) registry.register(webSearchTool);
+  } else if (!options.egressLockdown && !options.offline && options.network !== 'none') {
     for (const tool of networkTools(options)) registry.register(tool);
   } else if (
     !options.egressLockdown &&

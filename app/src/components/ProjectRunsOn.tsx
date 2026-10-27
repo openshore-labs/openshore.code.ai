@@ -1,7 +1,7 @@
 // Runs on (2026-10-12): "in your projects, you can choose the Hub to
 // run your project from, either your home computer, home server, or remote
-// server." A pill under the project's title, beside its repositories and its
-// instructions, and the sheet it opens: this computer (on the desktop), each
+// server." A pill under the project's title (where Active sat until
+// 2026-10-27), and the sheet it opens: this computer (on the desktop), each
 // docked machine with its kind, size and whether it answers, or follow this
 // device. New chats only; a chat already started stays where it began
 // (lib/runsOn.ts). Shown once a machine is docked, since before that there is
@@ -59,10 +59,17 @@ export function RunsOnPill({
   const settings = useApp((s) => s.settings);
   if (hubList(settings).length === 0) return null;
   const where = projectWhere(project, whereContextOf(settings));
+  // A pill under the title, where Active once sat (founder, 2026-10-27):
+  // where this project's chats run, and the door to change it.
   return (
-    <button type="button" className="project-pill press-fb" disabled={disabled} onClick={onOpen}>
-      <MachineGlyph />
-      <span>{runsOnLabel(where)}</span>
+    <button
+      type="button"
+      className="pill ink runs-on-pill press-fb"
+      disabled={disabled}
+      onClick={onOpen}
+    >
+      <MachineGlyph size={14} />
+      <span className="runs-on-pill-name">{runsOnLabel(where)}</span>
     </button>
   );
 }
@@ -194,9 +201,9 @@ function RowCheck() {
 }
 
 /** A machine, drawn as a small server box, the mark on the Runs on pill. */
-function MachineGlyph() {
+function MachineGlyph({ size = 18 }: { size?: number }) {
   return (
-    <Icon size={18}>
+    <Icon size={size}>
       <rect x="4" y="4.5" width="16" height="6" rx="1.6" />
       <rect x="4" y="13.5" width="16" height="6" rx="1.6" />
       <path d="M7.5 7.5h.01M7.5 16.5h.01" />

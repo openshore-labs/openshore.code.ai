@@ -216,8 +216,11 @@ export class DesktopChatDriver implements ChatDriver {
     /** The /chat vault fields (tech review J6): the project the daemon builds the pack
      *  for, or Memory off. None sends neither, so the daemon builds none. */
     private readonly vault: ChatVaultFields = {},
+    /** The chat's project closed the web (Project Wayfinder), read live. */
+    webClosed?: () => boolean,
   ) {
     this.transport = 'stream' in target ? target : daemonFreeChat(target);
+    if (webClosed) this.search.closedBy(webClosed);
     if (seed) {
       this.history = seed.map((t) => ({ role: t.role, content: t.text }));
       this.historyLocalOnly = seed.some((t) => t.localOnly === true);

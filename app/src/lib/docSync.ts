@@ -7,12 +7,14 @@
 // What a document holds is what should follow the person, never what belongs
 // to one device: a chat's title, source, project, thread items and citations,
 // not its live state (busy, approvals, a queue); a project's name,
-// instructions, currents and repositories, not where it runs or its pinned
-// notes, which name this device's machine and notes. A shared project syncs
+// instructions, currents, repositories, network access, setup script and
+// agent selection, not where it runs, its pinned notes, or its environment
+// variables (sealed on each device, lib/projectEnv.ts). A shared project syncs
 // through the team server already, and a coding session's chat through its
 // own machine, so neither is a document here.
 import type { Conversation, Project, ThreadItem } from '../state/types.js';
 import { emptyThread } from '../state/types.js';
+import { isProjectNetwork } from 'os-code/protocol';
 import type { OscodeBridge } from './electronBridge.js';
 import {
   type RemoveResult,
@@ -290,6 +292,9 @@ interface ProjectDoc {
   agenticCurrent?: Project['agenticCurrent'];
   harnessCurrent?: Project['harnessCurrent'];
   repoIds: string[];
+  network?: Project['network'];
+  setupScript?: string;
+  excludedAgentIds?: string[];
   createdAt: string;
 }
 
@@ -301,6 +306,9 @@ export function projectDoc(p: Project): string {
     ...(p.agenticCurrent ? { agenticCurrent: p.agenticCurrent } : {}),
     ...(p.harnessCurrent ? { harnessCurrent: p.harnessCurrent } : {}),
     repoIds: p.repoIds,
+    ...(p.network && p.network !== 'full' ? { network: p.network } : {}),
+    ...(p.setupScript ? { setupScript: p.setupScript } : {}),
+    ...(p.excludedAgentIds?.length ? { excludedAgentIds: p.excludedAgentIds } : {}),
     createdAt: p.createdAt,
   };
   return JSON.stringify(d);
@@ -327,6 +335,11 @@ export function projectFromDoc(text: string, id: string, existing?: Project): Pr
     ...(d.agenticCurrent ? { agenticCurrent: d.agenticCurrent } : {}),
     ...(d.harnessCurrent ? { harnessCurrent: d.harnessCurrent } : {}),
     repoIds: d.repoIds.filter((r): r is string => typeof r === 'string'),
+    ...(isProjectNetwork(d.network) && d.network !== 'full' ? { network: d.network } : {}),
+    ...(typeof d.setupScript === 'string' && d.setupScript ? { setupScript: d.setupScript } : {}),
+    ...(Array.isArray(d.excludedAgentIds)
+      ? { excludedAgentIds: d.excludedAgentIds.filter((x): x is string => typeof x === 'string') }
+      : {}),
     createdAt: d.createdAt,
   };
 }

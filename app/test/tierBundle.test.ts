@@ -192,9 +192,9 @@ describe('the bundle check CI runs on the Personal build', () => {
   });
 
   it('fails a launch that grows past its ceiling', () => {
-    write('assets/jsx-runtime-b2.js', `export const a=(e)=>e;//${'x'.repeat(2_000_000)}`);
+    write('assets/jsx-runtime-b2.js', `export const a=(e)=>e;//${'x'.repeat(2_010_000)}`);
     expect(bundleProblems(inspectBundle(dist))).toEqual([
-      expect.stringMatching(/^launch loads \d+ bytes, over 2000000$/),
+      expect.stringMatching(/^launch loads \d+ bytes, over 2010000$/),
     ]);
   });
 

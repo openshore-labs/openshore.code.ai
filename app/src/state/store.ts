@@ -624,6 +624,10 @@ import { dropTeamIndexes, noteTeamIndex } from './teamIndexes.js';
 import { projectWorkspaces, reconcileToast, summarizeReconcile } from '../lib/repoReconcile.js';
 import { setSearchConsent, type SearchAllowed } from '../lib/localSearch.js';
 import { largeGetJson, largeSetJson } from '../lib/largeStore.js';
+import { projectEnvFor, readProjectEnvText, writeProjectEnvText } from '../lib/projectEnv.js';
+import { agentInProject, agentSelectionPatch } from '../lib/projectAgents.js';
+import type { ProjectContract } from '../lib/projectFence.js';
+import { projectNetworkNote } from 'os-code/protocol';
 import {
   WebSearchSheets,
   answersSheet,
@@ -1914,6 +1918,9 @@ interface AppState {
    *  (lib/appActions.ts). Resolves false for a key or value the app does not
    *  take, which changes nothing. */
   applyAppAction(key: string, value: string): Promise<boolean>;
+  /** Write one field a model proposed in a project's chat, on the person's
+   *  tap (lib/projectActions.ts). False for a value the field does not take. */
+  applyProjectAction(projectId: string, key: string, value: string): Promise<boolean>;
   /** Send text once the active conversation's driver has attached. */
   sendWhenAttached(conversationId: string, text: string, attachments?: Attachment[]): void;
   /** Try again to deliver a chat's parked first message: rebuild the driver
@@ -1946,7 +1953,17 @@ interface AppState {
   setActiveProject(id: string): void;
   updateProject(
     id: string,
-    patch: Partial<Pick<Project, 'name' | 'instructions' | 'repoIds' | 'access'>>,
+    patch: Partial<
+      Pick<Project, 'name' | 'instructions' | 'repoIds' | 'access' | 'network' | 'setupScript'>
+    >,
+  ): Promise<void>;
+  /** A project's Agents selection (founder, 2026-10-27): the agents from
+   *  Agents ticked for it; every other one is left out of it. */
+  setProjectAgents(projectId: string, selected: string[]): Promise<void>;
+  /** Make an agent for one project alone, ticked there. */
+  addProjectAgent(
+    projectId: string,
+    agent: Pick<CrewAgent, 'name' | 'persona'> & Partial<Pick<CrewAgent, 'whenCalled'>>,
   ): Promise<void>;
   /** Open a project's detail room (its chats, instructions, repos, access). */
   openProject(id: string): void;
@@ -4287,10 +4304,59 @@ export const useApp = create<AppState>((set, get, api) => {
       ? get().settings.projects?.find((p) => p.id === conv.projectId)
       : undefined;
     return (
-      [project?.instructions?.trim(), repoContextLine(conv.repoIds ?? [])]
+      [
+        project?.instructions?.trim(),
+        projectNetworkNote(project?.network),
+        repoContextLine(conv.repoIds ?? []),
+      ]
         .filter(Boolean)
         .join('\n\n') || undefined
     );
+  }
+
+  /** The contract that lets a project's chat fill its fields
+   *  (lib/projectActions.ts), loaded in the background as the chat opens so a
+   *  launch never carries it, with the project read live and its variables
+   *  by name only. Undefined outside a project; answers nothing until the
+   *  module and the names are in, well before a first reply. */
+  function projectContractFor(conv: Conversation): ProjectContract | undefined {
+    const projectId = conv.projectId;
+    if (!projectId) return undefined;
+    let build: typeof import('../lib/projectActions.js').projectActionsContract | undefined;
+    let envNames: string[] = [];
+    void import('../lib/projectActions.js')
+      .then((m) => {
+        build = m.projectActionsContract;
+      })
+      .catch(() => {});
+    void projectEnvFor(projectId)
+      .then((env) => {
+        envNames = Object.keys(env ?? {});
+      })
+      .catch(() => {});
+    return (leaves, userTurns) => {
+      const s = get().settings;
+      const p = s.projects?.find((x) => x.id === projectId);
+      if (!build || !p) return undefined;
+      return build(leaves, userTurns, {
+        name: p.name,
+        instructions: p.instructions,
+        network: p.network,
+        setupScript: p.setupScript,
+        envNames,
+        agents: (s.crew ?? []).filter((a) => agentInProject(a, projectId, p)).map((a) => a.name),
+      });
+    };
+  }
+
+  /** Whether the chat's project closed the web (Project Wayfinder's
+   *  network access none), read live so a change applies on the next turn. */
+  function webClosedFor(conv: Conversation): () => boolean {
+    return () =>
+      Boolean(
+        conv.projectId &&
+        get().settings.projects?.find((p) => p.id === conv.projectId)?.network === 'none',
+      );
   }
 
   /** standingContext plus, in the guided setup's own chat, where the walk
@@ -4441,10 +4507,9 @@ export const useApp = create<AppState>((set, get, api) => {
       read: async (path) => (await personalRead(path))?.text,
       privacy: vaultPrivacyNow,
       currentState: () => projectCurrentState(projectId),
-      projectPins: () =>
-        (projectId
-          ? get().settings.projects?.find((p) => p.id === projectId)?.vaultPins
-          : undefined) ?? [],
+      // Pins are retired (founder, 2026-10-27): every project draws on the
+      // whole Vault, which retrieval searches on every send.
+      projectPins: () => [],
       handoff: () => handoff,
       // Room for notes and the Handoff switch (Vault M7, tech review L13), read at
       // each send; the vault's own settings name what retrieval skips.
@@ -4594,6 +4659,11 @@ export const useApp = create<AppState>((set, get, api) => {
               (await secretGet(harnessCurrentSecretKey(harnessId)).catch(() => null)) ?? undefined,
             )
           : undefined;
+        // The project's variables, read from the sealed store for a fresh
+        // session only. Unlike the tokens and secrets note they are meant for
+        // the machine the project runs on, so they ride to a docked one too.
+        const projectEnv =
+          project && !conv.source.sessionId ? await projectEnvFor(project.id) : undefined;
         const sessionOpts = {
           instructions,
           permissionMode: settings.permissionMode ?? DEFAULT_PERMISSION_MODE,
@@ -4626,11 +4696,12 @@ export const useApp = create<AppState>((set, get, api) => {
           // handoff opens its first task, since the agent takes no history.
           // Conversation content, so it rides even with Memory off.
           ...(extra?.handoff ? { handoff: capHandoffBytes(extra.handoff) } : {}),
-          // The project's own pinned notes (J14), read first by the engine's
-          // pack. The vault's, so they stay home with Memory off.
-          ...(project?.vaultPins?.length && memoryOverride(settings) !== false
-            ? { vaultPins: [...project.vaultPins] }
-            : {}),
+          // Project Wayfinder (founder, 2026-10-27): the project's network
+          // access, its setup script and its variables. Every project draws
+          // on the whole Vault (the pack searches all of it), so no pins ride.
+          ...(project?.network && project.network !== 'full' ? { network: project.network } : {}),
+          ...(project?.setupScript?.trim() ? { setupScript: project.setupScript } : {}),
+          ...(projectEnv ? { projectEnv } : {}),
           // Notes in chats, Handoff and Room for notes (Vault M7, tech review L13):
           // off-only and lower-only, taken at open, so a change applies to
           // new chats.
@@ -4701,10 +4772,13 @@ export const useApp = create<AppState>((set, get, api) => {
             memory: sessionOpts.memory,
             currents: sessionOpts.currents,
             harnessCurrents: sessionOpts.harnessCurrents,
-            // A switch's handoff (J12) and the project's pins (J14), both
-            // capped by the client before they go on the wire.
+            // A switch's handoff (J12), capped by the client before it goes
+            // on the wire, and Project Wayfinder's network, setup script and
+            // variables for the machine this project runs on.
             handoff: sessionOpts.handoff,
-            vaultPins: sessionOpts.vaultPins,
+            network: sessionOpts.network,
+            setupScript: sessionOpts.setupScript,
+            projectEnv: sessionOpts.projectEnv,
             ...(sessionOpts.vaultOverrides ? { vaultOverrides: sessionOpts.vaultOverrides } : {}),
           });
           await bindSessionId(conv.id, sessionId, cwd, target.baseUrl);
@@ -4737,6 +4811,8 @@ export const useApp = create<AppState>((set, get, api) => {
             seed,
             chatContext(conv),
             settings.perplexityResearch === true,
+            {},
+            webClosedFor(conv),
           );
         }
         // On the phone, the paired desktop's daemon and its stateless /chat.
@@ -4771,6 +4847,7 @@ export const useApp = create<AppState>((set, get, api) => {
                     ...(settings.vaultPackSize ? { packSize: settings.vaultPackSize } : {}),
                   },
                 },
+          webClosedFor(conv),
         );
       }
       case 'device': {
@@ -4782,7 +4859,12 @@ export const useApp = create<AppState>((set, get, api) => {
           settings.perplexityResearch === true,
           standingContext(conv),
           conv.id,
-          { vaultPack, writingVoice: settings.writingVoice },
+          {
+            vaultPack,
+            writingVoice: settings.writingVoice,
+            webClosed: webClosedFor(conv),
+            projectContract: projectContractFor(conv),
+          },
         );
       }
       case 'cloud': {
@@ -4841,10 +4923,7 @@ export const useApp = create<AppState>((set, get, api) => {
         // projects), and only the levels that speak inside a chat. "review"
         // agents fire at deploy time, not here.
         const crew = (s.settings.crew ?? []).filter(
-          (a) =>
-            a.activityLevel !== 'review' &&
-            (a.projectIds.length === 0 ||
-              (conv.projectId != null && a.projectIds.includes(conv.projectId))),
+          (a) => a.activityLevel !== 'review' && agentInProject(a, conv.projectId, project),
         );
         // The Harness Current (Jev) for THIS conversation's project, with its
         // resolved key, so the stack can let it steer a paid-seat turn. Absent
@@ -4862,10 +4941,9 @@ export const useApp = create<AppState>((set, get, api) => {
           {
             projectName: project?.name,
             harnessCurrents,
-            projectInstructions:
-              [project?.instructions?.trim(), repoContextLine(conv.repoIds ?? [])]
-                .filter(Boolean)
-                .join('\n\n') || undefined,
+            projectInstructions: standingContext(conv),
+            ...(project?.network && project.network !== 'full' ? { network: project.network } : {}),
+            projectContract: projectContractFor(conv),
             crew,
             humanize: s.settings.humanizeWriting !== false,
             writingVoice: s.settings.writingVoice,
@@ -10068,6 +10146,21 @@ export const useApp = create<AppState>((set, get, api) => {
       return true;
     },
 
+    async applyProjectAction(projectId, key, value) {
+      // Loaded on the first tap, so a launch never carries it.
+      const { mergeEnvText, projectActionPlan } = await import('../lib/projectActions.js');
+      const plan = projectActionPlan(key, value);
+      if (!plan || !get().settings.projects?.some((p) => p.id === projectId)) return false;
+      if (plan.kind === 'patch') await get().updateProject(projectId, plan.patch);
+      else if (plan.kind === 'env') {
+        const kept = await readProjectEnvText(projectId);
+        await writeProjectEnvText(projectId, mergeEnvText(kept, plan.text));
+      } else await get().addProjectAgent(projectId, { name: plan.name, persona: plan.persona });
+      get().showToast('Added to the project.');
+      logEvent('project_action_applied', { key });
+      return true;
+    },
+
     sendWhenAttached(conversationId, text, attachments) {
       const driver = drivers.get(conversationId);
       if (driver) {
@@ -10515,6 +10608,30 @@ export const useApp = create<AppState>((set, get, api) => {
       await patchProjectLocal(id, patch);
     },
 
+    async setProjectAgents(projectId, selected) {
+      const { excludedAgentIds, agents } = agentSelectionPatch(
+        get().settings.crew ?? [],
+        projectId,
+        new Set(selected),
+      );
+      await get().saveSettings({ crew: agents });
+      await patchProjectLocal(projectId, {
+        excludedAgentIds: excludedAgentIds.length ? excludedAgentIds : undefined,
+      });
+    },
+
+    async addProjectAgent(projectId, agent) {
+      // Made for this project alone, and brought in when asked for by name,
+      // the safest start for a new agent; Agents can widen either.
+      await get().createCrewAgent({
+        name: agent.name.trim(),
+        persona: agent.persona.trim(),
+        ...(agent.whenCalled?.trim() ? { whenCalled: agent.whenCalled.trim() } : {}),
+        activityLevel: 'request',
+        projectIds: [projectId],
+      });
+    },
+
     async setProjectAccess(projectId, access) {
       const project = get().settings.projects?.find((p) => p.id === projectId);
       // A shared project's roster is the server's; diff the draft against it and
@@ -10659,6 +10776,8 @@ export const useApp = create<AppState>((set, get, api) => {
       // Wipe the project's sealed tokens and secrets so nothing lingers in the
       // device store after the project is gone.
       await writeProjectSecrets(id, '');
+      // And its Project Wayfinder variables.
+      await writeProjectEnvText(id, '').catch(() => {});
       // And its handoff (tech review J13): nothing of the project lingers here.
       await clearHandoffs(handoffStorage, { projectId: id }).catch(() => {});
       // Chats that lived in the project stay, but drop their now-dead link. Mark

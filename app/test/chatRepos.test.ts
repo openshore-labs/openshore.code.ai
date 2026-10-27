@@ -537,14 +537,16 @@ describe('the wiring', () => {
     // The device driver takes it directly; the cloud and desktop-chat drivers
     // take chatContext, which wraps it with the guided setup's live step (and
     // reads the chat fresh each reply, so a picker change reaches the model).
+    // The Stack takes standingContext too since Project Wayfinder (2026-10-27)
+    // added the network line to it, so the brief is one definition.
     expect(
       (store.match(/standingContext\((conv|get\(\)\.conversations\[conv\.id\] \?\? conv)\)/g) ?? [])
         .length,
-    ).toBeGreaterThanOrEqual(2);
+    ).toBeGreaterThanOrEqual(3);
     expect((store.match(/chatContext\(conv\)/g) ?? []).length).toBeGreaterThanOrEqual(3);
     expect(
       (store.match(/repoContextLine\(conv\.repoIds \?\? \[\]\)/g) ?? []).length,
-    ).toBeGreaterThanOrEqual(3);
+    ).toBeGreaterThanOrEqual(2);
     expect(read('drivers/cloudClaudeDriver.ts')).toMatch(
       /context: readChatContext\(this\.extraSystem\)/,
     );

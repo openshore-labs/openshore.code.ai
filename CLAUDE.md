@@ -275,6 +275,31 @@ the web" off stops it. Do NOT add a driver that answers a local model without
 NOT claim accuracy numbers in copy until `osc eval` measures them (tenet 2).
 Cloud seats are untouched for now.
 
+## Project Wayfinder: every project its own environment (founder, 2026-10-27)
+
+A project is set up the way an environment is in Claude Code. New project asks
+for a name and opens the room; Runs on is the pill under the title (no
+Active); the doors are Repositories, **Project Wayfinder** and **Agents**.
+Project Wayfinder holds Instructions, Network access (Full, Search only, None),
+Environment variables and a Setup script, and each is wired, not decoration:
+the instructions and a network line ride every chat's brief; network access
+shapes the agent's own web tools (`ToolRegistryOptions.network`) and closes
+every app-side search for None (`SearchTurn.closedBy`), and a revived session
+keeps it; the variables live sealed per project on the device
+(`app/src/lib/projectEnv.ts`), never synced or journaled, and ride a session
+create only to the machine the project runs on, onto that session's commands,
+a secret-looking value redacted from what the model reads
+(`os-code/src/harness/projectEnv.ts`, `commandRunner`'s `env`); the setup
+script runs once when a fresh session opens, owner only. Agents lists every
+agent ticked, untick to leave one out (`Project.excludedAgentIds`,
+`app/src/lib/projectAgents.ts`). Pins are retired: every project draws on the
+whole Vault through the pack's retrieval, until the founder redesigns that
+connection. The chat in a project fills any field through an
+`openshore-project:<field>` card the person taps (`lib/projectActions.ts`);
+the model never writes a field itself, since a script and variables run on the
+person's machine. Copy never claims network access governs a shell command.
+Guards: `os-code/test/projectEnv.test.ts`, `app/test/projectWayfinder.test.ts`.
+
 ## Chain of Thought is BUILT (off by default, founder 2026-09-25)
 
 A Settings switch (Settings, Reasoning, `settings.chainOfThought`), OFF by
@@ -478,8 +503,10 @@ rule is pinned by tests; keep them:
   without `verifyAsset` fails the guard in `app/test/releaseVerify.test.ts`.
   Founder steps: `docs/release-signing.md`.
 - **No secret rides a child process's environment** (`os-code/src/core/exec/childEnv.ts`),
-  and **lockdown is enforced at the one execution seam** (`executeCall`), never
-  by registry composition alone.
+  with one narrow exception: a project's own Project Wayfinder variables, which
+  the person typed for it, sit on that session's commands, never journaled and
+  redacted from output (below); and **lockdown is enforced at the one execution
+  seam** (`executeCall`), never by registry composition alone.
 - **The tier-1 bundle carries no later-tier code**: later rooms are gated at
   build time (`SHIPS_*` in `app/src/lib/focus.ts`), and CI runs
   `pnpm --filter oscode-app check:bundle`.

@@ -361,6 +361,10 @@ export interface OscodeBridge {
       /** The app's vault switches (Vault M7, tech review L13): off-only and
        *  lower-only, into `BootstrapOptions.vaultOverrides`. */
       vaultOverrides?: VaultOverrides;
+      /** Project Wayfinder (2026-10-27). */
+      projectEnv?: Record<string, string>;
+      network?: 'full' | 'search' | 'none';
+      setupScript?: string;
     },
   ): Promise<{ id: string; cwd: string; warnings: string[] }>;
   /** The person's controls over a live session (Claude Code parity): the

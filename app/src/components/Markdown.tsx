@@ -8,10 +8,21 @@
 // it; until it lands, the block reads as plain code in the same box.
 import ReactMarkdown, { type Options } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { isValidElement, memo } from 'react';
+import { Suspense, isValidElement, lazy, memo } from 'react';
 import { CodeBlock, extractText } from './CodeBlock.js';
 import { AppActionCard } from './AppActionCard.js';
 import { appActionKeyFromClass, type AppActionKey } from '../lib/appActions.js';
+import { projectActionKeyFromClass } from '../lib/projectFence.js';
+
+// A project proposal's card loads the first time one shows, so a launch
+// never carries it (scripts/tier-bundle.mjs).
+const ProjectActionCard = lazy(() =>
+  import('../components/ProjectActionCard.js').then((m) => ({ default: m.ProjectActionCard })),
+);
+
+/** What a reply's fences may become: a Settings proposal for a key the chat
+ *  asked for, or (`'project'`) a proposal for its project's fields. */
+export type ChatCardAction = AppActionKey | 'project';
 import { hasCodeFence, useHighlighter } from '../lib/lazyHighlight.js';
 import { rehypeFadeWords } from '../lib/fadeWords.js';
 import { rehypeInk, type InkStamp } from '../lib/inkSwell.js';
@@ -39,7 +50,7 @@ export function Markdown({
    *  contract's gate, appActionsAsked), and nothing anywhere else, so a note
    *  in the vault, a plan, or a reply in a chat that never asked never
    *  offers to change a setting. */
-  actions?: readonly AppActionKey[];
+  actions?: readonly ChatCardAction[];
   streaming?: boolean;
   /** A live reply: split prose into word spans so each new word fades in
    *  (lib/fadeWords.ts, `.md-live .w`). Off renders plain text. */
@@ -98,7 +109,7 @@ interface PartProps {
   fade: boolean;
   ink?: { stamp: InkStamp; kind: 'greeting' | 'walk' };
   highlight: Highlighter;
-  actions: readonly AppActionKey[];
+  actions: readonly ChatCardAction[];
 }
 
 const MarkdownPart = memo(function MarkdownPart({
@@ -129,6 +140,19 @@ const MarkdownPart = memo(function MarkdownPart({
             // misfire, not an offer: show nothing rather than an empty box.
             if (!streaming && !value.trim()) return null;
             return <AppActionCard actionKey={key} value={value} streaming={streaming} />;
+          }
+          const field =
+            actions.includes('project') && isValidElement(children)
+              ? projectActionKeyFromClass((children.props as { className?: string }).className)
+              : undefined;
+          if (field) {
+            const value = extractText(children).replace(/\n$/, '');
+            if (!streaming && !value.trim()) return null;
+            return (
+              <Suspense fallback={<CodeBlock>{children}</CodeBlock>}>
+                <ProjectActionCard actionKey={field} value={value} streaming={streaming} />
+              </Suspense>
+            );
           }
           return <CodeBlock>{children}</CodeBlock>;
         },

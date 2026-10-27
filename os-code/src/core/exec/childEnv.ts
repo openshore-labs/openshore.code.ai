@@ -9,6 +9,13 @@
 // builds in ways a person cannot diagnose. PATH, HOME, LANG, TERM, the
 // locale and display variables, and SSH_AUTH_SOCK (git over ssh) all pass.
 //
+// One deliberate exception (founder, 2026-10-27): a project's own variables,
+// typed by the person in Project Wayfinder for that project the way Claude
+// Code sets an environment up, are laid over the scrubbed environment on the
+// commands its session runs (commandRunner's `env`). They never come from
+// this process's own environment, are never journaled, and a secret-looking
+// value is cut from the output the model reads back.
+//
 // An interactive terminal still sources the person's own shell files, so a
 // key they export there comes back in that shell; that is their choice, made
 // in their own files. What this removes is only what OpenShore carried in.

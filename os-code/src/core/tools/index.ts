@@ -109,6 +109,10 @@ export interface ToolProcesses {
 /** Everything a tool may touch. Built once per session. */
 export interface ToolContext {
   cwd: string;
+  /** The project's own environment variables (Project Wayfinder), set on
+   *  every command the agent runs; secret-looking values are redacted from
+   *  what it reads back. */
+  projectEnv?: Readonly<Record<string, string>>;
   jail: Jail;
   egress: EgressPolicy;
   config: OscConfig;

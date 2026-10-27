@@ -48,8 +48,7 @@ export function projectLine(
 }
 
 export function ProjectsScreen() {
-  const { settings, conversations, order, createProject, updateProject, openProject, showToast } =
-    useApp();
+  const { settings, conversations, order, createProject, openProject } = useApp();
 
   const projects = useMemo(() => settings.projects ?? [], [settings.projects]);
   const activeId = settings.activeProjectId ?? projects[0]?.id;
@@ -92,18 +91,15 @@ export function ProjectsScreen() {
 
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
-  const [newAbout, setNewAbout] = useState('');
 
+  // Name it and go (founder, 2026-10-27): the room it opens on is where the
+  // rest is set up, by hand or with the chat.
   const create = async () => {
     const name = newName.trim();
     if (!name) return;
     const id = await createProject(name);
-    const about = newAbout.trim();
-    if (about) await updateProject(id, { instructions: about });
     setCreating(false);
     setNewName('');
-    setNewAbout('');
-    showToast(`${name} is your active project.`);
     openProject(id);
   };
 
@@ -162,7 +158,7 @@ export function ProjectsScreen() {
           <div className="projects-empty">
             <p className="projects-empty-title">No projects yet</p>
             <p className="projects-empty-sub">
-              A project keeps related chats together. Its instructions go into every chat in it.
+              A project keeps related chats together, with its own setup in Project Wayfinder.
             </p>
           </div>
         ) : rows.length === 0 ? (
@@ -266,7 +262,7 @@ export function ProjectsScreen() {
           }}
         >
           <div className="field">
-            <label htmlFor="project-new-name">What are you working on?</label>
+            <label htmlFor="project-new-name">Name</label>
             <input
               id="project-new-name"
               autoFocus
@@ -274,16 +270,6 @@ export function ProjectsScreen() {
               placeholder="Name your project"
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="project-new-about">What are you trying to achieve?</label>
-            <textarea
-              id="project-new-about"
-              rows={3}
-              placeholder="Describe your project, goals, subject, and so on. It rides into every chat here."
-              value={newAbout}
-              onChange={(e) => setNewAbout(e.target.value)}
             />
           </div>
           <div className="sheet-actions">

@@ -305,6 +305,10 @@ export class EngineHost {
       /** The app's vault switches (Vault M7, tech review L13), already parsed by
        *  main: off-only, and a size the engine keeps lower-only. */
       vaultOverrides?: VaultOverrides;
+      /** Project Wayfinder, already held to its limits by main. */
+      projectEnv?: Record<string, string>;
+      network?: 'full' | 'search' | 'none';
+      setupScript?: string;
     } = {},
   ): Promise<{ id: string; cwd: string; warnings: string[] }> {
     const workDir = cwd ?? defaultWorkspace();
@@ -338,6 +342,9 @@ export class EngineHost {
       ...(opts.handoff ? { handoff: opts.handoff } : {}),
       ...(opts.vaultPins?.length ? { vaultPins: opts.vaultPins } : {}),
       ...(opts.vaultOverrides ? { vaultOverrides: opts.vaultOverrides } : {}),
+      ...(opts.projectEnv ? { projectEnv: opts.projectEnv } : {}),
+      ...(opts.network ? { network: opts.network } : {}),
+      ...(opts.setupScript ? { setupScript: opts.setupScript } : {}),
     };
     const { driver, warnings } = bootstrapSession(bootOptions);
     this.attach(driver); // a fresh session has an empty journal; nothing to replay

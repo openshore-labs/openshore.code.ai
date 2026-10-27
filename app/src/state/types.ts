@@ -7,6 +7,7 @@ import type {
   PackMode,
   PackSource,
   PermissionMode,
+  ProjectNetwork,
   RepoCommand,
   RepoCommandNotLoaded,
 } from 'os-code/protocol';
@@ -395,6 +396,18 @@ export interface Project {
   harnessCurrent?: HarnessCurrentId | null;
   /** Repos attached to this project (shareable across projects). */
   repoIds: string[];
+  /** Project Wayfinder (founder, 2026-10-27): how much of the network the
+   *  project's models reach through their own tools. Unset is full. Its
+   *  variables are not here: they live sealed on this device
+   *  (lib/projectEnv.ts), never in settings and never synced. */
+  network?: ProjectNetwork;
+  /** Project Wayfinder: a script a coding session runs once when it opens,
+   *  on the machine the project runs on, the way Claude Code prepares an
+   *  environment. */
+  setupScript?: string;
+  /** The agents from Agents this project leaves out (every agent is in a
+   *  project unless deselected here), so an agent made later is in. */
+  excludedAgentIds?: string[];
   /** Where this project's coding sessions run (2026-10-12; copy
    *  says Runs on): a docked machine's address, or THIS_COMPUTER on a
    *  desktop (lib/runsOn.ts). Unset follows the device's own choice. Device

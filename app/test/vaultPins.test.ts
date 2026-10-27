@@ -9,13 +9,10 @@
 // A private pin wears the lock and "Private", and while Memory carries the
 // pins to the coding agent the card says what a private pin does (UX review and
 // copy review, 2026-10-08, G), mounted in a real DOM (test/support/dom.ts).
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createElement } from 'react';
-import { PACK_PINS_MAX, compileVaultPrivacy } from 'os-code/protocol';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { compileVaultPrivacy } from 'os-code/protocol';
 import type { Project } from '../src/state/types.js';
-import { mountDom, type TestDom } from './support/dom.js';
+import { mountDom } from './support/dom.js';
 
 const mem = new Map<string, string>();
 const rpcCalls: Array<{ fn: string; args: unknown }> = [];
@@ -124,13 +121,10 @@ vi.mock('../src/lib/vaultSeat.js', () => ({
 }));
 
 // Before anything imports react-dom/client (test/support/dom.ts).
-const dom: TestDom = await mountDom();
+await mountDom();
 const { useApp } = await import('../src/state/store.js');
 const { mergeSharedProjects, serverRowToProject } = await import('../src/lib/orgProjects.js');
 const excerpt = await import('../src/lib/vaultExcerpt.js');
-const { PIN_MISSING_LINE, ProjectVaultPins } =
-  await import('../src/components/ProjectVaultPins.js');
-const { VAULT_PIN_PRIVATE_LINE, VAULT_PRIVATE_TAG } = await import('../src/lib/vaultCopy.js');
 
 const D5 = compileVaultPrivacy({
   exclude: ['Hidden/**'],
@@ -213,7 +207,6 @@ describe('who may pin, and how many', () => {
   it('a pin the vault no longer holds reads as missing', async () => {
     const status = await useApp.getState().vaultPinStatus(['Ideas.md', 'Gone.md']);
     expect(status).toEqual({ 'Ideas.md': 'ok', 'Gone.md': 'missing' });
-    expect(PIN_MISSING_LINE).toBe('Pinned note not found');
   });
 });
 
@@ -428,145 +421,7 @@ describe('the store answers the composer', () => {
   });
 });
 
-// The pin list stays on this device; the pinned notes themselves ride the
-// pack to any seat, private ones excepted (D5), so the copy never says the
-// notes stay here (copy review, 2026-10-07).
-describe('pinned notes copy', () => {
-  it('never says the pinned notes stay on this device', () => {
-    const pins = readFileSync(join(process.cwd(), 'src/components/ProjectVaultPins.tsx'), 'utf8');
-    expect(pins).not.toContain('They stay on this device');
-    // The private-notes promise is the Vault's one sentence, read in both of
-    // the card's states (CS-10), never a second wording.
-    expect(pins.match(/\{VAULT_PRIVATE_OFF_CLOUD\}/g)).toHaveLength(2);
-    expect(pins).not.toContain('stay off cloud models');
-  });
-});
-
-// G (UX and copy review, 2026-10-08): a private pin keeps holding every cloud
-// handoff in its project, so the card says which pins are private, judged by
-// the pack's own privacy rules on each note's text, and what that does.
-describe('a private pin says so', () => {
-  beforeEach(() => reset([project({ vaultPins: ['Ideas.md', 'Private/Diary.md'] })]));
-  afterEach(() => dom.render(null));
-
-  // The lock is a drawn glyph with no text, so the words around it close up.
-  const words = (el: Element) => (el.textContent ?? '').replace(/\s+/g, ' ').trim();
-  const mount = async () => {
-    await dom.render(createElement(ProjectVaultPins, { projectId: 'p1', index: 0 }));
-    await dom.settle();
-    await dom.settle();
-  };
-
-  it('the store judges each pin as the pack does: by place, by its own tags, by path when gone', async () => {
-    const seen = await useApp
-      .getState()
-      .vaultPinPrivacy(['Ideas.md', 'Private/Diary.md', 'Health.md', 'Private/Gone.md']);
-    expect(seen).toEqual({
-      'Ideas.md': 'open',
-      'Private/Diary.md': 'local-only',
-      'Health.md': 'local-only',
-      'Private/Gone.md': 'local-only',
-    });
-    expect(await useApp.getState().vaultPinPrivacy([])).toEqual({});
-  });
-
-  it('a private pin wears the lock and Private, an open one does not, and the line shows', async () => {
-    await mount();
-    const rows = [...dom.container.querySelectorAll('.multiselect-row')].map(words);
-    expect(rows).toEqual(['Ideas · Ideas.mdUnpin', 'Diary · Private · Private/Diary.mdUnpin']);
-    const diary = dom.container.querySelectorAll('.multiselect-row')[1]!;
-    expect(diary.querySelector('.hint svg')).not.toBeNull();
-    expect(dom.container.querySelectorAll('.multiselect-row')[0]!.querySelector('svg')).toBeNull();
-    expect(VAULT_PRIVATE_TAG).toBe('Private');
-    expect(VAULT_PIN_PRIVATE_LINE).toBe(
-      'A private note is pinned here, so while the coding agent runs on a local model, it hands no step in this project to a cloud model.',
-    );
-    expect(dom.text()).toContain(VAULT_PIN_PRIVATE_LINE);
-  });
-
-  it('no line while no pinned note is private', async () => {
-    reset([project({ vaultPins: ['Ideas.md'] })]);
-    await mount();
-    expect(dom.text()).toContain('Ideas · Ideas.md');
-    expect(dom.text()).not.toContain(VAULT_PRIVATE_TAG);
-    expect(dom.text()).not.toContain(VAULT_PIN_PRIVATE_LINE);
-  });
-
-  it('no line while Memory is off, since the pins then never reach the coding agent', async () => {
-    useApp.setState((s) => ({
-      settings: { ...s.settings, wayfinding: { memory: false } },
-    }));
-    await mount();
-    expect(words(dom.container)).toContain('Diary · Private · Private/Diary.md');
-    expect(dom.text()).not.toContain(VAULT_PIN_PRIVATE_LINE);
-  });
-
-  // Sign-off: the line is held to the pack the coding agent is sent. With
-  // Notes in chats off no pin rides it, so a private pin holds nothing.
-  it('no line while Notes in chats is off', async () => {
-    useApp.setState((s) => ({ settings: { ...s.settings, vaultContext: 'off' } }));
-    await mount();
-    expect(words(dom.container)).toContain('Diary · Private · Private/Diary.md');
-    expect(dom.text()).not.toContain(VAULT_PIN_PRIVATE_LINE);
-  });
-
-  // The pack takes the first PACK_PINS_MAX pins the vault holds and shows a
-  // model, in the person's order (the engine's prepare and takePin), so a
-  // private pin past them never reaches the agent and holds nothing; a pin
-  // that is gone, or hidden from every model, takes no place.
-  it('no line for a private pin past the ones the pack carries', async () => {
-    expect(PACK_PINS_MAX).toBe(3);
-    notes.set('A.md', 'a');
-    notes.set('B.md', 'b');
-    notes.set('Hidden/Secret.md', 'secret');
-    try {
-      reset([project({ vaultPins: ['Ideas.md', 'A.md', 'B.md', 'Private/Diary.md'] })]);
-      await mount();
-      expect(words(dom.container)).toContain('Diary · Private · Private/Diary.md');
-      expect(dom.text()).not.toContain(VAULT_PIN_PRIVATE_LINE);
-      await dom.render(null);
-
-      reset([project({ vaultPins: ['Gone.md', 'Ideas.md', 'A.md', 'Private/Diary.md'] })]);
-      await mount();
-      expect(dom.text()).toContain(PIN_MISSING_LINE);
-      expect(dom.text()).toContain(VAULT_PIN_PRIVATE_LINE);
-      await dom.render(null);
-
-      await useApp.getState().saveSettings({
-        vaultPrivacy: { exclude: ['Hidden/**'], localOnly: { paths: [], tags: [] } },
-      });
-      useApp.setState((s) => ({
-        settings: {
-          ...s.settings,
-          projects: [
-            project({ vaultPins: ['Hidden/Secret.md', 'Ideas.md', 'A.md', 'Private/Diary.md'] }),
-          ],
-        },
-      }));
-      await mount();
-      expect(dom.text()).toContain(VAULT_PIN_PRIVATE_LINE);
-    } finally {
-      notes.delete('A.md');
-      notes.delete('B.md');
-      notes.delete('Hidden/Secret.md');
-      await useApp.getState().saveSettings({ vaultPrivacy: undefined });
-    }
-  });
-
-  it('the picker wears the lock and Private on a private note', async () => {
-    await mount();
-    await dom.click('Edit');
-    await dom.settle();
-    await dom.settle();
-    const picker = [...dom.container.ownerDocument.querySelectorAll('label.multiselect-row')].map(
-      words,
-    );
-    expect(picker).toContain('Diary · Private');
-    expect(picker).toContain('Ideas');
-    const diary = [...dom.container.ownerDocument.querySelectorAll('label.multiselect-row')].find(
-      (r) => words(r) === 'Diary · Private',
-    )!;
-    expect(diary.querySelector('.hint svg')).not.toBeNull();
-    expect(dom.container.ownerDocument.body.textContent).not.toContain('stays on this computer');
-  });
-});
+// The project room's pin card is retired (founder, 2026-10-27): every
+// project draws on the whole Vault, so its copy and its private-pin line
+// went with it. The store's pin rules above stay until the Vault connection
+// is redesigned.

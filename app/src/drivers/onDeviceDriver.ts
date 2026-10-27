@@ -33,6 +33,7 @@ import { packSeatFor } from '../lib/vaultSeat.js';
 import { chainOfThoughtLine, chainOfThoughtOn } from '../lib/chainOfThought.js';
 import { writingVoiceLine } from '../lib/writingVoice.js';
 import { appActionsContract } from '../lib/appActions.js';
+import type { ProjectContract } from '../lib/projectFence.js';
 import type { SeedTurn } from '../state/types.js';
 
 const EM_DASH = String.fromCharCode(8212);
@@ -102,6 +103,8 @@ export class OnDeviceDriver implements ChatDriver {
   /** The conversation's vault pack (tech review J1), and the text this reply's
    *  system prompt carries from it, the prompt's last part. */
   private readonly vaultPack?: AppVaultPack;
+  private readonly webClosed: () => boolean;
+  private readonly projectContract?: ProjectContract;
   private readonly writingVoice?: string;
   private packText?: string;
   /** This send's pack carried a note that stays on this computer, or the
@@ -136,9 +139,18 @@ export class OnDeviceDriver implements ChatDriver {
     private readonly conversationId?: string,
     /** The conversation's vault pack (tech review J1); none with Memory off. And the
      *  person's writing voice (lib/writingVoice.ts), when they set one. */
-    opts: DriverVaultOptions & { writingVoice?: string } = {},
+    opts: DriverVaultOptions & {
+      writingVoice?: string;
+      /** The chat's project closed the web (Project Wayfinder), read live. */
+      webClosed?: () => boolean;
+      /** The contract that lets this chat fill its project's fields. */
+      projectContract?: ProjectContract;
+    } = {},
   ) {
+    this.projectContract = opts.projectContract;
     this.vaultPack = opts.vaultPack;
+    this.webClosed = opts.webClosed ?? (() => false);
+    this.search.closedBy(this.webClosed);
     this.writingVoice = opts.writingVoice;
     this.searchable = !isHarborMini(modelId);
     this.guide = isHarborMini(modelId) || isHarbor(modelId);
@@ -179,6 +191,10 @@ export class OnDeviceDriver implements ChatDriver {
       walk,
       writingVoiceLine(this.writingVoice),
       appActionsContract(
+        false,
+        this.history.filter((m) => m.role === 'user').map((m) => m.content),
+      ),
+      this.projectContract?.(
         false,
         this.history.filter((m) => m.role === 'user').map((m) => m.content),
       ),
@@ -348,9 +364,9 @@ export class OnDeviceDriver implements ChatDriver {
       text,
       this.researchOn,
       (e) => this.emit(e),
-      // The real reach: offline (or the Offline profile) says a planned
-      // search is unavailable instead of trying it.
-      webOnlineNow(),
+      // The real reach: offline (or the Offline profile, or a project that
+      // closed the web) says a planned search is unavailable instead.
+      webOnlineNow() && !this.webClosed(),
       this.conversationId,
     );
     this.afterNote = turn.after;

@@ -2,6 +2,7 @@
 // (Ink TUI, plain, remote attach) speaks; the LocalDriver wraps a live
 // AgentSession and journals every event to ~/.os-code/sessions/<id>/ so a
 // dropped phone connection reattaches to the in-flight run with nothing lost.
+import { isProjectNetwork, type ProjectNetwork } from '../harness/projectEnv.js';
 import {
   appendFileSync,
   existsSync,
@@ -138,6 +139,9 @@ export interface SessionSwitches {
   currents?: CurrentsHandles;
   /** The Harness Current the session was handed (see BootstrapOptions). */
   harnessCurrents?: HarnessCurrentsHandle;
+  /** The project's network access (Project Wayfinder): a narrowing, so a
+   *  revived session keeps it. Unset is full. */
+  network?: ProjectNetwork;
 }
 
 /**
@@ -160,7 +164,10 @@ interface StoredHandles {
 type SessionInfoFile = SessionInfo &
   Omit<SessionProject, 'switches'> & {
     /** The plain booleans only; the handles ride sealed in `handles`. */
-    switches?: Pick<SessionSwitches, 'humanize' | 'memory' | 'chainOfThought' | 'webSearch'>;
+    switches?: Pick<
+      SessionSwitches,
+      'humanize' | 'memory' | 'chainOfThought' | 'webSearch' | 'network'
+    >;
     /** Sealed JSON of StoredHandles. */
     handles?: string;
   };
@@ -556,6 +563,7 @@ export function storedSessionProject(id: string): SessionProject {
       for (const key of SWITCH_KEYS) {
         if (typeof file.switches[key] === 'boolean') switches[key] = file.switches[key];
       }
+      if (isProjectNetwork(file.switches.network)) switches.network = file.switches.network;
     }
     const handles = openHandles(file.handles);
     if (handles) Object.assign(switches, revivedHandles(id, handles));
@@ -702,6 +710,10 @@ export class LocalDriver implements SessionDriver {
   private viewers = new Set<(event: DriverEvent, seq: number) => void>();
   /** Last moment a client touched this driver, for idle eviction. */
   lastActivityAt = Date.now();
+  /** The project's own environment variables (Project Wayfinder), set on
+   *  every command on this session's lane. Held in memory only, never
+   *  journaled, so a session revived after a restart runs without them. */
+  projectEnv?: Readonly<Record<string, string>>;
   private pendingApprovals = new Map<string, (answer: ApprovalAnswer) => void>();
   private queue: Array<{
     text: string;
@@ -777,6 +789,7 @@ export class LocalDriver implements SessionDriver {
           for (const key of SWITCH_KEYS) {
             if (typeof switches[key] === 'boolean') flags[key] = switches[key];
           }
+          if (switches.network && switches.network !== 'full') flags.network = switches.network;
           if (Object.keys(flags).length) info.switches = flags;
           // The currents, keys moved into the credential store first.
           const handles = storeHandles(this.id, switches);
@@ -1381,6 +1394,7 @@ export class LocalDriver implements SessionDriver {
       command,
       cwd: this.cwd,
       stdin: 'pipe',
+      ...(this.projectEnv ? { env: this.projectEnv } : {}),
       // A program the agent leaves running can print for hours: only its
       // rolling tail is kept, never the whole output.
       ...(proc ? { retain: false } : {}),

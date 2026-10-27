@@ -20,7 +20,7 @@ import type {
   SessionCreateVaultFields,
   VaultOverrides,
 } from 'os-code/protocol';
-import { HANDOFF_MAX_BYTES } from 'os-code/protocol';
+import { HANDOFF_MAX_BYTES, type ProjectNetwork } from 'os-code/protocol';
 import {
   dockKindOf,
   dockedNoun,
@@ -371,6 +371,11 @@ export async function daemonCreateSession(
      *  the handoff, lower-only for the pack size. The daemon parses each
      *  value and drops anything else. */
     vaultOverrides?: VaultOverrides;
+    /** Project Wayfinder (2026-10-27): the project's variables, its network
+     *  access and its setup script, for the machine the project runs on. */
+    projectEnv?: Record<string, string>;
+    network?: ProjectNetwork;
+    setupScript?: string;
   } = {},
 ): Promise<string> {
   const handoff = opts.handoff ? capUtf8(opts.handoff, HANDOFF_MAX_BYTES) : '';
@@ -396,6 +401,11 @@ export async function daemonCreateSession(
       ...(opts.vaultOverrides && Object.keys(opts.vaultOverrides).length
         ? { vaultOverrides: opts.vaultOverrides }
         : {}),
+      ...(opts.projectEnv && Object.keys(opts.projectEnv).length
+        ? { projectEnv: opts.projectEnv }
+        : {}),
+      ...(opts.network && opts.network !== 'full' ? { network: opts.network } : {}),
+      ...(opts.setupScript?.trim() ? { setupScript: opts.setupScript } : {}),
     } satisfies SessionCreateVaultFields & Record<string, unknown>),
     signal: AbortSignal.timeout(10_000),
   });

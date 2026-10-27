@@ -64,10 +64,10 @@ describe('project detail polish', () => {
     );
   });
 
-  it('the instructions Save earns its emphasis only when the draft differs', () => {
-    const detail = src('screens/ProjectDetailScreen.tsx');
-    expect(detail).toContain('instructionsDirty');
-    expect(detail).toMatch(/className=\{instructionsDirty \? 'btn primary' : 'btn quiet'\}/);
+  it("Project Wayfinder's Save earns its emphasis only when the draft differs", () => {
+    const wayfinder = src('components/ProjectWayfinder.tsx');
+    expect(wayfinder).toMatch(/className=\{dirty \? 'btn primary' : 'btn quiet'\}/);
+    expect(wayfinder).toMatch(/disabled=\{!dirty\}/);
   });
 });
 
@@ -119,13 +119,20 @@ describe('projects list', () => {
 // flat list, and the project's own actions behind the "..." menu.
 describe('project room', () => {
   const detail = src('screens/ProjectDetailScreen.tsx');
-  it('leads with the pill doors, then the custom components, then the chats', () => {
+  it('leads with Runs on under the title, then the three doors, then the chats', () => {
+    // Founder, 2026-10-27: Runs on sits where Active was, the doors are
+    // Repositories, Project Wayfinder and Agents, and no notes are pinned.
+    const runsOn = detail.indexOf('<RunsOnPill');
     const pills = detail.indexOf('className="project-pills');
-    const pins = detail.indexOf('<ProjectVaultPins');
+    const wayfinder = detail.indexOf('Project Wayfinder</span>');
+    const agents = detail.indexOf('onClick={() => setAgentsOpen(true)}');
     const chats = detail.indexOf('className="project-chats');
-    expect(pills).toBeGreaterThan(-1);
-    expect(pills).toBeLessThan(pins);
-    expect(pins).toBeLessThan(chats);
+    expect(runsOn).toBeGreaterThan(-1);
+    expect(runsOn).toBeLessThan(pills);
+    expect(pills).toBeLessThan(wayfinder);
+    expect(wayfinder).toBeLessThan(agents);
+    expect(agents).toBeLessThan(chats);
+    expect(detail).not.toContain('ProjectVaultPins');
   });
 
   it('keeps make active, rename and delete in the menu, and a long title truncates', () => {
@@ -144,8 +151,9 @@ describe('project room', () => {
 // (design review), so the name never reads twice.
 describe('project room rulings', () => {
   const detail = src('screens/ProjectDetailScreen.tsx');
-  it('wears the ink pill for Active: teal stays for local', () => {
-    expect(detail).toContain('<span className="pill ink">Active</span>');
+  it('says no Active, and Runs on wears the ink pill: teal stays for local', () => {
+    expect(detail).not.toContain('>Active<');
+    expect(src('components/ProjectRunsOn.tsx')).toContain('className="pill ink runs-on-pill');
   });
   it('marks each chat row with where it ran', () => {
     expect(detail).toMatch(

@@ -46,7 +46,6 @@ export const ROOM_FILES: Record<Room, string[]> = {
     'screens/ProjectsScreen.tsx',
     'screens/ProjectDetailScreen.tsx',
     'screens/ProjectMemoryScreen.tsx',
-    'components/ProjectVaultPins.tsx',
     'screens/OnboardingScreen.tsx',
     'components/StartingPaths.tsx',
     'components/UpdateBanner.tsx',

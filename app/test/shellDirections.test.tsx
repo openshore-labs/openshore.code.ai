@@ -267,7 +267,9 @@ describe('Projects on the desktop (D11)', () => {
     await act(async () => {
       (barNew() as HTMLElement).click();
     });
-    expect(dom.text()).toContain('What are you working on?');
+    // Name it and go (founder, 2026-10-27).
+    expect(dom.text()).toContain('New project');
+    expect(dom.text()).not.toContain('What are you trying to achieve?');
   });
 
   it('keeps the dock on the phone, and nothing in the bar', async () => {

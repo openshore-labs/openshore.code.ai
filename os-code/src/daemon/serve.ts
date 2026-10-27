@@ -8,6 +8,7 @@
 //     of network reachability.
 //   - Sessions run on the remote-attached profile: stricter than sitting at
 //     the desk, never looser.
+import { cleanProjectEnv, cleanSetupScript, isProjectNetwork } from '../harness/projectEnv.js';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
@@ -1414,6 +1415,12 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         return;
       }
       const vaultPins = parseVaultPins(body.vaultPins);
+      // Project Wayfinder (2026-10-27): the project's variables, its network
+      // access and its setup script. A setup script runs on the command lane,
+      // which is the computer owner's, so a member's session never runs one.
+      const projectEnv = cleanProjectEnv(body.projectEnv);
+      const network = isProjectNetwork(body.network) ? body.network : undefined;
+      const setupScript = hasRole(auth, 'admin') ? cleanSetupScript(body.setupScript) : undefined;
       // The app's vault switches (Vault M7, tech review L13): off-only and one of the
       // three sizes, anything else dropped; the engine keeps size lower-only.
       const vaultOverrides = parseVaultOverrides(body.vaultOverrides);
@@ -1462,6 +1469,9 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
           ...(handoff ? { handoff } : {}),
           ...(vaultPins ? { vaultPins } : {}),
           ...(vaultOverrides ? { vaultOverrides } : {}),
+          ...(projectEnv ? { projectEnv } : {}),
+          ...(network ? { network } : {}),
+          ...(setupScript ? { setupScript } : {}),
         });
         trackDriver(driver);
         driver.setOwner(auth.userId);

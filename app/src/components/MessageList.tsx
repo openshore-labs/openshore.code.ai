@@ -48,7 +48,9 @@ import { Icon } from './Icon.js';
 import { Keyboard } from '@capacitor/keyboard';
 import { isPhone } from '../lib/platform.js';
 import { REWIND_ACTION } from '../state/rewindOps.js';
-import { appActionsAsked, type AppActionKey } from '../lib/appActions.js';
+import { appActionsAsked } from '../lib/appActions.js';
+import { projectActionsAsked } from '../lib/projectFence.js';
+import type { ChatCardAction } from './Markdown.js';
 import { mendEmDashes } from '../lib/replyDashes.js';
 
 /** The quiet line under a parked message while it waits to go. */
@@ -169,7 +171,7 @@ function AssistantBubble({
   showModel: boolean;
   /** The settings this chat's own turns asked for: only a proposal for one
    *  of them shows the Add to Settings card (lib/appActions.ts). */
-  actions: readonly AppActionKey[];
+  actions: readonly ChatCardAction[];
   /** Called as revealed text grows, so a pinned thread follows the typing. */
   onReveal?: () => void;
   /** What follows the message (a guided step's buttons, a way back in). It
@@ -404,9 +406,14 @@ export function MessageList({
   // The contract's own gate (lib/appActions.ts): a reply's proposal is a card
   // only for a setting this chat's own turns asked for, so text in a chat
   // that never asked (a page the agent quoted, a cloud reply) stays code.
-  const actionsAsked = appActionsAsked(
-    thread.items.flatMap((i) => (i.kind === 'user' && !i.withheld ? [i.text] : [])),
-  );
+  const turns = thread.items.flatMap((i) => (i.kind === 'user' && !i.withheld ? [i.text] : []));
+  // And a project's fields once a turn asks about its setup
+  // (lib/projectActions.ts); the card itself writes only into this chat's
+  // own project.
+  const actionsAsked: ChatCardAction[] = [
+    ...appActionsAsked(turns),
+    ...(projectActionsAsked(turns) ? (['project'] as const) : []),
+  ];
   const pinnedRef = useRef(true);
   // The follow glide (glideStep): its frame, and whether a finger is on the
   // thread, which always wins over the glide.

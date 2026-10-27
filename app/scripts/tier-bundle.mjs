@@ -43,8 +43,11 @@ export const LAZY_LIBRARIES = [
 
 /** Ceilings, in bytes. Before the split the launch was one 2,560,450-byte
  *  chunk. Crossing one means a room or a heavy library went back into the
- *  launch path. */
-export const BUDGET = { entryBytes: 400_000, bootBytes: 2_000_000 };
+ *  launch path. The launch ceiling moved from 2,000,000 to 2,010,000 on
+ *  2026-10-27 for Project Wayfinder, whose chat path (the network line, the
+ *  project fence and its gate) adds about 6 KB with every room still lazy;
+ *  its card, contract and apply plan load on first use. */
+export const BUDGET = { entryBytes: 400_000, bootBytes: 2_010_000 };
 
 function filesUnder(dir) {
   return readdirSync(dir).flatMap((name) => {

@@ -1400,7 +1400,6 @@ describe('Vault copy waits on the eval (M8 8.4, D12)', () => {
       'src/components/vault/VaultSettingsSheet.tsx',
       'src/components/vault/VaultTrashView.tsx',
       'src/components/VaultMarkdown.tsx',
-      'src/components/ProjectVaultPins.tsx',
     ]) {
       expect(files).toContain(f);
     }

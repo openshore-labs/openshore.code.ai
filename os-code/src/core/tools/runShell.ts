@@ -46,6 +46,7 @@ export const runShellTool: ToolDef<typeof schema> = {
       cwd: ctx.cwd,
       stdin: 'ignore',
       timeoutMs: timeoutSeconds * 1000,
+      ...(ctx.projectEnv ? { env: ctx.projectEnv } : {}),
     }).done;
 
     if (result.startError) {

@@ -105,12 +105,15 @@ afterEach(async () => {
 
 const pills = () =>
   [...dom.container.querySelectorAll<HTMLElement>('.project-pill')].map((el) => el.textContent);
+const runsOn = () =>
+  dom.container.querySelector<HTMLElement>('.runs-on-pill')?.textContent ?? undefined;
 
 describe('the project room', () => {
   it('shows no Runs on until a machine is docked', async () => {
     const { ProjectDetailScreen } = await import('../src/screens/ProjectDetailScreen.js');
     await dom.render(<ProjectDetailScreen />);
-    expect(pills()).toEqual(['Add repositories', 'Add instructions']);
+    expect(pills()).toEqual(['Add repositories', 'Project Wayfinder', 'Agents']);
+    expect(runsOn()).toBeUndefined();
   });
 
   it('names where new chats run, and the sheet moves them to another machine', async () => {
@@ -119,7 +122,8 @@ describe('the project room', () => {
     }));
     const { ProjectDetailScreen } = await import('../src/screens/ProjectDetailScreen.js');
     await dom.render(<ProjectDetailScreen />);
-    expect(pills()).toContain('Runs on studio');
+    // Under the title, where Active was (founder, 2026-10-27).
+    expect(runsOn()).toBe('Runs on studio');
 
     await dom.click('Runs on studio');
     await dom.settle();
@@ -154,7 +158,7 @@ describe('the project room', () => {
     await dom.render(<ProjectDetailScreen />);
     // The desktop's own engine is offered only with a bridge; this test has
     // none, so a saved "this computer" reads as the device's own choice.
-    expect(pills().some((p) => p?.startsWith('Runs on'))).toBe(true);
+    expect(runsOn()?.startsWith('Runs on')).toBe(true);
   });
 });
 

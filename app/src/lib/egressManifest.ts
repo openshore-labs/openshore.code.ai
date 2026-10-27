@@ -230,7 +230,7 @@ export const EGRESS: EgressEntry[] = [
   {
     id: 'your-computer',
     recipient: 'Services you connect',
-    what: 'Your chats, sessions, and approvals, to your own computer or server running OpenShore, over your private Tailscale network. With Sync on all devices on, your Vault notes too, private ones included, and your chats and projects, so this device and your computer keep the same ones. Opening Computer, or Runs on in a project, asks each machine you docked whether it answers and how much memory and how many cores it has. Nothing goes through us.',
+    what: 'Your chats, sessions, and approvals, to your own computer or server running OpenShore, over your private Tailscale network. With Sync on all devices on, your Vault notes too, private ones included, and your chats and projects, so this device and your computer keep the same ones. When a coding session opens for a project, its Project Wayfinder variables and setup script go to the machine that project runs on, for the commands that session runs. Opening Computer, or Runs on in a project, asks each machine you docked whether it answers and how much memory and how many cores it has. Nothing goes through us.',
     when: 'Only after you pair this device with your computer.',
     start: 'off',
     hosts: [],

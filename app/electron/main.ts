@@ -50,6 +50,11 @@ import {
 import { machineVaultWire } from 'os-code/dist/src/core/agent/registry.js';
 import { VAULT_WIRE_NOTE_MAX_BYTES } from 'os-code/dist/src/daemon/vaultWire.js';
 import { managedRoot } from 'os-code/dist/src/core/security/workspaces.js';
+import {
+  cleanProjectEnv,
+  cleanSetupScript,
+  isProjectNetwork,
+} from 'os-code/dist/src/harness/projectEnv.js';
 import { ensureOpenshoreFolder, sectionDir } from 'os-code/dist/src/config/openshoreFolder.js';
 import { listChatMonth, removeChatFile, writeChatFile } from './chatFilesFs.js';
 import {
@@ -1169,6 +1174,11 @@ function sessionOpts(v: unknown) {
     // Vault M7 (tech review L13): the app's vault switches, off-only and one of the
     // three sizes; the daemon's parser, so a bad value is dropped the same way.
     vaultOverrides: parseVaultOverrides(o.vaultOverrides),
+    // Project Wayfinder (2026-10-27): the project's variables, its network
+    // access and its setup script, held to the daemon's own limits.
+    projectEnv: cleanProjectEnv(o.projectEnv),
+    network: isProjectNetwork(o.network) ? o.network : undefined,
+    setupScript: cleanSetupScript(o.setupScript),
   };
 }
 

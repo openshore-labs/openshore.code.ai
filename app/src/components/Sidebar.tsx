@@ -213,7 +213,7 @@ function NavIcon({ name }: { name: NavIconName }) {
 
 /** A room's own glyph, where a screen draws the same thing (the project tile,
  *  the repositories door). */
-export function RoomGlyph({ name, size }: { name: 'projects' | 'repos'; size: number }) {
+export function RoomGlyph({ name, size }: { name: 'projects' | 'repos' | 'crew'; size: number }) {
   return <Icon size={size}>{ICON_NODES[name]}</Icon>;
 }
 

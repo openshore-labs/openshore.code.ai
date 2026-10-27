@@ -1,11 +1,13 @@
 // A project's own room, in the shape of the Claude app's (maintainer,
-// 2026-10-02): the name, a pair of pill doors (what the project works in,
-// what rides into every chat), then this room's own components at the top
-// (the pinned notes, and in later tiers the currents and the team roster),
-// then the project's chats as one flat list, and a floating New chat pill. What
-// the room does to the project itself (make active, rename, share, delete)
-// sits behind the "..." in the bar. Reached by tapping a project on the
-// Projects list.
+// 2026-10-02): the name, with where it runs as a pill beneath it, then its
+// doors (founder, 2026-10-27): what it works in (Repositories), its own
+// environment (Project Wayfinder: instructions, network access, variables
+// and a setup script, the way Claude Code sets one up) and who works in it
+// (Agents), then in later tiers the currents and the team roster, then the
+// project's chats as one flat list, and a floating New chat pill. Every
+// project draws on the whole Vault, so it pins no notes. What the room does
+// to the project itself (make active, rename, share, delete) sits behind the
+// "..." in the bar. Reached by tapping a project on the Projects list.
 //
 // Honest scope: projects are device-local today, so the team-access controls
 // configure who WILL have access once a project is shared with the team (a
@@ -17,7 +19,9 @@ import { useApp, stackAdmin, whereContextOf } from '../state/store.js';
 import type { Conversation, Project, ProjectAccess, ProjectPermission } from '../state/types.js';
 import { BackBar } from '../components/BackBar.js';
 import { ProjectCurrents } from '../components/ProjectCurrents.js';
-import { ProjectVaultPins } from '../components/ProjectVaultPins.js';
+import { ProjectWayfinderSheet } from '../components/ProjectWayfinder.js';
+import { ProjectAgentsSheet } from '../components/ProjectAgents.js';
+import { agentInProject } from '../lib/projectAgents.js';
 import { RunsOnPill, RunsOnSheet } from '../components/ProjectRunsOn.js';
 import { projectWhere } from '../lib/runsOn.js';
 import { Sheet } from '../components/Sheet.js';
@@ -79,12 +83,12 @@ export function ProjectDetailScreen() {
   // Only a company admin can lift a local project onto the org server.
   const canShare = Boolean(project && !project.shared && isCommercial && stackAdmin(account));
 
-  // The sheets this room opens: the "..." menu, the name, the standing
-  // instructions (drafted, saved on demand), the repositories, and the
-  // delete confirm.
+  // The sheets this room opens: the "..." menu, the name, Project
+  // Wayfinder, the agents, the repositories, and the delete confirm.
   const [menu, setMenu] = useState(false);
   const [renaming, setRenaming] = useState<string | undefined>();
-  const [instructions, setInstructions] = useState<string | undefined>();
+  const [wayfinderOpen, setWayfinderOpen] = useState(false);
+  const [agentsOpen, setAgentsOpen] = useState(false);
   const [showRepos, setShowRepos] = useState(false);
   const [manageRepos, setManageRepos] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -120,18 +124,15 @@ export function ProjectDetailScreen() {
   }
 
   const repoCount = project.repoIds.length;
-  const hasInstructions = Boolean(project.instructions?.trim());
-  // Save earns its emphasis only once the draft actually differs, so an
-  // untouched editor never dangles a live-looking button.
-  const instructionsDirty =
-    instructions !== undefined && instructions !== (project.instructions ?? '');
-
-  const saveInstructions = async () => {
-    if (instructions === undefined) return;
-    await updateProject(project.id, { instructions });
-    setInstructions(undefined);
-    showToast('Instructions saved.');
-  };
+  // Set up once anything in it is: the door then reads as a place, not a to-do.
+  const wayfinderSet = Boolean(
+    project.instructions?.trim() ||
+    (project.network && project.network !== 'full') ||
+    project.setupScript?.trim(),
+  );
+  const agentCount = (settings.crew ?? []).filter((a) =>
+    agentInProject(a, project.id, project),
+  ).length;
   const saveName = async () => {
     if (renaming === undefined) return;
     await updateProject(project.id, { name: renaming.trim() || 'Untitled project' });
@@ -185,18 +186,19 @@ export function ProjectDetailScreen() {
         <h1 ref={titleRef} className="project-hero-title project-room-title">
           {project.name}
         </h1>
-        {isActive || (teams && project.shared) || (project.shared && !mayEdit && myLevel) ? (
-          <div className="project-room-tags">
-            {isActive ? <span className="pill ink">Active</span> : null}
-            {teams && project.shared ? <span className="pill muted">Shared</span> : null}
-            {project.shared && !mayEdit && myLevel ? (
-              <span className="pill muted">You {permissionLabel(myLevel).toLowerCase()}</span>
-            ) : null}
-          </div>
-        ) : null}
+        {/* Where its chats run (2026-10-12), as the pill under the title
+            (2026-10-27): a choice of this device's, so a reader of a shared
+            project still cannot start one there. */}
+        <div className="project-room-tags">
+          <RunsOnPill project={project} disabled={!mayWrite} onOpen={() => setRunsOnOpen(true)} />
+          {teams && project.shared ? <span className="pill muted">Shared</span> : null}
+          {project.shared && !mayEdit && myLevel ? (
+            <span className="pill muted">You {permissionLabel(myLevel).toLowerCase()}</span>
+          ) : null}
+        </div>
 
-        {/* The two doors under the title, the Claude app's pair: what the
-            project works in, and what rides into every chat. */}
+        {/* The doors under the title: what the project works in, its own
+            environment, and who works in it. */}
         <div className="project-pills project-section" style={{ '--i': 0 } as CSSProperties}>
           <button
             type="button"
@@ -213,16 +215,24 @@ export function ProjectDetailScreen() {
           <button
             type="button"
             className="project-pill press-fb"
-            disabled={!mayEdit && !hasInstructions}
-            onClick={() => setInstructions(project.instructions ?? '')}
+            disabled={!mayEdit && !project.instructions?.trim()}
+            onClick={() => setWayfinderOpen(true)}
           >
             <InstructionsGlyph />
-            <span>{hasInstructions ? 'Instructions' : 'Add instructions'}</span>
+            <span>Project Wayfinder</span>
+            {wayfinderSet ? <span className="project-pill-dot" aria-label="set up" /> : null}
           </button>
-          {/* Where its chats run (2026-10-12): a choice of this
-              device's, so a reader of a shared project still cannot start
-              one there. */}
-          <RunsOnPill project={project} disabled={!mayWrite} onOpen={() => setRunsOnOpen(true)} />
+          <button
+            type="button"
+            className="project-pill press-fb"
+            disabled={!mayEdit}
+            onClick={() => setAgentsOpen(true)}
+          >
+            <RoomGlyph name="crew" size={18} />
+            <span>
+              {agentCount ? `${agentCount} ${agentCount === 1 ? 'agent' : 'agents'}` : 'Agents'}
+            </span>
+          </button>
         </div>
 
         {/* This room's own components, at the top above the chats. Currents
@@ -232,11 +242,6 @@ export function ProjectDetailScreen() {
         {mayEdit && featureOn('currents') ? (
           <ProjectCurrents projectId={project.id} index={1} />
         ) : null}
-
-        {/* Vault notes pinned to this project's context (Vault M5): placed by
-            the person, so they ride every chat here. Device local. Editors
-            only, on the currents' pattern. */}
-        {mayEdit ? <ProjectVaultPins projectId={project.id} index={3} /> : null}
 
         {/* Enterprise: who on the team can read, write, or edit. */}
         {isCommercial ? (
@@ -373,37 +378,17 @@ export function ProjectDetailScreen() {
         </div>
       </Sheet>
 
-      {/* Standing instructions: they ride into every chat here. */}
-      <Sheet open={instructions !== undefined} onClose={() => setInstructions(undefined)}>
-        <SheetHead title="Instructions" onClose={() => setInstructions(undefined)} />
-        {mayEdit ? (
-          <>
-            <div className="field">
-              <label htmlFor="project-instructions">
-                Every chat in this project starts with these
-              </label>
-              <textarea
-                id="project-instructions"
-                rows={7}
-                placeholder="Context and rules every chat in this project should follow."
-                value={instructions ?? ''}
-                onChange={(e) => setInstructions(e.target.value)}
-              />
-            </div>
-            <div className="sheet-actions">
-              <button
-                className={instructionsDirty ? 'btn primary' : 'btn quiet'}
-                disabled={!instructionsDirty}
-                onClick={() => void saveInstructions()}
-              >
-                Save
-              </button>
-            </div>
-          </>
-        ) : (
-          <p className="project-instructions">{project.instructions?.trim()}</p>
-        )}
-      </Sheet>
+      <ProjectWayfinderSheet
+        project={project}
+        open={wayfinderOpen}
+        editable={mayEdit}
+        onClose={() => setWayfinderOpen(false)}
+      />
+      <ProjectAgentsSheet
+        project={project}
+        open={agentsOpen}
+        onClose={() => setAgentsOpen(false)}
+      />
 
       <Sheet open={renaming !== undefined} onClose={() => setRenaming(undefined)}>
         <SheetHead title="Rename project" onClose={() => setRenaming(undefined)} />

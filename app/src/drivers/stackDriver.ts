@@ -27,6 +27,7 @@ import type {
   ApprovalRequest,
   FetchLike,
   HarnessCurrentsHandle,
+  ProjectNetwork,
   ProvenanceFields,
   VaultPrivacy,
 } from 'os-code/protocol';
@@ -191,11 +192,19 @@ import {
 import type { DaemonStackInfo, DriverEvent, VaultOverrides } from 'os-code/protocol';
 import { writingVoiceLine } from '../lib/writingVoice.js';
 import { appActionsContract } from '../lib/appActions.js';
+import type { ProjectContract } from '../lib/projectFence.js';
 
 /** Extra context a chat carries into the router: its project and its crew. */
 export interface StackContext {
   projectName?: string;
   projectInstructions?: string;
+  /** The contract that lets this chat fill its project's fields
+   *  (lib/projectActions.ts), for a seat (does it leave this network) and the
+   *  person's turns so far. Unset outside a project. */
+  projectContract?: ProjectContract;
+  /** The project's network access (Project Wayfinder): 'none' keeps every
+   *  web search out of this chat, search-first included. Unset is full. */
+  network?: ProjectNetwork;
   /** Crew that speaks in this chat (already scoped to project + level). */
   crew?: CrewAgent[];
   /** Humanize Writing setting: when true (the default), written output is held
@@ -747,7 +756,7 @@ export class StackDriver implements ChatDriver {
 
   /** The web is in reach whenever the cloud is: not on the Offline profile. */
   private webReachable(): boolean {
-    return locationAllowed(this.profile, 'cloud');
+    return this.context.network !== 'none' && locationAllowed(this.profile, 'cloud');
   }
 
   /** Pick the model for this turn: a placed specialist if reachable, else the
@@ -935,6 +944,9 @@ export class StackDriver implements ChatDriver {
     // (lib/appActions.ts).
     const actions = appActionsContract(this.leaves(ref), this.userTurns());
     if (actions) standards.push(actions);
+    // And the project's own fields, the same two gates (lib/projectActions.ts).
+    const projectActions = this.context.projectContract?.(this.leaves(ref), this.userTurns());
+    if (projectActions) standards.push(projectActions);
     // Codemagic Access is on: tell the model it can drive App Launch builds. The
     // tool is offered on every network model (Anthropic native tool use, and
     // OpenAI-compatible + BYOM function calling), so the note earns its place on
