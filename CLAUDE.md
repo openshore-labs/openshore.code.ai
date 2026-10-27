@@ -253,6 +253,28 @@ the app toggle's OFF reaches a paired desktop. Refresh the snapshot deliberately
 by reading the live page again; never wire it to a live fetch, since the page is
 world-editable. Scope is this repo for now, as the single source of truth.
 
+## Search first, the Perplexity standard (gold standard, founder 2026-10-27)
+
+"Open models knowing actual real world facts is not a reasonable
+expectation." Outside coding, where a model is strongest in its own context,
+a local model never answers from memory alone: the host searches before the
+model writes a word, and the model answers from the numbered sources, citing
+each claim as [n], trusting the sources over its memory, and saying plainly
+where they disagree or do not cover the question. One pure rule,
+`searchFirstQuery` in `os-code/src/harness/localSearch.ts` (through
+`os-code/protocol`), decides what is left to the model: code, small talk,
+arithmetic, an edit of text the person gave, a question about the chat. A
+short follow-up searches with the person's previous message. `SearchTurn.first`
+(`app/src/drivers/searchTurn.ts`) runs it as the message's one search, under
+the same consent, Offline and after-private rules as any search; results are
+numbered and kept one per address, so a reply's [1] is the first entry in
+Sources. Every driver that speaks the SEARCH: protocol searches first, and the
+store turns it on (`app/test/searchFirstStandard.test.ts`); "Let models search
+the web" off stops it. Do NOT add a driver that answers a local model without
+`search.first`, do NOT loosen the answer note into "cite if you like", and do
+NOT claim accuracy numbers in copy until `osc eval` measures them (tenet 2).
+Cloud seats are untouched for now.
+
 ## Chain of Thought is BUILT (off by default, founder 2026-09-25)
 
 A Settings switch (Settings, Reasoning, `settings.chainOfThought`), OFF by
