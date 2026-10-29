@@ -52,9 +52,9 @@ With Node 22.12 or newer and a local model server such as Ollama:
 ```
 npm install -g @openshore/os-code
 osc init
-cd ~/your-project && osc
 ```
 
+Then run `osc` inside any project folder (no project yet? `mkdir hello && cd hello && osc`).
 `osc doctor` checks your setup. More in [`os-code/README.md`](os-code/README.md).
 
 ## Quick start: from source

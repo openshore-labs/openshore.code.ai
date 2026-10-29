@@ -2,17 +2,19 @@
 // from this file, so a rebrand is a one-file change.
 //
 // The openshore.ai palette: ink navy, cream paper, a water teal, warm amber.
-// These are painted as FOREGROUND colors over the user's terminal (which owns
-// its own, usually dark, background), so `text` stays paper-light and `local`
-// uses the brand's lighter shore-teal rather than the deep water teal the app
-// UI uses on its cream ground. Status colors stay bright so they read on dark
-// terminals. Keep this in step with app/src/theme.css and BrandMark.tsx.
+// These are painted as FOREGROUND colors over the user's terminal, which owns
+// its background, and that background may be dark or light. So primary text is
+// never painted: it takes the terminal's own foreground, which is legible by
+// definition. Every painted token is a mid tone that holds at least 3:1 on
+// white and on near-black alike (test/themeContrast.test.ts), never a pale
+// that vanishes on a light terminal. Keep this in step with app/src/theme.css
+// and BrandMark.tsx.
 
 export interface BrandTokens {
   /** Deep ocean navy. Terminals own their background; this is for reference surfaces. */
   bg: string;
-  /** Off-white primary text. */
-  text: string;
+  /** Primary text: unset, so it takes the terminal's own foreground. */
+  text: string | undefined;
   /** Bright signal accent. Marks LOCAL models and local activity. */
   local: string;
   /** Warm amber. Marks CLOUD models, escalation, and anything that can spend money. */
@@ -28,14 +30,14 @@ export interface BrandTokens {
 
 export const TOKENS: BrandTokens = {
   bg: '#1C2A33', // brand ink (reference surface)
-  text: '#F6F4EF', // brand paper, legible on dark terminals
+  text: undefined, // the terminal's own foreground, legible on any background
   local: '#4B90A3', // brand shore-teal, LOCAL work
-  cloud: '#F5A623', // warm amber, CLOUD / spend
-  muted: '#8A949A', // brand ink-faint
-  ok: '#4ADE80',
-  warn: '#FACC15',
-  danger: '#F87171',
-  link: '#7DD3FC',
+  cloud: '#D98C14', // warm amber, CLOUD / spend
+  muted: '#808A90', // brand ink-faint
+  ok: '#2FA866',
+  warn: '#C98A0B',
+  danger: '#E05252',
+  link: '#3D8FD1',
 };
 
 /** Small glyph set used across the TUI and plain renderer. */
@@ -179,8 +181,9 @@ export function fgSequence(r: number, g: number, b: number): string {
   }
 }
 
-function paint(hex: string, s: string, bold = false): string {
+function paint(hex: string | undefined, s: string, bold = false): string {
   if (!colorEnabled()) return s;
+  if (!hex) return bold ? `\u001b[1m${s}\u001b[0m` : s;
   const [r, g, b] = hexToRgb(hex);
   const boldSeq = bold ? '\u001b[1m' : '';
   return `${boldSeq}${fgSequence(r, g, b)}${s}\u001b[0m`;

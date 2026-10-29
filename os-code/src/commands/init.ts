@@ -82,11 +82,10 @@ export async function initCommand(): Promise<void> {
     out(t.local('    curl -fsSL https://ollama.com/install.sh | sh'));
     out(t.muted('  (Already installed? Start it with: ollama serve)'));
     for (;;) {
-      await ask('Press Enter here when it is up (or type skip to configure without it):').then(
-        (answer) => {
-          if (answer.toLowerCase() === 'skip') up = false;
-        },
+      const answer = await ask(
+        'Press Enter here when it is up (or type skip to configure without it):',
       );
+      if (answer.toLowerCase() === 'skip') break;
       if (await ollamaUp()) {
         up = true;
         okLine('There it is. Ollama is running.');
@@ -108,7 +107,7 @@ export async function initCommand(): Promise<void> {
   const { catalog, note } = await loadCatalog(loadConfig().config, new EgressPolicy());
   if (note) out(t.muted(`  ${note}`));
 
-  const presets = [...catalog.presets].sort((a, b) => a.minVramGB - b.minVramGB);
+  const presets = desktopPresets(catalog.presets);
   const effectiveVram = hardware.totalVramGB || Math.floor(hardware.systemRamGB / 2);
   const fitting = presets.filter((p) => p.minVramGB <= effectiveVram);
   const recommended = fitting[fitting.length - 1] ?? presets[0]!;
@@ -206,15 +205,38 @@ export async function initCommand(): Promise<void> {
     `Stack: ${orchestratorModel}${Object.keys(specialists).length ? ` + ${Object.keys(specialists).join(', ')}` : ', solo'}`,
   );
   okLine(`Config written to ${path}`);
-  out();
-  out(t.text('Open any repo and start:'));
-  out(t.local('  cd ~/your-project && osc'));
-  out();
-  out(
+  for (const line of nextSteps(up)) out(line);
+}
+
+/** Presets made for the phone app (Pocket) are not a terminal stack, so the
+ *  desktop picker leaves them out; the rest go smallest first. */
+const PHONE_PRESETS = new Set(['pocket']);
+export function desktopPresets(presets: CatalogPreset[]): CatalogPreset[] {
+  return presets.filter((p) => !PHONE_PRESETS.has(p.id)).sort((a, b) => a.minVramGB - b.minVramGB);
+}
+
+/** What to do now, in order, with real commands only: no placeholder to
+ *  copy by mistake. `osc` works in whatever folder it is started in. */
+export function nextSteps(ollamaRunning: boolean): string[] {
+  const lines = [''];
+  if (!ollamaRunning) {
+    lines.push(t.text('Before you start, get Ollama running (see above), then check with:'));
+    lines.push(t.local('  osc doctor'));
+    lines.push('');
+  }
+  lines.push(t.bold('Start OS Code in a project folder:'));
+  lines.push(`  ${t.local('cd path/to/your/project')}`);
+  lines.push(`  ${t.local('osc')}`);
+  lines.push('');
+  lines.push(t.text('No project yet? This makes an empty one and starts there:'));
+  lines.push(`  ${t.local('mkdir hello && cd hello && osc')}`);
+  lines.push('');
+  lines.push(
     t.muted(
-      'Later, when you want more: osc login connects Claude for the hardest tasks. osc pair puts this on your phone. osc library browses more models. Specialists stay optional.',
+      'Later, when you want more: osc login connects Claude for the hardest tasks, osc pair docks your phone to this computer, osc library browses more models, osc doctor checks your setup.',
     ),
   );
+  return lines;
 }
 
 function resolvePreset(

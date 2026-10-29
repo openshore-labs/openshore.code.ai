@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // The osc CLI. Bare `osc` opens a session in the current directory; every
 // bigger flow is a subcommand with its own premium onboarding.
+import { createRequire } from 'node:module';
 import { Command } from 'commander';
 import { setColorEnabled, t } from '../src/brand/theme.js';
 import { runCommand } from '../src/commands/run.js';
@@ -53,9 +54,25 @@ program
   .description(
     'OS Code: a terminal coding agent for your own stack of local LLMs. Your machine, your models, your keys.',
   )
-  .version('0.1.0')
+  .version(cliVersion())
   .option('--plain', 'plain renderer: no cursor tricks, works on any terminal')
   .option('--no-color', 'disable color output');
+
+/** The published version: the publish workflow stamps package.json from the
+ *  tag, so read it rather than repeat a number here that goes stale. */
+function cliVersion(): string {
+  const load = createRequire(import.meta.url);
+  // dist/bin/osc.js when built, bin/osc.ts under tsx.
+  for (const path of ['../../package.json', '../package.json']) {
+    try {
+      const pkg = load(path) as { name?: string; version?: string };
+      if (pkg.name?.endsWith('os-code') && pkg.version) return pkg.version;
+    } catch {
+      // Not at this depth; try the next.
+    }
+  }
+  return '0.0.0';
+}
 
 program
   .command('run', { isDefault: true })

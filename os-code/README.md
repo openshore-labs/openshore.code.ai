@@ -24,11 +24,15 @@ osc init
 ```
 
 `osc init` detects your GPU and memory, offers preset stacks in plain
-language, and pulls a starter model. Then open any repository and start:
+language, and pulls a starter model. Then start `osc` in the folder you want
+to work in:
 
 ```
-cd ~/your-project && osc
+cd path/to/your/project
+osc
 ```
+
+No project yet? `mkdir hello && cd hello && osc` starts in a fresh folder.
 
 That is the whole onboarding. A first-time user gets a working single-model
 agent from `osc init` alone; specialists, routing, and cloud stay opt-in.
