@@ -579,10 +579,16 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
   // keep one Hermes session per OpenShore session.
   if (currents) toolContext.currents = currents;
   toolContext.sessionId = driver.id;
+  // The agent's commands read the session's variables live, so variables
+  // handed back to a revived session (POST /sessions/:id/env) reach them too.
   if (options.projectEnv && Object.keys(options.projectEnv).length) {
-    toolContext.projectEnv = options.projectEnv;
     driver.projectEnv = options.projectEnv;
   }
+  Object.defineProperty(toolContext, 'projectEnv', {
+    get: () => driver.projectEnv,
+    enumerable: true,
+    configurable: true,
+  });
 
   // The process tools' seam: each program is a run on this driver's command
   // lane, `runCommand(cmd, {source: 'agent'})` behind startAgentProcess (which
@@ -682,7 +688,8 @@ export function bootstrapSession(options: BootstrapOptions): BootstrapResult {
   const setupScript = options.setupScript?.trim();
   if (!options.sessionId && setupScript) {
     driver.emit({ type: 'status', message: "Running this project's setup script." });
-    driver.runCommand(setupScript);
+    // The first task waits for it, so the agent works in a prepared folder.
+    driver.runSetup(setupScript);
   }
 
   // Rehydrating a stored session (daemon restarted): the journal replayed into

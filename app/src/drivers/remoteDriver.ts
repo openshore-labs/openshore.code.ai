@@ -414,6 +414,22 @@ export async function daemonCreateSession(
   return body.id;
 }
 
+/** Hand Project Wayfinder's variables back to a session revived after a
+ *  restart (they are never journaled). Best effort: an older computer answers
+ *  404, and the session then runs without them, as before. */
+export async function daemonSetProjectEnv(
+  target: DaemonTarget,
+  sessionId: string,
+  projectEnv: Record<string, string>,
+): Promise<void> {
+  await fetch(`${target.baseUrl}/sessions/${encodeURIComponent(sessionId)}/env`, {
+    method: 'POST',
+    headers: { ...headers(target), 'content-type': 'application/json' },
+    body: JSON.stringify({ projectEnv }),
+    signal: AbortSignal.timeout(10_000),
+  }).catch(() => undefined);
+}
+
 /** Forget every handoff the computer keeps (Clear conversations, tech review J13).
  *  Owner only on the hub; an older hub without the route answers 404, which
  *  is nothing to clear. Resolves false when the computer did not do it. */

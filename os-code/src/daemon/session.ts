@@ -714,6 +714,11 @@ export class LocalDriver implements SessionDriver {
    *  every command on this session's lane. Held in memory only, never
    *  journaled, so a session revived after a restart runs without them. */
   projectEnv?: Readonly<Record<string, string>>;
+  /** Project Wayfinder's setup script still running: the first task waits
+   *  for it (CX, 2026-10-30), at most SETUP_WAIT_MS, so a script that never
+   *  exits cannot hold the session. */
+  private setupHold?: Promise<unknown>;
+  private waitingOnSetup = false;
   private pendingApprovals = new Map<string, (answer: ApprovalAnswer) => void>();
   private queue: Array<{
     text: string;
@@ -1050,8 +1055,38 @@ export class LocalDriver implements SessionDriver {
     return this.agent?.heldLocalOnly() ?? false;
   }
 
+  /** Run Project Wayfinder's setup script on the command lane, and hold the
+   *  first task until it ends. */
+  runSetup(script: string): void {
+    const { runId } = this.runCommand(script);
+    const done = this.commands.get(runId)?.done;
+    if (!done) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    this.setupHold = Promise.race([
+      done,
+      new Promise((resolve) => {
+        timer = setTimeout(resolve, LocalDriver.SETUP_WAIT_MS);
+      }),
+    ]).finally(() => clearTimeout(timer));
+  }
+
+  private static readonly SETUP_WAIT_MS = 10 * 60_000;
+
   private async pump(): Promise<void> {
     if (this.running || this.rewinding || !this.agent) return;
+    if (this.setupHold) {
+      if (this.waitingOnSetup || !this.queue.length) return;
+      this.waitingOnSetup = true;
+      this.emit({
+        type: 'status',
+        message: "Waiting for this project's setup script to finish before starting.",
+      });
+      await this.setupHold;
+      this.setupHold = undefined;
+      this.waitingOnSetup = false;
+      void this.pump();
+      return;
+    }
     const next = this.queue.shift();
     if (!next) return;
     this.running = true;

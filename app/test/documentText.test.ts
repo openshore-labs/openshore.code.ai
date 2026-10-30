@@ -11,10 +11,8 @@ import {
   documentBlock,
   documentKind,
   fileNoteBlock,
-  readOfficeText,
-  readZip,
-  rtfToText,
 } from '../src/lib/documentText';
+import { readOfficeText, readZip, rtfToText } from '../src/lib/officeText';
 import { pageItemsToText, readPdf } from '../src/lib/pdfText';
 
 /** A minimal zip writer: each entry stored or deflated, a central directory,

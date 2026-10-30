@@ -64,7 +64,6 @@ import {
   documentBlock,
   documentKind,
   fileNoteBlock,
-  readOfficeText,
   sizeLabel,
 } from '../lib/documentText.js';
 import { buildVideoAttachment } from '../lib/videoAttach.js';
@@ -1029,6 +1028,8 @@ export function Composer({
             addFile(documentBlock(name, kind, doc), countLabel(doc.parts?.count ?? 1, 'page'));
             continue;
           }
+          // The readers load on the first document, never at launch.
+          const { readOfficeText } = await import('../lib/officeText.js');
           const doc = await readOfficeText(bytes, kind);
           if (!doc.text) {
             showToast(`${name} has no text in it.`);

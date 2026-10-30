@@ -372,6 +372,9 @@ export interface OscodeBridge {
    *  and a ranked file search for @ mentions. */
   setMode(sessionId: string, mode: PermissionMode): Promise<void>;
   setInstructions(sessionId: string, text?: string): Promise<void>;
+  /** Project Wayfinder's variables for a resumed session (never journaled).
+   *  Optional: a desktop app that predates it has none. */
+  setProjectEnv?(sessionId: string, env?: Record<string, string>): Promise<void>;
   compact(
     sessionId: string,
     focus?: string,

@@ -1188,6 +1188,9 @@ guarded('osc:createSession', (cwd: unknown, opts: unknown) =>
 guarded('osc:setMode', (sessionId: unknown, mode: unknown) =>
   host.setMode(str(sessionId, 'sessionId'), str(mode, 'mode') as never),
 );
+guarded('osc:setProjectEnv', (sessionId: unknown, env: unknown) =>
+  host.setProjectEnv(str(sessionId, 'sessionId'), cleanProjectEnv(env)),
+);
 guarded('osc:setInstructions', (sessionId: unknown, text: unknown) =>
   host.setInstructions(str(sessionId, 'sessionId'), optStr(text, 'text')),
 );

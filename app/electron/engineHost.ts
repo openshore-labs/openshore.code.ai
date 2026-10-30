@@ -470,6 +470,12 @@ export class EngineHost {
     this.drivers.get(sessionId)?.setMode(mode);
   }
 
+  /** Project Wayfinder's variables for a resumed session (never journaled). */
+  setProjectEnv(sessionId: string, env: Record<string, string> | undefined): void {
+    const driver = this.drivers.get(sessionId);
+    if (driver) driver.projectEnv = env;
+  }
+
   setInstructions(sessionId: string, text: string | undefined): void {
     this.drivers.get(sessionId)?.setInstructions(text);
   }

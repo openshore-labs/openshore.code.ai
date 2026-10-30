@@ -86,6 +86,7 @@ import {
   daemonCreateSession,
   daemonForgetSelf,
   daemonHealth,
+  daemonSetProjectEnv,
   daemonVerifyCommit,
   type DaemonTarget,
 } from '../drivers/remoteDriver.js';
@@ -4756,11 +4757,12 @@ export const useApp = create<AppState>((set, get, api) => {
               (await secretGet(harnessCurrentSecretKey(harnessId)).catch(() => null)) ?? undefined,
             )
           : undefined;
-        // The project's variables, read from the sealed store for a fresh
-        // session only. Unlike the tokens and secrets note they are meant for
-        // the machine the project runs on, so they ride to a docked one too.
-        const projectEnv =
-          project && !conv.source.sessionId ? await projectEnvFor(project.id) : undefined;
+        // The project's variables, read from the sealed store. Unlike the
+        // tokens and secrets note they are meant for the machine the project
+        // runs on, so they ride to a docked one too: in a fresh session's
+        // create, and handed back to one resumed after a restart, since they
+        // are never journaled (CX and CTO, 2026-10-30).
+        const projectEnv = project ? await projectEnvFor(project.id) : undefined;
         const sessionOpts = {
           instructions,
           permissionMode: settings.permissionMode ?? DEFAULT_PERMISSION_MODE,
@@ -4843,6 +4845,10 @@ export const useApp = create<AppState>((set, get, api) => {
             // it has subscribed (IPC does not buffer a pushed replay).
             const resumed = await bridge()!.resumeSession(sessionId);
             if ('journal' in resumed) journal = resumed.journal;
+            if (projectEnv)
+              await bridge()!
+                .setProjectEnv?.(sessionId, projectEnv)
+                .catch(() => {});
           }
           return new ElectronDriver(sessionId, journal);
         }
@@ -4879,6 +4885,10 @@ export const useApp = create<AppState>((set, get, api) => {
             ...(sessionOpts.vaultOverrides ? { vaultOverrides: sessionOpts.vaultOverrides } : {}),
           });
           await bindSessionId(conv.id, sessionId, cwd, target.baseUrl);
+        } else if (projectEnv) {
+          // A session the computer may have revived after a restart: its
+          // variables come back from here.
+          void daemonSetProjectEnv(target, sessionId, projectEnv);
         }
         // Opening a desktop session is the walk-away-able moment: the run
         // continues on the daemon while the phone is closed. Register for

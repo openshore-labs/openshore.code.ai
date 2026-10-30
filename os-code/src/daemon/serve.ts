@@ -1924,6 +1924,15 @@ export function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
         });
         return;
       }
+      // Project Wayfinder's variables, handed back to a session revived after
+      // a restart (they are never journaled, CX and CTO 2026-10-30). Held to
+      // the create's limits; an empty body clears them.
+      if (req.method === 'POST' && parts[2] === 'env') {
+        const body = await readJson(req);
+        driver.projectEnv = cleanProjectEnv(body.projectEnv);
+        sendJson(res, 200, { ok: true });
+        return;
+      }
       if (req.method === 'POST' && parts[2] === 'instructions') {
         const body = await readJson(req);
         driver.setInstructions(typeof body.text === 'string' ? body.text : undefined);

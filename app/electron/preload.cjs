@@ -26,6 +26,7 @@ contextBridge.exposeInMainWorld('oscode', {
   abort: invoke('osc:abort'),
   setMode: invoke('osc:setMode'),
   setInstructions: invoke('osc:setInstructions'),
+  setProjectEnv: invoke('osc:setProjectEnv'),
   compact: invoke('osc:compact'),
   listFiles: invoke('osc:listFiles'),
   trustFolder: invoke('osc:trustFolder'),

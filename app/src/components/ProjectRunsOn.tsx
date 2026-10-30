@@ -27,7 +27,15 @@ import { Icon } from './Icon.js';
 /** What a place is called in a pill or a row. */
 export function whereName(where: Where): string {
   if (where.kind === 'local') return 'this computer';
-  if (where.kind === 'docked') return where.target.name?.trim() || hostOf(where.target.baseUrl);
+  // A machine with no name of its own reads by its kind, never its address
+  // (Creative Studio, 2026-10-30): "your computer", or "your server" the way
+  // a docked server reads everywhere.
+  if (where.kind === 'docked') {
+    return (
+      where.target.name?.trim() ||
+      (machineKindOf(where.target) === 'computer' ? 'your computer' : 'your server')
+    );
+  }
   return 'nowhere yet';
 }
 

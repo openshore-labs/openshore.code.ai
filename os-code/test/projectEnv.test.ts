@@ -100,3 +100,40 @@ describe('network access shapes the agent tools', () => {
     expect(projectNetworkNote('none')).toMatch(/do not search the web/);
   });
 });
+
+describe('the setup script runs before the first task (CX, 2026-10-30)', async () => {
+  const { LocalDriver } = await import('../src/daemon/session.js');
+  const { mkdtempSync, existsSync, rmSync } = await import('node:fs');
+  const { join } = await import('node:path');
+
+  it('holds the first task until the script ends, with its variables set', async () => {
+    const folder = mkdtempSync(join(tmpdir(), 'osc-setup-'));
+    try {
+      const driver = new LocalDriver(folder, { persist: false });
+      driver.projectEnv = { MARK: 'ready' };
+      const seen: string[] = [];
+      driver.onEvent((e) => {
+        if (e.type === 'status') seen.push(e.message);
+      });
+      let ranAfterSetup: boolean | undefined;
+      driver.attachAgent({
+        run: async () => {
+          ranAfterSetup = existsSync(join(folder, 'ready'));
+          driver.emit({ type: 'task-done', reason: 'complete' });
+        },
+        generateTitle: async () => undefined,
+        flushHandoff: () => undefined,
+      } as never);
+      driver.runSetup('sleep 0.3 && touch "$MARK"');
+      driver.send('build the page');
+      const until = Date.now() + 5000;
+      while (ranAfterSetup === undefined && Date.now() < until) {
+        await new Promise((r) => setTimeout(r, 20));
+      }
+      expect(ranAfterSetup).toBe(true);
+      expect(seen.some((m) => m.includes('setup script to finish'))).toBe(true);
+    } finally {
+      rmSync(folder, { recursive: true, force: true });
+    }
+  });
+});

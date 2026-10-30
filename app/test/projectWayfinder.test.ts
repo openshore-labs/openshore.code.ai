@@ -165,3 +165,53 @@ describe('Project Wayfinder is wired, not decoration', () => {
     );
   });
 });
+
+describe('Runs on names the machine, never its address (Creative Studio, 2026-10-30)', async () => {
+  const { whereName } = await import('../src/components/ProjectRunsOn.js');
+  const docked = (target: Record<string, unknown>) =>
+    whereName({
+      kind: 'docked',
+      target: { baseUrl: 'http://100.108.1.2:4777', token: 't', ...target },
+    } as never);
+
+  it('an unnamed machine reads by its kind', () => {
+    expect(docked({})).toBe('your computer');
+    expect(docked({ kind: 'server' })).toBe('your server');
+    expect(docked({ kind: 'server', place: 'rented' })).toBe('your server');
+  });
+
+  it('a named one keeps its name', () => {
+    expect(docked({ name: 'studio' })).toBe('studio');
+  });
+});
+
+describe('a revived session gets its variables back (CX and CTO, 2026-10-30)', () => {
+  const store = src('state/store.ts');
+
+  it('reads the variables for a resumed session too, and hands them back on either machine', () => {
+    expect(store).toContain(
+      'const projectEnv = project ? await projectEnvFor(project.id) : undefined;',
+    );
+    expect(store).toMatch(
+      /resumeSession\(sessionId\);[\s\S]{0,200}setProjectEnv\?\.\(sessionId, projectEnv\)/,
+    );
+    expect(store).toMatch(
+      /else if \(projectEnv\) \{[\s\S]{0,200}daemonSetProjectEnv\(target, sessionId, projectEnv\)/,
+    );
+  });
+
+  it('the engine reads them live, so a hand-back reaches the agent’s commands', () => {
+    const boot = readFileSync(
+      join(process.cwd(), '..', 'os-code', 'src', 'core', 'agent', 'bootstrap.ts'),
+      'utf8',
+    );
+    expect(boot).toMatch(
+      /defineProperty\(toolContext, 'projectEnv', \{\s*get: \(\) => driver\.projectEnv/,
+    );
+    const serve = readFileSync(
+      join(process.cwd(), '..', 'os-code', 'src', 'daemon', 'serve.ts'),
+      'utf8',
+    );
+    expect(serve).toContain('driver.projectEnv = cleanProjectEnv(body.projectEnv);');
+  });
+});
