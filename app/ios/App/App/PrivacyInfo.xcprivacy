@@ -51,10 +51,12 @@
 				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
 			</array>
 		</dict>
-		<!-- The guardrail record: a category, a time, a one-way hash. Never the prompt. -->
+		<!-- The guardrail record: a category, a time, a one-way hash. Never the prompt.
+		     Uploaded only while signed in, so it is linked. App Store Connect files it
+		     as Other Usage Data (App Review, 2026-10-30). -->
 		<dict>
 			<key>NSPrivacyCollectedDataType</key>
-			<string>NSPrivacyCollectedDataTypeOtherDataTypes</string>
+			<string>NSPrivacyCollectedDataTypeOtherUsageData</string>
 			<key>NSPrivacyCollectedDataTypeLinked</key>
 			<true/>
 			<key>NSPrivacyCollectedDataTypeTracking</key>

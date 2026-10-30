@@ -53,6 +53,14 @@ describe('the iPhone privacy manifest', () => {
     );
   });
 
+  it('files the guardrail record as linked Other Usage Data, as App Store Connect does', () => {
+    const entry = manifest.slice(manifest.indexOf('NSPrivacyCollectedDataTypeOtherUsageData'));
+    expect(entry).toMatch(
+      /^NSPrivacyCollectedDataTypeOtherUsageData<\/string>\s*<key>NSPrivacyCollectedDataTypeLinked<\/key>\s*<true\/>/,
+    );
+    expect(manifest).not.toContain('NSPrivacyCollectedDataTypeOtherDataTypes');
+  });
+
   it('names no collected data a purchase would add while the pay gates are off', () => {
     expect(manifest).not.toContain('PurchaseHistory');
   });
